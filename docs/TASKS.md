@@ -14,7 +14,7 @@ later tasks assume earlier ones. Tick them off here, in the same PR that complet
 - [ ] **T2. CI.** `.github/workflows/ci.yml` on push/PR to main. It uses JDK 21 (temurin), sets up the
   Android SDK, runs `./gradlew test :app:assembleDebug`, and uploads `app-debug.apk`.
   - *Done when:* the workflow is green on a PR.
-- [ ] **T3. Weather: model + Open-Meteo parsing**
+- [x] **T3. Weather: model + Open-Meteo parsing**
   - `Condition.kt` and `OpenMeteo.kt` per WEATHER_REFERENCE.md.
   - Tests port the desktop `wmo` and `openMeteo` tests, and use a fake `fetch`.
   - *Done when:* the tests pass, including malformed-JSON and length-mismatch cases.

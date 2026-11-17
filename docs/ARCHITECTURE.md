@@ -173,3 +173,4 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 | 2026-11-17 | No Play Services | Coarse `LocationManager` is enough; keeps the app usable on de-Googled phones |
 | 2026-11-17 | Compose UI test JUnit4 and Roborazzi Compose (using the pinned BOM / Roborazzi version) | Launch the real skeleton activity and record light/dark baselines without an emulator |
 | 2026-11-17 | Compile SDK 37.0 and build tools 37.0.0; retain target SDK 36 and minimum SDK 29 | The pinned Compose BOM resolves to Compose 1.12.1, whose AAR metadata requires compile SDK 37; SDK 36 fails `checkDebugAarMetadata` |
+| 2026-11-17 | Pinned kotlinx.serialization JSON in `:weather` | Parse Open-Meteo responses without Android or an HTTP dependency; reject mismatched arrays per the Android spec, while preserving desktop null/absent optional fields |

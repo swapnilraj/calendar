@@ -15,5 +15,6 @@ java {
 }
 
 dependencies {
+    implementation(libs.serialization.json)
     testImplementation(libs.junit)
 }
