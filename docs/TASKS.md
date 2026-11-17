@@ -29,7 +29,9 @@ later tasks assume earlier ones. Tick them off here, in the same PR that complet
 - [ ] **T6. Calendar data**
   - `CalendarRepository` (Instances for a day → `CalEvent`, observer-driven Flow), the
     `READ_CALENDAR` gate UI, and `EventLayout` with unit tests.
-  - *Done when:* the event list for "today" logs correctly on a device.
+  - Implemented and tested with a synthetic CalendarContract provider, observer refresh, UTC all-day
+    boundaries, midnight clipping, and overlap clusters. Real-device comparison is still pending.
+  - *Done when:* today's events match the system calendar on a device (never log event contents).
 - [ ] **T7. Day grid (no weather yet)**
   - `DayScreen` with a `HorizontalPager`, then `DayPage`, `DayHeader`, `DayGrid`, `EventBlock` and
     `NowLine`.

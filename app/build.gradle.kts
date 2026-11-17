@@ -46,6 +46,9 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
+    implementation(libs.core.ktx)
+    implementation(libs.coroutines.android)
+    implementation(libs.lifecycle.runtime.compose)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)
