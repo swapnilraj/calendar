@@ -32,7 +32,7 @@ later tasks assume earlier ones. Tick them off here, in the same PR that complet
   - Implemented and tested with a synthetic CalendarContract provider, observer refresh, UTC all-day
     boundaries, midnight clipping, and overlap clusters. Real-device comparison is still pending.
   - *Done when:* today's events match the system calendar on a device (never log event contents).
-- [ ] **T7. Day grid (no weather yet)**
+- [x] **T7. Day grid (no weather yet)**
   - `DayScreen` with a `HorizontalPager`, then `DayPage`, `DayHeader`, `DayGrid`, `EventBlock` and
     `NowLine`.
   - Includes the shared vertical scroll, pinch zoom (persisted), the today button, and opening events

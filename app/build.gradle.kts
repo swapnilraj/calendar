@@ -49,6 +49,8 @@ dependencies {
     implementation(libs.core.ktx)
     implementation(libs.coroutines.android)
     implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.datastore.preferences)
+    debugImplementation(libs.compose.ui.test.manifest)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)
