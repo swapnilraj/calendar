@@ -158,7 +158,7 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 
 - `./gradlew test` runs every test, including screenshot verification.
 - `./gradlew :app:assembleDebug` builds the APK. `:app:installDebug` installs it over adb.
-- **CI** (`.github/workflows/ci.yml`, still to be written) runs `test` + `assembleDebug` on pushes and
+- **CI** (`.github/workflows/ci.yml`) runs `test` + `assembleDebug` on pushes and
   PRs, and uploads the debug APK as an artifact.
 - **Signing:**
   - Debug builds use the default debug key.
@@ -177,3 +177,4 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 | 2026-11-17 | Pinned kotlinx.serialization JSON in `:weather` | Parse Open-Meteo responses without Android or an HTTP dependency; reject mismatched arrays per the Android spec, while preserving desktop null/absent optional fields |
 | 2026-11-17 | Pinned core-ktx, coroutines-android, lifecycle-runtime-compose in `:app` | Runtime permission checks, observer-driven data loading off the main thread, and lifecycle-aware collection |
 | 2026-11-17 | Pinned DataStore Preferences and BOM-managed Compose test manifest | Remember zoom across launches and render isolated calendar screens with synthetic data in JVM tests |
+| 2026-11-17 | Day grid uses rgb(25,25,25) in dark mode | Match the desktop weather substrate; keep dynamic color on the surrounding UI and event colors intact |

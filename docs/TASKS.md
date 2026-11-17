@@ -43,6 +43,8 @@ later tasks assume earlier ones. Tick them off here, in the same PR that complet
     header summary chip.
   - Adds screenshots for a dry day, a rainy evening and a snowy morning, in light and dark.
   - *Done when:* the SPEC phase 1 acceptance list holds on a real phone.
+  - Implementation, cache/offline tests and six weather screenshots are included; real-phone
+    acceptance remains pending, so this checkbox intentionally stays open.
 - [ ] **T9. Polish pass on a real phone**
   - Compare side by side with the stock calendar app's day view: spacing, typography, paging feel and
     scroll restore.

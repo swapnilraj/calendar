@@ -3,15 +3,33 @@ package dev.swapnilraj.calendar.ui
 import android.content.ActivityNotFoundException
 import android.content.ContentUris
 import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.provider.CalendarContract
 import android.text.format.DateFormat
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.size
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.swapnilraj.calendar.CalendarApp
+import dev.swapnilraj.calendar.data.WeatherState
+import dev.swapnilraj.calendar.weather.daySummary
+import dev.swapnilraj.calendar.weather.hoursForDay
 import java.time.ZonedDateTime
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -26,8 +44,35 @@ fun DaylightContent(app: CalendarApp) {
         while (true) { now = ZonedDateTime.now(); delay(60_000 - System.currentTimeMillis() % 60_000) }
     }
     val snackbar = remember { SnackbarHostState() }
+    val weather by app.weather.state.collectAsStateWithLifecycle()
+    var locationAllowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) }
+    var lastWeatherPermission by remember { mutableStateOf<Boolean?>(null) }
+    val locationRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        locationAllowed = granted
+        scope.launch { app.weather.refresh(now.zone, force = true) }
+    }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                now = ZonedDateTime.now()
+                locationAllowed = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     Surface(Modifier.fillMaxSize()) {
         PermissionGate {
+            LaunchedEffect(now.zone, locationAllowed) {
+                var changedPermission = lastWeatherPermission != null && lastWeatherPermission != locationAllowed
+                lastWeatherPermission = locationAllowed
+                lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    app.weather.refresh(now.zone, force = changedPermission)
+                    changedPermission = false
+                    while (true) { delay(30 * 60_000L); app.weather.refresh(now.zone) }
+                }
+            }
             savedHeight?.let { initialHeight ->
                 Scaffold(snackbarHost = { SnackbarHost(snackbar) }, contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0)) { _ ->
                     DayScreen(now, DateFormat.is24HourFormat(context), initialHeight, app.calendars::events,
@@ -42,9 +87,42 @@ fun DaylightContent(app: CalendarApp) {
                             } catch (_: SecurityException) {
                                 scope.launch { snackbar.showSnackbar("This event couldn’t be opened") }
                             }
+                        },
+                        actions = { WeatherOptions(weather,
+                            onLocation = { locationRequest.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
+                            onRefresh = { scope.launch { app.weather.refresh(now.zone, force = true) } }) },
+                        summary = { date ->
+                            val summary = remember(weather.forecast, date, now.zone) { daySummary(weather.forecast, date, now.zone) }
+                            summary?.let { WeatherSummary(it, weather.stale) }
+                        },
+                        background = { date ->
+                            val hours = remember(weather.forecast, date, now.zone) { hoursForDay(weather.forecast, date, now.zone) }
+                            // DayScreen owns the zoom; the layer derives hour height from its measured full-day height.
+                            hours?.let { WeatherBackground(it) }
                         })
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun RowScope.WeatherOptions(weather: WeatherState, onLocation: () -> Unit, onRefresh: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    androidx.compose.foundation.layout.Box {
+        IconButton(onClick = { expanded = true }, modifier = Modifier.size(36.dp).semantics { contentDescription = "Weather options" }) {
+            Text("⋮", style = MaterialTheme.typography.titleLarge)
+        }
+        DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
+            weather.locationLabel?.let { DropdownMenuItem(text = { Text("Weather: $it${if (weather.stale) " (cached)" else ""}") }, onClick = {}, enabled = false) }
+            DropdownMenuItem(text = { Text("Use approximate location") }, onClick = { expanded = false; onLocation() })
+            DropdownMenuItem(text = { Text("Refresh weather") }, onClick = { expanded = false; onRefresh() })
+            DropdownMenuItem(text = { Text("Weather by Open-Meteo · CC BY 4.0") }, onClick = {
+                expanded = false
+                try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://open-meteo.com/"))) }
+                catch (_: ActivityNotFoundException) { /* Attribution remains available in this menu. */ }
+            })
         }
     }
 }

@@ -2,6 +2,7 @@ package dev.swapnilraj.calendar.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,8 +30,9 @@ fun DayGrid(date: LocalDate, events: List<CalEvent>, hourHeight: Float, now: Zon
     val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val primary = MaterialTheme.colorScheme.primary
+    val surface = if (isSystemInDarkTheme()) androidx.compose.ui.graphics.Color(0xff191919) else MaterialTheme.colorScheme.surface
     BoxWithConstraints(modifier.fillMaxWidth().height((hourHeight * 24).dp).clipToBounds()
-        .background(MaterialTheme.colorScheme.surface)) {
+        .background(surface)) {
         background()
         Canvas(Modifier.matchParentSize()) {
             val gutter = HourGutter.toPx()

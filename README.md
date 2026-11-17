@@ -31,11 +31,12 @@ Events always win: weather is painted under the grid, and nothing ever covers an
 
 ## Status
 
-Early. See [docs/SPEC.md](docs/SPEC.md) for the full spec and phases.
+The phase 1 day view is implemented and tested on the JVM. Real-phone acceptance and polish are still
+pending. See [docs/SPEC.md](docs/SPEC.md) for the full spec and phases.
 
 | Phase | Scope | State |
 |---|---|---|
-| 1 | Day view with weather (read-only) | Project skeleton builds; day view and weather are not implemented yet. See [docs/TASKS.md](docs/TASKS.md) |
+| 1 | Day view with weather (read-only) | Implemented: events, paging, zoom, weather, offline fallback. Device verification pending. See [docs/TASKS.md](docs/TASKS.md) |
 | 2 | Event details, create, edit, drag to reschedule | Planned |
 | 3 | Week view | Planned |
 
@@ -51,9 +52,24 @@ scripts/setup-android-sdk.sh  # first run, unless ANDROID_HOME already points to
 ./gradlew :app:installDebug    # install on a connected phone (adb)
 ```
 
-The current skeleton opens an empty screen following the system theme. To update its screenshot
-baselines after an intentional UI change, run `./gradlew recordRoborazziDebug` and inspect the images
+The app requests read-only calendar access on first launch. It displays calendars already synced to
+Android and opens events in the installed calendar app. Weather uses your time-zone city unless you
+choose **Weather options → Use approximate location**. Forecasts outside the available range, missing
+locations, and network failures leave a normal calendar grid. **Weather options** also contains refresh
+and Open-Meteo attribution.
+
+Swipe between days, scroll the hours, and pinch vertically to zoom. The date-number button returns to
+today. Event editing and week view belong to later phases.
+
+To update screenshot baselines after an intentional UI change, run `./gradlew recordRoborazziDebug` and inspect the images
 in `app/src/test/screenshots/` before committing them. Normal test runs verify those baselines.
+
+CI runs the tests and builds the APK on every PR, then uploads a `daylight-debug` artifact containing
+`app-debug.apk`. The screenshots use synthetic events, never private calendar data.
+
+| Rainy evening, dark | Snowy morning, light |
+|---|---|
+| ![Rainy evening](app/src/test/screenshots/rainy_evening_dark.png) | ![Snowy morning](app/src/test/screenshots/snowy_morning_light.png) |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it's put together.
 
