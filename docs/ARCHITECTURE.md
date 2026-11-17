@@ -107,8 +107,9 @@ WeatherRepository.forecast ──────┘        │
 
 ### Hours for a day (DST-aware)
 
-- **Instants:** for `date` in `zone`, the 25 instants are `date.atStartOfDay(zone).plusHours(i)` for
-  i in 0..24. On DST days this deliberately follows real elapsed hours.
+- **Instants:** resolve each of the 24 local clock-hour lines in the zone, followed by the next
+  local midnight. Do not add 24 elapsed hours to the first midnight: DST days last 23 or 25 hours.
+  Gaps resolve forward and overlaps use the later offset, matching the desktop conversion.
 - **Grid position:** the grid maps hour row r to local clock time r:00, so convert with
   `ZonedDateTime.of(date, LocalTime.of(r, 0), zone)` for r in 0..23, plus the next day's midnight for 24.
 - **Picking a sample:** for each instant, take the forecast sample whose `time` equals it, and if none

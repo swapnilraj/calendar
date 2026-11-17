@@ -22,7 +22,7 @@ later tasks assume earlier ones. Tick them off here, in the same PR that complet
 - [x] **T4. Weather: bands, intensity, tint, OKLab**
   - `Bands.kt`, `Tint.kt` and `Oklab.kt`.
   - Tests port the desktop `bands` and `feel` tests, plus OKLab round-trip and lerp end-point tests.
-- [ ] **T5. Weather: hours for a day + summary + texture geometry**
+- [x] **T5. Weather: hours for a day + summary + texture geometry**
   - `DayHours.kt`, `Summary.kt` and `Texture.kt`.
   - Tests cover the alignment rule (block k uses the stamp at k+1), London DST days in March and
     October, missing samples returning null, and the summary rules.
