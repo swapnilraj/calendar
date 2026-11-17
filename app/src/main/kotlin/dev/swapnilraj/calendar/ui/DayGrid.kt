@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -40,7 +41,8 @@ fun DayGrid(date: LocalDate, events: List<CalEvent>, hourHeight: Float, now: Zon
             for (hour in 0..24) drawLine(gridColor, Offset(gutter, hour * hourPx), Offset(size.width, hour * hourPx), 0.5.dp.toPx())
             drawLine(gridColor, Offset(gutter, 0f), Offset(gutter, size.height), 0.5.dp.toPx())
         }
-        val formatter = remember(use24Hour) { DateTimeFormatter.ofPattern(if (use24Hour) "HH:mm" else "h a") }
+        val locale = LocalLocale.current.platformLocale
+        val formatter = remember(use24Hour, locale) { DateTimeFormatter.ofPattern(if (use24Hour) "HH:mm" else "h a", locale) }
         for (hour in 1..23) Text(LocalTime.of(hour, 0).format(formatter), color = labelColor, fontSize = 10.sp,
             textAlign = TextAlign.End,
             modifier = Modifier.offset(y = (hourHeight * hour - 8).dp).width(HourGutter).padding(end = 8.dp))

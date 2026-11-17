@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -21,9 +22,10 @@ val HourGutter = 56.dp
 fun DayHeader(date: LocalDate, today: LocalDate, allDayEvents: List<CalEvent>, zone: ZoneId,
     use24Hour: Boolean, onEventClick: (CalEvent) -> Unit,
     summary: @Composable RowScope.() -> Unit = {}) {
+    val locale = LocalLocale.current.platformLocale
     Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(bottom = 8.dp)) {
         Column(Modifier.width(HourGutter).padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(date.format(DateTimeFormatter.ofPattern("EEE")), fontSize = 11.sp,
+            Text(date.format(DateTimeFormatter.ofPattern("EEE", locale)), fontSize = 11.sp,
                 color = if (date == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
             Box(Modifier.size(34.dp).then(if (date == today) Modifier.background(MaterialTheme.colorScheme.primary, CircleShape) else Modifier),

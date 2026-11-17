@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -19,7 +21,6 @@ import androidx.compose.ui.unit.sp
 import dev.swapnilraj.calendar.data.CalEvent
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 fun eventTextColor(color: Color): Color {
     // Choose the larger contrast ratio; the best of black/white is always >= 4.5:1.
@@ -32,7 +33,8 @@ fun EventBlock(event: CalEvent, heightDp: Float, zone: ZoneId, use24Hour: Boolea
     modifier: Modifier = Modifier, onClick: (CalEvent) -> Unit) {
     val color = Color(event.color or 0xff000000.toInt())
     val foreground = if (event.declined) MaterialTheme.colorScheme.onSurface else eventTextColor(color)
-    val formatter = DateTimeFormatter.ofPattern(if (use24Hour) "HH:mm" else "h:mm a", Locale.getDefault())
+    val locale = LocalLocale.current.platformLocale
+    val formatter = remember(use24Hour, locale) { DateTimeFormatter.ofPattern(if (use24Hour) "HH:mm" else "h:mm a", locale) }
     val title = event.title.ifBlank { "(No title)" }
     val time = "${event.start.atZone(zone).format(formatter)} – ${event.end.atZone(zone).format(formatter)}"
     Surface(modifier.semantics { contentDescription = "$title, $time${if (event.declined) ", declined" else ""}" }
