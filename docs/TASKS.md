@@ -18,7 +18,7 @@ later tasks assume earlier ones. Tick them off here, in the same PR that complet
   - `Condition.kt` and `OpenMeteo.kt` per WEATHER_REFERENCE.md.
   - Tests port the desktop `wmo` and `openMeteo` tests, and use a fake `fetch`.
   - *Done when:* the tests pass, including malformed-JSON and length-mismatch cases.
-- [ ] **T4. Weather: bands, intensity, tint, OKLab**
+- [x] **T4. Weather: bands, intensity, tint, OKLab**
   - `Bands.kt`, `Tint.kt` and `Oklab.kt`.
   - Tests port the desktop `bands` and `feel` tests, plus OKLab round-trip and lerp end-point tests.
 - [ ] **T5. Weather: hours for a day + summary + texture geometry**
