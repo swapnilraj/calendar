@@ -159,7 +159,7 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 
 - `./gradlew test` runs every test, including screenshot verification.
 - `./gradlew :app:assembleDebug` builds the APK. `:app:installDebug` installs it over adb.
-- **CI** (`.github/workflows/ci.yml`) runs `test` + `assembleDebug` on pushes and
+- **CI** (`.github/workflows/ci.yml`) runs `test`, `assembleDebug` and Android lint on pushes and
   PRs, and uploads the debug APK as an artifact.
 - **Signing:**
   - Debug builds use the default debug key.
