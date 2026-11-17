@@ -81,7 +81,7 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
                 DayPage(date, (state as? CalendarState.Ready)?.events.orEmpty(), now, zone, use24Hour, height,
                     sharedScroll, page == pager.currentPage, initialScrollHour,
                     onScroll = { sharedScroll = it }, onHourHeight = { height = it },
-                    onZoomFinished = { onSaveHourHeight(height) }, onEventClick,
+                    onZoomFinished = onSaveHourHeight, onEventClick,
                     summary = { summary(date) }, background = { background(date) })
             }
         }

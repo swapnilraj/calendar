@@ -10,6 +10,8 @@ import java.time.*
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import androidx.compose.ui.geometry.Offset
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -34,11 +36,11 @@ class DayScreenTest {
                 listOf("Studio day","Maya’s birthday","Release window","Team away","Reading day")[i-1],0xff727b59.toInt(),allDay=true)
         }
     }
-    private fun show(allDay: Boolean=false, onClick: (CalEvent)->Unit={}) {
+    private fun show(allDay: Boolean=false, onClick: (CalEvent)->Unit={}, onSave: (Float)->Unit={}) {
         val events=fixtures(allDay)
         compose.setContent {
             DaylightTheme {
-                DayScreen(now,true,64f,{ date,zone -> flowOf(CalendarState.Ready(events.filter { it.occursOn(date,zone) })) },{},onClick,
+                DayScreen(now,true,64f,{ date,zone -> flowOf(CalendarState.Ready(events.filter { it.occursOn(date,zone) })) },onSave,onClick,
                     initialScrollHour=8.0)
             }
         }
@@ -70,5 +72,24 @@ class DayScreenTest {
         compose.onNodeWithContentDescription("Day 2026-11-17").performTouchInput { swipeLeft() }
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Day 2026-11-18").assertIsDisplayed()
+    }
+    @Test fun pinchPersistsFinalHeightWithinBoundsAndPagingKeepsScroll() {
+        var saved=64f
+        show(onSave={saved=it})
+        compose.onNodeWithContentDescription("Day 2026-11-17").performTouchInput {
+            down(0,Offset(centerX,300f));down(1,Offset(centerX,500f))
+            moveTo(0,Offset(centerX,200f));moveTo(1,Offset(centerX,600f))
+            up(0);up(1)
+        }
+        compose.waitForIdle()
+        assertTrue("Pinch must enlarge and persist hours: $saved",saved>64f && saved<=160f)
+        // The current time line makes a stable reference for the shared scroll position.
+        val before=compose.onNodeWithContentDescription("Current time 10:20").fetchSemanticsNode().positionInRoot.y
+        compose.onNodeWithContentDescription("Next day",useUnmergedTree=true).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Go to today").performClick()
+        compose.waitForIdle()
+        val after=compose.onNodeWithContentDescription("Current time 10:20").fetchSemanticsNode().positionInRoot.y
+        assertEquals(before,after,2f)
     }
 }

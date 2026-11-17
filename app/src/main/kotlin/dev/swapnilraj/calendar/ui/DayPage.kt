@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun DayPage(date: LocalDate, events: List<CalEvent>, now: ZonedDateTime, zone: ZoneId, use24Hour: Boolean,
     hourHeight: Float, sharedScroll: Int, active: Boolean, initialScrollHour: Double?,
-    onScroll: (Int) -> Unit, onHourHeight: (Float) -> Unit, onZoomFinished: () -> Unit,
+    onScroll: (Int) -> Unit, onHourHeight: (Float) -> Unit, onZoomFinished: (Float) -> Unit,
     onEventClick: (CalEvent) -> Unit,
     summary: @Composable RowScope.() -> Unit = {},
     background: @Composable BoxScope.() -> Unit = {}) {
@@ -56,23 +56,31 @@ fun DayPage(date: LocalDate, events: List<CalEvent>, now: ZonedDateTime, zone: Z
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
                         var zoomed = false
+                        var gestureHeight = latestHeight
+                        var gestureOffset = scroll.value
                         do {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             if (event.changes.count { it.pressed } >= 2) {
                                 val scale = event.calculateZoom()
                                 if (scale.isFinite() && scale != 1f) {
-                                    val old = latestHeight
+                                    val old = gestureHeight
                                     val next = (old * scale).coerceIn(32f, 160f)
                                     val pivot = event.calculateCentroid(useCurrent = false).y
-                                    val newOffset = ((scroll.value + pivot) * next / old - pivot).toInt().coerceAtLeast(0)
+                                    val newOffset = ((gestureOffset + pivot) * next / old - pivot).toInt().coerceAtLeast(0)
+                                    gestureHeight = next
+                                    gestureOffset = newOffset
                                     latestOnHeight(next)
-                                    scope.launch { withFrameNanos { }; scroll.scrollTo(newOffset) }
+                                    scope.launch {
+                                        // Wait for the new grid to be measured before clamping against its scroll range.
+                                        withFrameNanos { }; withFrameNanos { }
+                                        scroll.scrollTo(newOffset)
+                                    }
                                     zoomed = true
                                 }
                                 event.changes.forEach { it.consume() }
                             }
                         } while (event.changes.any { it.pressed })
-                        if (zoomed) latestOnFinish()
+                        if (zoomed) latestOnFinish(gestureHeight)
                     }
                 }.verticalScroll(scroll)) {
                 DayGrid(date, events, hourHeight, now, zone, use24Hour, onEventClick, background = background)

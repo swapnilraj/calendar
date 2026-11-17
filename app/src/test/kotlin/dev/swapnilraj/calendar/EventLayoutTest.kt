@@ -27,6 +27,12 @@ class EventLayoutTest {
         assertTrue(allDay.occursOn(date,la));assertFalse(allDay.occursOn(date.minusDays(1),la))
         assertTrue(timedEvents(listOf(allDay),date,la).isEmpty())
     }
+    @Test fun lastMinuteShortEventsStayVisibleAndStillAvoidCollisions() {
+        val placed=layoutEvents(listOf(event(1,1410.0,1430.0),event(2,1439.0,1439.0)),20.0)
+        assertEquals(1420.0,placed[1].timed.startMinute,0.0)
+        assertEquals(1440.0,placed[1].timed.endMinute,0.0)
+        assertTrue(placed.all { it.columns==2 })
+    }
     @Test fun midnightClippingAndExclusiveEnd() {
         val e=CalEvent(1,Instant.parse("2026-11-16T23:00:00Z"),Instant.parse("2026-11-17T02:00:00Z"),"",0)
         val timed=timedEvents(listOf(e),date,zone).single()

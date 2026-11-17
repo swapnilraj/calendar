@@ -19,7 +19,11 @@ fun timedEvents(events: List<CalEvent>, date: LocalDate, zone: ZoneId): List<Tim
 
 /** Minimum visible duration participates in collision detection, including zero-length events. */
 fun layoutEvents(events: List<TimedEvent>, minimumMinutes: Double): List<PlacedEvent> {
-    val sorted = events.sortedWith(compareBy<TimedEvent> { it.startMinute }.thenByDescending { it.endMinute - it.startMinute })
+    require(minimumMinutes > 0 && minimumMinutes <= 1440)
+    val sorted = events.map { event ->
+        val start = event.startMinute.coerceIn(0.0, 1440.0 - minimumMinutes)
+        event.copy(startMinute = start, endMinute = maxOf(event.endMinute, start + minimumMinutes).coerceAtMost(1440.0))
+    }.sortedWith(compareBy<TimedEvent> { it.startMinute }.thenByDescending { it.endMinute - it.startMinute })
     val result = mutableListOf<PlacedEvent>()
     val cluster = mutableListOf<TimedEvent>()
     var clusterEnd = -1.0
