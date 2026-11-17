@@ -35,19 +35,25 @@ Early. See [docs/SPEC.md](docs/SPEC.md) for the full spec and phases.
 
 | Phase | Scope | State |
 |---|---|---|
-| 1 | Day view with weather (read-only) | Not started: spec ready, see [docs/TASKS.md](docs/TASKS.md) |
+| 1 | Day view with weather (read-only) | Project skeleton builds; day view and weather are not implemented yet. See [docs/TASKS.md](docs/TASKS.md) |
 | 2 | Event details, create, edit, drag to reschedule | Planned |
 | 3 | Week view | Planned |
 
 ## Build
 
-Requires JDK 21 and the Android SDK (platform 36). [`scripts/setup-android-sdk.sh`](scripts/setup-android-sdk.sh)
+Requires JDK 21 and the Android SDK (platform 37.0). [`scripts/setup-android-sdk.sh`](scripts/setup-android-sdk.sh)
 installs the SDK on macOS or Linux.
 
 ```sh
+scripts/setup-android-sdk.sh  # first run, unless ANDROID_HOME already points to an SDK
 ./gradlew test                 # unit + screenshot tests (no device needed)
+./gradlew :app:assembleDebug   # build app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :app:installDebug    # install on a connected phone (adb)
 ```
+
+The current skeleton opens an empty screen following the system theme. To update its screenshot
+baselines after an intentional UI change, run `./gradlew recordRoborazziDebug` and inspect the images
+in `app/src/test/screenshots/` before committing them. Normal test runs verify those baselines.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it's put together.
 

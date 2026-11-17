@@ -5,11 +5,11 @@ later tasks assume earlier ones. Tick them off here, in the same PR that complet
 
 ## Phase 1: day view with weather
 
-- [ ] **T1. Project skeleton**
+- [x] **T1. Project skeleton**
   - Gradle wrapper 9.9.1, `settings.gradle.kts` with modules `:app` and `:weather`, and
     `gradle/libs.versions.toml` with the versions pinned in ARCHITECTURE.md.
   - `:weather` is a Kotlin JVM library. `:app` is an Android application (`dev.swapnilraj.calendar`,
-    label "Daylight", minSdk 29, target/compile 36) with an empty Compose screen.
+    label "Daylight", minSdk 29, target 36, compile 37.0) with an empty Compose screen.
   - *Done when:* `./gradlew test :app:assembleDebug` passes from a clean clone.
 - [ ] **T2. CI.** `.github/workflows/ci.yml` on push/PR to main. It uses JDK 21 (temurin), sets up the
   Android SDK, runs `./gradlew test :app:assembleDebug`, and uploads `app-debug.apk`.

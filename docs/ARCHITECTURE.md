@@ -16,7 +16,7 @@ How Daylight is built. [SPEC.md](SPEC.md) says *what* it does; this file says *h
 | DI | None. Constructor injection, wired in `CalendarApp`. | Revisit only if wiring gets painful. |
 | Build | Gradle Kotlin DSL, version catalog, AGP 9 (built-in Kotlin) | JDK 21 to run Gradle; bytecode target 17 |
 | Tests | JUnit 4; Robolectric + Roborazzi for screenshot tests | All tests run on the JVM, with no device or emulator, so they work in cloud sessions |
-| SDK | `minSdk 29`, `compileSdk`/`targetSdk 36` | |
+| SDK | `minSdk 29`, `compileSdk 37.0`, `targetSdk 36` | Compose's pinned version requires compile SDK 37 |
 
 ### Pinned versions
 
@@ -171,3 +171,5 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 | 2026-11-17 | Calendar store instead of the Google Calendar API | No OAuth or Google Cloud project; works with any account synced to the phone |
 | 2026-11-17 | Weather rules in a pure JVM module | Testable anywhere; must match the desktop prototype exactly |
 | 2026-11-17 | No Play Services | Coarse `LocationManager` is enough; keeps the app usable on de-Googled phones |
+| 2026-11-17 | Compose UI test JUnit4 and Roborazzi Compose (using the pinned BOM / Roborazzi version) | Launch the real skeleton activity and record light/dark baselines without an emulator |
+| 2026-11-17 | Compile SDK 37.0 and build tools 37.0.0; retain target SDK 36 and minimum SDK 29 | The pinned Compose BOM resolves to Compose 1.12.1, whose AAR metadata requires compile SDK 37; SDK 36 fails `checkDebugAarMetadata` |
