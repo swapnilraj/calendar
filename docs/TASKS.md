@@ -11,9 +11,10 @@ later tasks assume earlier ones. Tick them off here, in the same PR that complet
   - `:weather` is a Kotlin JVM library. `:app` is an Android application (`dev.swapnilraj.calendar`,
     label "Daylight", minSdk 29, target 36, compile 37.0) with an empty Compose screen.
   - *Done when:* `./gradlew test :app:assembleDebug` passes from a clean clone.
-- [ ] **T2. CI.** `.github/workflows/ci.yml` on push/PR to main. It uses JDK 21 (temurin), sets up the
+- [x] **T2. CI.** `.github/workflows/ci.yml` on push/PR to main. It uses JDK 21 (temurin), sets up the
   Android SDK, runs `./gradlew test :app:assembleDebug`, and uploads `app-debug.apk`.
   - *Done when:* the workflow is green on a PR.
+  - Verified on PR #1: Actions run 44117076549 (JDK 21, tests, debug APK artifact).
 - [x] **T3. Weather: model + Open-Meteo parsing**
   - `Condition.kt` and `OpenMeteo.kt` per WEATHER_REFERENCE.md.
   - Tests port the desktop `wmo` and `openMeteo` tests, and use a fake `fetch`.
