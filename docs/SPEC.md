@@ -37,6 +37,8 @@ the two disagree, this file wins, and it should be updated in the same change as
      contrast. They show the title, plus the time range when the block is tall enough.
    - **Overlaps:** overlapping events are laid out side by side in equal columns within their overlap
      cluster. There's a 2dp gap between columns and 4dp at the right edge (the "tap to create" margin).
+     Events shorter than 20dp use a minimum visible height, including in collision detection. At the
+     bottom of the day, their blocks shift upward enough to remain visible inside the grid.
    - **Current-time line:** a primary-coloured line with a dot at the gutter edge, on today only. It
      updates every minute.
    - **Weather layer:** see below. It's painted under the hour lines and events.
@@ -80,6 +82,9 @@ identical:
      2 decimals before being sent.
   2. Otherwise, geocode the city in the device's time zone ID (`Europe/London` → "London").
   3. Otherwise, no weather. The grid looks exactly like a normal calendar.
+  The weather options menu offers optional approximate-location access, manual refresh and the
+  Open-Meteo attribution. Automatic refresh runs while the screen is visible; returning to the app
+  reuses the 30-minute cache where possible.
 - **Hours of a day:** 25 samples, the local 00:00 … 24:00 instants (24:00 is the next day's 00:00), so
   colour flows across midnight. On DST days, use the actual local instants (23 or 25 hours of real time).
   The grid still shows 24 rows.

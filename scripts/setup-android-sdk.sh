@@ -5,8 +5,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PLATFORM="platforms;android-36"
-BUILD_TOOLS="build-tools;36.0.0"
+PLATFORM="platforms;android-37.0"
+BUILD_TOOLS="build-tools;37.0.0"
 CMDLINE_TOOLS_VERSION="13114758" # commandlinetools "latest" build; bump if Google removes it
 
 case "$(uname -s)" in

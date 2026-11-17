@@ -16,7 +16,7 @@ How Daylight is built. [SPEC.md](SPEC.md) says *what* it does; this file says *h
 | DI | None. Constructor injection, wired in `CalendarApp`. | Revisit only if wiring gets painful. |
 | Build | Gradle Kotlin DSL, version catalog, AGP 9 (built-in Kotlin) | JDK 21 to run Gradle; bytecode target 17 |
 | Tests | JUnit 4; Robolectric + Roborazzi for screenshot tests | All tests run on the JVM, with no device or emulator, so they work in cloud sessions |
-| SDK | `minSdk 29`, `compileSdk`/`targetSdk 36` | |
+| SDK | `minSdk 29`, `compileSdk 37.0`, `targetSdk 36` | Compose's pinned version requires compile SDK 37 |
 
 ### Pinned versions
 
@@ -107,10 +107,11 @@ WeatherRepository.forecast ──────┘        │
 
 ### Hours for a day (DST-aware)
 
-- **Instants:** for `date` in `zone`, the 25 instants are `date.atStartOfDay(zone).plusHours(i)` for
-  i in 0..24. On DST days this deliberately follows real elapsed hours.
+- **Instants:** resolve each of the 24 local clock-hour lines in the zone, followed by the next
+  local midnight. Do not add 24 elapsed hours to the first midnight: DST days last 23 or 25 hours.
+  Gaps resolve forward and overlaps use the later offset, matching the desktop conversion.
 - **Grid position:** the grid maps hour row r to local clock time r:00, so convert with
-  `ZonedDateTime.of(date, LocalTime.of(r, 0), zone)` for r in 0..23, plus the next day's midnight for 24.
+  `date.atTime(r, 0).atZone(zone).withLaterOffsetAtOverlap()` for r in 0..23, plus the next day's midnight for 24.
 - **Picking a sample:** for each instant, take the forecast sample whose `time` equals it, and if none
   does, the nearest one within 30 minutes.
 - **Missing samples:** if any of the 25 is missing, return null, which means no weather for that day.
@@ -140,8 +141,9 @@ WeatherRepository.forecast ──────┘        │
 3. Inside each cluster, place events greedily into the first column whose last event has ended.
 4. Width = cluster width / column count.
 
-Zero-length and very short events render with a minimum height of about 20 dp (24 minutes at the
-default zoom).
+Zero-length and very short events render with a minimum height of 20 dp (18.75 minutes at the
+default 64dp/hour zoom), shifted inside the last row if necessary. Minimum visible height also
+participates in overlap detection.
 
 ## Testing
 
@@ -157,7 +159,7 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 
 - `./gradlew test` runs every test, including screenshot verification.
 - `./gradlew :app:assembleDebug` builds the APK. `:app:installDebug` installs it over adb.
-- **CI** (`.github/workflows/ci.yml`, still to be written) runs `test` + `assembleDebug` on pushes and
+- **CI** (`.github/workflows/ci.yml`) runs `test`, `assembleDebug` and Android lint on pushes and
   PRs, and uploads the debug APK as an artifact.
 - **Signing:**
   - Debug builds use the default debug key.
@@ -171,3 +173,9 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 | 2026-11-17 | Calendar store instead of the Google Calendar API | No OAuth or Google Cloud project; works with any account synced to the phone |
 | 2026-11-17 | Weather rules in a pure JVM module | Testable anywhere; must match the desktop prototype exactly |
 | 2026-11-17 | No Play Services | Coarse `LocationManager` is enough; keeps the app usable on de-Googled phones |
+| 2026-11-17 | Compose UI test JUnit4 and Roborazzi Compose (using the pinned BOM / Roborazzi version) | Launch the real skeleton activity and record light/dark baselines without an emulator |
+| 2026-11-17 | Compile SDK 37.0 and build tools 37.0.0; retain target SDK 36 and minimum SDK 29 | The pinned Compose BOM resolves to Compose 1.12.1, whose AAR metadata requires compile SDK 37; SDK 36 fails `checkDebugAarMetadata` |
+| 2026-11-17 | Pinned kotlinx.serialization JSON in `:weather` | Parse Open-Meteo responses without Android or an HTTP dependency; reject mismatched arrays per the Android spec, while preserving desktop null/absent optional fields |
+| 2026-11-17 | Pinned core-ktx, coroutines-android, lifecycle-runtime-compose in `:app` | Runtime permission checks, observer-driven data loading off the main thread, and lifecycle-aware collection |
+| 2026-11-17 | Pinned DataStore Preferences and BOM-managed Compose test manifest | Remember zoom across launches and render isolated calendar screens with synthetic data in JVM tests |
+| 2026-11-17 | Day grid uses rgb(25,25,25) in dark mode | Match the desktop weather substrate; keep dynamic color on the surrounding UI and event colors intact |

@@ -38,7 +38,7 @@ Instructions for any coding agent working in this repo (Claude Code, Codex, …)
 ## Environment
 
 - **JDK 21** runs Gradle, and bytecode targets 17.
-- **Android SDK:** set `ANDROID_HOME`, or let `scripts/setup-android-sdk.sh` install the platform-36 SDK.
+- **Android SDK:** set `ANDROID_HOME`, or let `scripts/setup-android-sdk.sh` install the platform-37.0 SDK.
   It writes `local.properties` (git-ignored).
 - **Cloud sessions** (Linux, no phone, no emulator):
   - Run `scripts/setup-android-sdk.sh` first. It needs network access to `dl.google.com`, Maven Central
