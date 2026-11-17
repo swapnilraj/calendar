@@ -111,7 +111,7 @@ WeatherRepository.forecast ──────┘        │
   local midnight. Do not add 24 elapsed hours to the first midnight: DST days last 23 or 25 hours.
   Gaps resolve forward and overlaps use the later offset, matching the desktop conversion.
 - **Grid position:** the grid maps hour row r to local clock time r:00, so convert with
-  `ZonedDateTime.of(date, LocalTime.of(r, 0), zone)` for r in 0..23, plus the next day's midnight for 24.
+  `date.atTime(r, 0).atZone(zone).withLaterOffsetAtOverlap()` for r in 0..23, plus the next day's midnight for 24.
 - **Picking a sample:** for each instant, take the forecast sample whose `time` equals it, and if none
   does, the nearest one within 30 minutes.
 - **Missing samples:** if any of the 25 is missing, return null, which means no weather for that day.
@@ -141,8 +141,9 @@ WeatherRepository.forecast ──────┘        │
 3. Inside each cluster, place events greedily into the first column whose last event has ended.
 4. Width = cluster width / column count.
 
-Zero-length and very short events render with a minimum height of about 20 dp (24 minutes at the
-default zoom).
+Zero-length and very short events render with a minimum height of 20 dp (18.75 minutes at the
+default 64dp/hour zoom), shifted inside the last row if necessary. Minimum visible height also
+participates in overlap detection.
 
 ## Testing
 

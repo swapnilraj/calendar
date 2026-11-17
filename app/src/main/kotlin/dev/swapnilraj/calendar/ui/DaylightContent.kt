@@ -11,11 +11,14 @@ import android.text.format.DateFormat
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.semantics
@@ -48,8 +51,9 @@ fun DaylightContent(app: CalendarApp) {
     var locationAllowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) }
     var lastWeatherPermission by remember { mutableStateOf<Boolean?>(null) }
     val locationRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val previouslyAllowed = locationAllowed
         locationAllowed = granted
-        scope.launch { app.weather.refresh(now.zone, force = true) }
+        if (granted && previouslyAllowed) scope.launch { app.weather.refresh(now.zone, force = true) }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
@@ -74,7 +78,7 @@ fun DaylightContent(app: CalendarApp) {
                 }
             }
             savedHeight?.let { initialHeight ->
-                Scaffold(snackbarHost = { SnackbarHost(snackbar) }, contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0)) { _ ->
+                Box(Modifier.fillMaxSize()) {
                     DayScreen(now, DateFormat.is24HourFormat(context), initialHeight, app.calendars::events,
                         onSaveHourHeight = { height -> scope.launch { app.settings.setHourHeight(height) } },
                         onEventClick = { event ->
@@ -100,6 +104,7 @@ fun DaylightContent(app: CalendarApp) {
                             // DayScreen owns the zoom; the layer derives hour height from its measured full-day height.
                             hours?.let { WeatherBackground(it) }
                         })
+                    SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
                 }
             }
         }
