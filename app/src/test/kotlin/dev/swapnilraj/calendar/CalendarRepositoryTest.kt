@@ -28,8 +28,10 @@ class CalendarRepositoryTest {
             var title="Fixture event"
             var queried: Uri?=null
             var selectionUsed: String?=null
+            var failure: RuntimeException?=null
             override fun onCreate()=true
             override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor {
+                failure?.let { throw it }
                 queried=uri; selectionUsed=selection
                 return MatrixCursor(projection!!).apply {
                     addRow(arrayOf<Any>(7L,Instant.parse("2026-11-17T09:00:00Z").toEpochMilli(),Instant.parse("2026-11-17T10:00:00Z").toEpochMilli(),title,0xff447766.toInt(),0,CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED))
@@ -56,6 +58,15 @@ class CalendarRepositoryTest {
             resolver.notifyChange(CalendarContract.Events.CONTENT_URI,null)
             val changed=withTimeout(10_000) { states.receive() } as CalendarState.Ready
             assertEquals("Updated fixture",changed.events.first().title)
+            provider.failure=SecurityException()
+            resolver.notifyChange(CalendarContract.Events.CONTENT_URI,null)
+            assertEquals(CalendarState.PermissionRequired,withTimeout(10_000) { states.receive() })
+            provider.failure=RuntimeException("Provider offline")
+            resolver.notifyChange(CalendarContract.Events.CONTENT_URI,null)
+            assertEquals(CalendarState.Unavailable,withTimeout(10_000) { states.receive() })
+            provider.failure=null
+            resolver.notifyChange(CalendarContract.Events.CONTENT_URI,null)
+            assertTrue(withTimeout(10_000) { states.receive() } is CalendarState.Ready)
         } finally { job.cancelAndJoin() }
         assertTrue(org.robolectric.Shadows.shadowOf(resolver).getContentObservers(CalendarContract.CONTENT_URI).isEmpty())
     }

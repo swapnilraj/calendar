@@ -8,6 +8,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.*
 
@@ -29,8 +30,8 @@ class CalendarRepository(private val resolver: ContentResolver) {
     }.conflate().map {
         try { CalendarState.Ready(query(date, zone)) }
         catch (_: SecurityException) { CalendarState.PermissionRequired }
-        catch (_: IllegalArgumentException) { CalendarState.Unavailable }
-        catch (_: IllegalStateException) { CalendarState.Unavailable }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { CalendarState.Unavailable }
     }.flowOn(Dispatchers.IO)
 
     internal fun query(date: LocalDate, zone: ZoneId): List<CalEvent> {
