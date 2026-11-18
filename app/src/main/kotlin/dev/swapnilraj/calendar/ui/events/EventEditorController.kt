@@ -105,7 +105,22 @@ class EventEditorController(
             val changed = doc.launch.kind == EditorDraftKind.EDIT && !doc.hasRequest && (existing == null || sourceIdentity == null ||
                 !sameSourceNamespace(sourceIdentity, existing) || doc.sourceToken != existing.token.value || doc.sourceBaseline != sourceBaseline(initial, existing))
             document = doc
-            state = state.copy(fields = doc.fields, notices = doc.notices, loading = false, legacy = doc.legacy,
+            var restoredFields = doc.fields
+            var restoredNotices = doc.notices
+            if (doc.launch.kind == EditorDraftKind.CREATE) {
+                val destination = (doc.frozen as? FrozenEditorSubmission.Create)?.draft?.targetIdentity ?: doc.fields.targetIdentity
+                if (!validTarget(destination, doc.fields.calendarId) || (doc.frozen as? FrozenEditorSubmission.Create)?.draft?.targetIdentity == null && doc.frozen is FrozenEditorSubmission.Create)
+                    restoredNotices = (restoredNotices + if (doc.hasRequest) EditorNotice.DESTINATION_RECOVERY_ONLY else EditorNotice.CALENDAR_RESELECTION_REQUIRED).distinct()
+                if (EditorNotice.DUPLICATE_AS_ONE_OFF in doc.notices && doc.fields.privacy.toIntOrNull() == 0 &&
+                    (doc.fields.targetIdentity == null || doc.fields.defaultVisibilityIdentity != doc.fields.targetIdentity)) {
+                    if (doc.hasRequest) restoredNotices = (restoredNotices + EditorNotice.VISIBILITY_RECOVERY_ONLY).distinct()
+                    else {
+                        restoredFields = restoredFields.copy(privacy = "", defaultVisibilityCalendar = "", defaultVisibilityIdentity = null)
+                        restoredNotices = (restoredNotices + EditorNotice.CALENDAR_VISIBILITY_REVIEW_REQUIRED).distinct()
+                    }
+                }
+            }
+            state = state.copy(fields = restoredFields, notices = restoredNotices, loading = false, legacy = doc.legacy,
                 recoveryRequired = doc.hasRequest, reviewRequired = changed,
                 reviewLatest = if (changed && existing != null && doc.sourceIdentity?.let { sameSourceNamespace(it, existing) } == true) existing.details else null,
                 problem = when { doc.hasRequest -> EditorProblem.UNCERTAIN; changed -> EditorProblem.CONFLICT; doc.legacy -> EditorProblem.DRAFT_UPGRADE_REQUIRED; unsupported -> EditorProblem.UNSUPPORTED; else -> null })
@@ -177,7 +192,7 @@ class EventEditorController(
     }
     suspend fun flushDraft(): Boolean {
         persistence?.cancelAndJoin()
-        if (closed || state.loading || state.draftReadFailed || state.reviewRequired) return false
+        if (closed || state.loading || state.saving || state.draftReadFailed || state.reviewRequired) return false
         return if (document?.hasRequest == true || state.legacy) verifyLease() else persistFields()
     }
     private suspend fun verifyLease(): Boolean = if (closed) false else try {
@@ -323,7 +338,7 @@ class EventEditorController(
             else state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE, saving = false, result = null)
             return
         }
-        state = state.copy(recoveryRequired = true, retryReady = proof, result = result, problem = when (result) {
+        state = state.copy(recoveryRequired = !proof, retryReady = proof, result = result, problem = when (result) {
             MutationResult.PermissionRequired -> EditorProblem.PERMISSION
             is MutationResult.Denied -> EditorProblem.DENIED
             is MutationResult.ValidationFailed -> EditorProblem.INVALID_INPUT
@@ -430,8 +445,8 @@ class EventEditorController(
             val needsVisibility = EditorNotice.DUPLICATE_AS_ONE_OFF in doc.notices && doc.fields.privacy.toIntOrNull() == 0 &&
                 (doc.fields.targetIdentity == null || doc.fields.defaultVisibilityIdentity != doc.fields.targetIdentity)
             val next = doc.copy(version = VERSION, generation = UUID.randomUUID().toString(), revision = UUID.randomUUID().toString(),
-                fields = if (needsVisibility) doc.fields.copy(privacy = "", defaultVisibilityCalendar = "", defaultVisibilityIdentity = null) else doc.fields,
-                notices = if (needsVisibility) (doc.notices + EditorNotice.CALENDAR_VISIBILITY_REVIEW_REQUIRED).distinct() else doc.notices)
+                fields = if (needsVisibility) state.fields.copy(privacy = "", defaultVisibilityCalendar = "", defaultVisibilityIdentity = null) else state.fields,
+                notices = if (needsVisibility) (state.notices + EditorNotice.CALENDAR_VISIBILITY_REVIEW_REQUIRED).distinct() else state.notices)
             val record = next.record(clock.instant())
             val result = try { atomic!!.compareAndSet(draftId, expected, record) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { DraftChangeResult.Unavailable }
             val applied = result == DraftChangeResult.Applied || result == DraftChangeResult.Unavailable && drafts.load(draftId) == record

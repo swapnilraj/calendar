@@ -103,6 +103,15 @@ class OrdinaryAtomicRetirementTest {
         assertFalse(JSONObject(store.records.getValue("draft").payload).has("submission"))
         granted = true; assertEquals(0, writer.writes); editor.save(); assertEquals(1, writer.writes)
     }
+    @Test fun inFlightFlushCannotReplaceTheFrozenRecordOrAuthorizeAnotherWrite() = runBlocking {
+        val gate = CompletableDeferred<Unit>(); writer.hold = gate
+        val editor = controller(prepare()); editor.save(); assertTrue(editor.state.saving)
+        val frozen = store.records.getValue("draft")
+        assertFalse(editor.flushDraft()); assertFalse(editor.prepareDismiss())
+        editor.change { it.copy(title = "Late input") }; editor.save()
+        assertEquals(frozen, store.records["draft"]); assertEquals(1, writer.writes)
+        gate.complete(Unit); yield(); assertEquals(frozen, store.records["draft"])
+    }
     @Test fun frozenErrorNeverUnfreezesOrMintsAnotherOperation() = runBlocking {
         writer.next = MutationResult.PermissionRequired
         val launch = prepare(); val editor = controller(launch); editor.save()
@@ -206,13 +215,13 @@ class OrdinaryAtomicRetirementTest {
     }
     private fun retirementRequest(): RetirableOperation = FrozenEditorSubmission.decode(JSONObject(store.records.getValue("draft").payload).getJSONObject("submission")).retirementRequest()
     private inner class Port : CalendarMutations {
-        var writes = 0; var loads = 0; var safe = false
+        var writes = 0; var loads = 0; var safe = false; var hold: CompletableDeferred<Unit>? = null
         var next: MutationResult = MutationResult.Uncertain("synthetic", null)
         var fresh: EditReadResult = EditReadResult.Ready(source)
         override suspend fun loadForEdit(ref: EventRef): EditReadResult { loads++; return fresh }
-        override suspend fun create(operationId: String, draft: EventDraft): MutationResult { writes++; return next }
-        override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult { writes++; return next }
-        override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult { writes++; return next }
+        override suspend fun create(operationId: String, draft: EventDraft): MutationResult { writes++; hold?.await(); return next }
+        override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult { writes++; hold?.await(); return next }
+        override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult { writes++; hold?.await(); return next }
         override suspend fun recover(operationId: String): MutationResult = if (safe) MutationResult.SafeToRetry(operationId) else MutationResult.Uncertain(operationId, null)
     }
     private class Fence : OperationRetirement {

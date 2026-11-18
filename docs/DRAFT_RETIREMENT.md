@@ -1,8 +1,8 @@
 # Frozen-command retirement implementation packet
 
-Status: the typed contract and SQLite journal fence are implemented and covered by focused tests.
-Connected ordinary/series/meeting discard-and-replace workflows remain incomplete; the backend
-fence alone does not establish safe user-facing frozen-draft replacement.
+Status: local journal fencing and the ordinary editor feature are implemented with focused tests.
+Host route integration has a separate verification gate; series and meeting retirement UI remain
+separate work before safe replacement can be claimed for those flows.
 
 ## Problem and boundary
 
@@ -14,7 +14,7 @@ or replacing any draft containing a frozen backend command, even when `submitted
 This retires a local command; it does not roll back a provider transaction. A recorded local commit
 remains a commit when subsequent remote changes make current-row recovery uncertain.
 
-## Shared contract to implement
+## Shared contract
 
 - `RetirableOperation` mirrors the existing backend arguments for Create, Update, Delete, Series,
   MeetingCreate and Meeting. Include the original operation ID, selected ref/token/command or draft
@@ -84,4 +84,27 @@ commit. A matching late `MutationResult.Retired` stops an ordinary editor withou
 deleting its raw record; mismatched IDs remain uncertain. Backend/store fencing now includes exact
 request comparison, permanent ABANDONED handling before provider access, guarded journal transitions,
 and independent SQLite-helper race/reopen tests. Owned one-off meeting creation now supplies its
-actual canonical command encoder to the same fence. User-facing retirement workflows remain pending.
+actual canonical command encoder to the same fence. Series/meeting retirement workflows remain pending.
+
+The ordinary editor uses version 5 records (`ordinary-editor`, schema 1) with UUID generation and
+revision. New preparation, raw autosave, freezing, explicit upgrade and cleanup use exact-record
+`AtomicDraftStore.compareAndSet`; an unavailable acknowledgment is accepted only after readback
+of the exact candidate revision (or confirmed absence for cleanup). A missing restored record is
+never seeded again. Legacy versions 1 and 4 remain retained and read-only until explicit upgrade;
+legacy edits without an original full calendar identity support discard-only, never automatic
+source adoption. Frozen encoders 1 and 2 and their exact provider arguments remain unchanged.
+
+Explicit retirement maps the retained frozen command directly to `RetirableOperation`. Only a
+matching `Retired(operationId)` allows exact draft deletion; an unavailable retirement response
+requires inspection. Possible dispatch and recorded commit retain distinct blocked states.
+Replacement also requires exact cleanup, a newly prepared draft ID/generation/operation ID and a
+host replacement callback. New creation drafts require fresh calendar selection. Edit replacement
+checks the original persisted namespace before any deletion; recovery and discard-only need no
+provider read or write permission. Committed local save acknowledgment cleans up its exact draft
+without retirement or a second save.
+
+Feature tests cover stale CAS revisions, uncertain acknowledgments, permission preflight,
+immutable frozen recovery, blocked retirement, cleanup failure, namespace continuity, native
+confirmation and replacement callbacks, plus separate real SQLite connections for retirement and
+exact draft deletion. Global route generation and host composition have their own integration
+checks; the broader series and meeting retirement user flows remain separate packets.

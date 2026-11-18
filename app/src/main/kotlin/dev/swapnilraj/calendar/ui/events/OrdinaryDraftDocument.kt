@@ -11,6 +11,10 @@ internal object OrdinaryDraftEnvelope {
         val required = setOf("feature", "schema", "generation", "revision", "calendarId", "title", "startDate", "endDate", "startTime", "endTime", "allDay", "zone", "location", "description", "alerts", "startOffset", "endOffset", "availability", "privacy", "defaultVisibilityCalendar", "recurrence", "operationId", "operationKind", "operationPayload", "submitted", "target", "sourceToken", "sourceBaseline")
         val keys = value.keys().asSequence().toSet()
         require(keys.containsAll(required) && keys.all { it in required + setOf("notices", "targetIdentity", "defaultVisibilityIdentity", "submission") })
+        val structured = setOf("schema", "recurrence", "submitted")
+        require(required.filterNot { it in structured }.all { value.get(it) is String })
+        require(value.get("submitted") is Boolean && value.get("recurrence") is JSONObject)
+        require(value.getString("operationId").isNotBlank())
         uuid(value, "revision")
         return uuid(value, "generation")
     }

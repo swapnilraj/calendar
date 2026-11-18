@@ -2,6 +2,7 @@ package dev.swapnilraj.calendar.events
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import com.github.takahirom.roborazzi.captureRoboImage
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.*
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
@@ -64,6 +65,15 @@ class OrdinaryRetirementScreenTest {
         assertEquals(1, fences); assertNotNull(replacement); assertFalse(store.records.containsKey("retained"))
         assertNotNull(store.records[replacement!!.draftId]); assertNotNull(replacement!!.generation)
         assertFalse(replacement!!.calendarSelected); assertEquals(1, calls)
+    }
+    @Test fun retirementReviewExplainsFenceBeforeUserConfirms() {
+        val editor = frozen()
+        compose.setContent { DaylightTheme { EventEditorSheet(editor, listOf(eventTestCalendar()), {}, {}, {}, onReplacedLaunch = {}) } }
+        compose.onNodeWithText("Retire and discard original request").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Permanently stop the exact original request before discarding this draft. This cannot undo an event that was already saved. If dispatch or a local commit is recorded, the draft is retained.").assertIsDisplayed()
+        compose.onNode(isDialog() and hasAnyDescendant(hasText("Confirm"))).captureRoboImage("src/test/screenshots/events_editor_retirement_review_light.png")
+        assertEquals(0, fences); assertEquals(1, calls); assertNotNull(store.records["retained"])
     }
     @Test fun recordedCommitBlocksConfirmedDiscardAndLeavesRecoveryVisible() {
         blocked = true; val editor = frozen(); val exact = store.records.getValue("retained"); var closed = false
