@@ -11,6 +11,16 @@ weather17), debug APK assembly and lint, with zero failures, errors or skipped t
 `3e59e8cc563fdebdac0b1ef743c449c80c7e1ab14eab3fbdf28fa907dffb36d0`.
 This remains debug-signed local evidence, not a stable production release.
 
+The organizer one-off editor is now connected to native details and the draft browser. Its component
+passed59 focused checks (including18 existing backend checks) and three light/dark/2x RTL images
+were recorded, inspected and verified. The host compiles and23 browser/phone checks passed. An
+independent six-journey actual-app suite is in progress: cancellation, exact-generation reopening
+and namespace drift passed on the first run; that run also reproduced the global permission gate
+unmounting an open editor. A bounded host fix retains only the masked organizer workflow during
+READ loss; its actual lifecycle/recovery checks are pending. These are synthetic fixtures, not
+Google/Workspace delivery or UI parity evidence. No newer full-gate result supersedes the2,019
+checkpoint above yet.
+
 External EDIT review/private reopening is connected and passed13 actual-app entry journeys.
 Add people now atomically promotes one ordinary raw draft into a dedicated meeting draft; browser
 reopening checks its feature and generation. Schema2 meeting creation connects issued recurring
@@ -40,14 +50,14 @@ failed fixture reports: `/tmp/daylight-native-provider-fixtures-30138a09/` and
 `/tmp/daylight-native-provider-fixtures-calack2/`.
 The probe is separate from Google/Workspace sync and UI parity certification.
 
-Remaining implementation includes the owned organizer edit/guest-delta/cancellation screen, advanced
+Remaining implementation includes completing actual-app organizer acceptance, advanced
 exception transfer/execution admission, the explicit same-renderer-zone edge on NULL-zone imports,
 and release provisioning. Personal/Workspace round-trips, physical reminder/Doze/reboot/timezone/
 TalkBack/upgrade checks, seven-day beta and stable signed release remain pending. The GitHub
 integration currently cannot access Actions secrets (HTTP403); no signing key was provisioned.
 PR53 typed retirement foundation passed full CI, merged into integration (`7f439b1`) and is attached.
 PR54 ordinary backend retirement also passed CI and merged into integration (`21d88e5`); its
-artifact attachment was requested, but the attachment service has not confirmed the result.
+artifact attachment is confirmed by the task artifact inventory.
 
 Earlier checkpoint and packet history:
 
