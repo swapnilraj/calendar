@@ -69,6 +69,8 @@ sealed interface RecurrencePlanAction {
         val patch: EventPatch = EventPatch(),
         val rule: FieldChange<String> = FieldChange.Keep,
         val exclusions: FieldChange<Set<RecurrenceKey>> = FieldChange.Keep,
+        val anchor: FieldChange<RecurrenceStart> = FieldChange.Keep,
+        val duration: RecurrenceDurationChange = RecurrenceDurationChange.KeepRaw,
     ) : RecurrencePlanAction
     /** Clone eligible master payload and child rows; A must not copy cloud IDs/sync-only fields. */
     data class InsertTail(
@@ -76,6 +78,7 @@ sealed interface RecurrencePlanAction {
         val rule: String,
         val exclusions: Set<RecurrenceKey>,
         val patch: EventPatch,
+        val duration: RecurrenceDurationChange = RecurrenceDurationChange.KeepRaw,
     ) : RecurrencePlanAction
     /** A writes a non-recurring exception with ORIGINAL identity/all-day flag, not a cloned RRULE. */
     data class UpsertException(
@@ -88,6 +91,13 @@ sealed interface RecurrencePlanAction {
     /** Keep the entire exception payload and actual time; only its parent identity changes. */
     data class RebindExceptionToTail(
         val exception: SeriesException,
+        val selectedPatch: EventPatch = EventPatch(),
+    ) : RecurrencePlanAction
+    /** Re-associate ORIGINAL identity only; preserve actual override content/cancellation/time. */
+    data class RemapException(
+        val target: SeriesTarget,
+        val exception: SeriesException,
+        val newOriginal: RecurrenceKey,
         val selectedPatch: EventPatch = EventPatch(),
     ) : RecurrencePlanAction
     data class RemoveException(val exception: SeriesException) : RecurrencePlanAction
