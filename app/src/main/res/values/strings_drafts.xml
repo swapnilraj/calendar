@@ -1,0 +1,22 @@
+<resources>
+    <string name="events_drafts_title">Drafts</string>
+    <string name="events_drafts_loading">Loading drafts…</string>
+    <string name="events_drafts_unavailable">Drafts could not be read.</string>
+    <string name="events_drafts_empty">No saved drafts</string>
+    <string name="events_drafts_open">Open draft</string>
+    <string name="events_drafts_recover">Recover operation</string>
+    <string name="events_drafts_create">New event draft</string>
+    <string name="events_drafts_edit">Event changes draft</string>
+    <string name="events_drafts_needs_recovery">Needs recovery before any further changes</string>
+    <string name="events_drafts_unrecognized">Unrecognized draft</string>
+    <string name="events_drafts_version">This draft uses an unsupported version.</string>
+    <string name="events_drafts_unreadable">This draft could not be opened.</string>
+    <string name="events_drafts_retained">Retained on this device without overwriting or removing it.</string>
+    <string name="events_drafts_date_unfinished">Draft date unfinished</string>
+    <string name="events_drafts_raw_date">Draft date: %1$s</string>
+    <string name="events_drafts_saved_at">Saved: %1$s</string>
+    <string name="events_drafts_refresh">Refresh drafts</string>
+    <string name="events_drafts_recovery_only">Recovery only</string>
+    <string name="events_drafts_recovery_description">The original source is unavailable. Editing and replacement saves are disabled. Only read-only recovery or an explicitly proven retry of the original request is permitted.</string>
+    <string name="events_drafts_calendar_unavailable">Original calendar unavailable</string>
+</resources>
