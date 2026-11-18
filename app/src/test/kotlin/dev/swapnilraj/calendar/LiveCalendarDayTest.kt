@@ -360,7 +360,158 @@ class LiveCalendarDayTest {
         } finally { scope.cancel() }
     }
 
+    @Test fun drawerReopensRetainedDraftEvenWhenProviderMetadataIsUnavailable() {
+        val provider = FixtureProvider()
+        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
+        val context = RuntimeEnvironment.getApplication()
+        val settings = dev.swapnilraj.calendar.data.Settings(context)
+        runBlocking { settings.setCalendarSelection(CalendarSelection.ProviderVisible); settings.setCalendarView("DAY") }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val store = dev.swapnilraj.calendar.events.EventEditorControllerTest.Store()
+        var writes = 0
+        val writer = object : CalendarMutations {
+            override suspend fun loadForEdit(ref: EventRef): EditReadResult = EditReadResult.Unavailable
+            override suspend fun create(operationId: String, draft: EventDraft): MutationResult { writes++; error("No save requested") }
+            override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult = error("No update requested")
+            override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult = error("No delete requested")
+            override suspend fun recover(operationId: String): MutationResult = MutationResult.Uncertain(operationId, null)
+        }
+        val clock = java.time.Clock.fixed(Instant.parse("2026-11-17T09:20:00Z"), java.time.ZoneOffset.UTC)
+        try {
+            val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
+            compose.setContent { DaylightTheme {
+                LiveCalendarDay(reader, CalendarSelection.ProviderVisible, ZonedDateTime.now(clock), true, 64f, {}, {},
+                    settings = settings, mutations = writer, drafts = store, draftClock = clock)
+            } }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Create event").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Create event").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("New event").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(hasSetTextAction() and hasText("Title")).performTextInput("Retained fixture draft")
+            compose.onNodeWithText("Cancel").performScrollTo().performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("New event").fetchSemanticsNodes().isEmpty() }
+            compose.runOnIdle { provider.failCalendars = true; reader.refresh() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Calendars couldn’t be read").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.onNodeWithText("Drafts").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Retained fixture draft").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitForIdle()
+            compose.onNode(isRoot() and hasAnyDescendant(hasText("Open draft")))
+                .captureRoboImage("src/test/screenshots/integration_drafts_browser.png")
+            compose.onNodeWithText("Open draft").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("New event").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Retained fixture draft").assertIsDisplayed()
+            compose.onAllNodesWithText("2026-11-17").assertCountEquals(2)
+            assertEquals(0, writes)
+            assertEquals(1, store.records.size)
+        } finally {
+            scope.cancel()
+            runBlocking { settings.setCalendarSelection(CalendarSelection.ProviderVisible); settings.setCalendarView("DAY") }
+        }
+    }
+
+    @Test fun browserRecoversSubmittedDeletionWithoutReloadingMissingSourceOrDeletingAgain() {
+        val provider = FixtureProvider().apply { failCalendars = true }
+        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
+        val context = RuntimeEnvironment.getApplication()
+        val settings = dev.swapnilraj.calendar.data.Settings(context)
+        runBlocking { settings.setCalendarSelection(CalendarSelection.ProviderVisible); settings.setCalendarView("DAY") }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val preparationScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = dev.swapnilraj.calendar.events.EventEditorControllerTest.Store()
+        val ref = EventRef(CalendarId(3), 7, Instant.parse("2026-11-17T09:00:00Z"), Instant.parse("2026-11-17T10:00:00Z"))
+        val initial = EventDraft(ref.calendarId, EventTime.Timed(ref.instanceStart, ref.instanceEnd), java.time.ZoneOffset.UTC, "Pending deletion fixture")
+        val existing = EditableEvent(EventDetails(EventOccurrence(ref, initial.time, initial.title, 1), null, eventZone = initial.eventZone),
+            EditToken("fixture-original-token"), EditableField.entries.toSet())
+        var deletes = 0
+        var recoveries = 0
+        var sourceLoads = 0
+        val writer = object : CalendarMutations {
+            override suspend fun loadForEdit(ref: EventRef): EditReadResult { sourceLoads++; return EditReadResult.Unavailable }
+            override suspend fun create(operationId: String, draft: EventDraft): MutationResult = error("No create requested")
+            override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult = error("No update requested")
+            override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult {
+                deletes++; return MutationResult.Uncertain(operationId, ref.eventId)
+            }
+            override suspend fun recover(operationId: String): MutationResult { recoveries++; return MutationResult.LocalDeleted(ref) }
+        }
+        val controller = dev.swapnilraj.calendar.ui.events.EventEditorController(initial, existing, "pending-delete", writer, store, preparationScope)
+        controller.requestDelete(); controller.confirmDelete()
+        runBlocking { assertTrue(controller.flushDraft()) }
+        assertEquals(1, deletes)
+        try {
+            val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
+            compose.setContent { DaylightTheme {
+                LiveCalendarDay(reader, CalendarSelection.ProviderVisible, ZonedDateTime.parse("2026-11-17T09:20:00Z"), true, 64f, {}, {},
+                    settings = settings, mutations = writer, drafts = store)
+            } }
+            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Calendars").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.onNodeWithText("Drafts").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Recover operation").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Recover operation").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.events_editor_recover)).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText(context.getString(R.string.events_editor_recover)).performScrollTo().performClick()
+            compose.waitUntil(10_000) { recoveries == 1 && store.records.isEmpty() }
+            assertEquals(1, deletes)
+            assertEquals(0, sourceLoads)
+        } finally {
+            preparationScope.cancel(); scope.cancel()
+            runBlocking { settings.setCalendarSelection(CalendarSelection.ProviderVisible); settings.setCalendarView("DAY") }
+        }
+    }
+
+    @Test fun duplicatingPrivateReadOnlyEventCreatesOnlyAfterSaveAndPreservesPrivacy() {
+        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY,
+            FixtureProvider().apply { eventPrivacy = 2; eventAvailability = 1 })
+        val context = RuntimeEnvironment.getApplication()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val store = dev.swapnilraj.calendar.events.EventEditorControllerTest.Store()
+        var creates = 0
+        var sourceLoads = 0
+        var saved: EventDraft? = null
+        val writer = object : CalendarMutations {
+            override suspend fun loadForEdit(ref: EventRef): EditReadResult {
+                sourceLoads++; return EditReadResult.Denied(MutationDenial.UNSUPPORTED_EVENT)
+            }
+            override suspend fun create(operationId: String, draft: EventDraft): MutationResult {
+                creates++; saved = draft
+                val time = draft.time as EventTime.Timed
+                return MutationResult.LocalSaved(EventRef(draft.calendarId, 99, time.start, time.end))
+            }
+            override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult = error("Source must remain unchanged")
+            override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult = error("Source must remain unchanged")
+            override suspend fun recover(operationId: String): MutationResult = error("No submitted operation")
+        }
+        try {
+            val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
+            compose.setContent { DaylightTheme {
+                LiveCalendarDay(reader, CalendarSelection.ProviderVisible,
+                    ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"), true, 64f, {}, {},
+                    mutations = writer, drafts = store)
+            } }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Fixture meeting").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Duplicate as draft").fetchSemanticsNodes().isNotEmpty() }
+            val eligibilityLoads = sourceLoads
+            compose.onNodeWithText("Duplicate as draft").performScrollTo().performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("New event").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(0, creates)
+            assertEquals(eligibilityLoads, sourceLoads)
+            assertEquals(1, store.records.size)
+            compose.onNodeWithText("Save").performScrollTo().performClick()
+            compose.waitUntil(10_000) { creates == 1 && store.records.isEmpty() }
+            assertEquals(2, saved?.privacy)
+            assertEquals(1, saved?.availability)
+            assertEquals("Fixture meeting", saved?.title)
+            assertEquals(EventTime.Timed(Instant.parse("2026-11-17T09:00:00Z"), Instant.parse("2026-11-17T10:00:00Z")), saved?.time)
+            assertEquals(CalendarId(3), saved?.calendarId)
+        } finally { scope.cancel() }
+    }
+
     private class FixtureProvider : ContentProvider() {
+        @Volatile var failCalendars = false
+        var eventPrivacy: Int? = null
+        var eventAvailability: Int? = null
         val queries = java.util.concurrent.atomic.AtomicInteger()
         private val ranges = java.util.concurrent.atomic.AtomicInteger()
         private val details = java.util.concurrent.atomic.AtomicInteger()
@@ -374,6 +525,7 @@ class LiveCalendarDayTest {
             queries.incrementAndGet()
             val fields = requireNotNull(projection)
             val table = uri.pathSegments.first()
+            if (table == "calendars" && failCalendars) error("Synthetic unavailable calendar metadata")
             if (table == "instances" && selection?.contains("event_id") != true) ranges.incrementAndGet()
             if (table == "events") details.incrementAndGet()
             return MatrixCursor(fields).apply {
@@ -393,6 +545,8 @@ class LiveCalendarDayTest {
                         "end", "dtend" -> end
                         "title" -> "Fixture meeting"
                         "description" -> "https://meet.google.com/aaa-bbbb-ccc"
+                        "accessLevel" -> eventPrivacy
+                        "availability" -> eventAvailability
                         "allDay", "selfAttendeeStatus" -> 0
                         else -> null
                     }

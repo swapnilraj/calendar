@@ -11,6 +11,8 @@
     <string name="navigation_no_link_handler">No app is available to open this link</string>
     <string name="navigation_link_unavailable">This link couldn’t be opened</string>
     <string name="navigation_create_event">Create event</string>
+    <string name="navigation_duplicate_draft">Duplicate as draft</string>
+    <string name="navigation_draft_unavailable">The draft could not be prepared. No new event change was submitted. Please retry.</string>
     <string name="navigation_edit_unavailable">This event can’t be edited here yet.</string>
     <string name="navigation_local_saved">Saved on this device. Account synchronization is handled by your calendar service.</string>
     <string name="navigation_local_deleted">Deleted on this device. Account synchronization is handled by your calendar service.</string>

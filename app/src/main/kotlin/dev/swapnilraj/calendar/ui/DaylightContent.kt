@@ -44,6 +44,7 @@ fun DaylightContent(app: CalendarApp) {
     val preferencesUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_preferences_unavailable)
     val localSaved = stringResource(dev.swapnilraj.calendar.R.string.navigation_local_saved)
     val localDeleted = stringResource(dev.swapnilraj.calendar.R.string.navigation_local_deleted)
+    val draftUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_draft_unavailable)
     val scope = rememberCoroutineScope()
     var now by remember { mutableStateOf(ZonedDateTime.now()) }
     LaunchedEffect(Unit) {
@@ -115,6 +116,7 @@ fun DaylightContent(app: CalendarApp) {
                         drafts = app.calendarLocalStore,
                         onLocalSaved = { scope.launch { snackbar.showSnackbar(localSaved) } },
                         onLocalDeleted = { scope.launch { snackbar.showSnackbar(localDeleted) } },
+                        onDraftFailure = { scope.launch { snackbar.showSnackbar(draftUnavailable) } },
                         onPreferenceFailure = { scope.launch { snackbar.showSnackbar(preferencesUnavailable) } },
                         background = { date ->
                             val hours = remember(weather.forecast, date, now.zone) { hoursForDay(weather.forecast, date, now.zone) }
