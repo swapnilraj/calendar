@@ -91,6 +91,30 @@ class MeetingCreationControllerTest {
         c.save(); c.changeGuests(emptyList()); assertEquals(1,f.calls.size); assertEquals(frozen,MeetingCreationDraftCodec.decode(f.record()).frozen)
         f.callGate!!.complete(Unit); job.join()
     }
+    @Test fun cancellationAfterFreezeCommitAdoptsExactDraftWithoutDispatchAndReopensForExplicitRecovery() = runBlocking {
+        for (unknownAck in listOf(false,true)) {
+            val f=Fixture(); val c=f.ready(); val committed=CompletableDeferred<Unit>(); val acknowledge=CompletableDeferred<Unit>()
+            f.store.unknownAfter=unknownAck
+            f.store.afterCas={ _, replacement ->
+                if(replacement?.let {MeetingCreationDraftCodec.decode(it).frozen} != null) {
+                    committed.complete(Unit); acknowledge.await()
+                }
+            }
+            val save=launch(start=CoroutineStart.UNDISPATCHED) {c.save()}
+            committed.await(); val exact=f.record(); val frozen=MeetingCreationDraftCodec.decode(exact).frozen!!
+            save.cancel(); acknowledge.complete(Unit); save.join()
+            assertTrue(save.isCancelled); assertTrue(c.frozen); assertTrue(c.state.recoveryRequired)
+            assertEquals(exact,f.record()); assertTrue(f.calls.isEmpty())
+            f.store.afterCas={_,_->}; val reads=f.reads
+            val reopened=f.controller(f.launch()); reopened.load()
+            assertTrue(reopened.frozen); assertEquals(reads,f.reads); assertEquals(exact,f.record())
+            f.recovery=MeetingMutationResult.Common(MutationResult.SafeToRetry(frozen.operationId))
+            reopened.recover(); assertTrue(reopened.state.retryReady); assertTrue(f.calls.isEmpty())
+            reopened.retryOriginal()
+            assertEquals(MeetingCreationFixture.Call(frozen.operationId,frozen.token,frozen.draft,frozen.guests),f.calls.single())
+            assertEquals(reads,f.reads); assertEquals(exact,f.record())
+        }
+    }
     @Test fun validationPreservesRawAndBlocksUnsupportedRecurrenceGuestFreeDuplicatesAndDst() = runBlocking {
         for (kind in 0..6) {
             val f=Fixture(); val c=f.ready()
@@ -322,6 +346,7 @@ internal class MeetingCreationFixture {
 internal class AtomicCreationStore:AtomicDraftStore {
     val rows=mutableMapOf<String,DraftRecord>(); var legacy=0; var unknownBefore=false; var unknownAfter=false; var failRead=false
     var beforeCas:suspend (DraftRecord?,DraftRecord?)->Unit={_,_->}
+    var afterCas:suspend (DraftRecord?,DraftRecord?)->Unit={_,_->}
     override suspend fun load(id:String):DraftRecord? { if(failRead) error("unreadable"); return rows[id] }
     override suspend fun list()=rows.values.toList()
     override suspend fun upsert(record:DraftRecord) { legacy++; error("no blind upsert") }
@@ -330,6 +355,7 @@ internal class AtomicCreationStore:AtomicDraftStore {
         beforeCas(expected,replacement); if(unknownBefore) return DraftChangeResult.Unavailable
         if(rows[id]!=expected) return DraftChangeResult.Changed
         if(replacement==null) rows.remove(id) else rows[id]=replacement
+        afterCas(expected,replacement)
         return if(unknownAfter) DraftChangeResult.Unavailable else DraftChangeResult.Applied
     }
 }

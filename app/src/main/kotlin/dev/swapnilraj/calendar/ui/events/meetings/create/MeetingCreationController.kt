@@ -197,6 +197,8 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
 
     private suspend fun dispatch(frozen: FrozenMeetingCreation) {
         if (stopped || retirementProven || !ownsRecord()) return
+        // Local CAS adoption must finish after cancellation; provider dispatch must not begin.
+        currentCoroutineContext().ensureActive()
         state = state.copy(recoveryRequired = true, retryReady = false, problem = null)
         val result = try { meetings.create(frozen.operationId, frozen.token, frozen.draft, frozen.guests) }
             catch (e: CancellationException) { state = state.copy(problem = MeetingCreationProblem.UNCERTAIN); throw e }
