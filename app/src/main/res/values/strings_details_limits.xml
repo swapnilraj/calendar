@@ -1,0 +1,4 @@
+<resources>
+    <string name="events_details_limit_title">Event is too large to open here</string>
+    <string name="events_details_limit_help">View this event manually in the app that provides your calendar.</string>
+</resources>

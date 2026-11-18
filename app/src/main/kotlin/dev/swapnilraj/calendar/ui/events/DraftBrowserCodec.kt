@@ -19,6 +19,7 @@ data class EditorDraftLaunch internal constructor(
     val calendarSelected: Boolean,
     private val normalizedSeed: EventDraft?,
     val notices: List<EditorNotice> = emptyList(),
+    val targetIdentity: CalendarIdentity? = null,
 ) {
     /** A seed never replaces stored raw fields. No current-date fallback is implicit. */
     fun seed(fallbackDate: LocalDate, fallbackZone: ZoneId): EventDraft = normalizedSeed ?: EventDraft(
@@ -76,14 +77,17 @@ object DraftBrowserCodec {
             val launch = EditorDraftLaunch(record.id, kind, ref,
                 submitted || retained != null && frozen == null,
                 raw.optString("title"), raw.optString("startDate"),
-                raw.getString("calendarId").toLongOrNull()?.let { it >= 0 } == true, seed, EditorNoticeCodec.read(raw))
+                fields.targetIdentity != null && fields.targetIdentity.calendarId.value.toString() == fields.calendarId &&
+                    fields.targetIdentity.account.name.isNotBlank() && fields.targetIdentity.account.type.isNotBlank(), seed, EditorNoticeCodec.read(raw), fields.targetIdentity)
             DraftBrowserItem(record.id, record.updatedAt, launch, null)
         } catch (_: Exception) { DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNREADABLE) }
     }
 
     private fun matchesFrozen(fields: EventEditorFields, command: FrozenEditorSubmission): Boolean = try {
         when (command) {
-            is FrozenEditorSubmission.Create -> EventEditorController.normalizedDraft(fields) == command.draft
+            // Destination mismatches remain readable for journal-only recovery; the controller
+            // requires matching raw/frozen proof before enabling any retry and never substitutes it.
+            is FrozenEditorSubmission.Create -> EventEditorController.normalizedDraft(fields).copy(targetIdentity = command.draft.targetIdentity) == command.draft
             is FrozenEditorSubmission.Update -> {
                 val patch = command.patch
                 val normalized = EventEditorController.normalizedDraft(fields,
@@ -122,7 +126,7 @@ object DraftBrowserCodec {
             value.optString("zone").takeIf(String::isNotBlank)?.let(ZoneId::of), value.getString("title"),
             value.getString("location"), value.getString("description"), (0 until alerts.length()).map(alerts::getInt),
             if (value.has("availability") && !value.isNull("availability")) value.getInt("availability") else null,
-            if (value.has("privacy") && !value.isNull("privacy")) value.getInt("privacy") else null)
+            if (value.has("privacy") && !value.isNull("privacy")) value.getInt("privacy") else null, CalendarIdentityJson.optional(value, "targetIdentity"))
     } catch (_: Exception) { null }
 }
 

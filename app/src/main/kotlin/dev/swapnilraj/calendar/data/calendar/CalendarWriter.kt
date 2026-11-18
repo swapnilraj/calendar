@@ -25,24 +25,31 @@ class CalendarWriter(
     private val store: CalendarLocalStore,
     private val hasPermission: (String) -> Boolean,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
 ) : CalendarMutations {
     private val mutex = Mutex()
     private class Denial(val reason: MutationDenial) : Exception()
     private class Invalid(val fields: Set<InvalidEventField>) : Exception()
     private class Stale : Exception()
     private data class Source(val event: Map<String, String?>, val calendar: Map<String, String?>,
-        val alerts: List<Map<String, String?>>, val attendees: List<Map<String, String?>>) {
-        fun encode(): String = JSONObject().put("event", json(event)).put("calendar", json(calendar))
-            .put("alerts", JSONArray(alerts.map(::json))).put("attendees", JSONArray(attendees.map(::json))).toString()
+        val alerts: List<Map<String, String?>>, val attendees: List<Map<String, String?>>, val maxCanonicalBytes: Int = 1024 * 1024) {
+        private var encoded: String? = null
+        fun encode(): String {
+            encoded?.let { return it }
+            checkCanonical(mapOf("event" to event, "calendar" to calendar, "alerts" to alerts, "attendees" to attendees), maxCanonicalBytes)
+            return JSONObject().put("event", json(event)).put("calendar", json(calendar))
+            .put("alerts", JSONArray(alerts.map(::json))).put("attendees", JSONArray(attendees.map(::json))).toString().also { encoded = it }
+        }
     }
 
-    override suspend fun loadForEdit(ref: EventRef): EditReadResult = withContext(io) {
+    override suspend fun loadForEdit(ref: EventRef): EditReadResult = withContext(io + readBudgetContext(readBudgets.mutation)) {
         if (!hasPermission(Manifest.permission.READ_CALENDAR)) return@withContext EditReadResult.PermissionRequired
         try {
             val before = source(ref)
             policy(before)
-            val details = (reader.readDetails(ref) as? CalendarReadState.Ready)?.value
-                ?: return@withContext EditReadResult.Unavailable
+            val read = reader.readDetails(ref)
+            if (read == CalendarReadState.LimitExceeded) throw ProviderReadLimitExceeded()
+            val details = (read as? CalendarReadState.Ready)?.value ?: return@withContext EditReadResult.Unavailable
             if (before.encode() != source(ref).encode()) return@withContext EditReadResult.Unavailable
             val token = EditToken(signature("EDIT", JSONObject(before.encode())))
             store.saveEdit(token.value, before.encode())
@@ -51,35 +58,51 @@ class CalendarWriter(
             }.let {
                 if (allowedAvailability(before.calendar).isNullOrEmpty()) it - EditableField.AVAILABILITY else it
             }))
-        } catch (_: SecurityException) { EditReadResult.PermissionRequired }
+        } catch (_: ProviderReadLimitExceeded) { EditReadResult.LimitExceeded }
+        catch (_: SecurityException) { EditReadResult.PermissionRequired }
         catch (denied: Denial) { EditReadResult.Denied(denied.reason) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { EditReadResult.Unavailable }
     }
 
-    override suspend fun create(operationId: String, draft: EventDraft): MutationResult = mutate(operationId,
-        signature("CREATE", draftJson(draft)), "CREATE") {
-        val calendar = try { calendar(draft.calendarId) } catch (_: Stale) { throw Invalid(setOf(InvalidEventField.CALENDAR)) }
-        writable(calendar)
-        validate(draft, calendar, 0, initial = true)
-        val operations = arrayListOf(assertCalendar(calendar))
-        operations += ContentProviderOperation.newInsert(CalendarContract.Events.CONTENT_URI)
-            .withValues(values(draft)).withYieldAllowed(false).build()
-        draft.alertMinutes.forEach { minutes ->
-            operations += ContentProviderOperation.newInsert(CalendarContract.Reminders.CONTENT_URI)
-                .withValueBackReference(CalendarContract.Reminders.EVENT_ID, 1)
-                .withValue(CalendarContract.Reminders.MINUTES, minutes)
-                .withValue(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
-                .withYieldAllowed(false).build()
-        }
-        Prepared(operations, draft.time, draft.calendarId, null)
+    override suspend fun create(operationId: String, draft: EventDraft): MutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) {
+        // Never silently downgrade authored recurrence before the series-create encoder is enabled.
+        if (draft.recurrence != null) return@withContext MutationResult.ValidationFailed(setOf(InvalidEventField.RECURRENCE))
+        val target = draft.targetIdentity
+        if (target == null || target.calendarId != draft.calendarId || target.account.name.isBlank() || target.account.type.isBlank()) return@withContext MutationResult.ValidationFailed(setOf(InvalidEventField.CALENDAR))
+        if (!permissions()) return@withContext MutationResult.PermissionRequired
+        try {
+            if (calendarIdentity(calendar(draft.calendarId)) != target) return@withContext MutationResult.ValidationFailed(setOf(InvalidEventField.CALENDAR))
+        } catch (_: Stale) { return@withContext MutationResult.ValidationFailed(setOf(InvalidEventField.CALENDAR)) }
+        catch (_: SecurityException) { return@withContext MutationResult.PermissionRequired }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { return@withContext MutationResult.Unavailable }
+        try { mutate(operationId, { draftJson(draft, readBudgets.maxCanonicalBytes) }, "CREATE") {
+            val calendar = try { calendar(draft.calendarId) } catch (_: Stale) { throw Invalid(setOf(InvalidEventField.CALENDAR)) }
+            if (calendarIdentity(calendar) != target) throw Invalid(setOf(InvalidEventField.CALENDAR))
+            writable(calendar)
+            validate(draft, calendar, 0, initial = true)
+            val operations = arrayListOf(assertCalendar(calendar))
+            operations += ContentProviderOperation.newInsert(CalendarContract.Events.CONTENT_URI)
+                .withValues(values(draft)).withYieldAllowed(false).build()
+            draft.alertMinutes.forEach { minutes ->
+                operations += ContentProviderOperation.newInsert(CalendarContract.Reminders.CONTENT_URI)
+                    .withValueBackReference(CalendarContract.Reminders.EVENT_ID, 1)
+                    .withValue(CalendarContract.Reminders.MINUTES, minutes)
+                    .withValue(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
+                    .withYieldAllowed(false).build()
+            }
+            Prepared(operations, draft.time, draft.calendarId, null, target)
+        } } catch (_: ProviderReadLimitExceeded) { MutationResult.Unavailable }
     }
 
     override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult =
-        mutate(operationId, signature("UPDATE", patchJson(ref, token, patch)), "UPDATE") {
+        mutate(operationId, { patchJson(ref, token, patch, readBudgets.maxCanonicalBytes) }, "UPDATE") {
             val source = checkedSource(ref, token)
             policy(source)
-            val details = (reader.readDetails(ref) as? CalendarReadState.Ready)?.value ?: throw Stale()
+            val read = reader.readDetails(ref)
+            if (read == CalendarReadState.LimitExceeded) throw ProviderReadLimitExceeded()
+            val details = (read as? CalendarReadState.Ready)?.value ?: throw Stale()
             val old = details.occurrence
             val draft = EventDraft(ref.calendarId, patch.time.resolve(old.time), patch.eventZone.resolve(details.eventZone),
                 patch.title.resolve(old.title), patch.location.resolve(details.location), patch.description.resolve(details.description),
@@ -118,51 +141,65 @@ class CalendarWriter(
                     .withValue(CalendarContract.Reminders.EVENT_ID, ref.eventId).withValue(CalendarContract.Reminders.MINUTES, minutes)
                     .withValue(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT).withYieldAllowed(false).build() }
             }
-            Prepared(operations, draft.time, ref.calendarId, ref.eventId, ref, source)
+            Prepared(operations, draft.time, ref.calendarId, ref.eventId, calendarIdentity(source.calendar), ref, source)
         }
 
     override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult =
-        mutate(operationId, signature("DELETE", refJson(ref).put("token", token.value)), "DELETE") {
+        mutate(operationId, { refJson(ref).put("token", token.value) }, "DELETE") {
             val source = checkedSource(ref, token)
             policy(source)
             Prepared(assertions(source).apply {
                 add(ContentProviderOperation.newDelete(eventUri(ref.eventId)).withExpectedCount(1).withYieldAllowed(false).build())
-            }, EventTime.Timed(ref.instanceStart, ref.instanceEnd), ref.calendarId, ref.eventId, ref, source)
+            }, EventTime.Timed(ref.instanceStart, ref.instanceEnd), ref.calendarId, ref.eventId, calendarIdentity(source.calendar), ref, source)
         }
 
     private data class Prepared(val operations: ArrayList<ContentProviderOperation>, val time: EventTime,
-        val calendarId: CalendarId, val eventId: Long?, val originalRef: EventRef? = null, val expectedSource: Source? = null)
+        val calendarId: CalendarId, val eventId: Long?, val namespace: CalendarIdentity,
+        val originalRef: EventRef? = null, val expectedSource: Source? = null)
 
-    private suspend fun mutate(id: String, signature: String, kind: String, prepare: suspend () -> Prepared): MutationResult =
-        withContext(io) { mutex.withLock {
+    private suspend fun mutate(id: String, payloadFactory: () -> JSONObject, kind: String, prepare: suspend () -> Prepared): MutationResult =
+        withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
             if (!permissions()) return@withLock MutationResult.PermissionRequired
             var attempted = false
             var knownId: Long? = null
             var submitted: Prepared? = null
             try {
+                val payload = payloadFactory()
+                val signature = signature(kind, payload)
                 require(id.isNotBlank())
                 val existing = store.operation(id)
                 if (existing != null) {
                     if (existing.signature != signature || existing.kind != kind) return@withLock MutationResult.Conflict(null)
                     if (existing.phase in setOf("ATTEMPTED", "COMMITTED", "VERIFIED")) return@withLock recover(existing, allowSafeRetry = false)
+                    // An old unbound create is not made dispatchable by a newer UI/calendar choice.
+                    if (proof(existing) == null) return@withLock MutationResult.Uncertain(id, null)
                 }
                 val prepared = prepare()
                 // These checks are repeated immediately before crossing the provider boundary.
                 if (!permissions()) return@withLock MutationResult.PermissionRequired
                 currentCoroutineContext().ensureActive()
-                store.prepare(id, signature, kind)
+                val preparedProof = JSONObject().put("version", 2).put("stage", "prepared").put("kind", kind).put("signature", signature)
+                    .put("command", payload).put("identity", identityJson(prepared.namespace))
+                store.prepare(id, signature, kind, preparedProof.toString())
                 val persisted = store.operation(id) ?: error("Operation journal unavailable")
                 if (persisted.signature != signature || persisted.kind != kind) return@withLock MutationResult.Conflict(null)
+                if (proof(persisted)?.toString() != preparedProof.toString()) return@withLock MutationResult.Uncertain(id, null)
                 if (!store.attempt(id)) return@withLock recover(store.operation(id)!!, allowSafeRetry = false)
                 attempted = true
                 submitted = prepared
+                if (!permissions()) {
+                    store.mark(id, "FAILED")
+                    return@withLock MutationResult.PermissionRequired
+                }
                 val results = resolver.applyBatch(CalendarContract.AUTHORITY, prepared.operations)
                 knownId = prepared.eventId ?: results.getOrNull(1)?.uri?.let(ContentUris::parseId)
                     ?: error("Provider did not identify created event")
                 val ref = reference(prepared.calendarId, knownId, prepared.time)
-                store.mark(id, "COMMITTED", refJson(ref).toString())
+                preparedProof.put("stage", "committed").put("ref", refJson(ref))
+                store.mark(id, "COMMITTED", preparedProof.toString())
                 recover(store.operation(id)!!, allowSafeRetry = false)
-            } catch (denied: Denial) { MutationResult.Denied(denied.reason) }
+            } catch (_: ProviderReadLimitExceeded) { if (attempted) MutationResult.Uncertain(id, knownId) else MutationResult.Unavailable }
+            catch (denied: Denial) { MutationResult.Denied(denied.reason) }
             catch (invalid: Invalid) { MutationResult.ValidationFailed(invalid.fields) }
             catch (_: Stale) { MutationResult.Conflict(null) }
             catch (_: SecurityException) {
@@ -183,7 +220,7 @@ class CalendarWriter(
         } }
 
     /** Recovery never submits provider operations, even if a matching create seems likely. */
-    override suspend fun recover(operationId: String): MutationResult = withContext(io) { mutex.withLock {
+    override suspend fun recover(operationId: String): MutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
         if (!hasPermission(Manifest.permission.READ_CALENDAR)) MutationResult.PermissionRequired
         else try { store.operation(operationId)?.let { recover(it) } ?: MutationResult.Unavailable }
         catch (_: SecurityException) { MutationResult.PermissionRequired }
@@ -191,27 +228,72 @@ class CalendarWriter(
         catch (_: Exception) { MutationResult.Unavailable }
     } }
 
+    /** Null means legacy, contradictory or unbound journal data; never dispatch or infer a target. */
+    private fun proof(operation: CalendarLocalStore.Operation): JSONObject? = try {
+        val json = JSONObject(operation.resultRef ?: error("Missing proof"))
+        require(json.getInt("version") == 2 && json.getString("kind") == operation.kind)
+        val command = json.getJSONObject("command")
+        require(json.getString("signature") == operation.signature && signature(operation.kind, command) == operation.signature)
+        val target = parseIdentity(json.getJSONObject("identity"))
+        require(target.calendarId.value == command.getLong("calendar"))
+        when (operation.kind) {
+            "CREATE" -> {
+                require(target.account.name.isNotBlank() && target.account.type.isNotBlank())
+                require(command.has("targetIdentity") && parseIdentity(command.getJSONObject("targetIdentity")) == target)
+            }
+            "UPDATE", "DELETE" -> {
+                val token = command.getString("token")
+                val raw = store.edit(token) ?: error("Missing source snapshot")
+                require(signature("EDIT", JSONObject(raw)) == token)
+                val source = JSONObject(raw)
+                val sourceCalendar = source.getJSONObject("calendar")
+                require(sourceCalendar.has(CalendarContract.Calendars._SYNC_ID))
+                val values = sourceCalendar.keys().asSequence().associateWith { key -> if (sourceCalendar.isNull(key)) null else sourceCalendar.getString(key) }
+                require(calendarIdentity(values) == target)
+                require(source.getJSONObject("event").getString("_id").toLong() == command.getLong("event"))
+            }
+            else -> error("Unknown kind")
+        }
+        when (json.getString("stage")) {
+            "prepared" -> require(!json.has("ref"))
+            "committed" -> {
+                val ref = parseRef(json.getJSONObject("ref"))
+                require(ref.calendarId == target.calendarId)
+                if (operation.kind == "CREATE") require(ref.instanceStart.toString() == command.getString("start") && ref.instanceEnd.toString() == command.getString("end"))
+                else require(ref.eventId == command.getLong("event"))
+                if (operation.kind == "DELETE") require(ref == parseRef(command))
+            }
+            else -> error("Unknown stage")
+        }
+        json
+    } catch (_: Exception) { null }
+
     private suspend fun recover(operation: CalendarLocalStore.Operation, allowSafeRetry: Boolean = true): MutationResult {
-        val ref = operation.resultRef?.let { runCatching { parseRef(JSONObject(it)) }.getOrNull() }
-        // Only durable, internally consistent evidence permits retrying the exact command.
-        // Missing journals and IO errors are handled by the public recovery entry point and
-        // are never converted into retry permission. Recovery itself never calls applyBatch.
-        if (operation.kind !in setOf("CREATE", "UPDATE", "DELETE")) return MutationResult.Uncertain(operation.id, ref?.eventId)
+        val proof = proof(operation) ?: return MutationResult.Uncertain(operation.id, null)
         if (operation.phase in setOf("PREPARED", "FAILED")) {
-            return if (operation.resultRef != null) MutationResult.Uncertain(operation.id, ref?.eventId)
+            return if (proof.getString("stage") != "prepared") MutationResult.Uncertain(operation.id, null)
                 else if (allowSafeRetry) MutationResult.SafeToRetry(operation.id) else MutationResult.Unavailable
         }
-        if (operation.phase !in setOf("COMMITTED", "VERIFIED") || ref == null)
-            return MutationResult.Uncertain(operation.id, ref?.eventId)
+        if (operation.phase !in setOf("COMMITTED", "VERIFIED") || proof.getString("stage") != "committed")
+            return MutationResult.Uncertain(operation.id, null)
+        val target = parseIdentity(proof.getJSONObject("identity"))
+        val current = try { calendar(target.calendarId) } catch (_: Stale) { return MutationResult.Uncertain(operation.id, null) }
+        if (calendarIdentity(current) != target ||
+            (current[CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL]?.toIntOrNull() ?: -1) < CalendarContract.Calendars.CAL_ACCESS_READ)
+            return MutationResult.Uncertain(operation.id, null)
+        val ref = parseRef(proof.getJSONObject("ref"))
         if (operation.kind == "DELETE") {
-            val rows = rows(eventUri(ref.eventId), arrayOf(CalendarContract.Events.DELETED))
-            if (rows.isNotEmpty() && rows.single()[CalendarContract.Events.DELETED] != "1") return MutationResult.Uncertain(operation.id, ref.eventId)
+            val rows = rows(eventUri(ref.eventId), arrayOf(CalendarContract.Events.CALENDAR_ID, CalendarContract.Events.DELETED))
+            if (rows.any { it[CalendarContract.Events.CALENDAR_ID]?.toLongOrNull() != target.calendarId.value } ||
+                rows.isNotEmpty() && rows.single()[CalendarContract.Events.DELETED] != "1") return MutationResult.Uncertain(operation.id, null)
+            if (calendarIdentity(calendar(target.calendarId)) != target) return MutationResult.Uncertain(operation.id, null)
             store.mark(operation.id, "VERIFIED")
             reader.refresh()
             return MutationResult.LocalDeleted(ref)
         }
         val result = reader.readDetails(ref)
         if (result !is CalendarReadState.Ready) return MutationResult.Uncertain(operation.id, ref.eventId)
+        if (calendarIdentity(calendar(target.calendarId)) != target) return MutationResult.Uncertain(operation.id, null)
         store.mark(operation.id, "VERIFIED")
         reader.refresh()
         return MutationResult.LocalSaved(result.value.occurrence.ref)
@@ -239,7 +321,7 @@ class CalendarWriter(
         policy(Source(event, calendar, emptyList(), emptyList()))
         return Source(event, calendar,
             rows(CalendarContract.Reminders.CONTENT_URI, reminderFields, "${CalendarContract.Reminders.EVENT_ID} = ?", arrayOf(ref.eventId.toString())),
-            rows(CalendarContract.Attendees.CONTENT_URI, attendeeFields, "${CalendarContract.Attendees.EVENT_ID} = ?", arrayOf(ref.eventId.toString())))
+            rows(CalendarContract.Attendees.CONTENT_URI, attendeeFields, "${CalendarContract.Attendees.EVENT_ID} = ?", arrayOf(ref.eventId.toString())), readBudgets.maxCanonicalBytes)
     }
 
     private fun checkedSource(ref: EventRef, token: EditToken): Source {
@@ -346,7 +428,7 @@ class CalendarWriter(
         .withExpectedCount(1).withYieldAllowed(false).build()
 
     private fun rows(uri: Uri, projection: Array<String>, selection: String? = null, args: Array<String>? = null): List<Map<String, String?>> =
-        (resolver.query(uri, projection, selection, args, "_id ASC") ?: error("Calendar provider unavailable")).use { cursor ->
+        (resolver.query(uri, projection, selection, args, "_id ASC") ?: error("Calendar provider unavailable")).bounded(if (uri.pathSegments.firstOrNull() in setOf("attendees", "reminders")) readBudgets.maxSeriesChildren else Int.MAX_VALUE).use { cursor ->
             buildList { while (cursor.moveToNext()) add(projection.associateWith { key ->
                 val index = cursor.getColumnIndexOrThrow(key)
                 if (cursor.isNull(index)) null else cursor.getString(index)
@@ -354,6 +436,17 @@ class CalendarWriter(
         }
 
     companion object {
+        private fun calendarIdentity(values: Map<String, String?>) = CalendarIdentity(CalendarId(values.getValue(CalendarContract.Calendars._ID)!!.toLong()),
+            CalendarAccount(values[CalendarContract.Calendars.ACCOUNT_NAME].orEmpty(), values[CalendarContract.Calendars.ACCOUNT_TYPE].orEmpty()),
+            values[CalendarContract.Calendars.OWNER_ACCOUNT]?.takeIf(String::isNotBlank), values[CalendarContract.Calendars._SYNC_ID]?.takeIf(String::isNotBlank))
+        private fun identityJson(identity: CalendarIdentity) = JSONObject().put("calendar", identity.calendarId.value)
+            .put("name", identity.account.name).put("type", identity.account.type).put("owner", identity.owner ?: JSONObject.NULL)
+            .put("providerId", identity.providerId ?: JSONObject.NULL)
+        private fun parseIdentity(json: JSONObject): CalendarIdentity {
+            require(json.has("owner") && json.has("providerId"))
+            return CalendarIdentity(CalendarId(json.getLong("calendar")), CalendarAccount(json.getString("name"), json.getString("type")),
+                if (json.isNull("owner")) null else json.getString("owner"), if (json.isNull("providerId")) null else json.getString("providerId"))
+        }
         private fun eventUri(id: Long) = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id)
         private fun json(values: Map<String, String?>): JSONObject = JSONObject().apply {
             values.toSortedMap().forEach { (key, value) -> put(key, value ?: JSONObject.NULL) }
@@ -367,18 +460,26 @@ class CalendarWriter(
             .put("start", ref.instanceStart.toString()).put("end", ref.instanceEnd.toString())
         private fun parseRef(json: JSONObject) = EventRef(CalendarId(json.getLong("calendar")), json.getLong("event"),
             Instant.parse(json.getString("start")), Instant.parse(json.getString("end")))
-        private fun draftJson(draft: EventDraft): JSONObject = refJson(reference(draft.calendarId, 0, draft.time))
+        private fun draftJson(draft: EventDraft, maxBytes: Int): JSONObject {
+            checkCanonical(mapOf("title" to draft.title, "location" to draft.location, "description" to draft.description, "alerts" to draft.alertMinutes), maxBytes)
+            listOf(draft.title, draft.location, draft.description).forEach { currentReadBudget()?.text(it) }
+            return refJson(reference(draft.calendarId, 0, draft.time))
             .put("allDay", draft.time is EventTime.AllDay).put("zone", draft.eventZone?.id ?: JSONObject.NULL)
             .put("title", draft.title).put("location", draft.location).put("description", draft.description).put("alerts", JSONArray(draft.alertMinutes))
             .apply {
                 draft.availability?.let { put("availability", it) }
                 draft.privacy?.let { put("privacy", it) }
+                draft.targetIdentity?.let { put("targetIdentity", identityJson(it)) }
             }
-        private fun patchJson(ref: EventRef, token: EditToken, patch: EventPatch): JSONObject = refJson(ref).put("token", token.value).apply {
+        }
+        private fun patchJson(ref: EventRef, token: EditToken, patch: EventPatch, maxBytes: Int): JSONObject {
+            checkPatchInput(patch, maxBytes)
+            return refJson(ref).put("token", token.value).apply {
             fun change(name: String, change: FieldChange<*>) { if (change is FieldChange.Set) put(name, change.value?.toString() ?: JSONObject.NULL) }
             change("title", patch.title); change("time", patch.time); change("zone", patch.eventZone)
             change("location", patch.location); change("description", patch.description); change("alerts", patch.alertMinutes)
             change("availability", patch.availability); change("privacy", patch.privacy)
+        }
         }
         private fun signature(kind: String, payload: JSONObject): String = MessageDigest.getInstance("SHA-256")
             .digest((kind + payload.toString()).toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
@@ -394,7 +495,7 @@ class CalendarWriter(
         private val calendarFields = arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.ACCOUNT_NAME, CalendarContract.Calendars.ACCOUNT_TYPE,
             CalendarContract.Calendars.OWNER_ACCOUNT, CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL, CalendarContract.Calendars.ALLOWED_REMINDERS,
             CalendarContract.Calendars.MAX_REMINDERS, CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE, CalendarContract.Calendars.CALENDAR_TIME_ZONE,
-            CalendarContract.Calendars.ALLOWED_AVAILABILITY)
+            CalendarContract.Calendars.ALLOWED_AVAILABILITY, CalendarContract.Calendars._SYNC_ID)
         private val reminderFields = arrayOf(CalendarContract.Reminders._ID, CalendarContract.Reminders.EVENT_ID, CalendarContract.Reminders.MINUTES, CalendarContract.Reminders.METHOD)
         private val attendeeFields = arrayOf(CalendarContract.Attendees._ID, CalendarContract.Attendees.EVENT_ID, CalendarContract.Attendees.ATTENDEE_EMAIL,
             CalendarContract.Attendees.ATTENDEE_RELATIONSHIP, CalendarContract.Attendees.ATTENDEE_STATUS, CalendarContract.Attendees.ATTENDEE_TYPE)

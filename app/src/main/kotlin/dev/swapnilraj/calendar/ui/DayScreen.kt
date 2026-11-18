@@ -18,6 +18,12 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.platform.testTag
+import dev.swapnilraj.calendar.R
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -42,7 +48,8 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
     onRetry: () -> Unit = {},
     leadingActions: @Composable RowScope.() -> Unit = {},
     compactTitle: Boolean = false,
-    onScrollMinuteChanged: (Double) -> Unit = {}) {
+    onScrollMinuteChanged: (Double) -> Unit = {},
+    onChooseCalendars: (() -> Unit)? = null) {
     val zone = now.zone
     val anchorText = rememberSaveable { initialDate.toString() }
     val anchor = LocalDate.parse(anchorText)
@@ -102,7 +109,14 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
                         TextButton(onClick = { onRetry(); retry++ }) { Text("Retry") }
                     }
                 }
-                DayPage(date, (state as? CalendarState.Ready)?.events.orEmpty(), now, zone, use24Hour, height,
+                if (state == CalendarState.LimitExceeded) {
+                    Column(Modifier.fillMaxWidth().padding(24.dp).testTag("day_read_limit"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(stringResource(R.string.read_limit_day), style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                        if (onChooseCalendars != null) TextButton(onClick = onChooseCalendars) { Text(stringResource(R.string.read_limit_choose_calendars)) }
+                        TextButton(onClick = { onRetry(); retry++ }) { Text(stringResource(R.string.read_limit_retry)) }
+                    }
+                } else DayPage(date, (state as? CalendarState.Ready)?.events.orEmpty(), now, zone, use24Hour, height,
                     sharedScroll, page == pager.currentPage, initialScrollHour,
                     onScroll = { pixels ->
                         sharedMinute = (pixels.toDouble() / with(density) { height.dp.toPx() } * 60).coerceIn(0.0, 1440.0)

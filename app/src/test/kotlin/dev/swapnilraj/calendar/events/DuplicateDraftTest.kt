@@ -20,7 +20,7 @@ class DuplicateDraftTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     private val time = EventTime.Timed(Instant.parse("2028-06-15T09:00:00Z"), Instant.parse("2028-06-15T10:00:00Z"))
     private val ref = EventRef(CalendarId(2), 42, time.start, time.end, RecurrenceRef(41, time.start))
-    private val details = EventDetails(EventOccurrence(ref, time, "Team planning", 1), null,
+    private val details = EventDetails(EventOccurrence(ref, time, "Team planning", 1), eventTestCalendar(),
         location = "Room 4", description = "Bring notes\nhttps://example.test/meeting", organizer = "organizer@example.test",
         eventZone = ZoneId.of("Europe/London"), attendees = listOf(EventAttendee("guest@example.test", "Guest", 1, 1, 1)),
         reminders = listOf(EventReminder(10, CalendarContract.Reminders.METHOD_ALERT)), recurrenceRule = "FREQ=WEEKLY",
@@ -28,7 +28,7 @@ class DuplicateDraftTest {
     private val store = EventEditorControllerTest.Store()
     private val fixture = EventEditorControllerTest(); private val writer = fixture.Writer()
     private suspend fun prepare(source: EventDetails = details, target: CalendarId? = CalendarId(8), timedDefault: Int? = null, allDayDefault: Int? = null): EditorDraftLaunch =
-        (prepareDuplicateDraft(source, target, "copy", store, timedDefault, allDayDefault) as DraftPreparationResult.Ready).launch
+        (prepareDuplicateDraft(source, target, "copy", store, timedDefault, allDayDefault, targetIdentity = target?.let { eventTestIdentity(it.value) }) as DraftPreparationResult.Ready).launch
     private fun editor(launch: EditorDraftLaunch) = EventEditorController(launch.seed(LocalDate.parse("2040-01-01"), ZoneOffset.UTC), null,
         launch.draftId, writer, store, scope, initialCalendarSelected = launch.calendarSelected, requireStoredDraft = true)
     @After fun stop() { scope.cancel() }
@@ -52,7 +52,7 @@ class DuplicateDraftTest {
         assertFalse(launch.calendarSelected); val editor = editor(launch)
         assertEquals("", editor.state.fields.calendarId); assertEquals("1", editor.state.fields.privacy)
         editor.save(); assertEquals(0, writer.creates)
-        editor.change { it.copy(calendarId = "8") }; editor.save()
+        editor.selectCalendar(eventTestCalendar(8)); editor.save()
         assertEquals(1, writer.createdDrafts.single().privacy)
     }
     @Test fun unknownVisibilityRequiresExplicitKnownChoiceAcrossRestore() = runBlocking {
@@ -101,7 +101,7 @@ class DuplicateDraftTest {
         assertEquals(0, writer.creates)
     }
     @Test fun oldDraftsHaveNoNoticesAndUnknownNoticePayloadFailsClosedWithoutDeletion() = runBlocking {
-        prepareNewDraft(EventDraft(CalendarId(8), time, ZoneOffset.UTC, "Ordinary draft"), "copy", true, store)
+        prepareNewDraft(EventDraft(CalendarId(8), time, ZoneOffset.UTC, "Ordinary draft", targetIdentity = eventTestIdentity(8)), "copy", true, store)
         val ordinary = DraftBrowserCodec.read(store.records.getValue("copy")).launch!!
         assertTrue(ordinary.notices.isEmpty()); assertFalse(editor(ordinary).visibilityChoiceRequired)
         val record = store.records.getValue("copy")

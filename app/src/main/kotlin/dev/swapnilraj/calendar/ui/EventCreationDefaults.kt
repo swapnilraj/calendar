@@ -2,13 +2,14 @@ package dev.swapnilraj.calendar.ui
 
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions
+import dev.swapnilraj.calendar.data.CalendarPreferences
 import java.time.*
 
 /** Defaults for a new draft only; never reinterpret an existing provider reminder or event. */
 internal fun eventCreationDraft(date: LocalDate, allDay: Boolean, now: ZonedDateTime,
-    options: CalendarSettingsOptions, calendar: CalendarId?): EventDraft? {
+    options: CalendarSettingsOptions, calendar: CalendarId?, targetIdentity: CalendarIdentity? = null): EventDraft? {
     if (allDay) return EventDraft(calendar ?: CalendarId(0), EventTime.AllDay(CalendarDateRange.day(date)),
-        null, "", alertMinutes = listOfNotNull(options.allDayReminder.minutesBefore))
+        null, "", alertMinutes = listOfNotNull(options.allDayReminder.minutesBefore), targetIdentity = targetIdentity)
     val time = if (date == now.toLocalDate()) {
         val minute = minOf(23 * 60 + 45, ((now.hour * 60 + now.minute + (if (now.second > 0 || now.nano > 0) 1 else 0) + 14) / 15) * 15)
         LocalTime.of(minute / 60, minute % 60)
@@ -27,5 +28,9 @@ internal fun eventCreationDraft(date: LocalDate, allDay: Boolean, now: ZonedDate
     val end = start.plusSeconds(options.defaultDurationMinutes * 60L)
     if (end.atZone(now.zone).year !in 1..9999) return null
     return EventDraft(calendar ?: CalendarId(0), EventTime.Timed(start, end), now.zone, "",
-        alertMinutes = listOfNotNull(options.timedReminderMinutes))
+        alertMinutes = listOfNotNull(options.timedReminderMinutes), targetIdentity = targetIdentity)
 }
+
+internal fun verifiedCreationCalendar(preferences: CalendarPreferences, calendars: List<CalendarInfo>): CalendarInfo? =
+    calendars.firstOrNull { it.id == preferences.defaultCalendar && it.identity == preferences.defaultCalendarIdentity &&
+        it.account.name.isNotBlank() && it.account.type.isNotBlank() && it.capabilities.createEvents == AccessDecision.ALLOWED }

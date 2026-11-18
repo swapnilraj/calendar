@@ -56,6 +56,11 @@ fun EventDetailsStateSheet(
                         CircularProgressIndicator()
                     }
                     CalendarReadState.PermissionRequired -> Text(stringResource(R.string.events_permission_required))
+                    CalendarReadState.LimitExceeded -> {
+                        Text(stringResource(R.string.events_details_limit_title), style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.events_details_limit_help))
+                        TextButton(onClick = onRetry) { Text(stringResource(R.string.events_retry)) }
+                    }
                     CalendarReadState.Unavailable -> {
                         Text(stringResource(R.string.events_unavailable))
                         TextButton(onClick = onRetry) { Text(stringResource(R.string.events_retry)) }

@@ -7,6 +7,7 @@ import android.database.MatrixCursor
 import android.net.Uri
 import android.provider.CalendarContract
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.data.calendar.ProviderReadBudgets
 import dev.swapnilraj.calendar.data.calendar.CalendarReader
 import java.time.Instant
 import java.time.LocalDate
@@ -30,6 +31,8 @@ class CalendarReaderTest {
     private class Fixture : ContentProvider() {
         val calendars = mutableListOf<Map<String, Any?>>()
         val events = mutableListOf<Map<String, Any?>>()
+        val metadataEvents = mutableListOf<Map<String, Any?>>()
+        var eventQueries = 0
         var detailOverride: Map<String, Any?>? = null
         val attendees = mutableListOf<Map<String, Any?>>()
         val reminders = mutableListOf<Map<String, Any?>>()
@@ -50,7 +53,7 @@ class CalendarReaderTest {
             val rows = when (uri.pathSegments.firstOrNull()) {
                 "calendars" -> calendars
                 "instances" -> { instanceQueries++; this.uri = uri; this.selection = selection; this.args = args; events }
-                "events" -> detailOverride?.let { listOf(it) } ?: events
+                "events" -> { eventQueries++; detailOverride?.let { listOf(it) } ?: metadataEvents.takeIf { it.isNotEmpty() } ?: events }
                 "attendees" -> { attendeeQueries++; attendees }
                 "reminders" -> { reminderQueries++; reminders }
                 else -> emptyList()
@@ -77,17 +80,96 @@ class CalendarReaderTest {
     private suspend fun <T> Flow<CalendarReadState<T>>.ready(): T = withTimeout(10_000) {
         (first { it is CalendarReadState.Ready } as CalendarReadState.Ready<T>).value
     }
-    private suspend fun fixture(block: suspend (Fixture, CalendarReader, android.content.ContentResolver) -> Unit) {
+    private suspend fun fixture(readBudgets: ProviderReadBudgets = ProviderReadBudgets(), block: suspend (Fixture, CalendarReader, android.content.ContentResolver) -> Unit) {
         val provider = Fixture().apply { calendars += calendar() }
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
         val resolver = RuntimeEnvironment.getApplication().contentResolver
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         provider.ownerScope = scope
-        try { block(provider, CalendarReader(resolver, scope, stopTimeoutMillis = 0), resolver) }
+        try { block(provider, CalendarReader(resolver, scope, stopTimeoutMillis = 0, readBudgets = readBudgets), resolver) }
         finally {
             scope.cancel()
             withTimeout(10_000) { scope.coroutineContext[Job]!!.join() }
             assertTrue(org.robolectric.Shadows.shadowOf(resolver).getContentObservers(CalendarContract.CONTENT_URI).isEmpty())
+        }
+    }
+
+    @Test fun oneShotReadsObserveCurrentProviderWithoutNotificationOrReplay() = runBlocking {
+        fixture { provider, reader, _ ->
+            provider.events += event(1, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z")
+            val cached = CompletableDeferred<CalendarSnapshot>()
+            val observing = launch { reader.observeEvents(request).collect { if (it is CalendarReadState.Ready) cached.complete(it.value) } }
+            cached.await()
+            provider.calendars[0] = calendar() + mapOf("_sync_id" to "new-namespace")
+            provider.events[0] = provider.events[0] + mapOf("title" to "Fresh fixture")
+            val snapshot = reader.readSnapshot(request) as CalendarReadState.Ready
+            assertEquals("Fresh fixture", snapshot.value.occurrences.single().title)
+            assertEquals("new-namespace", snapshot.value.calendars.single().providerId)
+            val calendars = reader.readCalendars() as CalendarReadState.Ready
+            assertEquals("new-namespace", calendars.value.single().providerId)
+            observing.cancelAndJoin()
+        }
+    }
+
+    @Test fun oneShotReadsRetainPermissionAndUnavailableStates() = runBlocking {
+        fixture { provider, reader, _ ->
+            provider.failure = SecurityException()
+            assertEquals(CalendarReadState.PermissionRequired, reader.readCalendars())
+            assertEquals(CalendarReadState.PermissionRequired, reader.readSnapshot(request))
+            provider.failure = IllegalStateException()
+            assertEquals(CalendarReadState.Unavailable, reader.readSnapshot(request))
+        }
+    }
+
+    @Test fun calendarIdentityRetainsProviderUidAndNormalizesOnlyBlankOptionalIdentity() = runBlocking {
+        fixture { provider, reader, _ ->
+            provider.calendars.clear()
+            provider.calendars += calendar() + mapOf("_sync_id" to "provider-calendar-A")
+            val current = reader.observeCalendars().ready().single()
+            assertEquals("provider-calendar-A", current.providerId)
+            assertEquals(CalendarIdentity(CalendarId(2), CalendarAccount("fixture@example.invalid", "com.google"),
+                "fixture@example.invalid", "provider-calendar-A"), current.identity)
+            provider.calendars.clear()
+            provider.calendars += calendar() + mapOf("ownerAccount" to " ", "_sync_id" to "", "account_name" to "", "account_type" to "")
+            reader.refresh()
+            val unknown = withTimeout(10_000) {
+                (reader.observeCalendars().first { it is CalendarReadState.Ready && it.value.single().account.name.isEmpty() }
+                    as CalendarReadState.Ready).value.single()
+            }
+            assertEquals(CalendarAccount("", ""), unknown.identity.account)
+            assertNull(unknown.identity.owner)
+            assertNull(unknown.identity.providerId)
+        }
+    }
+
+    @Test fun oversizedRangeNeverPublishesACompletePrefix() = runBlocking {
+        val defaults = ProviderReadBudgets()
+        fixture(defaults.copy(range = defaults.range.copy(maxTextUnits = 40_000))) { p, reader, _ ->
+            repeat(200) { id -> p.events += event(id.toLong(), "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") +
+                mapOf("title" to "$id".padEnd(16_384, 'x')) }
+            val result = withTimeout(10_000) { reader.observeEvents(request).first { it != CalendarReadState.Loading } }
+            assertEquals(CalendarReadState.LimitExceeded, result)
+            assertTrue(p.closed >= 2)
+        }
+    }
+
+    @Test fun rawRowLimitIsAppliedBeforeIdentityPrepassEvenWhenNoRowsIntersect() = runBlocking {
+        fixture(ProviderReadBudgets(maxRangeInstances = 2)) { p, reader, _ ->
+            repeat(3) { p.events += event(it.toLong(), "2026-11-19T10:00:00Z", "2026-11-19T11:00:00Z") }
+            val result = withTimeout(10_000) { reader.observeEvents(request).first { it != CalendarReadState.Loading } }
+            assertEquals(CalendarReadState.LimitExceeded, result)
+            assertEquals(0, p.eventQueries)
+        }
+    }
+
+    @Test fun directDetailsPermitLongDescriptionWithinTheirLargerCellBudget() = runBlocking {
+        fixture { p, reader, _ ->
+            val row = event(1, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") +
+                mapOf("calendar_id" to 2L, "_id" to 1L, "description" to "d".repeat(100_000))
+            p.events += row
+            val ref = EventRef(CalendarId(2), 1, Instant.parse("2026-11-17T10:00:00Z"), Instant.parse("2026-11-17T11:00:00Z"))
+            val result = reader.readDetails(ref) as CalendarReadState.Ready
+            assertEquals(100_000, result.value.description.length)
         }
     }
 
@@ -302,6 +384,42 @@ class CalendarReaderTest {
             val ref = reader.observeEvents(request).ready().occurrences.single().ref
             assertEquals(RecurrenceRef(10, Instant.parse("2026-11-16T10:00:00Z")), ref.recurrence)
             assertEquals(Instant.parse("2026-11-17T10:00:00Z"), ref.instanceStart)
+        }
+    }
+
+    @Test fun rDateOnlyMasterRetainsRecurrenceIdentityInListAndDetails() = runBlocking {
+        fixture { provider, reader, _ ->
+            provider.events += event(10, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") + mapOf("rdate" to "20261117T100000Z")
+            val occurrence = reader.observeEvents(request).ready().occurrences.single()
+            assertEquals(RecurrenceRef(10, occurrence.ref.instanceStart), occurrence.ref.recurrence)
+            provider.detailOverride = provider.events.single() + mapOf("dtstart" to instant("2026-11-16T10:00:00Z"), "dtend" to null)
+            assertTrue(reader.readDetails(occurrence.ref) is CalendarReadState.Ready)
+        }
+    }
+
+    @Test fun syncOnlyExceptionsResolveParentsOncePerBatchWithoutBecomingStandalone() = runBlocking {
+        fixture { provider, reader, _ ->
+            repeat(12) { index -> provider.events += event(100L + index, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") +
+                mapOf("original_sync_id" to "opaque-master-A", "originalInstanceTime" to instant("2026-11-16T10:00:00Z")) }
+            provider.metadataEvents += mapOf("_id" to 10L, "calendar_id" to 2L, "_sync_id" to "opaque-master-A", "deleted" to 0)
+            val result = reader.observeEvents(request).ready()
+            assertEquals(12, result.occurrences.size)
+            assertTrue(result.occurrences.all { it.ref.recurrence == RecurrenceRef(10, Instant.parse("2026-11-16T10:00:00Z")) })
+            assertEquals(1, provider.eventQueries)
+        }
+    }
+
+    @Test fun ambiguousOrContradictorySyncParentIsUnavailableRatherThanGuessed() = runBlocking {
+        fixture { provider, reader, _ ->
+            provider.events += event(11, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") +
+                mapOf("original_sync_id" to "opaque-A", "original_id" to 20L, "originalInstanceTime" to instant("2026-11-16T10:00:00Z"))
+            provider.metadataEvents += mapOf("_id" to 10L, "calendar_id" to 2L, "_sync_id" to "opaque-A", "deleted" to 0)
+            assertEquals(CalendarReadState.Unavailable, withTimeout(10_000) { reader.observeEvents(request).first { it != CalendarReadState.Loading } })
+        }
+        fixture { provider, reader, _ ->
+            provider.events += event(11, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") +
+                mapOf("original_sync_id" to "opaque-A", "originalInstanceTime" to instant("2026-11-16T10:00:00Z"))
+            assertEquals(CalendarReadState.Unavailable, withTimeout(10_000) { reader.observeEvents(request).first { it != CalendarReadState.Loading } })
         }
     }
 

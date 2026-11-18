@@ -325,7 +325,9 @@ class LiveCalendarDayTest {
         var deletes = 0
         val ref = EventRef(CalendarId(3), 7, Instant.parse("2026-11-17T09:00:00Z"), Instant.parse("2026-11-17T10:00:00Z"))
         val source = EditableEvent(EventDetails(EventOccurrence(ref, EventTime.Timed(ref.instanceStart, ref.instanceEnd), "Fixture meeting", 1),
-            null, eventZone = java.time.ZoneId.of("Europe/London")), EditToken("fixture-token"), EditableField.entries.toSet())
+            CalendarInfo(CalendarId(3), "Fixture calendar", 0xff397d70.toInt(), CalendarAccount("owner@example.invalid", "com.google"),
+                "owner@example.invalid", java.time.ZoneId.of("Europe/London"), CalendarContract.Calendars.CAL_ACCESS_OWNER, true, true),
+            eventZone = java.time.ZoneId.of("Europe/London")), EditToken("fixture-token"), EditableField.entries.toSet())
         val writer = object : CalendarMutations {
             override suspend fun loadForEdit(ref: EventRef): EditReadResult = if (eligible) EditReadResult.Ready(source) else EditReadResult.Denied(MutationDenial.OWNERSHIP_UNKNOWN)
             override suspend fun create(operationId: String, draft: EventDraft): MutationResult = error("Unexpected create")

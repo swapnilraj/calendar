@@ -133,6 +133,7 @@ internal fun EventWriteWorkflow(
                     null -> R.string.events_loading
                     EditReadResult.PermissionRequired -> R.string.events_permission_required
                     is EditReadResult.Denied -> R.string.navigation_edit_unavailable
+                    EditReadResult.LimitExceeded -> R.string.navigation_edit_read_limit
                     else -> R.string.events_unavailable
                 }))
                 if (read == null) CircularProgressIndicator()
