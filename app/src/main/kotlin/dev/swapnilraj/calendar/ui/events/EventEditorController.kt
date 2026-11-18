@@ -18,10 +18,11 @@ data class EventEditorFields(
     val startOffset: String = "", val endOffset: String = "",
     val availability: String = "", val privacy: String = "",
     val defaultVisibilityCalendar: String = "",
+    val targetIdentity: CalendarIdentity? = null, val defaultVisibilityIdentity: CalendarIdentity? = null,
 )
 
 enum class EditorProblem { INVALID_INPUT, AMBIGUOUS_TIME, NONEXISTENT_TIME, PERMISSION,
-    DENIED, CONFLICT, UNCERTAIN, UNAVAILABLE, DRAFT_UNAVAILABLE, UNSUPPORTED, DRAFT_VERSION, SAFE_TO_RETRY, RETRY_UNAVAILABLE, VISIBILITY_REQUIRED }
+    DENIED, CONFLICT, UNCERTAIN, UNAVAILABLE, DRAFT_UNAVAILABLE, UNSUPPORTED, DRAFT_VERSION, SAFE_TO_RETRY, RETRY_UNAVAILABLE, VISIBILITY_REQUIRED, CALENDAR_REQUIRED }
 
 data class EventEditorState(
     val fields: EventEditorFields, val loading: Boolean = true, val saving: Boolean = false,
@@ -46,12 +47,13 @@ class EventEditorController(
     private val requireStoredDraft: Boolean = false,
 ) {
     private val original = fieldsFor(initial).let {
-        if (existing == null && !initialCalendarSelected) it.copy(calendarId = "") else it
+        if (existing == null && !initialCalendarSelected) it.copy(calendarId = "", targetIdentity = null) else it
     }
     var state by mutableStateOf(EventEditorState(original))
         private set
     val visibilityChoiceRequired: Boolean get() = existing == null && state.notices.any { it == EditorNotice.VISIBILITY_REVIEW_REQUIRED || it == EditorNotice.CALENDAR_VISIBILITY_REVIEW_REQUIRED } &&
         state.fields.privacy.toIntOrNull() !in 0..3
+    val calendarSelectionRequired: Boolean get() = existing == null && !validTarget(state.fields.targetIdentity, state.fields.calendarId)
     private var operationId = UUID.randomUUID().toString()
     val pendingOperationId: String get() = operationId
     private var operationKind = ""
@@ -65,6 +67,7 @@ class EventEditorController(
     private var retainedSubmission: Any? = null
     private var recoveryRecord: DraftRecord? = null
     private var legacyDefaultVisibilityUnsafe = false
+    private var legacyTargetUnsafe = false
     private var persistence: Job? = null
     private val unsupported = existing?.let { source ->
         val ownEmails = listOfNotNull(source.details.organizer, source.details.calendar?.account?.name)
@@ -111,14 +114,25 @@ class EventEditorController(
                 }
                 var restoredFields = decode(values)
                 var restoredNotices = EditorNoticeCodec.read(values)
+                val frozenTarget = (frozenSubmission as? FrozenEditorSubmission.Create)?.draft?.targetIdentity
+                val unboundTarget = values.optString("target") == "create" && (!validTarget(restoredFields.targetIdentity, restoredFields.calendarId) ||
+                    submitted && (!validTarget(frozenTarget, restoredFields.calendarId) || frozenTarget != restoredFields.targetIdentity))
+                if (unboundTarget && submitted) {
+                    legacyTargetUnsafe = true; recoveryRecord = saved
+                    restoredNotices = (restoredNotices + EditorNotice.DESTINATION_RECOVERY_ONLY).distinct()
+                } else if (unboundTarget) {
+                    restoredFields = restoredFields.copy(targetIdentity = null)
+                    restoredNotices = (restoredNotices + EditorNotice.CALENDAR_RESELECTION_REQUIRED).distinct()
+                }
                 val unprovenDefault = EditorNotice.DUPLICATE_AS_ONE_OFF in restoredNotices && restoredFields.privacy.toIntOrNull() == 0 &&
-                    (!validCalendar(restoredFields.calendarId) || restoredFields.defaultVisibilityCalendar != restoredFields.calendarId)
+                    (restoredFields.targetIdentity == null || restoredFields.defaultVisibilityIdentity != restoredFields.targetIdentity ||
+                        restoredFields.targetIdentity?.calendarId?.value?.toString() != restoredFields.calendarId)
                 if (unprovenDefault && submitted) {
                     legacyDefaultVisibilityUnsafe = true
                     recoveryRecord = saved
                     restoredNotices = (restoredNotices + EditorNotice.VISIBILITY_RECOVERY_ONLY).distinct()
                 } else if (unprovenDefault) {
-                    restoredFields = restoredFields.copy(privacy = "", defaultVisibilityCalendar = "")
+                    restoredFields = restoredFields.copy(privacy = "", defaultVisibilityCalendar = "", defaultVisibilityIdentity = null)
                     restoredNotices = (restoredNotices + EditorNotice.CALENDAR_VISIBILITY_REVIEW_REQUIRED).distinct()
                 }
                 state = state.copy(fields = restoredFields, notices = restoredNotices, recoveryRequired = submitted,
@@ -133,29 +147,58 @@ class EventEditorController(
     private fun writesBlocked(): Boolean = recoveryOnly || state.loading || state.saving || state.draftReadFailed || state.reviewRequired ||
         uncertain || retryLocked || completed || unsupported || state.problem == EditorProblem.DRAFT_VERSION
 
-    fun change(transform: (EventEditorFields) -> EventEditorFields) {
+    fun change(transform: (EventEditorFields) -> EventEditorFields) = changeFields(transform)
+
+    /** Explicit calendar choice issues a new proof even when a reused provider ID is unchanged. */
+    fun selectCalendar(calendar: CalendarInfo) {
+        if (existing != null || calendar.capabilities.createEvents != AccessDecision.ALLOWED || !validTarget(calendar.identity, calendar.id.value.toString())) return
+        changeFields({ it.copy(calendarId = calendar.id.value.toString()) }, calendar.identity)
+    }
+
+    /** Observe namespace drift, never adopt current metadata as an old draft's authority. */
+    fun observeCalendars(calendars: List<CalendarInfo>) {
+        if (existing != null || writesBlocked()) return
+        val pinned = state.fields.targetIdentity ?: return
+        if (calendars.any { it.identity == pinned && it.capabilities.createEvents == AccessDecision.ALLOWED }) return
+        changeFields({ it }, invalidateTarget = true, persist = false)
+        state = state.copy(problem = EditorProblem.CALENDAR_REQUIRED)
+    }
+
+    private fun changeFields(transform: (EventEditorFields) -> EventEditorFields,
+        selected: CalendarIdentity? = null, invalidateTarget: Boolean = false, persist: Boolean = true) {
         if (writesBlocked()) return
         val old = state.fields
-        var next = transform(old)
-        var notices = state.notices
+        var next = transform(old).copy(targetIdentity = old.targetIdentity, defaultVisibilityIdentity = old.defaultVisibilityIdentity)
+        val target = when {
+            existing != null -> old.targetIdentity
+            selected != null -> selected
+            invalidateTarget || next.calendarId != old.calendarId -> null
+            else -> old.targetIdentity
+        }
+        next = next.copy(targetIdentity = target)
+        var notices = if (selected != null) state.notices.filterNot { it == EditorNotice.CALENDAR_RESELECTION_REQUIRED } else state.notices
         if (EditorNotice.DUPLICATE_AS_ONE_OFF in notices) {
-            if (next.calendarId != old.calendarId && next.privacy.toIntOrNull() !in 1..3) {
-                next = next.copy(privacy = "", defaultVisibilityCalendar = "")
+            if ((next.calendarId != old.calendarId || next.targetIdentity != old.targetIdentity) && next.privacy.toIntOrNull() !in 1..3) {
+                next = next.copy(privacy = "", defaultVisibilityCalendar = "", defaultVisibilityIdentity = null)
                 notices = (notices + EditorNotice.CALENDAR_VISIBILITY_REVIEW_REQUIRED).distinct()
             } else {
-                val approved = if (next.privacy.toIntOrNull() != 0) ""
-                    else if (next.privacy != old.privacy && validCalendar(next.calendarId)) next.calendarId
-                    else old.defaultVisibilityCalendar
-                next = next.copy(defaultVisibilityCalendar = approved)
+                val approved = if (next.privacy.toIntOrNull() != 0) null
+                    else if (next.privacy != old.privacy && next.targetIdentity?.calendarId?.value?.toString() == next.calendarId) next.targetIdentity
+                    else old.defaultVisibilityIdentity
+                next = next.copy(defaultVisibilityCalendar = approved?.calendarId?.value?.toString().orEmpty(), defaultVisibilityIdentity = approved)
             }
         }
+        if (existing == null && (next.targetIdentity == null || next.targetIdentity?.calendarId?.value?.toString() != next.calendarId))
+            notices = (notices + EditorNotice.CALENDAR_RESELECTION_REQUIRED).distinct()
         if (next.startDate != old.startDate || next.startTime != old.startTime || next.zone != old.zone || next.allDay != old.allDay)
             next = next.copy(startOffset = "")
         if (next.endDate != old.endDate || next.endTime != old.endTime || next.zone != old.zone || next.allDay != old.allDay)
             next = next.copy(endOffset = "")
         state = state.copy(fields = next, notices = notices, problem = if (state.reviewRequired) EditorProblem.CONFLICT else null, result = null)
-        persistence?.cancel()
-        persistence = scope.launch { delay(300); persistSafely() }
+        if (persist) {
+            persistence?.cancel()
+            persistence = scope.launch { delay(300); persistSafely() }
+        }
     }
 
     suspend fun prepareDismiss(): Boolean = if (recoveryOnly || state.loading || completed || unsupported || state.draftReadFailed || state.reviewRequired ||
@@ -168,7 +211,7 @@ class EventEditorController(
     }
 
     private suspend fun persistSafely(): Boolean {
-        if (recoveryOnly || legacyDefaultVisibilityUnsafe) {
+        if (recoveryOnly || legacyDefaultVisibilityUnsafe || legacyTargetUnsafe) {
             // No source baseline may be rebuilt from a fallback seed or missing live edit source.
             return try {
                 val expected = recoveryRecord ?: return false
@@ -198,6 +241,7 @@ class EventEditorController(
 
     fun save() {
         if (writesBlocked()) return
+        if (calendarSelectionRequired) { state = state.copy(problem = EditorProblem.CALENDAR_REQUIRED); return }
         if (visibilityChoiceRequired) { state = state.copy(problem = EditorProblem.VISIBILITY_REQUIRED); return }
         val normalized = try { normalizedDraft(state.fields,
             preserveTime = if (existing != null && !timeChanged(state.fields)) initial.time else null,
@@ -251,7 +295,7 @@ class EventEditorController(
     /** A recovery proof only enables a separate user action; it never dispatches a write. */
     fun retryOriginal() {
         val command = frozenSubmission ?: return
-        if (legacyDefaultVisibilityUnsafe || !state.retryReady || state.loading || state.draftReadFailed || state.problem == EditorProblem.DRAFT_VERSION || state.saving || completed || command.operationId != operationId || command.kind != operationKind) return
+        if (legacyDefaultVisibilityUnsafe || legacyTargetUnsafe || !state.retryReady || state.loading || state.draftReadFailed || state.problem == EditorProblem.DRAFT_VERSION || state.saving || completed || command.operationId != operationId || command.kind != operationKind) return
         state = state.copy(saving = true, retryReady = false, problem = null, result = null)
         scope.launch {
             submitted = true
@@ -297,7 +341,7 @@ class EventEditorController(
 
     private suspend fun finish(received: MutationResult, recovery: Boolean = false) {
         val matchingProof = received is MutationResult.SafeToRetry && received.operationId == operationId
-        val validCommand = !legacyDefaultVisibilityUnsafe && !state.draftReadFailed && state.problem != EditorProblem.DRAFT_VERSION &&
+        val validCommand = !legacyDefaultVisibilityUnsafe && !legacyTargetUnsafe && !state.draftReadFailed && state.problem != EditorProblem.DRAFT_VERSION &&
             frozenSubmission?.let { it.operationId == operationId && it.kind == operationKind } == true
         val result = if (received is MutationResult.SafeToRetry && !matchingProof)
             MutationResult.Uncertain(operationId, existing?.details?.occurrence?.ref?.eventId) else received
@@ -362,9 +406,9 @@ class EventEditorController(
 
         /** Explicit new-launch preparation only; restoration must require the existing record. */
         internal fun initialRecord(initial: EventDraft, existing: EditableEvent?, id: String,
-            selected: Boolean, clock: Clock, notices: List<EditorNotice> = emptyList(), defaultVisibilityCalendar: String = ""): DraftRecord {
+            selected: Boolean, clock: Clock, notices: List<EditorNotice> = emptyList(), defaultVisibilityCalendar: String = "", defaultVisibilityIdentity: CalendarIdentity? = null): DraftRecord {
             require(id.isNotBlank())
-            val fields = fieldsFor(initial).let { if (existing == null && !selected) it.copy(calendarId = "") else it }.copy(defaultVisibilityCalendar = defaultVisibilityCalendar)
+            val fields = fieldsFor(initial).let { if (existing == null && !selected) it.copy(calendarId = "", targetIdentity = null) else it }.copy(defaultVisibilityCalendar = defaultVisibilityCalendar, defaultVisibilityIdentity = defaultVisibilityIdentity)
             val payload = encode(fields).apply {
                 EditorNoticeCodec.write(this, notices)
                 put("operationId", UUID.randomUUID().toString()); put("operationKind", "")
@@ -382,6 +426,7 @@ class EventEditorController(
             put("title", initial.title); put("location", initial.location); put("description", initial.description)
             put("zone", initial.eventZone?.id.orEmpty())
             put("alerts", org.json.JSONArray(initial.alertMinutes))
+            if (existing == null) initial.targetIdentity?.let { put("targetIdentity", CalendarIdentityJson.encode(it)) }
             put("availability", initial.availability ?: JSONObject.NULL); put("privacy", initial.privacy ?: JSONObject.NULL)
             when (val time = initial.time) {
                 is EventTime.Timed -> { put("kind", "timed"); put("start", time.start.toString()); put("end", time.end.toString()) }
@@ -423,7 +468,7 @@ class EventEditorController(
                 allDay?.dates?.endExclusive?.minusDays(1)?.toString() ?: end!!.toLocalDate().toString(),
                 start?.toLocalTime()?.toString() ?: "09:00", end?.toLocalTime()?.toString() ?: "10:00", allDay != null,
                 zone.id, draft.location, draft.description, draft.alertMinutes.joinToString(","),
-                start?.offset?.id.orEmpty(), end?.offset?.id.orEmpty(), draft.availability?.toString().orEmpty(), draft.privacy?.toString().orEmpty())
+                start?.offset?.id.orEmpty(), end?.offset?.id.orEmpty(), draft.availability?.toString().orEmpty(), draft.privacy?.toString().orEmpty(), targetIdentity = draft.targetIdentity)
         }
         fun normalizedDraft(fields: EventEditorFields, preserveTime: EventTime? = null, preserveAlerts: List<Int>? = null): EventDraft = try {
             val startDate = LocalDate.parse(fields.startDate); val endDate = LocalDate.parse(fields.endDate)
@@ -450,11 +495,13 @@ class EventEditorController(
             } }.distinct()
             EventDraft(CalendarId(fields.calendarId.toLong()), time, if (fields.allDay) ZoneOffset.UTC else zone,
                 fields.title, fields.location, fields.description, alerts,
-                fields.availability.takeIf(String::isNotBlank)?.toInt(), fields.privacy.takeIf(String::isNotBlank)?.toInt())
+                fields.availability.takeIf(String::isNotBlank)?.toInt(), fields.privacy.takeIf(String::isNotBlank)?.toInt(), fields.targetIdentity)
         } catch (invalid: InvalidInput) { throw invalid }
         catch (_: Exception) { throw InvalidInput(EditorProblem.INVALID_INPUT) }
 
         private fun encode(f: EventEditorFields) = JSONObject().apply {
+            f.targetIdentity?.let { put("targetIdentity", CalendarIdentityJson.encode(it)) }
+            f.defaultVisibilityIdentity?.let { put("defaultVisibilityIdentity", CalendarIdentityJson.encode(it)) }
             listOf("calendarId" to f.calendarId, "title" to f.title, "startDate" to f.startDate, "endDate" to f.endDate,
                 "startTime" to f.startTime, "endTime" to f.endTime, "allDay" to f.allDay.toString(), "zone" to f.zone,
                 "location" to f.location, "description" to f.description, "alerts" to f.alerts,
@@ -463,6 +510,8 @@ class EventEditorController(
         }
         internal fun readRawFields(p: JSONObject): EventEditorFields = decode(p)
 
+        private fun validTarget(value: CalendarIdentity?, id: String): Boolean = value != null && value.calendarId.value.toString() == id &&
+            value.account.name.isNotBlank() && value.account.type.isNotBlank()
         private fun validCalendar(value: String): Boolean = value.toLongOrNull()?.let { it >= 0 } == true
         private fun readVisibilityCalendar(p: JSONObject): String {
             if (!p.has("defaultVisibilityCalendar")) return ""
@@ -475,7 +524,8 @@ class EventEditorController(
             p.optString("endTime", ""), p.optString("allDay", "false").toBooleanStrict(), p.optString("zone", ""),
             p.optString("location", ""), p.optString("description", ""), p.optString("alerts", ""),
             p.optString("startOffset", ""), p.optString("endOffset", ""),
-            p.optString("availability", ""), p.optString("privacy", ""), readVisibilityCalendar(p))
+            p.optString("availability", ""), p.optString("privacy", ""), readVisibilityCalendar(p),
+            CalendarIdentityJson.optional(p, "targetIdentity"), CalendarIdentityJson.optional(p, "defaultVisibilityIdentity"))
     }
 }
 

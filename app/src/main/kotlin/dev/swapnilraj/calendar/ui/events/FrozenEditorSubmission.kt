@@ -22,6 +22,7 @@ internal sealed interface FrozenEditorSubmission {
             .put("title", draft.title).put("location", draft.location).put("description", draft.description)
             .put("alerts", JSONArray(draft.alertMinutes)).apply {
                 draft.availability?.let { put("availability", it) }; draft.privacy?.let { put("privacy", it) }
+                draft.targetIdentity?.let { put("targetIdentity", CalendarIdentityJson.encode(it)) }
             })
     }
     data class Update(override val operationId: String, val ref: EventRef, val token: EditToken, val patch: EventPatch) : FrozenEditorSubmission {
@@ -53,7 +54,7 @@ internal sealed interface FrozenEditorSubmission {
             return when (value.getString("kind")) {
                 "create" -> value.getJSONObject("draft").let { draft -> Create(id, EventDraft(CalendarId(draft.getLong("calendar")),
                     parseTime(draft.getJSONObject("time")), parseZone(draft, "zone"), draft.getString("title"),
-                    draft.getString("location"), draft.getString("description"), ints(draft.getJSONArray("alerts")), optionalInt(draft, "availability"), optionalInt(draft, "privacy"))) }
+                    draft.getString("location"), draft.getString("description"), ints(draft.getJSONArray("alerts")), optionalInt(draft, "availability"), optionalInt(draft, "privacy"), CalendarIdentityJson.optional(draft, "targetIdentity"))) }
                 "update" -> {
                     val patch = value.getJSONObject("patch")
                     fun text(key: String): FieldChange<String> = if (patch.has(key)) FieldChange.Set(patch.getString(key)) else FieldChange.Keep

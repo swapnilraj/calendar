@@ -16,7 +16,7 @@ import org.robolectric.annotation.Config
 class EventEditorControllerTest {
     private val scopes = mutableListOf<CoroutineScope>()
     private val initial = EventDraft(CalendarId(2), EventTime.Timed(Instant.parse("2028-06-15T09:00:00Z"),
-        Instant.parse("2028-06-15T10:00:00Z")), ZoneOffset.UTC, "Future appointment", alertMinutes = listOf(10))
+        Instant.parse("2028-06-15T10:00:00Z")), ZoneOffset.UTC, "Future appointment", alertMinutes = listOf(10), targetIdentity = eventTestIdentity())
     private val ref = EventRef(CalendarId(2), 42, (initial.time as EventTime.Timed).start, (initial.time as EventTime.Timed).end)
     private fun controller(store: Store = Store(), writer: Writer = Writer(), existing: EditableEvent? = null,
         draft: EventDraft = initial, selected: Boolean = true): EventEditorController {
@@ -273,8 +273,8 @@ class EventEditorControllerTest {
         val first = controller(store, writer, draft = initial.copy(calendarId = CalendarId(0)), selected = false)
         assertEquals("", first.state.fields.calendarId)
         first.save(); assertEquals(0, writer.creates)
-        assertEquals(EditorProblem.INVALID_INPUT, first.state.problem)
-        first.change { it.copy(calendarId = "2") }; first.flushDraft()
+        assertEquals(EditorProblem.CALENDAR_REQUIRED, first.state.problem)
+        first.selectCalendar(eventTestCalendar()); first.flushDraft()
         val restored = controller(store, writer, draft = initial.copy(calendarId = CalendarId(0)), selected = false)
         assertEquals("2", restored.state.fields.calendarId)
         restored.save(); assertEquals(1, writer.creates)

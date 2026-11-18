@@ -71,6 +71,9 @@ fun EventEditorContent(
     var timeField by remember { mutableStateOf<String?>(null) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var confirmRetryDelete by remember { mutableStateOf(false) }
+    LaunchedEffect(controller, writableCalendars, state.loading, state.saving, state.recoveryRequired, state.retryReady) {
+        controller.observeCalendars(writableCalendars)
+    }
     val blocked = controller.recoveryOnly || state.loading || state.saving || state.draftReadFailed || state.reviewRequired || state.recoveryRequired || state.retryReady || state.problem in setOf(EditorProblem.UNCERTAIN,
         EditorProblem.UNSUPPORTED, EditorProblem.DRAFT_VERSION) || state.result is MutationResult.LocalSaved || state.result is MutationResult.LocalDeleted
     fun canEdit(field: EditableField) = !blocked && (existing == null || field in existing.allowedFields)
@@ -88,7 +91,8 @@ fun EventEditorContent(
         }
         if (state.loading) CircularProgressIndicator()
         state.problem?.let { problem ->
-            Text(stringResource(problemResource(problem)), color = MaterialTheme.colorScheme.error)
+            if (problem != EditorProblem.CALENDAR_REQUIRED || EditorNotice.CALENDAR_RESELECTION_REQUIRED !in state.notices)
+                Text(stringResource(problemResource(problem)), color = MaterialTheme.colorScheme.error)
             if (state.recoveryRequired) TextButton(onClick = controller::recover, enabled = !state.saving) {
                 Text(stringResource(R.string.events_editor_recover))
             }
@@ -116,14 +120,14 @@ fun EventEditorContent(
         if (existing == null && !controller.recoveryOnly) {
             Text(stringResource(R.string.events_calendar))
             writableCalendars.filter { it.capabilities.createEvents == AccessDecision.ALLOWED }.forEach { calendar ->
-                FilterChip(selected = fields.calendarId == calendar.id.value.toString(), enabled = !blocked,
-                    onClick = { controller.change { it.copy(calendarId = calendar.id.value.toString()) } },
+                FilterChip(selected = fields.targetIdentity == calendar.identity && fields.calendarId == calendar.id.value.toString(), enabled = !blocked && calendar.account.name.isNotBlank() && calendar.account.type.isNotBlank(),
+                    onClick = { controller.selectCalendar(calendar) },
                     label = { Text("${calendar.displayName} · ${calendar.account.name}") })
             }
             if (writableCalendars.none { it.capabilities.createEvents == AccessDecision.ALLOWED })
                 Text(stringResource(R.string.events_editor_no_calendar))
         } else Text(existing?.details?.calendar?.displayName ?: writableCalendars.firstOrNull {
-            it.id.value.toString() == fields.calendarId
+            it.identity == fields.targetIdentity && it.id.value.toString() == fields.calendarId
         }?.displayName ?: stringResource(R.string.events_drafts_calendar_unavailable))
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = fields.allDay,
             enabled = canEdit(EditableField.TIME), role = Role.Checkbox,
@@ -180,8 +184,8 @@ fun EventEditorContent(
             CalendarContract.Events.ACCESS_CONFIDENTIAL.toString() to R.string.events_confidential,
         ), canEdit(EditableField.PRIVACY)) { value -> controller.change { it.copy(privacy = value) } }
         Text(stringResource(R.string.events_editor_local_save), style = MaterialTheme.typography.bodySmall)
-        Button(onClick = controller::save, enabled = !blocked && !state.reviewRequired && !controller.visibilityChoiceRequired && (existing != null || writableCalendars.any {
-            it.id.value.toString() == fields.calendarId && it.capabilities.createEvents == AccessDecision.ALLOWED
+        Button(onClick = controller::save, enabled = !blocked && !state.reviewRequired && !controller.calendarSelectionRequired && !controller.visibilityChoiceRequired && (existing != null || writableCalendars.any {
+            it.identity == fields.targetIdentity && it.id.value.toString() == fields.calendarId && it.capabilities.createEvents == AccessDecision.ALLOWED
         }), modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.events_editor_save)) }
         if (existing != null && !controller.recoveryOnly) TextButton(onClick = controller::requestDelete, enabled = !blocked && !state.reviewRequired) {
             Text(stringResource(R.string.events_editor_delete))
@@ -286,6 +290,7 @@ private fun problemResource(problem: EditorProblem) = when (problem) {
     EditorProblem.SAFE_TO_RETRY -> R.string.events_editor_safe_retry
     EditorProblem.RETRY_UNAVAILABLE -> R.string.events_editor_retry_unavailable
     EditorProblem.VISIBILITY_REQUIRED -> R.string.events_copy_visibility_required
+    EditorProblem.CALENDAR_REQUIRED -> R.string.events_calendar_reselection
 }
 
 @Composable
@@ -314,4 +319,6 @@ private fun noticeResource(notice: EditorNotice) = when (notice) {
     EditorNotice.AVAILABILITY_REVIEW -> R.string.events_copy_availability_review
     EditorNotice.CALENDAR_VISIBILITY_REVIEW_REQUIRED -> R.string.events_copy_calendar_visibility_review
     EditorNotice.VISIBILITY_RECOVERY_ONLY -> R.string.events_copy_visibility_recovery_only
+    EditorNotice.CALENDAR_RESELECTION_REQUIRED -> R.string.events_calendar_reselection
+    EditorNotice.DESTINATION_RECOVERY_ONLY -> R.string.events_calendar_recovery_only
 }

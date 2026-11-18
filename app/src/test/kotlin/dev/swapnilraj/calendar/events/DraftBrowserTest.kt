@@ -16,7 +16,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class DraftBrowserTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-    private val initial = EventDraft(CalendarId(2), EventTime.Timed(Instant.parse("2028-06-15T09:00:00Z"), Instant.parse("2028-06-15T10:00:00Z")), ZoneOffset.UTC, "Future appointment")
+    private val initial = EventDraft(CalendarId(2), EventTime.Timed(Instant.parse("2028-06-15T09:00:00Z"), Instant.parse("2028-06-15T10:00:00Z")), ZoneOffset.UTC, "Future appointment", targetIdentity = eventTestIdentity())
     private val ref = EventRef(CalendarId(2), 42, (initial.time as EventTime.Timed).start, (initial.time as EventTime.Timed).end)
     private val existing = EditableEvent(EventDetails(EventOccurrence(ref, initial.time, initial.title, 1), null), EditToken("original"), EditableField.entries.toSet())
     private val store = EventEditorControllerTest.Store()
@@ -35,7 +35,7 @@ class DraftBrowserTest {
         val opened = editor(required = true)
         assertEquals(firstId, opened.pendingOperationId)
         assertEquals("", opened.state.fields.calendarId)
-        opened.save(); assertEquals(EditorProblem.INVALID_INPUT, opened.state.problem)
+        opened.save(); assertEquals(EditorProblem.CALENDAR_REQUIRED, opened.state.problem)
         assertEquals(0, writer.creates)
     }
     @Test fun preparationReusesIncompleteRawDraftAndNeverReplacesUnknownRecord() = runBlocking {

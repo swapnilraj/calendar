@@ -29,10 +29,10 @@ suspend fun prepareEditDraft(
 ): DraftPreparationResult = prepareDraft(initial, existing, draftId, true, store, clock)
 
 private suspend fun prepareDraft(initial: EventDraft, existing: EditableEvent?, id: String, selected: Boolean,
-    store: DraftStore, clock: Clock, notices: List<EditorNotice> = emptyList(), defaultVisibilityCalendar: String = ""): DraftPreparationResult = try {
+    store: DraftStore, clock: Clock, notices: List<EditorNotice> = emptyList(), defaultVisibilityCalendar: String = "", defaultVisibilityIdentity: CalendarIdentity? = null): DraftPreparationResult = try {
     require(id.isNotBlank())
     val old = store.load(id)
-    val record = if (old != null) old else EventEditorController.initialRecord(initial, existing, id, selected, clock, notices, defaultVisibilityCalendar)
+    val record = if (old != null) old else EventEditorController.initialRecord(initial, existing, id, selected, clock, notices, defaultVisibilityCalendar, defaultVisibilityIdentity)
     val launch = DraftBrowserCodec.read(record).launch
     val expected = editorDraftTarget(existing?.details?.occurrence?.ref)
     if (launch == null || editorDraftTarget(launch.ref) != expected) DraftPreparationResult.Unavailable
@@ -55,7 +55,9 @@ suspend fun prepareDuplicateDraft(
     defaultTimedMinutes: Int? = null,
     defaultAllDayMinutes: Int? = null,
     clock: Clock = Clock.systemUTC(),
+    targetIdentity: CalendarIdentity? = null,
 ): DraftPreparationResult {
+    val boundTarget = targetIdentity?.takeIf { it.calendarId == targetCalendar && it.account.name.isNotBlank() && it.account.type.isNotBlank() }
     val notices = linkedSetOf(EditorNotice.DUPLICATE_AS_ONE_OFF, EditorNotice.GUESTS_NOT_COPIED)
     if (!details.recurrenceRule.isNullOrBlank() || details.occurrence.ref.recurrence != null)
         notices += EditorNotice.RECURRENCE_NOT_COPIED
@@ -70,14 +72,16 @@ suspend fun prepareDuplicateDraft(
     }.distinct()
     var privacy = details.privacy?.takeIf { it in 0..3 }
     if (privacy == null) notices += EditorNotice.VISIBILITY_REVIEW_REQUIRED
-    if (privacy == CalendarContract.Events.ACCESS_DEFAULT && targetCalendar != details.occurrence.ref.calendarId) {
+    if (privacy == CalendarContract.Events.ACCESS_DEFAULT && (boundTarget == null || boundTarget != details.calendar?.identity)) {
         privacy = null
         notices += EditorNotice.CALENDAR_VISIBILITY_REVIEW_REQUIRED
     }
     val availability = details.availability?.takeIf { it in 0..2 }
     if (availability == null) notices += EditorNotice.AVAILABILITY_REVIEW
     val draft = EventDraft(targetCalendar ?: CalendarId(0), details.occurrence.time, details.eventZone,
-        details.occurrence.title, details.location, details.description, alerts, availability, privacy)
-    return prepareDraft(draft, null, draftId, targetCalendar != null, store, clock, notices.toList(),
-        if (privacy == CalendarContract.Events.ACCESS_DEFAULT) targetCalendar?.value?.toString().orEmpty() else "")
+        details.occurrence.title, details.location, details.description, alerts, availability, privacy, boundTarget)
+    if (boundTarget == null) notices += EditorNotice.CALENDAR_RESELECTION_REQUIRED
+    return prepareDraft(draft, null, draftId, boundTarget != null, store, clock, notices.toList(),
+        if (privacy == CalendarContract.Events.ACCESS_DEFAULT) boundTarget?.calendarId?.value?.toString().orEmpty() else "",
+        if (privacy == CalendarContract.Events.ACCESS_DEFAULT) boundTarget else null)
 }

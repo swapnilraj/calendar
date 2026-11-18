@@ -17,7 +17,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class EventEditorMetadataTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-    private val initial = EventDraft(CalendarId(2), EventTime.Timed(Instant.parse("2028-06-15T09:00:00Z"), Instant.parse("2028-06-15T10:00:00Z")), ZoneOffset.UTC, "Private appointment", availability = 0, privacy = 2)
+    private val initial = EventDraft(CalendarId(2), EventTime.Timed(Instant.parse("2028-06-15T09:00:00Z"), Instant.parse("2028-06-15T10:00:00Z")), ZoneOffset.UTC, "Private appointment", availability = 0, privacy = 2, targetIdentity = eventTestIdentity())
     private val ref = EventRef(initial.calendarId, 42, (initial.time as EventTime.Timed).start, (initial.time as EventTime.Timed).end)
     private val store = EventEditorControllerTest.Store()
     private val fixture = EventEditorControllerTest()
