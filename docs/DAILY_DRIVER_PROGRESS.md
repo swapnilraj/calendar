@@ -30,8 +30,14 @@ Nonzero Following prefix writes now repeat the unchanged original raw time conte
 rule, with154 focused checks including explicit cache-model controls. Actual installed-provider
 warm-cache acceptance remains pending, and no production clone profile is admitted. The optional
 SDK-only LOCAL probe APK builds. Its real API35 emulator identity-only run passed for
-`com.android.providers.calendar` version35; the guarded18-case fixture experiment is running, with
-no runtime fixture PASS claimed yet. Evidence: `/tmp/daylight-native-provider-identity-30138a09/`.
+`com.android.providers.calendar` version35. Two guarded fixture attempts stopped on native API
+contract errors in the test harness: the calendar insert ACK preserves its request query, and an
+event-ID update URI forbids an additional selection. Both fixture cleanups were verified; both
+harness fixes are committed and the SDK APK pair plus lint passed. A subsequent identity attempt
+stopped at the ADB guard after the emulator disconnected, before fixture activity. No 18-case
+runtime PASS is claimed. Identity evidence: `/tmp/daylight-native-provider-identity-30138a09/`;
+failed fixture reports: `/tmp/daylight-native-provider-fixtures-30138a09/` and
+`/tmp/daylight-native-provider-fixtures-calack2/`.
 The probe is separate from Google/Workspace sync and UI parity certification.
 
 Remaining implementation includes the owned organizer edit/guest-delta/cancellation screen, advanced
@@ -40,6 +46,8 @@ and release provisioning. Personal/Workspace round-trips, physical reminder/Doze
 TalkBack/upgrade checks, seven-day beta and stable signed release remain pending. The GitHub
 integration currently cannot access Actions secrets (HTTP403); no signing key was provisioned.
 PR53 typed retirement foundation passed full CI, merged into integration (`7f439b1`) and is attached.
+PR54 ordinary backend retirement also passed CI and merged into integration (`21d88e5`); its
+artifact attachment was requested, but the attachment service has not confirmed the result.
 
 Earlier checkpoint and packet history:
 
