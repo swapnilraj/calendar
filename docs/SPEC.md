@@ -138,6 +138,12 @@ overwrite the stored value. Background configuration suppliers perform a fresh r
 an atomic expected-snapshot comparison, so delayed setup or namespace strengthening cannot overwrite
 newer choices. A lost acknowledgement requires readback/review. Display filters and event defaults do
 not select reminder calendars. These persistence seams do not themselves enable reminder setup.
+Notification-open decoding requires canonical app data and a complete post identity. The read-only
+resolver verifies the persisted post/token, current enabled namespace and freshly resolved original
+occurrence key before fetching details. It follows moved exceptions instead of trusting an old event
+number, then rechecks detail namespace, configuration and persisted post before publishing. Stale,
+retired, replaced or unverifiable posts expose no private details. Activity presentation remains a
+separate integration step; these resolver tests alone do not establish notification navigation.
 
 ## Approved daily-driver target (18 November 2026)
 
