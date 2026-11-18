@@ -5,6 +5,12 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+Reminder delivery claims are coordinated with durable post identities, nonce-bound alarms and
+fresh permission/configuration checks. Unknown posting outcomes are retained without automatic
+repost. Unpinning a calendar clears its active app-owned alert while preserving posted history,
+so re-enabling does not alert again solely because it was unpinned. These delivery components
+require application runtime/setup wiring and physical-device verification before release.
+
 Implementation checkpoint (18 November 2026): the live day pager now reads a shared three-day window
 and opens native details, including existing meeting links. Changing its calendar selection or date
 context closes old details. These automated read workflows do not establish real Google sync, native

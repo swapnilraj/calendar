@@ -16,14 +16,15 @@ class SqliteReminderLedger(
     private val store: CalendarLocalStore,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val nonceFactory: () -> String = { UUID.randomUUID().toString() },
+    private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
 ) : ReminderLedger {
-    private suspend fun <T> transaction(block: (SQLiteDatabase) -> T): T = withContext(io) {
+    private suspend fun <T> transaction(block: (SQLiteDatabase) -> T): T = withContext(io + readBudgetContext(readBudgets.mutation)) {
         val db = store.writableDatabase
         db.beginTransaction()
         try { block(db).also { db.setTransactionSuccessful() } } finally { db.endTransaction() }
     }
 
-    override suspend fun trackedForRevalidation(window: InstantBounds): List<ReminderRecord> = withContext(io) {
+    override suspend fun trackedForRevalidation(window: InstantBounds): List<ReminderRecord> = withContext(io + readBudgetContext(readBudgets.mutation)) {
         require(window.endExclusive >= window.start)
         read(store.readableDatabase, "state IN ($pendingSql) OR (state != ? AND (state IN (?, ?) OR last_posted_seconds IS NOT NULL) AND " +
             "(planned_seconds > ? OR (planned_seconds = ? AND planned_nanos >= ?)) AND " +
@@ -142,7 +143,7 @@ class SqliteReminderLedger(
         true
     }
 
-    override suspend fun findByAlias(alias: ReminderNotificationAlias): ReminderRecord? = withContext(io) {
+    override suspend fun findByAlias(alias: ReminderNotificationAlias): ReminderRecord? = withContext(io + readBudgetContext(readBudgets.mutation)) {
         read(store.readableDatabase, "notification_nonce = ?", arrayOf(alias.nonce)).singleOrNull()?.takeIf { it.notificationAlias == alias }
     }
 
@@ -170,11 +171,11 @@ class SqliteReminderLedger(
         ReminderPlanChanges(rows.map { it.notificationAlias }.toSet())
     }
 
-    override suspend fun nextScheduled(): ReminderRecord? = withContext(io) {
+    override suspend fun nextScheduled(): ReminderRecord? = withContext(io + readBudgetContext(readBudgets.mutation)) {
         read(store.readableDatabase, "state IN (?, ?)", arrayOf(ReminderDeliveryState.SCHEDULED.name, ReminderDeliveryState.SNOOZED.name), 1).firstOrNull()
     }
 
-    override suspend fun interruptedDeliveries(): List<ReminderClaim> = withContext(io) {
+    override suspend fun interruptedDeliveries(): List<ReminderClaim> = withContext(io + readBudgetContext(readBudgets.mutation)) {
         read(store.readableDatabase, "state IN (?, ?)", arrayOf(ReminderDeliveryState.POSTING.name, ReminderDeliveryState.UNCERTAIN.name)).map(::ReminderClaim)
     }
 
@@ -187,21 +188,35 @@ class SqliteReminderLedger(
     private fun readKeys(db: SQLiteDatabase, keys: Set<ReminderKey>): List<ReminderRecord> = keys.toList().chunked(400).flatMap { chunk ->
         read(db, "record_key IN (${chunk.joinToString(",") { "?" }})", chunk.map(::keyText).toTypedArray())
     }
-    private fun read(db: SQLiteDatabase, where: String, args: Array<String>, limit: Int? = null): List<ReminderRecord> =
-        db.query("reminder_ledger", arrayOf("record_key", "payload"), where, args, null, null,
-            "effective_seconds ASC, effective_nanos ASC, record_key ASC", limit?.toString()).use { cursor ->
+    private fun read(db: SQLiteDatabase, where: String, args: Array<String>, limit: Int? = null): List<ReminderRecord> {
+        // Inspect byte lengths without selecting legacy payloads into CursorWindow or JSON trees.
+        db.query("reminder_ledger", arrayOf("length(CAST(payload AS BLOB))"), where, args, null, null,
+            "effective_seconds ASC, effective_nanos ASC, record_key ASC", limit?.toString()).bounded().use { lengths ->
+            while (lengths.moveToNext()) if (lengths.getLong(0) > readBudgets.maxCanonicalBytes) throw ProviderReadLimitExceeded()
+        }
+        return db.query("reminder_ledger", arrayOf("record_key", "payload"), where, args, null, null,
+            "effective_seconds ASC, effective_nanos ASC, record_key ASC", limit?.toString()).bounded().use { cursor ->
             buildList { while (cursor.moveToNext()) {
-                val record = decode(JSONObject(cursor.getString(1)))
+                val payload = cursor.getString(1)
+                checkStoredJson(payload, readBudgets.maxCanonicalBytes)
+                val record = decode(JSONObject(payload))
                 check(keyText(record.key) == cursor.getString(0)) { "Reminder key is inconsistent" }
                 add(record)
             } }
         }
+    }
     private fun write(db: SQLiteDatabase, record: ReminderRecord) {
+        val opaque = listOf(record.sourceCalendarIdentity.fingerprint, record.sourceCalendarIdentity.providerUidFingerprint,
+            record.sourceEventUidFingerprint, record.notificationAlias.nonce, record.claimToken, record.postToken)
+        opaque.forEach { currentReadBudget()?.text(it) }
+        checkCanonical(opaque, readBudgets.maxCanonicalBytes, 4096)
+        val payload = encode(record).toString()
+        checkStoredJson(payload, readBudgets.maxCanonicalBytes)
         val values = ContentValues().apply {
             put("record_key", keyText(record.key)); put("calendar_id", record.key.calendarId.value)
             put("source_fingerprint", record.sourceCalendarIdentity.fingerprint)
             put("source_provider_uid", record.sourceCalendarIdentity.providerUidFingerprint)
-            put("payload", encode(record).toString()); put("state", record.state.name)
+            put("payload", payload); put("state", record.state.name)
             put("effective_seconds", record.effectiveDue.epochSecond); put("effective_nanos", record.effectiveDue.nano)
             put("planned_seconds", record.plannedDue.epochSecond); put("planned_nanos", record.plannedDue.nano)
             record.lastPostedAt?.let { put("last_posted_seconds", it.epochSecond) } ?: putNull("last_posted_seconds")
