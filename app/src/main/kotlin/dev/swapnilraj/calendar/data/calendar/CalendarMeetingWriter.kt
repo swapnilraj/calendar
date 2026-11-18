@@ -21,7 +21,7 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Local-provider RSVP only. First packet deliberately excludes recurrence and organizer writes. */
+/** Local-provider RSVP; recurring scopes use a separate complete-graph existing-row executor. */
 class CalendarMeetingWriter(
     private val resolver: ContentResolver,
     private val reader: CalendarReader,
@@ -29,8 +29,10 @@ class CalendarMeetingWriter(
     private val hasPermission: (String) -> Boolean,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
+    planningBudget: RecurrencePlanningBudget = RecurrencePlanningBudget(),
 ) : CalendarMeetings {
     private val mutex = Mutex()
+    private val series = CalendarMeetingSeriesWriter(resolver, reader, store, hasPermission, io, readBudgets, planningBudget)
     private class Denied(val reason: MutationDenial) : Exception()
     private class Review(val reason: String) : Exception()
     private class Conflict : Exception()
@@ -52,6 +54,7 @@ class CalendarMeetingWriter(
         guests: List<MeetingGuestInput>): MeetingMutationResult = MeetingMutationResult.Unsupported("Meeting creation is not implemented by this executor")
 
     override suspend fun loadForEdit(selected: EventRef): MeetingReadResult<EditableMeeting> = withContext(io + readBudgetContext(readBudgets.mutation)) {
+        if (selected.recurrence != null) return@withContext series.loadForEdit(selected)
         try {
             ensureRead()
             val before = source(selected)
@@ -78,9 +81,9 @@ class CalendarMeetingWriter(
 
     override suspend fun mutate(operationId: String, selected: EventRef, token: EditToken,
         command: MeetingCommand): MeetingMutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
+        if (selected.recurrence != null) return@withLock series.mutate(operationId, selected, token, command)
         if (command !is MeetingCommand.Respond || command.scope != RecurrenceScope.THIS)
             return@withLock MeetingMutationResult.Unsupported("Only THIS response on a proven nonrecurring invitation is implemented")
-        if (selected.recurrence != null) return@withLock MeetingMutationResult.Unsupported("Recurring responses require a separate verified executor")
         if (!permissions()) return@withLock common(MutationResult.PermissionRequired)
         var attempted = false
         try {
@@ -152,7 +155,7 @@ class CalendarMeetingWriter(
     override suspend fun recover(operationId: String): MeetingMutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
         try {
             ensureRead()
-            store.operation(operationId)?.let { recover(it, true) } ?: common(MutationResult.Unavailable)
+            store.operation(operationId)?.let { if (CalendarMeetingSeriesWriter.handles(it.kind)) series.recover(operationId) else recover(it, true) } ?: common(MutationResult.Unavailable)
         } catch (_: SecurityException) { common(MutationResult.PermissionRequired) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { common(MutationResult.Uncertain(operationId, null)) }
@@ -327,7 +330,7 @@ class CalendarMeetingWriter(
         /** SQLite NOCASE omits Unicode simple-case matches of ASCII I/K/S. Explicit GLOB
          * classes match Kotlin's existing trim/ignoreCase duplicate policy without fetching
          * another guest's payload. Non-ASCII actors require a later provider proof. */
-        private fun ownFilter(eventId: Long, owner: String): Pair<String, Array<String>> {
+        internal fun ownFilter(eventId: Long, owner: String): Pair<String, Array<String>> {
             if (owner.isEmpty() || owner.length > 254 || owner.any { it.code !in 0x21..0x7e })
                 throw Review("A bounded ASCII account address is required for private self lookup")
             val pattern = buildString {
@@ -351,7 +354,7 @@ class CalendarMeetingWriter(
         // would capture derived event.selfAttendeeStatus on EVERY attendee, which RSVP changes.
         // Bind/assert documented attendee columns only. The status-only delta never copies or
         // overwrites unrepresented OEM columns; their values are not an observed-row proof.
-        private val attendeeFields = arrayOf(CalendarContract.Attendees._ID, CalendarContract.Attendees.EVENT_ID,
+        internal val attendeeFields = arrayOf(CalendarContract.Attendees._ID, CalendarContract.Attendees.EVENT_ID,
             CalendarContract.Attendees.ATTENDEE_NAME, CalendarContract.Attendees.ATTENDEE_EMAIL,
             CalendarContract.Attendees.ATTENDEE_STATUS, CalendarContract.Attendees.ATTENDEE_RELATIONSHIP,
             CalendarContract.Attendees.ATTENDEE_TYPE, CalendarContract.Attendees.ATTENDEE_IDENTITY,
@@ -380,7 +383,7 @@ class CalendarMeetingWriter(
         private fun parseRef(value: JSONObject) = EventRef(CalendarId(value.getLong("calendar")), value.getLong("event"), Instant.parse(value.getString("start")), Instant.parse(value.getString("end")))
         private fun commandJson(selected: EventRef, token: EditToken, response: MeetingResponse) = JSONObject().put("selected", refJson(selected))
             .put("token", token.value).put("scope", RecurrenceScope.THIS.name).put("response", response.name)
-        private fun responseStatus(value: MeetingResponse) = when (value) {
+        internal fun responseStatus(value: MeetingResponse) = when (value) {
             MeetingResponse.YES -> CalendarContract.Attendees.ATTENDEE_STATUS_ACCEPTED
             MeetingResponse.MAYBE -> CalendarContract.Attendees.ATTENDEE_STATUS_TENTATIVE
             MeetingResponse.NO -> CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED
