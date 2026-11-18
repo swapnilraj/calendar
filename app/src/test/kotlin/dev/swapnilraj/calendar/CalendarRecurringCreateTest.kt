@@ -213,6 +213,29 @@ class CalendarRecurringCreateTest {
         finally { scope.cancel(); scope.coroutineContext[Job]!!.join(); store.close(); p.db.close(); context.deleteDatabase(name) }
     }
 
+    @Test fun importedNullZoneTitleAndAlertsKeepRawTemporalAndUnknownFieldsInSqlite() = runBlocking {
+        fixture { f ->
+            f.p.allowUpdates = true
+            val ref = (f.writer.create("seed-null-zone", draft.copy(recurrence = null)) as MutationResult.LocalSaved).ref
+            f.p.db.execSQL("ALTER TABLE events ADD COLUMN opaque_imported TEXT")
+            f.p.db.execSQL("UPDATE events SET eventTimezone=NULL,eventEndTimezone=NULL,opaque_imported='Synthetic opaque metadata' WHERE _id=?", arrayOf(ref.eventId))
+            val before = f.p.db.rawQuery("SELECT dtstart,dtend,duration,allDay,rrule FROM events WHERE _id=?", arrayOf(ref.eventId.toString())).use { c ->
+                check(c.moveToFirst()); List(c.columnCount) { if (c.isNull(it)) null else c.getString(it) }
+            }
+            val edit = (f.writer.loadForEdit(ref) as EditReadResult.Ready).event
+            assertNull(edit.details.eventZone)
+            val outcome = f.writer.update("keep-null-zone", ref, edit.token, EventPatch(title = FieldChange.Set("Edited synthetic title"), alertMinutes = FieldChange.Set(listOf(15))))
+            assertTrue(outcome.toString(), outcome is MutationResult.LocalSaved)
+            f.p.db.rawQuery("SELECT dtstart,dtend,duration,allDay,rrule,eventTimezone,eventEndTimezone,opaque_imported,title FROM events WHERE _id=?", arrayOf(ref.eventId.toString())).use { c ->
+                check(c.moveToFirst()); assertEquals(before, (0..4).map { if (c.isNull(it)) null else c.getString(it) })
+                assertTrue(c.isNull(5)); assertTrue(c.isNull(6)); assertEquals("Synthetic opaque metadata", c.getString(7)); assertEquals("Edited synthetic title", c.getString(8))
+            }
+            f.p.db.rawQuery("SELECT minutes,method FROM reminders WHERE event_id=?", arrayOf(ref.eventId.toString())).use { c ->
+                assertEquals(1, c.count); assertTrue(c.moveToFirst()); assertEquals(15, c.getInt(0)); assertEquals(CalendarContract.Reminders.METHOD_ALERT, c.getInt(1))
+            }
+        }
+    }
+
     @Test fun dailyWeeklyMonthlyAndYearlyCreatesHaveNativeMasterShapeLinkedAlertsAndVerifiedInstance() = runBlocking {
         val specs = listOf(RecurrenceSpec(RecurrencePattern.Daily, end = RecurrenceEnd.Count(4)),
             RecurrenceSpec(RecurrencePattern.Weekly(setOf(DayOfWeek.TUESDAY, DayOfWeek.THURSDAY)), end = RecurrenceEnd.Count(5)),
