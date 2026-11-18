@@ -1,5 +1,6 @@
 package dev.swapnilraj.calendar.android.navigation
 
+import androidx.compose.runtime.Composable
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.*
 import java.time.*
@@ -15,7 +16,12 @@ data class CalendarSeedReviewEnvironment(
     val recurringCreationSupported: Boolean = false, val calendarReadGranted: Boolean = true,
 )
 
-interface CalendarSeedReviewOwner { val calendarSeedReviewServices: CalendarSeedReviewServices }
+interface CalendarSeedReviewOwner {
+    val calendarSeedReviewServices: CalendarSeedReviewServices
+    @Composable fun CalendarSeedReviewTheme(content: @Composable () -> Unit) {
+        dev.swapnilraj.calendar.ui.theme.DaylightTheme(content = content)
+    }
+}
 
 @ConsistentCopyVisibility
 data class CalendarSeedReviewSnapshot internal constructor(
@@ -39,6 +45,15 @@ class CalendarSeedReviewServices(
     val readEnvironment: suspend () -> CalendarReadState<CalendarSeedReviewEnvironment>,
     val changes: Flow<Unit>, private val clock: Clock = Clock.systemUTC(),
 ) {
+    /** A reader refresh is an environment hint, never permission to replace a mounted draft owner. */
+    internal suspend fun refreshEnvironment(calendarReadGranted: Boolean): CalendarReadState<CalendarSeedReviewEnvironment> = try {
+        when (val state = readEnvironment()) {
+            is CalendarReadState.Ready -> CalendarReadState.Ready(scopedEnvironment(state.value, calendarReadGranted))
+            else -> state
+        }
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { CalendarReadState.Unavailable }
+
     /** Existing ordinary raw/frozen state always wins over the original inbound seed. */
     suspend fun open(request: CalendarSeedReviewRequest, restoreGeneration: String? = null, restoreOnly: Boolean = false,
         calendarReadGranted: Boolean = true): CalendarSeedReviewResult = guarded {

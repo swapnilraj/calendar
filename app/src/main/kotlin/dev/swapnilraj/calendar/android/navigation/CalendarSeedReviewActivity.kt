@@ -13,6 +13,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import dev.swapnilraj.calendar.core.DraftRecord
+import dev.swapnilraj.calendar.core.CalendarReadState
 import dev.swapnilraj.calendar.ui.EventWriteRequest
 import dev.swapnilraj.calendar.ui.EventWriteWorkflow
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
@@ -51,7 +52,7 @@ class CalendarSeedReviewActivity : ComponentActivity() {
         restoreOnly = savedInstanceState != null || restoreGeneration != null
         native = try { savedInstanceState?.getString(STATE_NATIVE)?.let(EventWriteRequest::decode) } catch (_: RuntimeException) { null }
         setContent {
-            DaylightTheme {
+            ReviewTheme {
                 val displayed = result
                 val current = services
                 if (displayed is CalendarSeedReviewResult.Editor && current != null &&
@@ -79,7 +80,15 @@ class CalendarSeedReviewActivity : ComponentActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 val current = services
                 if (current == null) { result = CalendarSeedReviewResult.Unavailable; return@repeatOnLifecycle }
-                combine(reloads, current.changes.onStart { emit(Unit) }) { _, _ -> Unit }.collectLatest {
+                var observedReload: Long? = null
+                combine(reloads, current.changes.onStart { emit(Unit) }) { revision, _ -> revision }.collectLatest { revision ->
+                    val explicitReload = observedReload != revision
+                    observedReload = revision
+                    val mounted = result as? CalendarSeedReviewResult.Editor
+                    if (!explicitReload && mounted != null && native != null) {
+                        refreshMountedEditor(current, mounted)
+                        return@collectLatest
+                    }
                     val epoch = ++frame
                     result = null
                     val value = request
@@ -108,7 +117,39 @@ class CalendarSeedReviewActivity : ComponentActivity() {
         super.onSaveInstanceState(outState)
     }
     private fun hasRead() = checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
+    @Composable private fun ReviewTheme(content: @Composable () -> Unit) {
+        val owner = application as? CalendarSeedReviewOwner
+        if (owner == null) DaylightTheme(content = content) else owner.CalendarSeedReviewTheme(content)
+    }
     private fun reload() { frame++; result = null; reloads.value++ }
+    private suspend fun refreshMountedEditor(current: CalendarSeedReviewServices, previous: CalendarSeedReviewResult.Editor) {
+        val epoch = frame
+        val route = native
+        if (!hasRead() && !previous.launch.needsRecovery) {
+            result = CalendarSeedReviewResult.PermissionRequired
+            return
+        }
+        // A frozen command is app-owned input. Remove provider metadata immediately on READ loss,
+        // while retaining its already verified controller for source-free recovery/retirement.
+        val mounted = if (hasRead()) previous else previous.copy(environment = previous.environment.copy(
+            calendars = emptyList(), defaultCalendar = null, calendarReadGranted = false)).also { result = it }
+        val fresh = current.refreshEnvironment(hasRead())
+        if (frame != epoch || native != route || result !== mounted || isFinishing) return
+        when (fresh) {
+            is CalendarReadState.Ready -> {
+                if ((!hasRead() || !fresh.value.calendarReadGranted) && !mounted.launch.needsRecovery) {
+                    result = CalendarSeedReviewResult.PermissionRequired
+                } else {
+                    val environment = if (hasRead()) fresh.value else fresh.value.copy(calendars = emptyList(), defaultCalendar = null, calendarReadGranted = false)
+                    if (environment != mounted.environment) result = mounted.copy(environment = environment)
+                    // In particular, do not reload launch.needsRecovery after a writer refresh:
+                    // its in-flight owner must finish exact cleanup and publish its own outcome.
+                }
+            }
+            CalendarReadState.PermissionRequired -> result = CalendarSeedReviewResult.PermissionRequired
+            else -> result = CalendarSeedReviewResult.Unavailable
+        }
+    }
     private fun present(value: CalendarSeedReviewResult) {
         busy = false
         when (value) {
