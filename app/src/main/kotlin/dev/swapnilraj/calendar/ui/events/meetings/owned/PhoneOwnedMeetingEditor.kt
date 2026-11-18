@@ -16,6 +16,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.contacts.DeviceContactSuggestionSource
+import dev.swapnilraj.calendar.ui.events.meetings.people.PhoneGuestPicker
+import dev.swapnilraj.calendar.ui.events.meetings.create.MeetingCreationGuestFields
 import dev.swapnilraj.calendar.ui.events.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -24,13 +27,16 @@ import kotlinx.coroutines.sync.withLock
 /** The host masks synchronously on READ loss without destroying an in-flight controller. */
 @Composable
 fun PhoneOwnedMeetingEditor(controller:OwnedMeetingEditorController,onDismiss:()->Unit,onLocalSaved:(EventRef)->Unit,
-    onLocalCancelled:(EventRef)->Unit,onDiscarded:()->Unit=onDismiss,use24Hour:Boolean=true,presentationVisible:Boolean=true) {
+    onLocalCancelled:(EventRef)->Unit,onDiscarded:()->Unit=onDismiss,use24Hour:Boolean=true,presentationVisible:Boolean=true, guestSuggestions:DeviceContactSuggestionSource?=null,
+    contactsPermissionGranted:Boolean=false, requestContactsPermission:()->Unit={}) {
     val scope=rememberCoroutineScope();val actions=remember(controller,scope) {OwnedPhoneActions(controller,scope)}
     var confirmLeave by remember(controller) {mutableStateOf(false)}
     LaunchedEffect(controller,presentationVisible) {
         controller.observeReadPermission(presentationVisible)
         if(presentationVisible) {controller.load();controller.refreshSource()}
     }
+    var peopleOpen by remember(controller) {mutableStateOf(false)}
+    LaunchedEffect(controller.canAddGuests,presentationVisible,controller.state.problem) {if(!controller.canAddGuests || !presentationVisible || controller.state.problem==OwnedMeetingProblem.DRAFT_CHANGED) peopleOpen=false}
     val state=controller.state
     LaunchedEffect(controller,state.acknowledged,presentationVisible) {if(presentationVisible && state.acknowledged) when(val outcome=state.localOutcome) {
         is MeetingMutationResult.LocalSaved -> onLocalSaved(outcome.selected)
@@ -43,8 +49,8 @@ fun PhoneOwnedMeetingEditor(controller:OwnedMeetingEditorController,onDismiss:()
         else if(controller.prepareDismiss()) onDismiss()
         if(controller.canLeaveAfterLeaseLoss) confirmLeave=true
     }}
-    Dialog(onDismissRequest=::close,properties=DialogProperties(usePlatformDefaultWidth=false,dismissOnClickOutside=false)) {
-        if(presentationVisible && controller.presentationVisible) OwnedMeetingContent(controller,actions,::close,use24Hour)
+    Dialog(onDismissRequest={if(peopleOpen) peopleOpen=false else close()},properties=DialogProperties(usePlatformDefaultWidth=false,dismissOnClickOutside=false)) {
+        if(presentationVisible && controller.presentationVisible) OwnedMeetingContent(controller,actions,::close,use24Hour,peopleOpen,{peopleOpen=it},guestSuggestions,contactsPermissionGranted,requestContactsPermission)
         else Surface(Modifier.fillMaxSize()) {Column(Modifier.padding(24.dp)) {
             Text(stringResource(R.string.owned_meeting_read_permission))
             TextButton(onClick=::close,enabled=!actions.locked) {Text(stringResource(R.string.owned_meeting_leave))}
@@ -70,6 +76,10 @@ internal class OwnedPhoneActions(val c:OwnedMeetingEditorController,private val 
         val next=change(fields ?: return);projection=next
         enqueue {c.changeFields(next)}
     }
+    fun finishGuestPicker(result:(Boolean)->Unit) {
+        if(locked) {result(false);return}
+        submit {c.flushDraft();result(c.canAddGuests && !c.hasPendingRawInput)}
+    }
     fun event(change:(EventEditorFields)->EventEditorFields)=raw {it.copy(event=change(it.event))}
     fun zone(value:String) {
         if(locked || !c.canEdit(EditableField.ZONE)) return
@@ -83,10 +93,18 @@ internal class OwnedPhoneActions(val c:OwnedMeetingEditorController,private val 
 }
 
 @Composable
-private fun OwnedMeetingContent(c:OwnedMeetingEditorController,a:OwnedPhoneActions,close:()->Unit,use24Hour:Boolean) {
+private fun OwnedMeetingContent(c:OwnedMeetingEditorController,a:OwnedPhoneActions,close:()->Unit,use24Hour:Boolean,
+    peopleOpen:Boolean,showPeople:(Boolean)->Unit,guestSuggestions:DeviceContactSuggestionSource?,
+    contactsPermissionGranted:Boolean,requestContactsPermission:()->Unit) {
     val state=c.state;val raw=a.fields?.event;var panel by remember(c) {mutableStateOf<PhoneEditorPanel?>(null)}
     var more by remember(c) {mutableStateOf(false)};val scroll=rememberScrollState()
     LaunchedEffect(state.problem,state.localOutcome) {if(state.problem!=null || state.localOutcome!=null) scroll.animateScrollTo(0)}
+    if(peopleOpen && c.canAddGuests && state.problem!=OwnedMeetingProblem.DRAFT_CHANGED && a.fields!=null) {
+        PhoneGuestPicker(a.fields!!.added,!a.locked,guestSuggestions,contactsPermissionGranted,requestContactsPermission,
+            {email,name -> a.raw {it.copy(added=it.added+MeetingCreationGuestFields(email=email,name=name.orEmpty()))}},
+            a::finishGuestPicker,{showPeople(false)})
+        return
+    }
     fun editable(f:EditableField)=c.canEdit(f) && !a.locked
     Surface(Modifier.fillMaxSize()) {Scaffold(topBar={Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min=64.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
         val closeLabel=stringResource(R.string.owned_meeting_close)
@@ -119,7 +137,7 @@ private fun OwnedMeetingContent(c:OwnedMeetingEditorController,a:OwnedPhoneActio
                 PhoneEditorOffsetChoices(raw.endDate,raw.endTime,raw.zone,raw.endOffset,editable(EditableField.TIME),stringResource(R.string.phone_event_end_time)) {v->a.event {it.copy(endOffset=v)}}
             }
             HorizontalDivider(Modifier.padding(start=64.dp))
-            OwnedMeetingPeople(c,a)
+            OwnedMeetingPeople(c,a,if(state.problem==OwnedMeetingProblem.DRAFT_CHANGED) null else ({showPeople(true)}))
             PhoneEditorRow(PhoneEventGlyph.PLACE,raw.location.ifBlank {stringResource(R.string.phone_event_add_location)},enabled=editable(EditableField.LOCATION),onClick={panel=PhoneEditorPanel.LOCATION})
             PhoneEditorRow(PhoneEventGlyph.ALERT,phoneAlertsSummary(raw.alerts),enabled=editable(EditableField.ALERTS),onClick={panel=PhoneEditorPanel.ALERTS})
             PhoneEditorRow(PhoneEventGlyph.NOTES,raw.description.ifBlank {stringResource(R.string.phone_event_add_notes)},enabled=editable(EditableField.DESCRIPTION),onClick={panel=PhoneEditorPanel.DESCRIPTION})

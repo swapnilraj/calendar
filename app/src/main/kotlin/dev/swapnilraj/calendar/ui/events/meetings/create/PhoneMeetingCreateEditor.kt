@@ -16,6 +16,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.contacts.DeviceContactSuggestionSource
+import dev.swapnilraj.calendar.ui.events.meetings.people.PhoneGuestPicker
 import dev.swapnilraj.calendar.ui.events.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -25,10 +27,13 @@ import kotlinx.coroutines.sync.withLock
 @Composable
 fun PhoneMeetingCreateEditor(controller: MeetingCreationController, calendars: List<CalendarInfo>,
     onDismiss: () -> Unit, onLocalSaved: (EventRef) -> Unit, onDiscarded: () -> Unit = onDismiss,
-    use24Hour: Boolean = true) {
+    use24Hour: Boolean = true, guestSuggestions: DeviceContactSuggestionSource? = null,
+    contactsPermissionGranted: Boolean = false, requestContactsPermission: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val actions = remember(controller,scope) { PhoneMeetingCreateActions(controller,scope) }
     val state = controller.state
+    var peopleOpen by remember(controller) { mutableStateOf(false) }
+    LaunchedEffect(controller.canEditRaw,state.problem) { if(!controller.canEditRaw || state.problem==MeetingCreationProblem.STALE_DRAFT) peopleOpen=false }
     LaunchedEffect(controller) { actions.submit { controller.load() } }
     LaunchedEffect(controller,state.acknowledged) { if (state.acknowledged) state.localSaved?.let(onLocalSaved) }
     LaunchedEffect(controller,state.discarded) { if (state.discarded) onDiscarded() }
@@ -36,8 +41,8 @@ fun PhoneMeetingCreateEditor(controller: MeetingCreationController, calendars: L
         if (controller.state.localSaved != null) controller.acknowledgeLocalSave()
         else { controller.flushDraft(); if (controller.prepareDismiss()) onDismiss() }
     } }
-    Dialog(onDismissRequest = ::close, properties = DialogProperties(usePlatformDefaultWidth=false,dismissOnClickOutside=false)) {
-        PhoneMeetingCreateContent(controller,calendars,actions,::close,use24Hour)
+    Dialog(onDismissRequest = { if(peopleOpen) peopleOpen=false else close() }, properties = DialogProperties(usePlatformDefaultWidth=false,dismissOnClickOutside=false)) {
+        PhoneMeetingCreateContent(controller,calendars,actions,::close,use24Hour,peopleOpen,{peopleOpen=it},guestSuggestions,contactsPermissionGranted,requestContactsPermission)
     }
 }
 
@@ -73,6 +78,11 @@ internal class PhoneMeetingCreateActions(val controller: MeetingCreationControll
         projected=base.copy(guests=next)
         raw { controller.changeGuests(next) }
     }
+    /** Drain queued raw CAS calls, then acknowledge persistence without dismissing/stopping the editor. */
+    fun finishGuestPicker(result: (Boolean) -> Unit) {
+        if(inputLocked) {result(false);return}
+        submit { controller.flushDraft(); result(controller.canEditRaw && !controller.hasPendingRawInput) }
+    }
     private fun raw(action: suspend () -> Unit) {
         rawPending++
         scope.launch(start=CoroutineStart.UNDISPATCHED) {
@@ -83,12 +93,20 @@ internal class PhoneMeetingCreateActions(val controller: MeetingCreationControll
 
 @Composable
 private fun PhoneMeetingCreateContent(c: MeetingCreationController, calendars: List<CalendarInfo>,
-    actions: PhoneMeetingCreateActions, onClose: () -> Unit, use24Hour: Boolean) {
+    actions: PhoneMeetingCreateActions, onClose: () -> Unit, use24Hour: Boolean,
+    peopleOpen: Boolean, showPeople: (Boolean) -> Unit, guestSuggestions: DeviceContactSuggestionSource?,
+    contactsPermissionGranted: Boolean, requestContactsPermission: () -> Unit) {
     val state=c.state; val fields=actions.fields; val raw=fields?.event
     var panel by remember(c) { mutableStateOf<PhoneEditorPanel?>(null) }
     val scroll=rememberScrollState()
     LaunchedEffect(state.problem) { if(state.problem!=null) scroll.animateScrollTo(0) }
     LaunchedEffect(state.localSaved,state.recoveryRequired) { if(state.localSaved!=null || state.recoveryRequired) scroll.animateScrollTo(0) }
+    if(peopleOpen && c.canEditRaw && state.problem!=MeetingCreationProblem.STALE_DRAFT && fields!=null) {
+        PhoneGuestPicker(fields.guests,!actions.inputLocked,guestSuggestions,contactsPermissionGranted,requestContactsPermission,
+            { email,name -> actions.guests {it+MeetingCreationGuestFields(email=email,name=name.orEmpty())} },
+            actions::finishGuestPicker,{showPeople(false)})
+        return
+    }
     val editable=c.canEditRaw && !actions.inputLocked
     val selected=calendars.firstOrNull { it.identity==raw?.targetIdentity }
     val canSave=!actions.inputLocked && c.canSave && state.policyAccepted && fields?.guests?.isNotEmpty()==true &&
@@ -126,7 +144,8 @@ private fun PhoneMeetingCreateContent(c: MeetingCreationController, calendars: L
                     else if(c.canEditRepeat) PhoneEditorRow(PhoneEventGlyph.REPEAT,phoneRepeatSummary(raw.recurrence),enabled=editable,onClick={panel=PhoneEditorPanel.REPEAT})
                     else if(raw.recurrence.frequency!="NONE") PhoneEditorRow(PhoneEventGlyph.REPEAT,stringResource(R.string.phone_meeting_create_recurrence))
                     HorizontalDivider(Modifier.padding(start=64.dp))
-                    PhoneMeetingCreatePeople(fields.guests,state.allowedGuestTypes,editable,actions)
+                    PhoneMeetingCreatePeople(fields.guests,state.allowedGuestTypes,editable,actions,
+                        if(state.problem==MeetingCreationProblem.STALE_DRAFT) null else ({showPeople(true)}))
                     PhoneMeetingCreatePolicy(state.policyAccepted,editable) { value -> actions.submit { c.acceptFixedGuestPolicy(value) } }
                     HorizontalDivider(Modifier.padding(start=64.dp))
                     PhoneEditorRow(PhoneEventGlyph.PLACE,raw.location.ifBlank { stringResource(R.string.phone_event_add_location) },enabled=editable,onClick={panel=PhoneEditorPanel.LOCATION})

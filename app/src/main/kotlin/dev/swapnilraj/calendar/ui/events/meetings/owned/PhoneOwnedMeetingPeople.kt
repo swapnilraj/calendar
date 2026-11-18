@@ -15,7 +15,7 @@ import dev.swapnilraj.calendar.ui.events.meetings.create.MeetingCreationGuestFie
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun OwnedMeetingPeople(c:OwnedMeetingEditorController,a:OwnedPhoneActions) {
+internal fun OwnedMeetingPeople(c:OwnedMeetingEditorController,a:OwnedPhoneActions,onOpenPicker:(()->Unit)?) {
     val f=a.fields ?: return;val enabled=c.canEditRaw && !a.locked
     PhoneEditorRow(PhoneEventGlyph.PEOPLE,stringResource(R.string.phone_meeting_create_people))
     Column(Modifier.fillMaxWidth().padding(start=64.dp,end=24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -49,6 +49,7 @@ internal fun OwnedMeetingPeople(c:OwnedMeetingEditorController,a:OwnedPhoneActio
                 TextButton(enabled=enabled,onClick={a.raw {fields->fields.copy(added=fields.added.filterNot {it.rowId==guest.rowId})}}) {Text(stringResource(R.string.phone_event_remove))}
             }
         }}
+        if(c.canAddGuests && onOpenPicker!=null) TextButton(enabled=enabled,onClick=onOpenPicker) {Text(stringResource(R.string.guest_picker_open))}
         if(c.canAddGuests) TextButton(enabled=enabled,onClick={a.raw {it.copy(added=it.added+MeetingCreationGuestFields())}}) {Text(stringResource(R.string.phone_meeting_create_add_person))}
     }
 }

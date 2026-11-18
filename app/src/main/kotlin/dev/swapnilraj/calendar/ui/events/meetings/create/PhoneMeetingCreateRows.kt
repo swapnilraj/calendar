@@ -18,7 +18,7 @@ import dev.swapnilraj.calendar.ui.events.*
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PhoneMeetingCreatePeople(guests: List<MeetingCreationGuestFields>, types: Set<MeetingGuestType>,
-    enabled: Boolean, actions: PhoneMeetingCreateActions) {
+    enabled: Boolean, actions: PhoneMeetingCreateActions, onOpenPicker: (() -> Unit)?) {
     PhoneEditorRow(PhoneEventGlyph.PEOPLE,stringResource(R.string.phone_meeting_create_people))
     Column(Modifier.fillMaxWidth().padding(start=64.dp,end=24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         guests.forEachIndexed { index,guest -> key(guest.rowId) {
@@ -47,6 +47,7 @@ internal fun PhoneMeetingCreatePeople(guests: List<MeetingCreationGuestFields>, 
                 } }
             }
         } }
+        if(onOpenPicker!=null) TextButton(enabled=enabled,onClick=onOpenPicker) {Text(stringResource(R.string.guest_picker_open))}
         if(guests.isEmpty()) Text(stringResource(R.string.phone_meeting_create_guests_required),style=MaterialTheme.typography.bodySmall)
         TextButton(enabled=enabled,onClick={actions.guests { it+MeetingCreationGuestFields() }}) {Text(stringResource(R.string.phone_meeting_create_add_person))}
     }
