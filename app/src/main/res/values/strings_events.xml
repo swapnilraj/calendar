@@ -72,13 +72,13 @@
     <string name="events_editor_nonexistent">This clock time does not exist because the clocks change. Choose a valid time.</string>
     <string name="events_editor_permission">Calendar write access is required. Your draft is retained.</string>
     <string name="events_editor_denied">This event cannot be changed with the current access rights.</string>
-    <string name="events_editor_conflict">The event changed elsewhere. Review the latest event before applying your draft.</string>
+    <string name="events_editor_conflict">This draft cannot be verified against the current event. Review the latest event before applying it.</string>
     <string name="events_editor_uncertain">The operation may have completed. Review it before creating or changing anything again.</string>
     <string name="events_editor_unavailable">The calendar could not be updated. Your draft is retained.</string>
     <string name="events_editor_draft_unavailable">The draft could not be read or stored. Retry after restoring local storage access.</string>
     <string name="events_editor_unsupported">Meetings with guests and recurring events require their dedicated editing workflow.</string>
     <string name="events_editor_draft_version">This draft uses an unsupported version and has not been overwritten.</string>
-    <string name="events_editor_stale_draft">Your retained draft is shown below. The source changed; it will not be overwritten. Compare the latest event before discarding this draft.</string>
+    <string name="events_editor_stale_draft">Your retained draft is shown below. Its source cannot be verified. Compare the latest event before discarding or replacing this draft.</string>
     <string name="events_editor_latest">Latest event</string>
     <string name="events_editor_latest_field">%1$s: %2$s</string>
     <string name="events_editor_discard_reload">Discard draft and load latest</string>
