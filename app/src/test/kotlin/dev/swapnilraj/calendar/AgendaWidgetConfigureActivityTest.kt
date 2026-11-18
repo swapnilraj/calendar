@@ -47,13 +47,17 @@ class AgendaWidgetConfigureActivityTest {
     private fun services(scope: CoroutineScope, markers: Markers,
         metadata: MutableStateFlow<CalendarReadState<List<CalendarInfo>>> = MutableStateFlow(CalendarReadState.Ready(emptyList())),
         beforeObserve: suspend () -> Unit = {},
-        requireEnvironmentPermission: Boolean = false): AgendaWidgetApplicationServices {
+        requireEnvironmentPermission: Boolean = false,
+        observeChanged: (Boolean) -> Unit = {}): AgendaWidgetApplicationServices {
         shadowOf(app).grantPermissions(Manifest.permission.READ_CALENDAR)
         shadowOf(app).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
         app.noBackupFilesDir.deleteRecursively(); app.noBackupFilesDir.mkdirs()
         return AgendaWidgetApplicationServices(app, scope,
             AgendaWidgetSnapshotReader { CalendarReadState.Ready(CalendarSnapshot(it, emptyList(), emptyList())) },
-            { flow { beforeObserve(); emitAll(metadata) } }, { metadata.value },
+            { flow {
+                beforeObserve(); observeChanged(true)
+                try { emitAll(metadata) } finally { observeChanged(false) }
+            } }, { metadata.value },
             {
                 if (requireEnvironmentPermission && app.checkSelfPermission(Manifest.permission.READ_CALENDAR) != android.content.pm.PackageManager.PERMISSION_GRANTED)
                     CalendarReadState.PermissionRequired
@@ -162,6 +166,34 @@ class AgendaWidgetConfigureActivityTest {
             assertTrue(markers.values.isEmpty()); assertEquals(Activity.RESULT_CANCELED, shadowOf(activity.get()).resultCode)
         } finally {
             compose.runOnUiThread { activity.pause().stop().destroy() }
+            runBlocking { services.closeAndJoin(); scope.coroutineContext[Job]!!.cancelAndJoin() }
+        }
+    }
+
+    @Test fun retriesAndRepeatedResumeKeepExactlyOneStartedMetadataCollector() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO); val markers = Markers()
+        val metadata = MutableStateFlow<CalendarReadState<List<CalendarInfo>>>(CalendarReadState.Ready(emptyList()))
+        var active = 0; var peak = 0; var starts = 0
+        val services = services(scope, markers, metadata, observeChanged = { started ->
+            if (started) { active++; starts++; peak = maxOf(peak, active) } else active--
+        }); app.agendaWidgetServices = services
+        val activity = open()
+        try {
+            compose.waitForIdle(); assertEquals(1, active)
+            repeat(2) {
+                metadata.value = CalendarReadState.Unavailable
+                compose.waitUntil { compose.onAllNodesWithText("Retry").fetchSemanticsNodes().isNotEmpty() }
+                compose.onNodeWithText("Retry").performClick(); compose.waitForIdle()
+                assertEquals(1, active)
+                compose.runOnUiThread { activity.pause().stop() }; compose.waitForIdle()
+                assertEquals(0, active)
+                compose.runOnUiThread { activity.restart().start().resume().visible() }; compose.waitForIdle()
+                assertEquals(1, active)
+            }
+            assertEquals(1, peak); assertTrue(starts >= 3); assertTrue(markers.values.isEmpty())
+        } finally {
+            compose.runOnUiThread { activity.pause().stop().destroy() }; compose.waitForIdle()
+            assertEquals(0, active)
             runBlocking { services.closeAndJoin(); scope.coroutineContext[Job]!!.cancelAndJoin() }
         }
     }

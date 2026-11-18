@@ -24,6 +24,11 @@ import dev.swapnilraj.calendar.ui.widgets.WidgetSetupChoice
 import dev.swapnilraj.calendar.ui.widgets.WidgetSetupSheet
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.update
 
 /** Exported only for the launcher's configuration action. Membership, identities and durable
  * lifecycle proof authorize Save; launch extras alone never authorize a configuration write.
@@ -39,7 +44,7 @@ class AgendaWidgetConfigureActivity : ComponentActivity() {
     private var saving by mutableStateOf(false)
     private var saveError by mutableStateOf<String?>(null)
     private var widgetId = AppWidgetManager.INVALID_APPWIDGET_ID
-    private var metadataJob: kotlinx.coroutines.Job? = null
+    private val reloadRevision = MutableStateFlow(0L)
     private val services get() = (application as? AgendaWidgetApplicationOwner)?.agendaWidgetServices
     private val calendarPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { reload() }
 
@@ -49,6 +54,43 @@ class AgendaWidgetConfigureActivity : ComponentActivity() {
         widgetId = decodeWidgetId(intent) ?: run { finish(); return }
         if (services?.isOwnWidget(widgetId) != true) { finish(); return }
         enableEdgeToEdge()
+        val owner = requireNotNull(services)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                reloadRevision.collectLatest { revision ->
+                    try {
+                        val nextEnvironment = owner.environment()
+                        currentCoroutineContext().ensureActive()
+                        if (!currentRevision(revision)) return@collectLatest
+                        environment = nextEnvironment
+                        if (initial == null) {
+                            val state = owner.configuration(widgetId)
+                            currentCoroutineContext().ensureActive()
+                            if (!currentRevision(revision)) return@collectLatest
+                            initial = (state as? AgendaWidgetConfigurationState.Ready)?.value
+                                ?.takeIf { validWidgetPins(it.selection, it.expectedCalendarIdentities) }?.let {
+                                    sessionIdentities.putAll(it.expectedCalendarIdentities)
+                                    WidgetSetupChoice(it.selection, it.privacy)
+                                } ?: WidgetSetupChoice()
+                        }
+                        owner.observeCalendars().collect { read ->
+                            currentCoroutineContext().ensureActive()
+                            if (currentRevision(revision)) {
+                                metadata = if (!hasCalendarPermission()) CalendarReadState.PermissionRequired else {
+                                    if (read is CalendarReadState.Ready && knownIdentityDrift(read.value)) {
+                                        formStale = true; saveError = getString(R.string.widget_config_stale)
+                                    }
+                                    if (formStale) CalendarReadState.Unavailable else read
+                                }
+                            }
+                        }
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) {
+                        if (currentRevision(revision)) { environment = CalendarReadState.Unavailable; metadata = CalendarReadState.Unavailable }
+                    }
+                }
+            }
+        }
         reload()
         setContent {
             DaylightTheme {
@@ -92,34 +134,13 @@ class AgendaWidgetConfigureActivity : ComponentActivity() {
     private fun reload() {
         if (saving) return
         if (formStale) { initial = WidgetSetupChoice(); setupRevision++; sessionIdentities.clear(); formStale = false }
-        metadataJob?.cancel()
         metadata = if (hasCalendarPermission()) CalendarReadState.Loading else CalendarReadState.PermissionRequired
         environment = CalendarReadState.Loading
-        val owner = services ?: return
-        metadataJob = lifecycleScope.launch {
-            try {
-                environment = owner.environment()
-                if (initial == null) {
-                    val state = owner.configuration(widgetId)
-                    initial = (state as? AgendaWidgetConfigurationState.Ready)?.value
-                        ?.takeIf { validWidgetPins(it.selection, it.expectedCalendarIdentities) }?.let {
-                        sessionIdentities.putAll(it.expectedCalendarIdentities)
-                        WidgetSetupChoice(it.selection, it.privacy)
-                    } ?: WidgetSetupChoice() // An unconfigured widget always begins Busy only.
-                }
-                repeatOnLifecycle(Lifecycle.State.STARTED) { owner.observeCalendars().collect {
-                    if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
-                        metadata = if (!hasCalendarPermission()) CalendarReadState.PermissionRequired else {
-                            if (it is CalendarReadState.Ready && knownIdentityDrift(it.value)) {
-                                formStale = true; saveError = getString(R.string.widget_config_stale)
-                            }
-                            if (formStale) CalendarReadState.Unavailable else it
-                        }
-                } }
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { environment = CalendarReadState.Unavailable; metadata = CalendarReadState.Unavailable }
-        }
+        reloadRevision.update { it + 1 }
     }
+
+    private fun currentRevision(revision: Long) = reloadRevision.value == revision &&
+        lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
 
     private fun knownIdentityDrift(calendars: List<CalendarInfo>): Boolean {
         var changed = false
