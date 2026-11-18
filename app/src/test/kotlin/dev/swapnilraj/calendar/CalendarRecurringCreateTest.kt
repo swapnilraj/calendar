@@ -38,6 +38,10 @@ class CalendarRecurringCreateTest {
         val insertedEventValues = mutableListOf<ContentValues>()
         var failAttendee = false
         var expandInstances = false
+        /** Synthetic model of the native sparse-DTSTART cache gate, not actual Android Instances. */
+        var cacheExpandedTemporalRows = false
+        private val cachedTemporalRows = mutableMapOf<Long, Map<String, String?>>()
+        val updatedEventValues = mutableListOf<Pair<Long, ContentValues>>()
         var afterCommit: (() -> Unit)? = null
         var afterQuery: ((String) -> Unit)? = null
         var beforeQuery: ((String) -> Unit)? = null
@@ -123,6 +127,7 @@ class CalendarRecurringCreateTest {
                 val raw = inserted.getAsString("duration") ?: error("Recurring duration required")
                 // Native Duration accumulates Int seconds. Only PTseconds/Pdays are authored here.
                 val seconds = Regex("^PT([0-9]+)S$").matchEntire(raw)?.groupValues?.get(1)?.toLong()
+                    ?: Regex("^PT([0-9]+)H$").matchEntire(raw)?.groupValues?.get(1)?.toLong()?.let { Math.multiplyExact(it, 3600) }
                     ?: Regex("^P([0-9]+)D$").matchEntire(raw)?.groupValues?.get(1)?.toLong()?.let { Math.multiplyExact(it, 86400) }
                     ?: error("Unexpected authored duration")
                 require(seconds in 1..Int.MAX_VALUE.toLong())
@@ -149,13 +154,20 @@ class CalendarRecurringCreateTest {
                 require(seconds in 1..Int.MAX_VALUE.toLong()); authored.put("native_duration_ms", seconds * 1000)
             }
             val id = requireNotNull(uri.lastPathSegment?.toLongOrNull())
-            return db.update("events", authored, "_id = ?" + if (selection == null) "" else " AND ($selection)", arrayOf(id.toString(), *args.orEmpty()))
+            updatedEventValues += id to ContentValues(values)
+            return db.update("events", authored, "_id = ?" + if (selection == null) "" else " AND ($selection)", arrayOf(id.toString(), *args.orEmpty())).also {
+                if (it > 0 && values?.containsKey("dtstart") == true) cachedTemporalRows.remove(id)
+            }
         }
         private fun expanded(uri: Uri, fields: Array<out String>, selection: String?, args: Array<out String>?): Cursor {
             val result = MatrixCursor(fields)
             val low = uri.pathSegments[2].toLong(); val high = uri.pathSegments[3].toLong()
             db.rawQuery("SELECT * FROM events WHERE deleted=0", null).use { cursor -> while (cursor.moveToNext()) {
-                val row = cursor.columnNames.indices.associate { column -> cursor.columnNames[column] to if (cursor.isNull(column)) null else cursor.getString(column) }
+                val fresh = cursor.columnNames.indices.associate { column -> cursor.columnNames[column] to if (cursor.isNull(column)) null else cursor.getString(column) }
+                val temporal = if (cacheExpandedTemporalRows) cachedTemporalRows.getOrPut(requireNotNull(fresh["_id"]).toLong()) {
+                    fresh.filterKeys { it in setOf("dtstart", "duration", "rrule", "eventTimezone", "allDay", "native_duration_ms") }
+                } else emptyMap()
+                val row = fresh + temporal
                 if (selection != null && args != null && (args[0] != row["_id"] || args.getOrNull(1)?.let { it != row["calendar_id"] } == true)) continue
                 val raw = row["rrule"] ?: continue
                 val rule = raw.split(';').associate { it.substringBefore('=') to it.substringAfter('=') }

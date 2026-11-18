@@ -280,6 +280,12 @@ internal class CalendarFollowingSeriesWriter(
     private fun operations(source:CalendarSeriesSource,raw:Raw,model:Material):Pair<ArrayList<ContentProviderOperation>,Int?> {
         val id=raw.snapshot.identity.masterEventId;val ops=owner.followingAssertions(source)
         val prefixValues=if(model.whole)model.prefix.filter{(key,value)->raw.master[key]!=value}.toMutableMap()else mutableMapOf("rrule" to model.prefix["rrule"])
+        if(!model.whole){
+            // Native updateInstancesLocked returns early without DTSTART. Raw-times replacement
+            // also consumes only this sparse patch, so retain exact source timezone/all-day facts.
+            val context=try{owner.followingContext(raw.master)}catch(review:SeriesSourceReview){throw Review(review.reason)}
+            context.keySet().forEach{key->prefixValues[key]=context.get(key)?.toString()}
+        }
         // DTEND null is explicit even when the source's native row already had null.
         if(model.whole)for(key in listOf("dtstart","dtend","duration","eventTimezone","eventEndTimezone","allDay","rrule"))prefixValues[key]=model.prefix[key]
         ops+=ContentProviderOperation.newUpdate(eventUri(id)).withValues(values(prefixValues)).withExpectedCount(1).withYieldAllowed(false).build()

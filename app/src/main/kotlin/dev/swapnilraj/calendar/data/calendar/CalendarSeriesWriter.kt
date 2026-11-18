@@ -358,7 +358,7 @@ class CalendarSeriesWriter(
         return FollowingDelete(false, rule, future)
     }
 
-    private fun followingContext(master: Map<String, String?>): ContentValues {
+    internal fun followingContext(master: Map<String, String?>): ContentValues {
         if (master["dtstart"]?.toLongOrNull() == null || master["allDay"] !in setOf("0", "1") || master["eventTimezone"].isNullOrBlank() ||
             master["duration"].isNullOrBlank() || master["dtend"] != null) throw SeriesSourceReview("Recurring master context cannot be preserved safely")
         return ContentValues().apply {

@@ -51,6 +51,70 @@ class CalendarFollowingSeriesWriterTest {
     }
     private fun event(p:CalendarRecurringCreateTest.Provider,id:Long):Map<String,String?> = p.db.rawQuery("SELECT * FROM events WHERE _id = ?",arrayOf(id.toString())).use{c->assertTrue(c.moveToFirst());c.columnNames.indices.associate{c.columnNames[it] to if(c.isNull(it))null else c.getString(it)}}
     private fun common(result:MutationResult)=SeriesMutationResult.Common(result)
+    private fun expandedRows(f:Fixture):List<Map<String,String?>> {
+        val uri=CalendarContract.Instances.CONTENT_URI.buildUpon().apply{
+            android.content.ContentUris.appendId(this,f.selected.instanceStart.minusSeconds(3*86400).toEpochMilli())
+            android.content.ContentUris.appendId(this,f.selected.instanceStart.plusSeconds(10*86400).toEpochMilli())
+        }.build()
+        return RuntimeEnvironment.getApplication().contentResolver.query(uri,arrayOf("event_id","begin","end"),null,null,null)!!.use{c->
+            buildList{while(c.moveToNext())add(c.columnNames.associateWith{key->c.getString(c.getColumnIndexOrThrow(key))})}
+        }
+    }
+
+    @Test fun nonzeroPrefixRepeatsExactRawContextAndExplicitNullsWithoutTouchingOtherFields()=runBlocking{fixture{f->
+        f.p.db.execSQL("ALTER TABLE events ADD COLUMN opaque_oem TEXT")
+        f.p.db.execSQL("UPDATE events SET duration='PT1H',eventTimezone='America/New_York',eventEndTimezone=NULL WHERE _id=1")
+        val before=event(f.p,1);val edit=f.editable()
+        assertTrue(f.writer.mutate("raw-context",f.selected,edit.token,command(edit)) is SeriesMutationResult.LocalSaved)
+        val sent=f.p.updatedEventValues.single{it.first==1L}.second
+        val context=setOf("dtstart","dtend","duration","eventTimezone","allDay","originalInstanceTime","originalAllDay")
+        assertEquals(context+"rrule",sent.keySet())
+        context.forEach{key->assertEquals("Exact source field $key",before[key],sent.getAsString(key));assertTrue(sent.containsKey(key))}
+        assertNull(sent.get("dtend"));assertNull(sent.get("originalInstanceTime"));assertNull(sent.get("originalAllDay"))
+        assertEquals("PT1H",sent.getAsString("duration"));assertEquals("America/New_York",sent.getAsString("eventTimezone"))
+        assertEquals(before.filterKeys{it!="rrule"},event(f.p,1).filterKeys{it!="rrule"})
+        assertFalse(sent.containsKey("eventEndTimezone"));assertFalse(sent.containsKey("opaque_oem"));assertEquals(1,f.p.batchCount)
+    }}
+
+    @Test fun allDayPrefixContextKeepsUtcWholeDateAndRawMultiDayDuration()=runBlocking{fixture(allDay=true){f->
+        val before=event(f.p,1);val edit=f.editable()
+        assertTrue(f.writer.mutate("all-day-context",f.selected,edit.token,command(edit)) is SeriesMutationResult.LocalSaved)
+        val sent=f.p.updatedEventValues.single{it.first==1L}.second
+        assertEquals(before["dtstart"],sent.getAsString("dtstart"));assertEquals("1",sent.getAsString("allDay"))
+        assertEquals("UTC",sent.getAsString("eventTimezone"));assertEquals("P3D",sent.getAsString("duration"))
+        assertTrue(sent.containsKey("dtend"));assertNull(sent.get("dtend"))
+        assertEquals(before.filterKeys{it!="rrule"},event(f.p,1).filterKeys{it!="rrule"})
+    }}
+
+    /** Models the documented sparse-DTSTART early return only. Actual device/provider cache and
+     * Google adapter acceptance remain NOT_RUN; this fake is a regression trap, not certification. */
+    @Test fun warmedSyntheticCacheDropsFuturePrefixInstancesAndKeepsOneCompleteUnion()=runBlocking{
+        for(allDay in listOf(false,true))fixture(allDay=allDay){f->
+            f.p.cacheExpandedTemporalRows=true
+            assertEquals(8,expandedRows(f).size)
+            val edit=f.editable()
+            assertTrue(f.writer.mutate("warm-prefix",f.selected,edit.token,command(edit,EventPatch(title=FieldChange.Set("Independent tail")))) is SeriesMutationResult.LocalSaved)
+            val rows=expandedRows(f)
+            assertEquals(8,rows.size);assertEquals(2,rows.count{it["event_id"]=="1"});assertEquals(6,rows.count{it["event_id"]=="2"})
+            assertEquals(8,rows.map{it["begin"]}.distinct().size)
+            assertEquals(1,f.p.batchCount)
+        }
+    }
+
+    @Test fun syntheticWarmCacheNegativeControlReproducesTheSparseUpdateDefect()=runBlocking{fixture{f->
+        f.p.cacheExpandedTemporalRows=true
+        assertEquals(8,expandedRows(f).size)
+        val uri=android.content.ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,1)
+        f.p.update(uri,ContentValues().apply{put("rrule","FREQ=DAILY;COUNT=2")},null,null)
+        assertEquals(8,expandedRows(f).size)
+        val source=event(f.p,1)
+        val context=ContentValues().apply{
+            listOf("dtstart","dtend","duration","eventTimezone","allDay","originalInstanceTime","originalAllDay").forEach{key->source[key]?.let{put(key,it)}?:putNull(key)}
+            put("rrule","FREQ=DAILY;COUNT=2")
+        }
+        f.p.update(uri,context,null,null)
+        assertEquals(2,expandedRows(f).size)
+    }}
 
     @Test fun countSplitPreservesPrefixAndCreatesIndependentUidWithActualFirstInstance()=runBlocking{fixture{f->
         val edit=f.editable();assertEquals(AccessDecision.ALLOWED,edit.scopes.getValue(RecurrenceScope.FOLLOWING).edit);assertEquals(AccessDecision.ALLOWED,edit.scopes.getValue(RecurrenceScope.FOLLOWING).recurrence)
