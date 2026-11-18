@@ -149,6 +149,13 @@ data class ReminderNotificationAlias(val ref: EventRef, val anchorDue: Instant, 
     init { require(nonce.isNotBlank()) }
 }
 
+/** One specific notification post. Snooze reposts retain the stable tag but receive a fresh token.
+ * Immutable action identity includes this token; an old action can never adopt a newer post token.
+ */
+data class ReminderPostIdentity(val alias: ReminderNotificationAlias, val token: String) {
+    init { require(token.isNotBlank()) }
+}
+
 enum class ReminderDeliveryState {
     SCHEDULED, POSTING, POSTED, SNOOZED, DISMISSED, CANCELLED, DEFERRED, EXPIRED, UNCERTAIN, RETIRED,
 }
@@ -170,17 +177,23 @@ data class ReminderRecord(
     val snoozedUntil: Instant? = null,
     val claimToken: String? = null,
     val sourceEventUidFingerprint: String? = null,
+    /** Persisted before posting, retained through acknowledgement and metadata changes. Null is
+     * allowed for unposted/legacy history but cannot authorize a private notification action.
+     */
+    val postToken: String? = null,
 ) {
     init {
         require(key == ReminderKey.of(currentRef, key.resolvedMinutesBefore))
         require(key == ReminderKey.of(notificationAlias.ref, key.resolvedMinutesBefore))
         require(sourceEventUidFingerprint == null || sourceEventUidFingerprint.isNotBlank())
+        require(postToken == null || postToken.isNotBlank())
         require(generation >= 0 && revision >= 0)
         require(snoozedUntil == null || snoozedUntil == effectiveDue)
         require(state != ReminderDeliveryState.SNOOZED || snoozedUntil != null)
         require((state == ReminderDeliveryState.POSTING || state == ReminderDeliveryState.UNCERTAIN) == !claimToken.isNullOrBlank())
     }
     val version: ReminderVersion get() = ReminderVersion(key, sourceCalendarIdentity, generation, revision)
+    val postIdentity: ReminderPostIdentity? get() = postToken?.let { ReminderPostIdentity(notificationAlias, it) }
 }
 
 data class ReminderVersion(
@@ -233,7 +246,9 @@ interface ReminderLedger {
         now: Instant,
     ): ReminderPlanChanges
 
-    /** One transaction moves due SCHEDULED/SNOOZED rows to POSTING with new unique claim tokens. */
+    /** One transaction moves due SCHEDULED/SNOOZED rows to POSTING with new unique claim tokens.
+     * Persist a fresh postToken (which may equal the claim token) before any external notification.
+     */
     suspend fun claimDue(now: Instant, limit: Int): List<ReminderClaim>
 
     /** CAS on key/generation/revision/token. Returns false if another action invalidated the claim. */
@@ -246,8 +261,8 @@ interface ReminderLedger {
      * coordinator may first acknowledge its matching interrupted claim as Posted, reload version,
      * then apply the action. Never revive a retired namespace/generation or blindly reset claims.
      */
-    suspend fun snooze(expected: ReminderVersion, minutes: Int, now: Instant): ReminderRecord?
-    suspend fun dismiss(expected: ReminderVersion): Boolean
+    suspend fun snooze(expected: ReminderVersion, postToken: String, minutes: Int, now: Instant): ReminderRecord?
+    suspend fun dismiss(expected: ReminderVersion, postToken: String): Boolean
 
     /** Expire only old SCHEDULED/SNOOZED/DEFERRED work; do not invent outcomes for uncertain posts. */
     suspend fun expireBefore(cutoff: Instant): ReminderPlanChanges
@@ -270,9 +285,12 @@ interface ReminderAlarmPort {
 enum class ReminderPostResult { POSTED, PERMISSION_REQUIRED, UNCERTAIN }
 
 interface ReminderNotificationPort {
-    /** Stable alias is used for (tag,id) AND immutable action extras; payload is freshly revalidated. */
-    fun post(candidate: ReminderCandidate, alias: ReminderNotificationAlias): ReminderPostResult
-    fun isActive(alias: ReminderNotificationAlias): Boolean
+    /** Stable alias is used for (tag,id); immutable action identity also contains the post token.
+     * Presentation is freshly revalidated. Persist this token in private notification extras too.
+     */
+    fun post(candidate: ReminderCandidate, identity: ReminderPostIdentity): ReminderPostResult
+    /** Tag alone cannot prove a new snooze post was accepted; verify its exact token as well. */
+    fun isActive(identity: ReminderPostIdentity): Boolean
     fun cancel(alias: ReminderNotificationAlias)
     /** Remove this app's reminder notifications on permission loss, including older posted rows
      * outside the current reconciliation window. Never touches another application's alerts.
