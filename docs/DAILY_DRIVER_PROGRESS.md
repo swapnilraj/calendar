@@ -10,7 +10,7 @@ Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
   Wave 0 session.** The earlier two agents reviewed dependencies/ownership only.
 - Implementation branch: `codex/daily-driver`. Initial read-contract/module bootstrap and scope docs are implemented;
   mutation and persistence ports will be frozen before their dependent worker packets. A new module or contract alone does not establish native editing or new views.
-- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (678 tests), including
+- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (790 tests), including
   merged provider reads, native detail components, day fixes, reminder components and preferences. No device/cloud/beta result is claimed.
 
 ## Active implementation packets
@@ -44,10 +44,10 @@ wiring and integration; workers do not overwrite shared contracts or each other'
 | M2 calendars/ranges/sidebar | Partial: reads/preferences verified; sidebar/live filters verified locally | Stable identity, independent persisted filters, shared ranges/observer and coverage states |
 | M3 planning views | Partial: all five views routed and tested; device/dense acceptance pending | Day/three-day/week/month/agenda, date navigation, leap/six-row/dense/RTL cases |
 | M4 native details | Partial: live native context and guest-visibility rules verified locally | Complete readable event context, correct occurrence identity and meeting links |
-| M5 native ordinary writes | Partial: native one-off create/edit/confirmed-delete and permission/recovery verified locally | Batched create/edit/delete/duplicate, conflict/draft/uncertain-create and offline recovery |
-| M6 recurrence | Partial: rule engine and bounded scope planner verified; provider series mutations pending | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
+| M5 native ordinary writes | Partial: native one-off create/edit/delete/duplicate, durable drafts and metadata verified locally | Batched create/edit/delete/duplicate, conflict/draft/uncertain-create and offline recovery |
+| M6 recurrence | Partial: preserving ALL/existing-THIS executor and scoped editor components tested; app routing/new exceptions/following pending | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
 | M7 meetings | Planned | Invitation/RSVP/reschedule/recurrence-change/cancellation observed in second account |
-| M8 search/Android entry points | Planned | Filtered ranged search, settings, agenda widget and safe occurrence-preserving intents |
+| M8 search/Android entry points | Partial: live settings applied; widget components tested; search and entry-point wiring pending | Filtered ranged search, settings, agenda widget and safe occurrence-preserving intents |
 | M9 reminders | Partial: source/ledger/delivery/runtime components tested; app/background/device wiring pending | App-owned alerts/snooze and permission/background/Doze/reboot/timezone/upgrade recovery |
 | Seven-day beta | Not started | Work/personal week including weekend/offline/remote edits/recurrence/reminders/upgrade |
 | Durable APK release | Not started | Stable signed upgradeable APK, checksum, release notes and durable download |
@@ -102,18 +102,23 @@ gates pass. Do not turn the audit totals into a percentage-complete estimate.
   eligibility preflights avoid restricted child reads. The real reminder source/SQL ledger/coordinator/adapters pass integrated restart, snooze and
   stale-action tests; runtime components are tested but background app wiring remains pending.
 
-Latest local integration checkpoint: **678 tests**, debug APK and lint passed with
-`./gradlew test :app:assembleDebug :app:lintDebug`. This includes durable draft routing/recovery,
-privacy-safe duplication, nullable metadata editing, original/sync-linked recurrence identity,
-recurrence date/duration codecs, runtime components and the synthetic real reminder pipeline.
-Updated create-editor and new draft-browser screenshots were recorded and inspected. Weekday-only
-month/week and settings light/dark/large-RTL component images were also inspected; settings and
-weekend preference application are not yet exposed through the app route.
+Latest local integration checkpoint: **790 tests**, debug APK and lint passed with
+`./gradlew test :app:assembleDebug :app:lintDebug` (174 core, 599 app, 17 weather; no failures/skips).
+The live Settings route applies first weekday, weekends, declined filtering, display zone, theme,
+weather visibility/units and event defaults. Failed saves retain inputs; display-zone changes do not
+change device-location weather. Timed FAB and all-day date creation use independent reminder defaults.
+Three new settings/theme integration images and the updated drawer baseline were recorded/inspected.
 
-PRs #30–#34 are merged into remote integration; #35 publishes draft components. Newer local packets
-are being published separately after integration verification. The APK is a debug build and does not
-establish stable signing, Google/Workspace sync, device reminder delivery or beta acceptance.
+The combined checkpoint also includes bounded recurring writes (ALL preserving non-temporal edits/
+delete and THIS existing-exception edits/cancel), scoped editor components, private agenda widget
+components and pure DST-aware grid edit previews. Their component/provider tests are not app journey
+or Google propagation evidence: scoped routing, widget setup/background wiring and gestures remain.
+Two recurring-editor, five widget and two Fahrenheit component screenshots were inspected.
 
-Next implementation: bounded recurrence provider execution, widget components, full settings and
-reminder runtime/configuration wiring, meeting writes/RSVP, search and drag/resize. Real account/device,
-seven-day beta and release gates remain pending. Local save is never reported as verified server sync.
+PRs #30–#35 are merged remotely. #36 publishes metadata/visibility hardening; #37 publishes reminder
+source/ledger. Newer local packets are being published in bounded follow-ups. The APK is a debug build,
+not evidence of stable signing, Google/Workspace sync, device delivery or beta acceptance.
+
+Next implementation: search adapter/UI; scoped recurring route; full new-exception/following/temporal
+execution; widget and reminder configuration/runtime wiring; invitations/RSVP and drag/resize. Required
+account/device, seven-day beta and release gates remain pending. Local save never means verified sync.

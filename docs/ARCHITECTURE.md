@@ -52,12 +52,14 @@ wiring; initial contracts are being implemented, not yet a complete repository/e
 
 Target boundaries:
 
-Current live read path: `CalendarApp.calendarReader` → one visible three-day request in
-`LiveCalendarDay` → per-day presentation maps with full occurrence references → native event details.
-Pager and details collectors share the same request. Provider invalidation refreshes both, while
-selection/date/zone changes clear the selected detail. The old `CalendarRepository` remains only as
-legacy migration code/tests, not the application-wired source. Write/editor and new-view components
-remain separate until their integration gates pass.
+Current live read path: `CalendarApp.calendarReader` → one active-view range in `LiveCalendarDay`
+→ shared occurrence presentation → native details. Day, three-day, week, month and agenda share
+app-local filters; declined filtering is presentation-only. Details retain exact occurrence refs.
+Provider invalidation refreshes shared ranges. The old `CalendarRepository` remains legacy code/tests.
+One atomic preference snapshot supplies theme, display zone, live settings, selection/default/view/zoom;
+weather resolution uses the device zone while forecast samples group in the selected display zone.
+Ordinary native writes are wired; scoped series, widget and reminder runtime components await their
+remaining application integration gates.
 
 - Android provider adapters share range invalidation and expose calendar metadata, details and typed
   mutation outcomes. Display segmentation is separate from occurrence/master/original-instance identity.

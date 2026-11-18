@@ -47,5 +47,6 @@ Instructions for any coding agent working in this repo (Claude Code, Codex, …)
     changes without a device.
   - You can't install on the owner's phone from the cloud. Say so instead of trying.
 - **Local sessions** with the owner's phone on adb (wireless debugging): `./gradlew :app:installDebug`.
-  The app installs alongside the stock calendar app. It only reads the calendar store, so it's safe to
-  run against real data, but never screenshot real events into commits or PRs.
+  The app installs alongside the stock calendar app. Native save/delete controls write to the calendar
+  store. Automated verification must use dedicated authorized fixtures, not real meetings; never
+  screenshot real events into commits or PRs.
