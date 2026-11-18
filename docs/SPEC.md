@@ -140,6 +140,11 @@ source awaits, delivery and snooze also recheck fresh configuration and permissi
 permission loss attempts alarm/notification teardown independently of ledger success. Unknown settings
 remain unavailable, and known permission loss permits narrow teardown without running a delivery cycle.
 This does not make private settings, CalendarProvider and Android notifications one atomic transaction.
+Active-alert scope cleanup is independent of SQL delivery-history retention. The notification adapter
+must cancel its own unconfigured or provably replaced/removed calendar alerts using bounded active
+system notifications, rather than scanning all historical reminder rows. Retained delivery history
+still prevents re-alerting when the same calendar is re-enabled. Missing provider observation does not
+prove removal; malformed legacy alert scope is unverified. Adapter wiring follows this contract.
 Notification permission must be requested through explicit setup before posting.
 Runtime startup, resume, notification actions and content-job rearming serialize configuration reads
 with job registration/cancellation. An older suspended read cannot cancel a newer enabled registration

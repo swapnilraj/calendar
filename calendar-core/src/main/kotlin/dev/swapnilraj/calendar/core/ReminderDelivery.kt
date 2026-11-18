@@ -292,6 +292,16 @@ interface ReminderNotificationPort {
     /** Tag alone cannot prove a new snooze post was accepted; verify its exact token as well. */
     fun isActive(identity: ReminderPostIdentity): Boolean
     fun cancel(alias: ReminderNotificationAlias)
+    /** Cancel only this app's active reminder alerts outside confirmed calendar scopes. This must
+     * not enumerate/mutate SQL history. Missing observation is not evidence of provider removal;
+     * known namespace mismatches/removals and unconfigured scopes do authorize alert cancellation.
+     * Throw on unavailable enumeration/cancellation so the coordinator does not deliver new work.
+     */
+    fun cancelIneligibleScopes(
+        allowedCalendars: Map<CalendarId, ReminderCalendarIdentity>,
+        observedCalendars: Map<CalendarId, ReminderCalendarIdentity>,
+        removedCalendars: Set<CalendarId>,
+    )
     /** Remove this app's reminder notifications on permission loss, including older posted rows
      * outside the current reconciliation window. Never touches another application's alerts.
      */
