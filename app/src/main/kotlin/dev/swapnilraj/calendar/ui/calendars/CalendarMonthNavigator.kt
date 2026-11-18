@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import dev.swapnilraj.calendar.R
@@ -78,7 +79,7 @@ fun CalendarMonthNavigator(
                     modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = previousLabel }) {
                     MonthNavigationArrow(false)
                 }
-                Text(title, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center,
+                Text(title, style = MaterialTheme.typography.titleSmall.copy(textDirection = TextDirection.Content), textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f).semantics { heading(); liveRegion = LiveRegionMode.Polite })
                 IconButton(enabled = displayedMonth.page() < PhoneMonthCount - 1,
                     onClick = { onNavigateMonth(displayedMonth.plusMonths(1)) },

@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import dev.swapnilraj.calendar.R
 import java.time.LocalDate
@@ -50,7 +51,7 @@ fun CalendarPhoneToolbar(
                 .semantics { contentDescription = monthLabel; stateDescription = expandedLabel }
                 .testTag("calendar_phone_month"), contentPadding = PaddingValues(horizontal = 4.dp)) {
                 Text(month, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+                    style = MaterialTheme.typography.titleLarge.copy(textDirection = TextDirection.Content), color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.width(4.dp))
                 PhoneChevron(expanded = monthExpanded)
             }
