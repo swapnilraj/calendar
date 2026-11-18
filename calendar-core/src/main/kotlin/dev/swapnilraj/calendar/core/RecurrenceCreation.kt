@@ -9,7 +9,7 @@ import java.time.temporal.ChronoUnit
 enum class RecurrenceCreationProblem {
     INTERVAL, COUNT, END_LIMIT, PREVIEW_BUDGET, START_TIME, START_OFFSET,
     DURATION, DURATION_RANGE, PATTERN_OR_RULE, DATE_RANGE, NOMINAL_ENDPOINT, PROVIDER_NOMINAL_DURATION,
-    PREVIEW_TRANSITION,
+    PREVIEW_TRANSITION, PROVIDER_TIME_ZONE,
 }
 
 /**
@@ -81,6 +81,8 @@ object RecurrenceCreation {
                 }
                 is RecurrenceStart.Timed -> {
                     val time = firstTime as? EventTime.Timed ?: return invalid(RecurrenceCreationProblem.START_TIME)
+                    if (!ProviderTimeZoneCompatibility.isCompatible(start.zone))
+                        return invalid(RecurrenceCreationProblem.PROVIDER_TIME_ZONE)
                     if (start.zone.rules.getValidOffsets(start.localDateTime).size > 1 && start.preferredOffset == null)
                         return invalid(RecurrenceCreationProblem.START_OFFSET)
                     if (time.start != start.instant) return invalid(RecurrenceCreationProblem.START_TIME)

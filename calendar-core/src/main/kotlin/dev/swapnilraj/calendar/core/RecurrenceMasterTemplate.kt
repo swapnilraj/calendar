@@ -10,7 +10,7 @@ data class RecurrenceMasterTemplate(val time: EventTime, val eventZone: ZoneId, 
 enum class RecurrenceMasterTemplateProblem {
     MISSING_DURATION, INPUT_BUDGET, INVALID_DURATION, UNSUPPORTED_DURATION,
     NON_POSITIVE_DURATION, DURATION_KIND, TIMED_NOMINAL_DURATION, AMBIGUOUS_START,
-    PROVIDER_DURATION_OVERFLOW, DATE_RANGE,
+    PROVIDER_DURATION_OVERFLOW, DATE_RANGE, PROVIDER_TIME_ZONE,
 }
 
 sealed interface RecurrenceMasterTemplateResult {
@@ -91,6 +91,8 @@ object RecurrenceMasterTemplates {
         when (start) {
             is RecurrenceStart.AllDay -> if (p.hasTime) return review(RecurrenceMasterTemplateProblem.DURATION_KIND)
             is RecurrenceStart.Timed -> {
+                if (!ProviderTimeZoneCompatibility.isCompatible(start.zone))
+                    return review(RecurrenceMasterTemplateProblem.PROVIDER_TIME_ZONE)
                 if (p.weeks > 0 || p.days > 0) return review(RecurrenceMasterTemplateProblem.TIMED_NOMINAL_DURATION)
                 if (start.zone.rules.getValidOffsets(start.localDateTime).size > 1 && start.preferredOffset == null)
                     return review(RecurrenceMasterTemplateProblem.AMBIGUOUS_START)

@@ -136,7 +136,7 @@ class RecurrenceMasterTemplateTest {
     @Test fun rfcEndpointBoundsRejectYearTenThousandAndUtcYearZero() {
         review(RecurrenceMasterTemplateProblem.DATE_RANGE, RecurrenceStart.AllDay(LocalDate.parse("9999-12-31")), "P1D")
         review(RecurrenceMasterTemplateProblem.DATE_RANGE, timed("9999-12-31T23:59:59", ZoneOffset.UTC), "PT1S")
-        review(RecurrenceMasterTemplateProblem.DATE_RANGE, timed("0001-01-01T00:00:00", ZoneOffset.ofHours(14)), "PT1H")
+        review(RecurrenceMasterTemplateProblem.DATE_RANGE, timed("0001-01-01T00:00:00", ZoneId.of("Asia/Kolkata")), "PT1H")
     }
 
     private fun snapshot(start: RecurrenceStart, rule: String) = RecurrenceSeriesSnapshot(SeriesIdentity(CalendarId(2), 9), start, rule, "PT1H")
