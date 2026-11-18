@@ -16,6 +16,7 @@ data class CalendarInfo(
     val providerVisible: Boolean,
     val syncEnabled: Boolean,
     val capabilities: CalendarCapabilities = CalendarCapabilities(),
+    val providerId: String? = null,
 )
 
 /** One provider-expanded occurrence; rendering segments are deliberately separate. */

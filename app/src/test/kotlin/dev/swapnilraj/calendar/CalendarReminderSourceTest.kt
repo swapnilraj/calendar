@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.CancellationSignal
 import android.provider.CalendarContract
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.data.calendar.ProviderReadBudgets
 import dev.swapnilraj.calendar.data.calendar.CalendarReminderSource
 import java.time.Instant
 import java.time.ZoneId
@@ -56,6 +57,7 @@ class CalendarReminderSourceTest {
         var nullPath: String? = null
         var partialPath: String? = null
         var rejectUid = false
+        var rejectCalendarUid = false
         var afterQuery: (() -> Unit)? = null
         var signal: CancellationSignal? = null
         var blocked: CountDownLatch? = null
@@ -78,6 +80,7 @@ class CalendarReminderSourceTest {
             calls += Call(path, uri, fields, selection, args)
             if (path == failurePath) error("Synthetic query failure")
             if (path == nullPath) return null
+            if (path == "calendars" && rejectCalendarUid && "_sync_id" in fields) throw IllegalArgumentException("Unsupported optional calendar field")
             if (path == "events" && rejectUid && "uid2445" in fields) throw IllegalArgumentException("Unsupported optional field")
             val rows = when (path) {
                 "calendars" -> calendars.filter { it["_id"].toString() in args }
@@ -111,11 +114,11 @@ class CalendarReminderSourceTest {
         override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = error("Read only")
         override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = error("Read only")
     }
-    private suspend fun fixture(block: suspend (Provider, CalendarReminderSource, () -> Unit) -> Unit) {
+    private suspend fun fixture(readBudgets: ProviderReadBudgets = ProviderReadBudgets(), block: suspend (Provider, CalendarReminderSource, () -> Unit) -> Unit) {
         val provider = Provider().apply { calendars += cal() }
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
         var allowed = true
-        val source = CalendarReminderSource(RuntimeEnvironment.getApplication().contentResolver, { allowed })
+        val source = CalendarReminderSource(RuntimeEnvironment.getApplication().contentResolver, { allowed }, readBudgets = readBudgets)
         block(provider, source) { allowed = false }
     }
     private suspend fun CalendarReminderSource.load(config: ReminderConfiguration = config(), bounds: InstantBounds = window) =
@@ -123,6 +126,22 @@ class CalendarReminderSourceTest {
     private suspend fun CalendarReminderSource.resolveOne(key: ReminderKey, config: ReminderConfiguration = config()) =
         (resolve(setOf(key), config) as ReminderResolutionResult.Ready).results.getValue(key)
     private fun key(id: Long = 10, start: Instant = now.plusSeconds(600), minutes: Int = 10) = ReminderKey(calendar, id, start, minutes)
+
+    @Test fun exhaustedAuthorityBudgetNeverReportsGoneOrCompleteCoverage() = runBlocking {
+        val defaults = ProviderReadBudgets()
+        fixture(defaults.copy(range = defaults.range.copy(maxRows = 1))) { p, source, _ ->
+            p.events += event(); p.reminders += reminder()
+            val discovery = source.loadDueWindow(window, config())
+            if (discovery is ReminderSourceResult.Ready) {
+                assertTrue(discovery.snapshot.completeCalendars.isEmpty())
+                assertTrue(discovery.snapshot.removedCalendars.isEmpty())
+            } else assertEquals(ReminderSourceResult.Unavailable, discovery)
+            val resolution = source.resolve(setOf(key()), config())
+            if (resolution is ReminderResolutionResult.Ready)
+                assertTrue(resolution.results.getValue(key()) is ReminderResolution.Deferred)
+            else assertEquals(ReminderResolutionResult.Unavailable, resolution)
+        }
+    }
 
     @Test fun timedDueWindowIsHalfOpenAndDuplicateStoredAlertsCoalesce() = runBlocking {
         fixture { p, source, _ ->
@@ -324,6 +343,56 @@ class CalendarReminderSourceTest {
                 assertTrue(source.load().candidates.isEmpty())
                 assertEquals(ReminderResolution.Deferred(ReminderSourceProblem.INVALID_TIME), source.resolveOne(key()))
             }
+        }
+    }
+
+    @Test fun knownCalendarUidReplacementBlocksBeforePrivateQueries() = runBlocking {
+        fixture { p, source, _ ->
+            val original = CalendarReminderSource.calendarIdentity(info.copy(providerId = "calendar-A"))!!
+            val pinned = config().copy(expectedCalendarIdentities = mapOf(calendar to original))
+            p.calendars.clear(); p.calendars += cal() + mapOf("_sync_id" to "calendar-A")
+            p.events += event(); p.reminders += reminder()
+            assertEquals(original, source.load(pinned).candidates.single().sourceCalendarIdentity)
+            p.calendars.clear(); p.calendars += cal() + mapOf("_sync_id" to "calendar-B")
+            p.calls.clear()
+            val changed = source.load(pinned)
+            assertTrue(changed.candidates.isEmpty())
+            assertTrue(changed.completeCalendars.isEmpty())
+            assertTrue(changed.failures.any { it.problem == ReminderSourceProblem.IDENTITY_MISMATCH })
+            assertEquals(ReminderResolution.Deferred(ReminderSourceProblem.IDENTITY_MISMATCH), source.resolveOne(key(), pinned))
+            assertFalse(p.calls.any { it.path == "events" || it.path == "instances" || it.path == "reminders" })
+        }
+    }
+
+    @Test fun weakCalendarPinEnrichesUsingTheSameIssuerAsSetupWithoutChangingBaseNamespace() = runBlocking {
+        fixture { p, source, _ ->
+            p.calendars.clear(); p.calendars += cal() + mapOf("_sync_id" to "calendar-A")
+            p.events += event(); p.reminders += reminder()
+            val strong = CalendarReminderSource.calendarIdentity(info.copy(providerId = "calendar-A"))!!
+            val current = source.load().candidates.single().sourceCalendarIdentity
+            assertEquals(strong, current)
+            assertEquals(pin.fingerprint, strong.fingerprint)
+            assertNotNull(strong.providerUidFingerprint)
+            assertNotEquals("calendar-A", strong.providerUidFingerprint)
+            assertEquals(strong, CalendarReminderSource.calendarIdentity(info.copy(providerId = "calendar-A", displayName = "Renamed", color = 987)))
+        }
+    }
+
+    @Test fun unavailableCalendarUidStaysUnknownWithoutDroppingKnownExpectedPin() = runBlocking {
+        fixture { p, source, _ ->
+            val strong = CalendarReminderSource.calendarIdentity(info.copy(providerId = "calendar-A"))!!
+            val pinned = config().copy(expectedCalendarIdentities = mapOf(calendar to strong))
+            p.calendars.clear(); p.calendars += cal() + mapOf("_sync_id" to "calendar-A")
+            p.events += event(); p.reminders += reminder()
+            p.rejectCalendarUid = true
+            val fallback = source.load(pinned).candidates.single()
+            assertNull(fallback.sourceCalendarIdentity.providerUidFingerprint)
+            assertEquals(strong, pinned.expectedCalendarIdentities.getValue(calendar))
+            assertFalse(strong.isKnownDifferentFrom(fallback.sourceCalendarIdentity))
+            assertTrue(source.resolveOne(key(), pinned) is ReminderResolution.Eligible)
+            assertTrue(p.calls.any { it.path == "calendars" && "_sync_id" in it.projection })
+            assertTrue(p.calls.any { it.path == "calendars" && "_sync_id" !in it.projection })
+            assertEquals(pin, CalendarReminderSource.calendarIdentity(info.copy(providerId = " ")))
         }
     }
 
