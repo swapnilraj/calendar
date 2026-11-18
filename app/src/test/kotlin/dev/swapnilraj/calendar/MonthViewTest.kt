@@ -139,6 +139,13 @@ class MonthViewTest {
         assertEquals(date.plusDays(1), selected)
         assertEquals(month, navigated)
     }
+    @Test fun lastSupportedMonthCannotNavigateOrSelectBeyondPickerBounds() {
+        show(displayMonth = YearMonth.of(9999, 12), selection = LocalDate.of(9999, 12, 31))
+        compose.onNodeWithContentDescription("Next month").assertIsNotEnabled()
+        compose.onNodeWithTag("month_date_+10000-01-01").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("December 9999, Choose date").performClick()
+        compose.onNodeWithText("Go to date").assertIsEnabled()
+    }
     @Test fun datePickerCanJumpToAnArbitraryLeapDayWithoutTimezoneConversion() {
         var navigated: YearMonth? = null
         var selected: LocalDate? = null

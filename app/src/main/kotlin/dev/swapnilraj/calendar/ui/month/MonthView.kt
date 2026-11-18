@@ -60,6 +60,8 @@ fun MonthView(
     onNavigateMonth: (YearMonth) -> Unit,
     today: LocalDate = LocalDate.now(displayZone),
     modifier: Modifier = Modifier,
+    allowCreation: Boolean = true,
+    onShowDateEvents: ((LocalDate) -> Unit)? = null,
 ) {
     val locale = LocalLocale.current.platformLocale
     val chooseDateLabel = stringResource(R.string.month_choose_date)
@@ -74,7 +76,7 @@ fun MonthView(
     Surface(modifier.fillMaxSize()) {
         Column {
             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { sheetDate = null; onNavigateMonth(month.minusMonths(1)) }) {
+                IconButton(enabled = month > YearMonth.of(1, 1), onClick = { sheetDate = null; onNavigateMonth(month.minusMonths(1)) }) {
                     MonthChevron(false, stringResource(R.string.month_previous))
                 }
                 TextButton(onClick = { pickingDate = true }, modifier = Modifier.weight(1f)
@@ -85,7 +87,7 @@ fun MonthView(
                 if (fontScale <= 1.3f) TextButton(onClick = {
                     sheetDate = null; onSelectDate(today); onNavigateMonth(YearMonth.from(today))
                 }) { Text(stringResource(R.string.month_today)) }
-                IconButton(onClick = { sheetDate = null; onNavigateMonth(month.plusMonths(1)) }) {
+                IconButton(enabled = month < YearMonth.of(9999, 12), onClick = { sheetDate = null; onNavigateMonth(month.plusMonths(1)) }) {
                     MonthChevron(true, stringResource(R.string.month_next))
                 }
             }
@@ -115,7 +117,10 @@ fun MonthView(
                                         key(date) {
                                             MonthCell(date, month, selectedDate, today, byDate[date].orEmpty(), displayZone,
                                                 row, column, Modifier.width(cellWidth).heightIn(min = cellHeight).fillMaxHeight(),
-                                                onShowDate = { sheetDate = date; onSelectDate(date) }, onOpenEvent)
+                                                onShowDate = {
+                                                    onSelectDate(date)
+                                                    if (onShowDateEvents != null) onShowDateEvents(date) else sheetDate = date
+                                                }, onOpenEvent)
                                         }
                                     }
                                 }
@@ -129,10 +134,11 @@ fun MonthView(
     sheetDate?.let { date ->
         MonthDaySheet(date, byDate[date].orEmpty(), displayZone, onDismiss = { sheetDate = null },
             onOpenEvent = { ref -> sheetDate = null; onOpenEvent(ref) },
-            onCreateDate = { sheetDate = null; onCreateDate(date) })
+            onCreateDate = if (allowCreation) ({ sheetDate = null; onCreateDate(date) }) else null)
     }
     if (pickingDate) {
-        val picker = rememberDatePickerState(initialSelectedDateMillis = selectedDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(), yearRange = 1..9999)
+        val pickerDate = selectedDate.coerceIn(LocalDate.of(1, 1, 1), LocalDate.of(9999, 12, 31))
+        val picker = rememberDatePickerState(initialSelectedDateMillis = pickerDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(), yearRange = 1..9999)
         DatePickerDialog(onDismissRequest = { pickingDate = false }, confirmButton = {
             TextButton(enabled = picker.selectedDateMillis != null, onClick = {
                 picker.selectedDateMillis?.let { millis ->
@@ -163,7 +169,7 @@ private fun MonthCell(date: LocalDate, month: YearMonth, selectedDate: LocalDate
     Column(modifier.border(0.5.dp, MaterialTheme.colorScheme.outlineVariant).background(if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else normal)
         .semantics { contentDescription = "$fullDate, $count${if (date == today) ", $todayLabel" else ""}"; this.selected = selected
             collectionItemInfo = CollectionItemInfo(row, 1, column, 1) }
-        .clickable(onClickLabel = openLabel, onClick = onShowDate).padding(2.dp).testTag("month_date_$date")) {
+        .clickable(enabled = date.year in 1..9999, onClickLabel = openLabel, onClick = onShowDate).padding(2.dp).testTag("month_date_$date")) {
         Box(Modifier.fillMaxWidth().heightIn(min = (32f * LocalDensity.current.fontScale).dp), contentAlignment = Alignment.Center) {
             Box(Modifier.size((28f * LocalDensity.current.fontScale).dp)
                 .then(if (date == today) Modifier.background(MaterialTheme.colorScheme.primary, CircleShape) else Modifier),
@@ -216,8 +222,8 @@ private fun MonthEventChip(event: EventOccurrence, date: LocalDate, zone: ZoneId
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MonthDaySheet(date: LocalDate, events: List<EventOccurrence>, zone: ZoneId,
-    onDismiss: () -> Unit, onOpenEvent: (EventRef) -> Unit, onCreateDate: () -> Unit) {
+internal fun MonthDaySheet(date: LocalDate, events: List<EventOccurrence>, zone: ZoneId,
+    onDismiss: () -> Unit, onOpenEvent: (EventRef) -> Unit, onCreateDate: (() -> Unit)?) {
     val locale = LocalLocale.current.platformLocale
     val dateLabel = date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale))
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -227,7 +233,7 @@ private fun MonthDaySheet(date: LocalDate, events: List<EventOccurrence>, zone: 
             Text(stringResource(R.string.month_close))
         }
         LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).testTag("month_day_events"), contentPadding = PaddingValues(bottom = 24.dp)) {
-            item { TextButton(onClick = onCreateDate, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            if (onCreateDate != null) item { TextButton(onClick = onCreateDate, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                 Text(stringResource(R.string.month_create_on_date, dateLabel))
             } }
             if (events.isEmpty()) item { Text(stringResource(R.string.month_no_events), Modifier.padding(24.dp)) }

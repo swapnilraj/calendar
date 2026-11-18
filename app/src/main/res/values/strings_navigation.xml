@@ -1,4 +1,13 @@
 <resources>
+    <string name="navigation_calendars">Calendars</string>
+    <string name="navigation_loading">Loading calendars…</string>
+    <string name="navigation_unavailable">Calendars couldn’t be read</string>
+    <string name="navigation_no_calendars">No calendars are available on this device.</string>
+    <string name="navigation_no_selection">No calendars selected.</string>
+    <string name="navigation_partial_coverage">Some selected calendars may have incomplete device data.</string>
+    <string name="navigation_preferences_unavailable">Calendar preferences couldn’t be saved</string>
+    <string name="navigation_preferences_loading">Loading your calendar choices…</string>
+    <string name="navigation_preferences_load_failed">Your calendar choices couldn’t be loaded. Retry to show your calendars.</string>
     <string name="navigation_no_link_handler">No app is available to open this link</string>
     <string name="navigation_link_unavailable">This link couldn’t be opened</string>
 </resources>
