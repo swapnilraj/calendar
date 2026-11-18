@@ -298,7 +298,8 @@ internal fun LiveCalendarDay(
                         actions = controls, leadingActions = openCalendars, compactTitle = settings != null,
                         summary = summary, background = background,
                         onVisibleDateChanged = { selectedDateState.value = it.toString() }, onRetry = reader::refresh,
-                        onScrollMinuteChanged = { scrollMinute = it }) }
+                        onScrollMinuteChanged = { scrollMinute = it },
+                        onChooseCalendars = if (settings != null) ({ scope.launch { drawer.open() }; Unit }) else null) }
                 } else Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         openCalendars(); controls()
