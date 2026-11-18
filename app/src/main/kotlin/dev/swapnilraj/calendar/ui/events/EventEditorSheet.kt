@@ -69,7 +69,8 @@ fun EventEditorContent(
     var dateField by remember { mutableStateOf<String?>(null) }
     var timeField by remember { mutableStateOf<String?>(null) }
     var confirmDiscard by remember { mutableStateOf(false) }
-    val blocked = state.loading || state.saving || state.draftReadFailed || state.reviewRequired || state.recoveryRequired || state.problem in setOf(EditorProblem.UNCERTAIN,
+    var confirmRetryDelete by remember { mutableStateOf(false) }
+    val blocked = state.loading || state.saving || state.draftReadFailed || state.reviewRequired || state.recoveryRequired || state.retryReady || state.problem in setOf(EditorProblem.UNCERTAIN,
         EditorProblem.UNSUPPORTED, EditorProblem.DRAFT_VERSION) || state.result is MutationResult.LocalSaved || state.result is MutationResult.LocalDeleted
     fun canEdit(field: EditableField) = !blocked && (existing == null || field in existing.allowedFields)
     Column(Modifier.fillMaxWidth().imePadding().verticalScroll(scroll).padding(24.dp),
@@ -82,7 +83,15 @@ fun EventEditorContent(
             if (state.recoveryRequired) TextButton(onClick = controller::recover, enabled = !state.saving) {
                 Text(stringResource(R.string.events_editor_recover))
             }
-            if (problem == EditorProblem.CONFLICT && existing != null) TextButton(onClick = onReviewExisting) {
+            if (state.retryReady) {
+                Text(stringResource(R.string.events_editor_retry_locked))
+                Button(onClick = {
+                    if (controller.pendingOperationKind == "delete") confirmRetryDelete = true else controller.retryOriginal()
+                }, enabled = !state.saving) {
+                    Text(stringResource(if (controller.pendingOperationKind == "delete") R.string.events_editor_retry_delete else R.string.events_editor_retry_save))
+                }
+            }
+            if (problem == EditorProblem.CONFLICT && existing != null && !state.retryReady && !state.recoveryRequired) TextButton(onClick = onReviewExisting) {
                 Text(stringResource(R.string.events_editor_review))
             }
         }
@@ -179,6 +188,12 @@ fun EventEditorContent(
             }) { Text(stringResource(R.string.events_editor_use_time)) }
         }, dismissButton = { TextButton(onClick = { timeField = null }) { Text(stringResource(R.string.events_editor_cancel)) } })
     }
+    if (confirmRetryDelete) AlertDialog(onDismissRequest = { confirmRetryDelete = false },
+        title = { Text(stringResource(R.string.events_editor_retry_delete_confirm)) },
+        text = { Text(stringResource(R.string.events_editor_retry_locked)) },
+        confirmButton = { TextButton(onClick = { confirmRetryDelete = false; controller.retryOriginal() }) {
+            Text(stringResource(R.string.events_editor_retry_delete)) } },
+        dismissButton = { TextButton(onClick = { confirmRetryDelete = false }) { Text(stringResource(R.string.events_editor_cancel)) } })
     if (confirmDiscard) AlertDialog(onDismissRequest = { confirmDiscard = false },
         title = { Text(stringResource(R.string.events_editor_discard_confirm)) },
         text = { Text(stringResource(R.string.events_editor_discard_description)) },
@@ -244,4 +259,6 @@ private fun problemResource(problem: EditorProblem) = when (problem) {
     EditorProblem.DRAFT_UNAVAILABLE -> R.string.events_editor_draft_unavailable
     EditorProblem.UNSUPPORTED -> R.string.events_editor_unsupported
     EditorProblem.DRAFT_VERSION -> R.string.events_editor_draft_version
+    EditorProblem.SAFE_TO_RETRY -> R.string.events_editor_safe_retry
+    EditorProblem.RETRY_UNAVAILABLE -> R.string.events_editor_retry_unavailable
 }
