@@ -82,7 +82,8 @@ class CalendarEditReviewActivity : ComponentActivity() {
                             if (hasRead() && displayed.environment.calendarReadGranted) displayed.environment.calendars else emptyList(),
                             displayed.environment.use24Hour, onDismiss = ::finish, onSaved = { setResult(RESULT_OK); finish() }, onDeleted = { finish() },
                             retirement = current.retirement, incomingEditReview = displayed,
-                            presentationVisible = foreground && (hasRead() && displayed.environment.calendarReadGranted || displayed.sourceFree),
+                            presentationVisible = foreground && (hasRead() && displayed.environment.calendarReadGranted ||
+                                displayed.sourceFree && nativeOwner?.ownsPendingNativeOutcome() != true),
                             onControllerPresence = ::observeNativeOwner,
                             requestWritePermission = {
                                 if (!hasRead()) { readPermission.launch(Manifest.permission.READ_CALENDAR); false }
@@ -105,10 +106,8 @@ class CalendarEditReviewActivity : ComponentActivity() {
                     val explicit = observedReload != revision; observedReload = revision
                     val mounted = result as? CalendarEditReviewResult.Editor
                     if (mounted != null && native != null && nativeOwner?.ownsPendingNativeOutcome() == true) {
-                        // Keep the exact controller while its accepted write/cleanup is awaiting
-                        // acknowledgment. Fresh mounting could see an already removed draft.
-                        if (!hasRead()) result = mounted.copy(environment = mounted.environment.copy(
-                            calendars = emptyList(), calendarReadGranted = false))
+                        // Refresh presentation authority without remounting the exact owner.
+                        refreshMounted(current, mounted)
                         return@collectLatest
                     }
                     if (!explicit && mounted != null && native != null) {
@@ -184,11 +183,13 @@ class CalendarEditReviewActivity : ComponentActivity() {
         val previous = result
         val refreshed = current.refreshMounted(mounted, hasRead())
         if (frame != epoch || native != route || result !== previous || isFinishing) return
+        val pending = nativeOwner?.ownsPendingNativeOutcome() == true
+        val masked = mounted.copy(environment = mounted.environment.copy(calendars = emptyList(), calendarReadGranted = false))
         result = when (refreshed) {
             is CalendarEditReviewServices.MountedRefresh.Ready -> mounted.copy(environment = refreshed.environment, sourceFree = refreshed.sourceFree)
-            CalendarEditReviewServices.MountedRefresh.PermissionRequired -> CalendarEditReviewResult.PermissionRequired
-            CalendarEditReviewServices.MountedRefresh.Stale -> CalendarEditReviewResult.Stale
-            CalendarEditReviewServices.MountedRefresh.Unavailable -> CalendarEditReviewResult.Unavailable
+            CalendarEditReviewServices.MountedRefresh.PermissionRequired -> if (pending) masked else CalendarEditReviewResult.PermissionRequired
+            CalendarEditReviewServices.MountedRefresh.Stale -> if (pending) masked else CalendarEditReviewResult.Stale
+            CalendarEditReviewServices.MountedRefresh.Unavailable -> if (pending) masked else CalendarEditReviewResult.Unavailable
         }
     }
     private fun applySuggestions() {

@@ -66,7 +66,8 @@ class CalendarSeedReviewActivity : ComponentActivity() {
                         displayed.environment.use24Hour, onDismiss = ::finish,
                         onSaved = { setResult(RESULT_OK); finish() }, onDeleted = { finish() },
                         recurringCreationSupported = displayed.environment.recurringCreationSupported, retirement = current.retirement,
-                        presentationVisible = foreground && (hasRead() && displayed.environment.calendarReadGranted || displayed.launch.needsRecovery),
+                        presentationVisible = foreground && (hasRead() && displayed.environment.calendarReadGranted ||
+                            displayed.launch.needsRecovery && nativeOwner?.ownsPendingNativeOutcome() != true),
                         onControllerPresence = ::observeNativeOwner,
                         requestWritePermission = {
                             if (!hasRead()) { reload(); false }
@@ -91,10 +92,8 @@ class CalendarSeedReviewActivity : ComponentActivity() {
                     observedReload = revision
                     val mounted = result as? CalendarSeedReviewResult.Editor
                     if (mounted != null && native != null && nativeOwner?.ownsPendingNativeOutcome() == true) {
-                        // Keep the exact controller while its accepted write/cleanup is awaiting
-                        // acknowledgment. Fresh mounting could see an already removed draft.
-                        if (!hasRead()) result = mounted.copy(environment = mounted.environment.copy(
-                            calendars = emptyList(), calendarReadGranted = false))
+                        // Refresh presentation authority without remounting the exact owner.
+                        refreshMountedEditor(current, mounted)
                         return@collectLatest
                     }
                     if (!explicitReload && mounted != null && native != null) {
@@ -149,7 +148,7 @@ class CalendarSeedReviewActivity : ComponentActivity() {
     private suspend fun refreshMountedEditor(current: CalendarSeedReviewServices, previous: CalendarSeedReviewResult.Editor) {
         val epoch = frame
         val route = native
-        if (!hasRead() && !previous.launch.needsRecovery) {
+        if (!hasRead() && !previous.launch.needsRecovery && nativeOwner?.ownsPendingNativeOutcome() != true) {
             result = CalendarSeedReviewResult.PermissionRequired
             return
         }
@@ -161,7 +160,8 @@ class CalendarSeedReviewActivity : ComponentActivity() {
         if (frame != epoch || native != route || result !== mounted || isFinishing) return
         when (fresh) {
             is CalendarReadState.Ready -> {
-                if ((!hasRead() || !fresh.value.calendarReadGranted) && !mounted.launch.needsRecovery) {
+                if ((!hasRead() || !fresh.value.calendarReadGranted) && !mounted.launch.needsRecovery &&
+                    nativeOwner?.ownsPendingNativeOutcome() != true) {
                     result = CalendarSeedReviewResult.PermissionRequired
                 } else {
                     val environment = if (hasRead()) fresh.value else fresh.value.copy(calendars = emptyList(), defaultCalendar = null, calendarReadGranted = false)
@@ -170,8 +170,12 @@ class CalendarSeedReviewActivity : ComponentActivity() {
                     // its in-flight owner must finish exact cleanup and publish its own outcome.
                 }
             }
-            CalendarReadState.PermissionRequired -> result = CalendarSeedReviewResult.PermissionRequired
-            else -> result = CalendarSeedReviewResult.Unavailable
+            CalendarReadState.PermissionRequired -> result = if (nativeOwner?.ownsPendingNativeOutcome() == true)
+                mounted.copy(environment = mounted.environment.copy(calendars = emptyList(), defaultCalendar = null, calendarReadGranted = false))
+                else CalendarSeedReviewResult.PermissionRequired
+            else -> result = if (nativeOwner?.ownsPendingNativeOutcome() == true)
+                mounted.copy(environment = mounted.environment.copy(calendars = emptyList(), defaultCalendar = null, calendarReadGranted = false))
+                else CalendarSeedReviewResult.Unavailable
         }
     }
     private fun present(value: CalendarSeedReviewResult) {
