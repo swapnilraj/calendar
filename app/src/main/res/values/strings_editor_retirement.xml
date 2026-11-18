@@ -1,0 +1,20 @@
+<resources>
+    <string name="editor_upgrade_draft">Continue saved draft</string>
+    <string name="editor_upgrade_needed">This older draft is retained. Continue it explicitly before changing or saving its fields.</string>
+    <string name="editor_discard_only">Discard draft only</string>
+    <string name="editor_retire_discard">Retire and discard original request</string>
+    <string name="editor_replace_draft">Replace with a new draft</string>
+    <string name="editor_confirm_draft_action">Confirm</string>
+    <string name="editor_discard_help">Discard these saved fields from this device? No event is changed, and no calendar or event is selected automatically.</string>
+    <string name="editor_retire_help">Permanently stop the exact original request before discarding this draft. This cannot undo an event that was already saved. If dispatch or a local commit is recorded, the draft is retained.</string>
+    <string name="editor_replace_help">Discard the old draft only after its original request is safely retired. A new draft needs a fresh explicit Save. Copied creation fields require choosing a calendar again; edits can continue only in the original calendar namespace.</string>
+    <string name="editor_inspect_retirement">Check retirement status</string>
+    <string name="editor_retirement_unavailable">Retirement could not be confirmed. The original draft is retained. Check its status before trying again.</string>
+    <string name="editor_retirement_dispatched">The original request may have been dispatched. It cannot be discarded or replaced safely yet. Review its outcome.</string>
+    <string name="editor_retirement_committed">A local commit is recorded. Retirement cannot undo that save or authorize another creation. Review the original outcome.</string>
+    <string name="editor_retirement_conflict">The journal does not match this exact original request. The draft is retained for review.</string>
+    <string name="editor_retirement_unsupported">This older request cannot be safely retired here. The original draft is retained.</string>
+    <string name="editor_original_namespace_unknown">The original calendar identity is unavailable. No replacement calendar is selected automatically.</string>
+    <string name="editor_local_outcome_known">The operation finished on this device. Draft cleanup remains separate from retirement.</string>
+    <string name="editor_acknowledge_cleanup">Finish closing the saved draft</string>
+</resources>

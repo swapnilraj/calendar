@@ -11,7 +11,6 @@ import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.*
 import java.util.UUID
@@ -26,9 +25,13 @@ internal data class EventWriteRequest(
     val ref: EventRef? = null,
     val delete: Boolean = false,
     val recoveryOnly: Boolean = false,
+    val generation: String? = null,
 ) {
+    fun matches(launch: EditorDraftLaunch): Boolean = draftId == launch.draftId && ref == launch.ref && generation == launch.generation
+
     fun encode(): String = JSONObject().put("draftId", draftId).put("date", date.toString())
         .put("zone", zone.id).put("calendar", calendarId?.value).put("delete", delete).put("recoveryOnly", recoveryOnly).apply {
+            generation?.let { put("generation", it) }
             ref?.let { value -> put("event", JSONObject().put("calendar", value.calendarId.value)
                 .put("id", value.eventId).put("start", value.instanceStart.toString()).put("end", value.instanceEnd.toString()).apply {
                     value.recurrence?.let { put("master", it.masterEventId); put("original", it.originalStart.toString()) }
@@ -43,14 +46,19 @@ internal data class EventWriteRequest(
         fun fromLaunch(launch: EditorDraftLaunch, fallbackDate: LocalDate, zone: ZoneId, delete: Boolean = false): EventWriteRequest {
             val date = runCatching { LocalDate.parse(launch.rawDate) }.getOrDefault(fallbackDate)
             return EventWriteRequest(launch.draftId, date, zone, launch.seed(date, zone).calendarId,
-                launch.ref, delete, launch.needsRecovery)
+                launch.ref, delete, launch.needsRecovery, launch.generation)
         }
-        fun decode(raw: String): EventWriteRequest = JSONObject(raw).let { value ->
-            val ref = value.optJSONObject("event")?.let { event -> EventRef(CalendarId(event.getLong("calendar")), event.getLong("id"),
-                Instant.parse(event.getString("start")), Instant.parse(event.getString("end")),
-                if (event.has("master")) RecurrenceRef(event.getLong("master"), Instant.parse(event.getString("original"))) else null) }
-            EventWriteRequest(value.getString("draftId"), LocalDate.parse(value.getString("date")), ZoneId.of(value.getString("zone")),
-                if (value.has("calendar") && !value.isNull("calendar")) CalendarId(value.getLong("calendar")) else null, ref, value.getBoolean("delete"), value.optBoolean("recoveryOnly", false))
+        fun decode(raw: String): EventWriteRequest {
+            require(raw.length <= 16_384)
+            return JSONObject(raw).let { value ->
+                require(value.keys().asSequence().all { it in setOf("draftId", "date", "zone", "calendar", "event", "delete", "recoveryOnly", "generation") })
+                val ref = value.optJSONObject("event")?.let { event -> EventRef(CalendarId(event.getLong("calendar")), event.getLong("id"),
+                    Instant.parse(event.getString("start")), Instant.parse(event.getString("end")),
+                    if (event.has("master")) RecurrenceRef(event.getLong("master"), Instant.parse(event.getString("original"))) else null) }
+                EventWriteRequest(value.getString("draftId"), LocalDate.parse(value.getString("date")), ZoneId.of(value.getString("zone")),
+                    if (value.has("calendar") && !value.isNull("calendar")) CalendarId(value.getLong("calendar")) else null, ref, value.getBoolean("delete"), value.optBoolean("recoveryOnly", false),
+                    if (value.has("generation")) (value.get("generation") as? String)?.also { require(UUID.fromString(it).toString() == it) } ?: error("Invalid generation") else null)
+            }
         }
     }
 }
@@ -63,7 +71,7 @@ internal fun EventDetails.editorSeed() = EventDraft(occurrence.ref.calendarId, o
 private sealed interface StoredEditor {
     data object Loading : StoredEditor
     data object Unavailable : StoredEditor
-    data class Ready(val launch: EditorDraftLaunch) : StoredEditor
+    data class Ready(val launch: EditorDraftLaunch, val sourceIdentity: CalendarIdentity?) : StoredEditor
 }
 
 /** Permission is requested only after Save/Delete, with no automatic submission after a grant. */
@@ -93,15 +101,25 @@ internal fun EventWriteWorkflow(
     onSaved: (EventRef) -> Unit,
     onDeleted: (EventRef) -> Unit,
     clock: Clock = Clock.systemUTC(),
+    recurringCreationSupported: Boolean = false,
+    retirement: OperationRetirement? = null,
+    requestWritePermission: (suspend () -> Boolean)? = null,
+    onReplacedLaunch: ((EditorDraftLaunch) -> Unit)? = null,
 ) {
     var retry by remember(request) { mutableIntStateOf(0) }
-    var replacement by remember(request) { mutableStateOf<EditableEvent?>(null) }
-    var replacementVersion by remember(request) { mutableIntStateOf(0) }
+    val latestPermission by rememberUpdatedState(requestWritePermission)
+    val latestReplacement by rememberUpdatedState(onReplacedLaunch)
     val stored by produceState<StoredEditor>(StoredEditor.Loading, request, drafts, retry) {
         value = StoredEditor.Loading
         value = try {
-            val launch = withContext(Dispatchers.IO) { drafts.load(request.draftId)?.let(DraftBrowserCodec::read)?.launch }
-            if (launch != null && launch.ref == request.ref && launch.draftId == request.draftId) StoredEditor.Ready(launch)
+            val document = withContext(Dispatchers.IO) {
+                drafts.load(request.draftId)?.let { record ->
+                    OrdinaryDraftDocument.decode(record)
+                }
+            }
+            val launch = document?.launch
+            if (launch != null && request.matches(launch))
+                StoredEditor.Ready(launch, requireNotNull(document).sourceIdentity)
             else StoredEditor.Unavailable
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { StoredEditor.Unavailable }
@@ -119,25 +137,24 @@ internal fun EventWriteWorkflow(
         return
     }
     val recoveryOnly = request.recoveryOnly || launch.needsRecovery
-    val read by produceState<EditReadResult?>(null, request, mutations, retry, recoveryOnly) {
+    val sourceIdentity = (stored as StoredEditor.Ready).sourceIdentity
+    val needsSource = request.ref != null && !recoveryOnly && sourceIdentity != null
+    val read by produceState<EditReadResult?>(null, request, mutations, retry, needsSource) {
         value = null
-        value = if (request.ref == null || recoveryOnly) null else mutations.loadForEdit(request.ref).let {
-            if (it is EditReadResult.Ready && it.event.details.occurrence.ref != request.ref) EditReadResult.Unavailable else it
-        }
+        value = if (!needsSource || request.ref == null) null else try {
+            mutations.loadForEdit(request.ref).let { result ->
+                if (result is EditReadResult.Ready && (result.event.details.occurrence.ref != request.ref ||
+                    result.event.details.calendar?.identity != sourceIdentity)) EditReadResult.Unavailable else result
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { EditReadResult.Unavailable }
     }
-    val existing = replacement ?: (read as? EditReadResult.Ready)?.event
-    if (request.ref != null && !recoveryOnly && existing == null) {
+    val existing = (read as? EditReadResult.Ready)?.event
+    if (needsSource && read == null) {
         ModalBottomSheet(onDismissRequest = onDismiss) {
             Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(when (read) {
-                    null -> R.string.events_loading
-                    EditReadResult.PermissionRequired -> R.string.events_permission_required
-                    is EditReadResult.Denied -> R.string.navigation_edit_unavailable
-                    EditReadResult.LimitExceeded -> R.string.navigation_edit_read_limit
-                    else -> R.string.events_unavailable
-                }))
-                if (read == null) CircularProgressIndicator()
-                else if (read == EditReadResult.Unavailable) TextButton(onClick = { retry++ }) { Text(stringResource(R.string.events_retry)) }
+                Text(stringResource(R.string.events_loading))
+                CircularProgressIndicator()
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.calendar_close_events)) }
             }
         }
@@ -147,29 +164,20 @@ internal fun EventWriteWorkflow(
         existing?.details?.editorSeed() ?: launch.seed(request.date, request.zone)
     }
     val scope = rememberCoroutineScope()
-    val controller = remember(request, existing, replacementVersion, mutations, drafts, recoveryOnly) {
+    val controller = remember(request, existing, mutations, drafts, recoveryOnly, recurringCreationSupported, retirement) {
         EventEditorController(initial, existing, request.draftId, mutations, drafts, scope, clock = clock,
             initialCalendarSelected = launch.calendarSelected, recoveryOnly = recoveryOnly,
-            recoveryRef = if (recoveryOnly) launch.ref else null, requireStoredDraft = true)
+            recoveryRef = launch.ref, requireStoredDraft = true,
+            recurringCreationSupported = recurringCreationSupported, expectedGeneration = request.generation,
+            retirement = retirement, requestWritePermission = if (requestWritePermission != null) ({ latestPermission?.invoke() == true }) else null)
     }
-    var preparingReview by remember(controller) { mutableStateOf(false) }
-    var preparationFailed by remember(controller) { mutableStateOf(false) }
     LaunchedEffect(controller.state.loading) {
         val state = controller.state
         if (!state.loading && state.problem == null && !state.recoveryRequired && !state.reviewRequired && !state.draftReadFailed && request.delete)
             controller.requestDelete()
     }
     EventEditorSheet(controller, calendars, onDismiss, onSaved, onDeleted,
-        onReviewExisting = { result ->
-            if (result is EditReadResult.Ready && !preparingReview) scope.launch {
-                preparingReview = true
-                val prepared = prepareEditDraft(result.event.details.editorSeed(), result.event, request.draftId, drafts)
-                if (prepared is DraftPreparationResult.Ready) { replacement = result.event; replacementVersion++ }
-                else preparationFailed = true
-                preparingReview = false
-            }
-        }, use24Hour = use24Hour)
-    if (preparationFailed) AlertDialog(onDismissRequest = { preparationFailed = false },
-        text = { Text(stringResource(R.string.navigation_draft_unavailable)) },
-        confirmButton = { TextButton(onClick = { preparationFailed = false }) { Text(stringResource(R.string.events_close)) } })
+        use24Hour = use24Hour,
+        onReplacedLaunch = if (onReplacedLaunch != null) ({ value -> latestReplacement?.invoke(value) }) else null,
+        onDiscarded = onDismiss)
 }

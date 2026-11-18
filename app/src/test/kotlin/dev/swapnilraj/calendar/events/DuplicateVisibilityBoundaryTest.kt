@@ -24,7 +24,7 @@ class DuplicateVisibilityBoundaryTest {
     private val fixture = EventEditorControllerTest(); private val writer = fixture.Writer()
     private suspend fun prepare(target: CalendarId? = CalendarId(2), privacy: Int? = 0): EditorDraftLaunch =
         (prepareDuplicateDraft(details.copy(privacy = privacy), target, "copy", store, targetIdentity = target?.let { eventTestIdentity(it.value) }) as DraftPreparationResult.Ready).launch
-    private fun editor(launch: EditorDraftLaunch, recovery: Boolean = false) = EventEditorController(launch.seed(LocalDate.parse("2040-01-01"), ZoneOffset.UTC),
+    private fun editor(launch: EditorDraftLaunch, recovery: Boolean = false) = preparedEditor(launch.seed(LocalDate.parse("2040-01-01"), ZoneOffset.UTC),
         null, "copy", writer, store, scope, initialCalendarSelected = launch.calendarSelected, recoveryOnly = recovery, requireStoredDraft = true)
     private fun launch() = DraftBrowserCodec.read(store.records.getValue("copy")).launch!!
     @After fun stop() { scope.cancel() }
@@ -86,7 +86,7 @@ class DuplicateVisibilityBoundaryTest {
         store.records.clear()
         val source = EditableEvent(details, EditToken("source"), EditableField.entries.toSet())
         prepareEditDraft(initial, source, "copy", store)
-        val edit = EventEditorController(initial, source, "copy", writer, store, scope, requireStoredDraft = true)
+        val edit = preparedEditor(initial, source, "copy", writer, store, scope, requireStoredDraft = true)
         edit.change { it.copy(title = "Changed") }; assertFalse(edit.visibilityChoiceRequired); edit.save()
         assertEquals(FieldChange.Keep, writer.patch!!.privacy)
     }
@@ -108,7 +108,7 @@ class DuplicateVisibilityBoundaryTest {
             val bad = original.copy(payload = raw.toString()); store.records["copy"] = bad
             assertNull(DraftBrowserCodec.read(bad).launch)
             val seed = EventDraft(CalendarId(2), time, ZoneOffset.UTC, "Seed", privacy = 0)
-            val controller = EventEditorController(seed, null, "copy", writer, store, scope, requireStoredDraft = true)
+            val controller = preparedEditor(seed, null, "copy", writer, store, scope, requireStoredDraft = true)
             controller.save(); assertTrue(controller.state.draftReadFailed)
             assertEquals(bad, store.records.getValue("copy")); assertEquals(0, writer.creates)
         }
