@@ -50,11 +50,13 @@ object DraftBrowserCodec {
             val launch = SeriesDraftCodec.describe(record)
             return DraftBrowserItem(record.id, record.updatedAt, null, if (launch == null) DraftReadIssue.UNREADABLE else null, launch)
         }
-        if (record.version != EventEditorController.VERSION)
+        if (record.version !in setOf(EventEditorController.LEGACY_VERSION, EventEditorController.VERSION))
             return DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNSUPPORTED_VERSION)
         return try {
             require(record.id.isNotBlank())
             val raw = JSONObject(record.payload)
+            require(record.version != EventEditorController.LEGACY_VERSION || !raw.has("recurrence"))
+            require(record.version != EventEditorController.VERSION || raw.has("recurrence"))
             val target = raw.getString("target")
             val kind = when {
                 target == "create" -> EditorDraftKind.CREATE
@@ -140,7 +142,8 @@ object DraftBrowserCodec {
             value.optString("zone").takeIf(String::isNotBlank)?.let(ZoneId::of), value.getString("title"),
             value.getString("location"), value.getString("description"), (0 until alerts.length()).map(alerts::getInt),
             if (value.has("availability") && !value.isNull("availability")) value.getInt("availability") else null,
-            if (value.has("privacy") && !value.isNull("privacy")) value.getInt("privacy") else null, CalendarIdentityJson.optional(value, "targetIdentity"))
+            if (value.has("privacy") && !value.isNull("privacy")) value.getInt("privacy") else null, CalendarIdentityJson.optional(value, "targetIdentity"),
+            if (value.has("recurrence")) AuthoredRecurrenceJson.decode(value.getJSONObject("recurrence")) else null)
     } catch (_: Exception) { null }
 }
 

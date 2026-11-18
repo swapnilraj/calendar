@@ -19,10 +19,11 @@ data class EventEditorFields(
     val availability: String = "", val privacy: String = "",
     val defaultVisibilityCalendar: String = "",
     val targetIdentity: CalendarIdentity? = null, val defaultVisibilityIdentity: CalendarIdentity? = null,
+    val recurrence: RecurrenceEditorFields = RecurrenceEditorFields(),
 )
 
 enum class EditorProblem { INVALID_INPUT, AMBIGUOUS_TIME, NONEXISTENT_TIME, PERMISSION,
-    DENIED, CONFLICT, UNCERTAIN, UNAVAILABLE, DRAFT_UNAVAILABLE, UNSUPPORTED, DRAFT_VERSION, SAFE_TO_RETRY, RETRY_UNAVAILABLE, VISIBILITY_REQUIRED, CALENDAR_REQUIRED }
+    DENIED, CONFLICT, UNCERTAIN, UNAVAILABLE, DRAFT_UNAVAILABLE, UNSUPPORTED, DRAFT_VERSION, SAFE_TO_RETRY, RETRY_UNAVAILABLE, VISIBILITY_REQUIRED, CALENDAR_REQUIRED, RECURRENCE_UNSUPPORTED, RECURRENCE_INVALID, RECURRENCE_REVIEW }
 
 data class EventEditorState(
     val fields: EventEditorFields, val loading: Boolean = true, val saving: Boolean = false,
@@ -30,6 +31,7 @@ data class EventEditorState(
     val confirmDelete: Boolean = false, val recoveryRequired: Boolean = false, val reviewRequired: Boolean = false,
     val reviewLatest: EventDetails? = null, val draftReadFailed: Boolean = false, val retryReady: Boolean = false,
     val notices: List<EditorNotice> = emptyList(),
+    val recurrenceReview: RecurrenceCreationPlan? = null,
 )
 
 /** Injected ports are the only write path. Dismissal and restoration never submit an event. */
@@ -45,6 +47,7 @@ class EventEditorController(
     val recoveryOnly: Boolean = false,
     private val recoveryRef: EventRef? = null,
     private val requireStoredDraft: Boolean = false,
+    val recurringCreationSupported: Boolean = false,
 ) {
     private val original = fieldsFor(initial).let {
         if (existing == null && !initialCalendarSelected) it.copy(calendarId = "", targetIdentity = null) else it
@@ -54,6 +57,7 @@ class EventEditorController(
     val visibilityChoiceRequired: Boolean get() = existing == null && state.notices.any { it == EditorNotice.VISIBILITY_REVIEW_REQUIRED || it == EditorNotice.CALENDAR_VISIBILITY_REVIEW_REQUIRED } &&
         state.fields.privacy.toIntOrNull() !in 0..3
     val calendarSelectionRequired: Boolean get() = existing == null && !validTarget(state.fields.targetIdentity, state.fields.calendarId)
+    private var recurrenceReviewPayload = ""
     private var operationId = UUID.randomUUID().toString()
     val pendingOperationId: String get() = operationId
     private var operationKind = ""
@@ -88,11 +92,12 @@ class EventEditorController(
                     require(launch.needsRecovery && launch.ref == recoveryRef)
                     recoveryRecord = saved
                 }
-                if (saved.version != VERSION) {
+                if (saved.version !in setOf(LEGACY_VERSION, VERSION) || saved.version == LEGACY_VERSION && JSONObject(saved.payload).has("recurrence")) {
                     state = state.copy(loading = false, problem = EditorProblem.DRAFT_VERSION)
                     return
                 }
                 val values = JSONObject(saved.payload)
+                require(saved.version != VERSION || values.has("recurrence"))
                 require(values.optString("target") == targetIdentity())
                 operationId = values.getString("operationId")
                 operationKind = values.optString("operationKind", "")
@@ -195,7 +200,8 @@ class EventEditorController(
             next = next.copy(startOffset = "")
         if (next.endDate != old.endDate || next.endTime != old.endTime || next.zone != old.zone || next.allDay != old.allDay)
             next = next.copy(endOffset = "")
-        state = state.copy(fields = next, notices = notices, problem = if (state.reviewRequired) EditorProblem.CONFLICT else null, result = null)
+        recurrenceReviewPayload = ""
+        state = state.copy(fields = next, notices = notices, recurrenceReview = null, problem = if (state.reviewRequired) EditorProblem.CONFLICT else null, result = null)
         if (persist) {
             persistence?.cancel()
             persistence = scope.launch { delay(300); persistSafely() }
@@ -240,7 +246,15 @@ class EventEditorController(
     catch (_: Exception) { state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE); false }
     }
 
-    fun save() {
+    fun save() = saveReviewed(false)
+
+    fun dismissRecurrenceReview() { recurrenceReviewPayload = ""; state = state.copy(recurrenceReview = null) }
+    fun confirmRecurringCreate() {
+        if (state.recurrenceReview == null) return
+        saveReviewed(true)
+    }
+
+    private fun saveReviewed(confirmed: Boolean) {
         if (writesBlocked()) return
         if (calendarSelectionRequired) { state = state.copy(problem = EditorProblem.CALENDAR_REQUIRED); return }
         if (visibilityChoiceRequired) { state = state.copy(problem = EditorProblem.VISIBILITY_REQUIRED); return }
@@ -248,7 +262,32 @@ class EventEditorController(
             preserveTime = if (existing != null && !timeChanged(state.fields)) initial.time else null,
             preserveAlerts = if (existing != null && state.fields.alerts == original.alerts) initial.alertMinutes else null) }
         catch (invalid: InvalidInput) { state = state.copy(problem = invalid.problem); return }
-        state = state.copy(saving = true, problem = null)
+        if (normalized.recurrence != null) {
+            if (existing != null || !recurringCreationSupported) { state = state.copy(problem = EditorProblem.RECURRENCE_UNSUPPORTED); return }
+            val start = when (val time = normalized.time) {
+                is EventTime.AllDay -> RecurrenceStart.AllDay(time.dates.start)
+                is EventTime.Timed -> {
+                    val zone = normalized.eventZone ?: run { state = state.copy(problem = EditorProblem.RECURRENCE_INVALID); return }
+                    val local = time.start.atZone(zone)
+                    try { RecurrenceStart.Timed(local.toLocalDateTime(), zone, local.offset) }
+                    catch (_: Exception) { state = state.copy(problem = EditorProblem.RECURRENCE_INVALID); return }
+                }
+            }
+            val compilation = RecurrenceCreation.compile(start, normalized.time, normalized.recurrence, previewLimit = 5)
+            if (compilation !is RecurrenceCreationResult.Ready) {
+                state = state.copy(recurrenceReview = null, problem = if (compilation is RecurrenceCreationResult.NeedsReview)
+                    EditorProblem.RECURRENCE_REVIEW else EditorProblem.RECURRENCE_INVALID)
+                return
+            }
+            val payload = encode(state.fields).toString()
+            if (!confirmed || recurrenceReviewPayload != payload) {
+                recurrenceReviewPayload = payload
+                state = state.copy(recurrenceReview = compilation.plan, problem = null)
+                return
+            }
+        } else if (confirmed) return
+        recurrenceReviewPayload = ""
+        state = state.copy(saving = true, problem = null, recurrenceReview = null)
         scope.launch {
             persistence?.cancelAndJoin()
             // An operation ID is tied to the submitted payload; never reuse it for a changed command.
@@ -296,6 +335,10 @@ class EventEditorController(
     /** A recovery proof only enables a separate user action; it never dispatches a write. */
     fun retryOriginal() {
         val command = frozenSubmission ?: return
+        if (command is FrozenEditorSubmission.Create && command.draft.recurrence != null && !recurringCreationSupported) {
+            state = state.copy(problem = EditorProblem.RECURRENCE_UNSUPPORTED)
+            return
+        }
         if (legacyDefaultVisibilityUnsafe || legacyTargetUnsafe || !state.retryReady || state.loading || state.draftReadFailed || state.problem == EditorProblem.DRAFT_VERSION || state.saving || completed || command.operationId != operationId || command.kind != operationKind) return
         state = state.copy(saving = true, retryReady = false, problem = null, result = null)
         scope.launch {
@@ -412,7 +455,8 @@ class EventEditorController(
     private fun targetIdentity(): String = editorDraftTarget(existing?.details?.occurrence?.ref ?: if (recoveryOnly) recoveryRef else null)
 
     companion object {
-        const val VERSION = 1
+        const val LEGACY_VERSION = 1
+        const val VERSION = 4
 
         /** Explicit new-launch preparation only; restoration must require the existing record. */
         internal fun initialRecord(initial: EventDraft, existing: EditableEvent?, id: String,
@@ -438,6 +482,7 @@ class EventEditorController(
             put("alerts", org.json.JSONArray(initial.alertMinutes))
             if (existing == null) initial.targetIdentity?.let { put("targetIdentity", CalendarIdentityJson.encode(it)) }
             put("availability", initial.availability ?: JSONObject.NULL); put("privacy", initial.privacy ?: JSONObject.NULL)
+            initial.recurrence?.let { put("recurrence", AuthoredRecurrenceJson.encode(it)) }
             when (val time = initial.time) {
                 is EventTime.Timed -> { put("kind", "timed"); put("start", time.start.toString()); put("end", time.end.toString()) }
                 is EventTime.AllDay -> { put("kind", "allDay"); put("start", time.dates.start.toString()); put("end", time.dates.endExclusive.toString()) }
@@ -479,7 +524,7 @@ class EventEditorController(
                 allDay?.dates?.endExclusive?.minusDays(1)?.toString() ?: end!!.toLocalDate().toString(),
                 start?.toLocalTime()?.toString() ?: "09:00", end?.toLocalTime()?.toString() ?: "10:00", allDay != null,
                 zone.id, draft.location, draft.description, draft.alertMinutes.joinToString(","),
-                start?.offset?.id.orEmpty(), end?.offset?.id.orEmpty(), draft.availability?.toString().orEmpty(), draft.privacy?.toString().orEmpty(), targetIdentity = draft.targetIdentity)
+                start?.offset?.id.orEmpty(), end?.offset?.id.orEmpty(), draft.availability?.toString().orEmpty(), draft.privacy?.toString().orEmpty(), targetIdentity = draft.targetIdentity, recurrence = RecurrenceEditorFields.from(draft.recurrence))
         }
         fun normalizedDraft(fields: EventEditorFields, preserveTime: EventTime? = null, preserveAlerts: List<Int>? = null): EventDraft = try {
             val startDate = LocalDate.parse(fields.startDate); val endDate = LocalDate.parse(fields.endDate)
@@ -506,11 +551,12 @@ class EventEditorController(
             } }.distinct()
             EventDraft(CalendarId(fields.calendarId.toLong()), time, if (fields.allDay) ZoneOffset.UTC else zone,
                 fields.title, fields.location, fields.description, alerts,
-                fields.availability.takeIf(String::isNotBlank)?.toInt(), fields.privacy.takeIf(String::isNotBlank)?.toInt(), fields.targetIdentity)
+                fields.availability.takeIf(String::isNotBlank)?.toInt(), fields.privacy.takeIf(String::isNotBlank)?.toInt(), fields.targetIdentity, fields.recurrence.normalized())
         } catch (invalid: InvalidInput) { throw invalid }
         catch (_: Exception) { throw InvalidInput(EditorProblem.INVALID_INPUT) }
 
         private fun encode(f: EventEditorFields) = JSONObject().apply {
+            put("recurrence", RecurrenceEditorFieldsJson.encode(f.recurrence))
             f.targetIdentity?.let { put("targetIdentity", CalendarIdentityJson.encode(it)) }
             f.defaultVisibilityIdentity?.let { put("defaultVisibilityIdentity", CalendarIdentityJson.encode(it)) }
             listOf("calendarId" to f.calendarId, "title" to f.title, "startDate" to f.startDate, "endDate" to f.endDate,
@@ -536,7 +582,8 @@ class EventEditorController(
             p.optString("location", ""), p.optString("description", ""), p.optString("alerts", ""),
             p.optString("startOffset", ""), p.optString("endOffset", ""),
             p.optString("availability", ""), p.optString("privacy", ""), readVisibilityCalendar(p),
-            CalendarIdentityJson.optional(p, "targetIdentity"), CalendarIdentityJson.optional(p, "defaultVisibilityIdentity"))
+            CalendarIdentityJson.optional(p, "targetIdentity"), CalendarIdentityJson.optional(p, "defaultVisibilityIdentity"),
+            if (p.has("recurrence")) RecurrenceEditorFieldsJson.decode(p.getJSONObject("recurrence")) else RecurrenceEditorFields())
     }
 }
 

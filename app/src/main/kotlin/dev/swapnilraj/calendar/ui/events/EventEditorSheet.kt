@@ -164,6 +164,11 @@ fun EventEditorContent(
                 label = { Text(stringResource(R.string.events_editor_zone)) }, enabled = canEdit(EditableField.ZONE),
                 singleLine = true, modifier = Modifier.fillMaxWidth())
         }
+        if (existing == null && !controller.recoveryOnly && controller.recurringCreationSupported) {
+            RecurrenceEditorControls(fields.recurrence, fields.startDate, !blocked) { value ->
+                controller.change { it.copy(recurrence = value) }
+            }
+        }
         OutlinedTextField(fields.location, { value -> controller.change { it.copy(location = value) } },
             label = { Text(stringResource(R.string.events_location)) }, enabled = canEdit(EditableField.LOCATION), modifier = Modifier.fillMaxWidth())
         OutlinedTextField(fields.description, { value -> controller.change { it.copy(description = value) } },
@@ -215,6 +220,10 @@ fun EventEditorContent(
                 timeField = null
             }) { Text(stringResource(R.string.events_editor_use_time)) }
         }, dismissButton = { TextButton(onClick = { timeField = null }) { Text(stringResource(R.string.events_editor_cancel)) } })
+    }
+    state.recurrenceReview?.let { plan ->
+        fields.recurrence.normalized()?.let { spec -> RecurrenceCreationReview(plan, spec, fields.title,
+            controller::confirmRecurringCreate, controller::dismissRecurrenceReview) }
     }
     if (confirmRetryDelete) AlertDialog(onDismissRequest = { confirmRetryDelete = false },
         title = { Text(stringResource(R.string.events_editor_retry_delete_confirm)) },
@@ -291,6 +300,9 @@ private fun problemResource(problem: EditorProblem) = when (problem) {
     EditorProblem.RETRY_UNAVAILABLE -> R.string.events_editor_retry_unavailable
     EditorProblem.VISIBILITY_REQUIRED -> R.string.events_copy_visibility_required
     EditorProblem.CALENDAR_REQUIRED -> R.string.events_calendar_reselection
+    EditorProblem.RECURRENCE_UNSUPPORTED -> R.string.recurrence_editor_unavailable
+    EditorProblem.RECURRENCE_INVALID -> R.string.recurrence_editor_invalid
+    EditorProblem.RECURRENCE_REVIEW -> R.string.recurrence_editor_transition
 }
 
 @Composable
