@@ -18,6 +18,8 @@ data class SeriesScopeCapabilities(
     val fields: Set<EditableField> = emptySet(),
     val delete: AccessDecision = AccessDecision.UNKNOWN,
     val limitation: SeriesActionLimitation = SeriesActionLimitation.UNKNOWN,
+    /** Explicit rule-edit right; readable recurrence text is not authoring authority. */
+    val recurrence: AccessDecision = AccessDecision.UNKNOWN,
 )
 
 /** The opaque token binds selected identity, the complete master/exception graph and child sets. */
