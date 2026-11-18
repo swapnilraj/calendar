@@ -59,7 +59,8 @@ internal fun WidgetOpenContent(app: CalendarApp, route: AgendaWidgetRoute.OpenEv
                         }
                         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                             try {
-                                combine(app.calendarReader.observeCalendars(), app.agendaWidgetFramework.health) { metadata, _ -> metadata }
+                                combine(app.calendarReader.observeCalendars(), app.agendaWidgetFramework.health,
+                                    app.agendaWidgetRuntime.changes) { metadata, _, _ -> metadata }
                                     .collectLatest { metadata ->
                                         value = CalendarReadState.Loading
                                         value = when (metadata) {
