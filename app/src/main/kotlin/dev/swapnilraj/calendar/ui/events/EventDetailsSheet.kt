@@ -207,8 +207,8 @@ fun EventDetailsContent(
                 stringResource(policyDecision(details.guestPermissions.seeGuests))))
             Text(stringResource(R.string.events_guest_policy_advisory), style = MaterialTheme.typography.bodySmall)
         }
-        details.recurrenceRule?.takeIf(String::isNotBlank)?.let { rule ->
-            DetailSection(stringResource(R.string.events_repeat)) { Text(stringResource(R.string.events_repeat_rule, rule)) }
+        recurrenceSummary(details, displayZone, locale)?.let { summary ->
+            DetailSection(stringResource(R.string.events_repeat)) { Text(summary) }
         }
         DetailSection(stringResource(R.string.events_reminders)) {
             if (details.reminders.isEmpty()) Text(stringResource(R.string.events_no_reminders))

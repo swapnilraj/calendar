@@ -36,6 +36,10 @@ and guest-policy metadata without inferring unknown defaults. Full guest lists a
 explicit organizer or guest-list visibility proof. Free/busy-only details contain none of that
 restricted metadata or event-specific styling. Guest-policy flags do not authorize event writes.
 
+Native details describe supported recurrence patterns in readable localized language; unknown or
+complex rules show Custom recurrence without changing their stored rule. Ref-only series remain
+labeled as part of a series.
+
 Native details present availability, visibility, status, organizer role, own response and advisory
 guest policy using readable labels. Calendar-default visibility is never inferred public. Unknown
 guest access shows unavailable rather than an empty guest list. Cancelled events have no featured
