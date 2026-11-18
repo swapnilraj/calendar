@@ -10,7 +10,7 @@ import android.provider.CalendarContract
 /** Copied from A22's native SQL fixture: real URI predicates/transaction assertions and native
  * DTEND-null/DURATION constraint. Instances projects only the first occurrence using elapsed
  * duration; this is not Google sync or a full recurrence expansion engine. */
-internal class NativeRecurringCreateJourneyProvider : ContentProvider() {
+internal class NativeRecurringCreateJourneyProvider(private val allowUpdates: Boolean = false) : ContentProvider() {
     val db = SQLiteDatabase.create(null)
     data class Query(val path: String, val fields: List<String>?, val selection: String?)
     val queries = java.util.Collections.synchronizedList(mutableListOf<Query>())
@@ -35,7 +35,7 @@ internal class NativeRecurringCreateJourneyProvider : ContentProvider() {
             hasAlarm INTEGER,availability INTEGER,accessLevel INTEGER,deleted INTEGER DEFAULT 0,eventStatus INTEGER DEFAULT 1,organizer TEXT DEFAULT 'owner@example.invalid',
             isOrganizer INTEGER DEFAULT 1,hasAttendeeData INTEGER DEFAULT 0,guestsCanSeeGuests INTEGER DEFAULT 1,guestsCanModify INTEGER DEFAULT 0,guestsCanInviteOthers INTEGER DEFAULT 0,
             selfAttendeeStatus INTEGER DEFAULT 0,displayColor INTEGER DEFAULT 123,original_id INTEGER,original_sync_id TEXT,originalInstanceTime INTEGER,originalAllDay INTEGER,_sync_id TEXT,uid2445 TEXT,
-            customAppPackage TEXT,customAppUri TEXT,hasExtendedProperties INTEGER DEFAULT 0,native_duration_ms INTEGER DEFAULT 0,CHECK(rrule IS NULL OR (dtend IS NULL AND duration IS NOT NULL)))""")
+            customAppPackage TEXT,customAppUri TEXT,fixture_opaque TEXT,hasExtendedProperties INTEGER DEFAULT 0,native_duration_ms INTEGER DEFAULT 0,CHECK(rrule IS NULL OR (dtend IS NULL AND duration IS NOT NULL)))""")
         db.execSQL("CREATE TABLE reminders (_id INTEGER PRIMARY KEY AUTOINCREMENT,event_id INTEGER,minutes INTEGER,method INTEGER)")
         db.execSQL("CREATE TABLE attendees (_id INTEGER,event_id INTEGER,attendeeName TEXT,attendeeEmail TEXT,attendeeStatus INTEGER,attendeeRelationship INTEGER,attendeeType INTEGER,attendeeIdentity TEXT,attendeeIdNamespace TEXT)")
         db.execSQL("CREATE TABLE extendedproperties (_id INTEGER,event_id INTEGER,name TEXT,value TEXT)")
@@ -80,7 +80,30 @@ internal class NativeRecurringCreateJourneyProvider : ContentProvider() {
         val id = db.insertOrThrow(path, null, inserted)
         return ContentUris.withAppendedId(uri, id)
     }
-    override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?): Int = error("Create/recover must not update")
+    override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?): Int {
+        requirePermission(android.Manifest.permission.WRITE_CALENDAR)
+        check(allowUpdates && uri.pathSegments.first() == "events") { "Unexpected fixture update" }
+        val where = mutableListOf<String>(); val bind = mutableListOf<String>()
+        uri.lastPathSegment?.toLongOrNull()?.let { where += "_id = ?"; bind += it.toString() }
+        if (selection != null) { where += "($selection)"; bind += args.orEmpty() }
+        return db.update("events", values, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray())
+    }
+    fun seedOneOff(start: java.time.Instant, end: java.time.Instant, title: String) {
+        db.insertOrThrow("events", null, ContentValues().apply {
+            put("_id", 7); put("calendar_id", 2); put("dtstart", start.toEpochMilli()); put("dtend", end.toEpochMilli())
+            put("allDay", 0); put("eventTimezone", "UTC"); put("eventEndTimezone", "UTC"); put("title", title)
+            put("eventLocation", "Synthetic room"); put("description", "Synthetic opaque notes"); put("availability", 1); put("accessLevel", 2)
+            put("hasAlarm", 1); put("_sync_id", "fixture-event-A"); put("uid2445", "fixture-stable-event-uid"); put("fixture_opaque", "opaque sentinel")
+        })
+        listOf(10, 30).forEach { minute -> db.insertOrThrow("reminders", null, ContentValues().apply {
+            put("event_id", 7); put("minutes", minute); put("method", 1)
+        }) }
+    }
+    fun snapshot(table: String): List<Map<String, String?>> = db.rawQuery("SELECT * FROM $table ORDER BY _id", null).use { cursor ->
+        buildList { while (cursor.moveToNext()) add(cursor.columnNames.associateWith { column ->
+            cursor.getColumnIndexOrThrow(column).let { if (cursor.isNull(it)) null else cursor.getString(it) }
+        }) }
+    }
     override fun delete(uri: Uri, selection: String?, args: Array<out String>?): Int = error("Create/recover must not delete")
     override fun applyBatch(operations: ArrayList<ContentProviderOperation>): Array<ContentProviderResult> {
         requirePermission(android.Manifest.permission.WRITE_CALENDAR)
