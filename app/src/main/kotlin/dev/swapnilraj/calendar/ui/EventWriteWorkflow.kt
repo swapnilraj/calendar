@@ -10,6 +10,7 @@ import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.*
 import dev.swapnilraj.calendar.android.navigation.isCalendarSeedNativeHandoffVerified
+import dev.swapnilraj.calendar.android.navigation.CalendarEditReviewResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -106,6 +107,8 @@ internal fun EventWriteWorkflow(
     retirement: OperationRetirement? = null,
     requestWritePermission: (suspend () -> Boolean)? = null,
     onReplacedLaunch: ((EditorDraftLaunch) -> Unit)? = null,
+    incomingEditReview: CalendarEditReviewResult.Editor? = null,
+    presentationVisible: Boolean = true,
 ) {
     var retry by remember(request) { mutableIntStateOf(0) }
     val latestPermission by rememberUpdatedState(requestWritePermission)
@@ -115,6 +118,10 @@ internal fun EventWriteWorkflow(
         value = try {
             val document = withContext(Dispatchers.IO) {
                 drafts.load(request.draftId)?.let { record ->
+                    if (record.id.startsWith("incoming-edit:")) {
+                        // Generic draft opens cannot bypass the private host's source pin.
+                        require(incomingEditReview != null && request.matches(incomingEditReview.launch))
+                    }
                     if (record.id.startsWith("incoming:")) require(isCalendarSeedNativeHandoffVerified(record,
                         drafts.load("incoming-review:${record.id.removePrefix("incoming:")}")))
                     OrdinaryDraftDocument.decode(record)
@@ -182,5 +189,5 @@ internal fun EventWriteWorkflow(
     PhoneEventEditor(controller, calendars, onDismiss, onSaved, onDeleted,
         use24Hour = use24Hour,
         onReplacedLaunch = if (onReplacedLaunch != null) ({ value -> latestReplacement?.invoke(value) }) else null,
-        onDiscarded = onDismiss)
+        onDiscarded = onDismiss, contentVisible = presentationVisible)
 }

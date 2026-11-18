@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalContext
+import dev.swapnilraj.calendar.android.navigation.CalendarEditReviewActivity
 import dev.swapnilraj.calendar.android.navigation.CalendarSeedReviewActivity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -804,6 +805,14 @@ internal fun LiveCalendarDay(
             meetingWriteText = MeetingResponseRouteCodec.encode(launch)
         }) else null, onOpenSeedReview = { record ->
             val intent = CalendarSeedReviewActivity.intentFromDraft(context, record)
+            if (intent == null) onDraftFailure() else try {
+                context.startActivity(intent); showDrafts = false
+            } catch (_: android.content.ActivityNotFoundException) { onDraftFailure() }
+            catch (_: SecurityException) { onDraftFailure() }
+        }, onOpenEditReview = { record, companion ->
+            val intent = if (record.id.startsWith("incoming-edit:"))
+                CalendarEditReviewActivity.intentForNative(context, record, companion)
+            else CalendarEditReviewActivity.intentFromReview(context, record)
             if (intent == null) onDraftFailure() else try {
                 context.startActivity(intent); showDrafts = false
             } catch (_: android.content.ActivityNotFoundException) { onDraftFailure() }

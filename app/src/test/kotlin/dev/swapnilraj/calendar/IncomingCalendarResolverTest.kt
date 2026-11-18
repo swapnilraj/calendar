@@ -172,4 +172,27 @@ class IncomingCalendarResolverTest {
         val resolved = IncomingCalendarResolver(source).resolve(session, ZoneOffset.UTC) as CalendarEntryResolution.Event
         assertEquals(raw, resolved.proposedEdit); assertEquals(ref, resolved.ref); assertEquals(0, source.details.get())
     }
+
+    @Test fun editSuggestedTimeAndAllDayChangeCannotChooseAnotherTargetOrHideCurrentOneoff() = runBlocking {
+        val source = Source()
+        val raw = seed().copy(occurrence = CalendarOccurrenceHints(Instant.parse("2027-02-03T00:00:00Z"), Instant.parse("2027-02-05T00:00:00Z"), true))
+        val resolved = IncomingCalendarResolver(source).resolve(CalendarEntrySession.create(CalendarIntentRoute.EditEvent(7, raw)), ZoneOffset.UTC) as CalendarEntryResolution.Event
+        assertEquals(ref, resolved.ref); assertEquals(raw, resolved.proposedEdit)
+        assertEquals(CalendarDateRange.day(LocalDate.of(2026, 11, 18)), source.request?.range)
+        assertEquals(0, source.details.get())
+    }
+
+    @Test fun recurringEditWithApparentlyValidBoundsNeverGuessesAnEditableInstance() = runBlocking {
+        val source = Source(); source.info = base.copy(recurringOrDetached = true)
+        val raw = seed().copy(occurrence = CalendarOccurrenceHints(ref.instanceStart, ref.instanceEnd, false))
+        assertEquals(CalendarEntryResolution.Unsupported, IncomingCalendarResolver(source).resolve(
+            CalendarEntrySession.create(CalendarIntentRoute.EditEvent(7, raw)), ZoneOffset.UTC))
+        assertEquals(0, source.snapshots.get()); assertEquals(0, source.details.get())
+    }
+
+    @Test fun standaloneEditStillRejectsNamespaceReplacementAcrossCanonicalSnapshotAwait() = runBlocking {
+        val source = Source(); source.onSnapshot = { source.info = base.copy(providerUid = "replacement-event") }
+        assertEquals(CalendarEntryResolution.Stale, IncomingCalendarResolver(source).resolve(
+            CalendarEntrySession.create(CalendarIntentRoute.EditEvent(7, seed())), ZoneOffset.UTC))
+    }
 }

@@ -52,12 +52,14 @@ class PublicCalendarEntryJourneyTest {
         val event = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, 7)
         val date = Uri.parse("content://${CalendarContract.AUTHORITY}/time/${start.toEpochMilli()}")
         listOf(Intent(Intent.ACTION_VIEW, event), Intent(Intent.ACTION_VIEW).setDataAndType(event, "vnd.android.cursor.item/event"),
+            Intent(Intent.ACTION_EDIT, event), Intent(Intent.ACTION_EDIT).setDataAndType(event, "vnd.android.cursor.item/event"),
             Intent(Intent.ACTION_VIEW, date), Intent(Intent.ACTION_VIEW).setDataAndType(date, "vnd.android.cursor.item/event"),
             Intent(Intent.ACTION_INSERT).setType("vnd.android.cursor.dir/event")).forEach { intent ->
             val matches = f.app.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
             assertTrue("Manifest must resolve $intent", matches.any { it.activityInfo.name == CalendarEntryActivity::class.java.name })
         }
         assertFalse(f.app.packageManager.getActivityInfo(ComponentName(f.app, CalendarSeedReviewActivity::class.java), 0).exported)
+        assertFalse(f.app.packageManager.getActivityInfo(ComponentName(f.app, CalendarEditReviewActivity::class.java), 0).exported)
         assertNoWrite(f)
     }
 

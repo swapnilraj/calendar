@@ -26,7 +26,7 @@ import dev.swapnilraj.calendar.android.reminders.ReminderRuntimeOwner
 import dev.swapnilraj.calendar.android.reminders.ReminderRuntime
 import dev.swapnilraj.calendar.android.widgets.*
 
-open class CalendarApp : Application(), ReminderRuntimeOwner, AgendaWidgetApplicationOwner, CalendarEntryOwner, CalendarSeedReviewOwner {
+open class CalendarApp : Application(), ReminderRuntimeOwner, AgendaWidgetApplicationOwner, CalendarEntryOwner, CalendarSeedReviewOwner, CalendarEditReviewOwner {
     /** Imported-row cloning requires independently verified provider implementation evidence. */
     protected open val providerClonePolicy: dev.swapnilraj.calendar.data.calendar.ProviderClonePolicy
         get() = dev.swapnilraj.calendar.data.calendar.ProviderClonePolicy.Unverified
@@ -37,6 +37,11 @@ open class CalendarApp : Application(), ReminderRuntimeOwner, AgendaWidgetApplic
     override val calendarSeedReviewServices by lazy { createCalendarSeedReviewServices() }
     @androidx.compose.runtime.Composable
     override fun CalendarSeedReviewTheme(content: @androidx.compose.runtime.Composable () -> Unit) {
+        calendarSeedReviewRendererTheme(content)
+    }
+    override val calendarEditReviewServices by lazy { createCalendarEditReviewServices() }
+    @androidx.compose.runtime.Composable
+    override fun CalendarEditReviewTheme(content: @androidx.compose.runtime.Composable () -> Unit) {
         calendarSeedReviewRendererTheme(content)
     }
     private val calendarScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Default) }

@@ -430,6 +430,18 @@ provider-expanded Instances; recurring/detached event IDs require an explicit oc
 app/provider display filters do not authorize or prevent a directly requested readable link. Missing
 or canceled/deleted rows, ambiguous identity, and insufficient read authority do not open stale details.
 
+Incoming Android EDIT suggestions use the same read-only entry resolver and a private version8
+review activity. Only an exact freshly readable owned, guest-free one-off source is eligible. The
+original token/baseline and caller suggestions remain separate; explicit Apply persists a prepared
+ordinary draft before a permanent minimal handoff receipt, and only native Save writes the event.
+Unsupported guest/recurrence/field suggestions remain visible and block Apply. Every saved
+`incoming-edit:` draft reopens through the private source-pinned activity, including frozen recovery;
+a generic editor route cannot bypass that guard. A consumed receipt never reseeds the operation.
+READ loss supplies a scrubbed preferences-only environment so known frozen outcomes can recover
+without mutable source reads. Permission loss masks editor fields/actions before checking local
+frozen proof while retaining the mounted controller and its operation/outcome cleanup effects.
+This does not establish device/account delivery or Google interaction parity.
+
 Incoming Android VIEW event/date and INSERT event intents use an exported read-only entry activity.
 Explicit Create review opens a private native-editor activity; arrival, Cancel and permission grants
 never submit provider writes. Incomplete inputs remain durable, unsupported recurrence and guests stay
