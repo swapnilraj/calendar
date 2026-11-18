@@ -31,6 +31,11 @@ mutation automatically. Ask-each-time leaves the calendar unselected. The writer
 rights/source/token and journals linked local writes; results explicitly describe device-local
 saves/deletes. Recurrence/guest writes and server propagation remain separate pending work.
 
+Native detail reads retain optional provider availability, privacy, status, organizer, self-response
+and guest-policy metadata without inferring unknown defaults. Full guest lists are read only with
+explicit organizer or guest-list visibility proof. Free/busy-only details contain none of that
+restricted metadata or event-specific styling. Guest-policy flags do not authorize event writes.
+
 1. **Events always win.** Weather is painted under the hour lines and events. Nothing covers an event
    or its text, and event colours are never tinted.
 2. **Glanceable, not readable.** "Rainy evening, dark by five" should land in under a second without

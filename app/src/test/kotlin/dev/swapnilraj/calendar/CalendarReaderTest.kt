@@ -31,6 +31,10 @@ class CalendarReaderTest {
         val calendars = mutableListOf<Map<String, Any?>>()
         val events = mutableListOf<Map<String, Any?>>()
         var detailOverride: Map<String, Any?>? = null
+        val attendees = mutableListOf<Map<String, Any?>>()
+        val reminders = mutableListOf<Map<String, Any?>>()
+        var attendeeQueries = 0
+        var reminderQueries = 0
         var failure: RuntimeException? = null
         var nullCursor = false
         lateinit var ownerScope: CoroutineScope
@@ -47,6 +51,8 @@ class CalendarReaderTest {
                 "calendars" -> calendars
                 "instances" -> { instanceQueries++; this.uri = uri; this.selection = selection; this.args = args; events }
                 "events" -> detailOverride?.let { listOf(it) } ?: events
+                "attendees" -> { attendeeQueries++; attendees }
+                "reminders" -> { reminderQueries++; reminders }
                 else -> emptyList()
             }
             return object : MatrixCursor(projection!!) {
@@ -175,6 +181,88 @@ class CalendarReaderTest {
             assertEquals(CalendarReadState.Unavailable, reader.readDetails(ref))
             provider.events.clear()
             assertEquals(CalendarReadState.Unavailable, reader.readDetails(ref))
+        }
+    }
+
+    @Test fun guestListsRequireExplicitOrganizerOrGuestVisibilityFlags() = runBlocking {
+        val cases = listOf(Triple(1, 0, true), Triple(0, 1, true), Triple(0, 0, false),
+            Triple(null, null, false), Triple(2, 7, false))
+        for ((isOrganizer, seeGuests, allowed) in cases) fixture { provider, reader, _ ->
+            // Matching the account email must not itself grant organizer/guest-list authority.
+            provider.events += event(11, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") + mapOf(
+                CalendarContract.Events.ORGANIZER to "fixture@example.invalid",
+                CalendarContract.Events.IS_ORGANIZER to isOrganizer,
+                CalendarContract.Events.GUESTS_CAN_SEE_GUESTS to seeGuests,
+                CalendarContract.Events.SELF_ATTENDEE_STATUS to CalendarContract.Attendees.ATTENDEE_STATUS_TENTATIVE)
+            provider.attendees += mapOf(CalendarContract.Attendees.ATTENDEE_EMAIL to "guest@example.invalid",
+                CalendarContract.Attendees.ATTENDEE_NAME to "Synthetic guest", CalendarContract.Attendees.ATTENDEE_STATUS to 1,
+                CalendarContract.Attendees.ATTENDEE_RELATIONSHIP to 1, CalendarContract.Attendees.ATTENDEE_TYPE to 1)
+            val ref = EventRef(CalendarId(2), 11, Instant.parse("2026-11-17T10:00:00Z"), Instant.parse("2026-11-17T11:00:00Z"))
+            val details = (reader.readDetails(ref) as CalendarReadState.Ready).value
+            assertEquals(if (allowed) 1 else 0, provider.attendeeQueries)
+            assertEquals(if (allowed) 1 else 0, details.attendees.size)
+            assertEquals(CalendarContract.Attendees.ATTENDEE_STATUS_TENTATIVE, details.selfAttendeeStatus)
+            assertEquals(when (isOrganizer) { 1 -> true; 0 -> false; else -> null }, details.isOrganizer)
+            assertNull(details.availability)
+            assertNull(details.privacy)
+            assertNull(details.status)
+        }
+    }
+
+    @Test fun optionalMetadataPreservesRawEnumsAndStrictGuestPolicyWithoutWriteAuthority() = runBlocking {
+        fixture { provider, reader, _ ->
+            provider.events += event(11, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") + mapOf(
+                CalendarContract.Events.AVAILABILITY to 713, CalendarContract.Events.ACCESS_LEVEL to 714,
+                CalendarContract.Events.STATUS to 715, CalendarContract.Events.SELF_ATTENDEE_STATUS to 716,
+                CalendarContract.Events.IS_ORGANIZER to 0, CalendarContract.Events.GUESTS_CAN_MODIFY to 1,
+                CalendarContract.Events.GUESTS_CAN_INVITE_OTHERS to 0, CalendarContract.Events.GUESTS_CAN_SEE_GUESTS to 2)
+            val ref = EventRef(CalendarId(2), 11, Instant.parse("2026-11-17T10:00:00Z"), Instant.parse("2026-11-17T11:00:00Z"))
+            val details = (reader.readDetails(ref) as CalendarReadState.Ready).value
+            assertEquals(713, details.availability)
+            assertEquals(714, details.privacy)
+            assertEquals(715, details.status)
+            assertEquals(716, details.selfAttendeeStatus)
+            assertEquals(EventGuestPermissions(AccessDecision.ALLOWED, AccessDecision.DENIED, AccessDecision.UNKNOWN), details.guestPermissions)
+            assertEquals(AccessDecision.UNKNOWN, details.canEdit)
+            assertEquals(AccessDecision.UNKNOWN, details.canRespond)
+            assertEquals(0, provider.attendeeQueries)
+        }
+    }
+
+    @Test fun freeBusyDetailsScrubOptionalMetadataAndDoNotQueryGuestsOrReminders() = runBlocking {
+        fixture { provider, reader, _ ->
+            provider.calendars.clear()
+            provider.calendars += calendar(access = CalendarContract.Calendars.CAL_ACCESS_FREEBUSY)
+            provider.events += event(11, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") + mapOf(
+                CalendarContract.Events.TITLE to "Synthetic private title", CalendarContract.Events.DESCRIPTION to "Synthetic private notes",
+                CalendarContract.Events.EVENT_LOCATION to "Synthetic private location", CalendarContract.Events.ORGANIZER to "organizer@example.invalid",
+                CalendarContract.Events.EVENT_TIMEZONE to "Europe/London", CalendarContract.Events.DISPLAY_COLOR to 0xffaabbcc.toInt(),
+                CalendarContract.Events.IS_ORGANIZER to 1, CalendarContract.Events.GUESTS_CAN_SEE_GUESTS to 1,
+                CalendarContract.Events.GUESTS_CAN_MODIFY to 1, CalendarContract.Events.GUESTS_CAN_INVITE_OTHERS to 1,
+                CalendarContract.Events.AVAILABILITY to 1, CalendarContract.Events.ACCESS_LEVEL to 2,
+                CalendarContract.Events.STATUS to 1, CalendarContract.Events.SELF_ATTENDEE_STATUS to CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED)
+            val ref = EventRef(CalendarId(2), 11, Instant.parse("2026-11-17T10:00:00Z"), Instant.parse("2026-11-17T11:00:00Z"))
+            val details = (reader.readDetails(ref) as CalendarReadState.Ready).value
+            assertEquals("Busy", details.occurrence.title)
+            assertFalse(details.occurrence.declined)
+            assertEquals(0xff447766.toInt(), details.occurrence.color)
+            assertEquals("", details.location)
+            assertEquals("", details.description)
+            assertNull(details.organizer)
+            assertNull(details.eventZone)
+            assertNull(details.recurrenceRule)
+            assertNull(details.availability)
+            assertNull(details.privacy)
+            assertNull(details.status)
+            assertNull(details.isOrganizer)
+            assertNull(details.selfAttendeeStatus)
+            assertEquals(EventGuestPermissions(), details.guestPermissions)
+            assertTrue(details.attendees.isEmpty())
+            assertTrue(details.reminders.isEmpty())
+            assertEquals(AccessDecision.DENIED, details.canEdit)
+            assertEquals(AccessDecision.DENIED, details.canRespond)
+            assertEquals(0, provider.attendeeQueries)
+            assertEquals(0, provider.reminderQueries)
         }
     }
 

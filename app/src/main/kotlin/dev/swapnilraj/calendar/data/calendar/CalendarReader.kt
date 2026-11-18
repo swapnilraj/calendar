@@ -204,18 +204,36 @@ class CalendarReader(
             val allowed = calendar.capabilities.readDetails == AccessDecision.ALLOWED
             val occurrence = EventOccurrence(current.ref, current.time,
                 if (allowed) cursor.text(CalendarContract.Events.TITLE).orEmpty() else "Busy",
-                cursor.number(CalendarContract.Events.DISPLAY_COLOR)?.toInt() ?: calendar.color,
-                cursor.number(CalendarContract.Events.SELF_ATTENDEE_STATUS)?.toInt() == CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED)
+                if (allowed) cursor.number(CalendarContract.Events.DISPLAY_COLOR)?.toInt() ?: calendar.color else calendar.color,
+                allowed && cursor.number(CalendarContract.Events.SELF_ATTENDEE_STATUS)?.toInt() == CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED)
             if (!allowed) return@guarded EventDetails(occurrence, calendar,
                 canEdit = AccessDecision.DENIED, canRespond = AccessDecision.DENIED)
-            EventDetails(occurrence, calendar,
-                cursor.text(CalendarContract.Events.EVENT_LOCATION).orEmpty(),
-                cursor.text(CalendarContract.Events.DESCRIPTION).orEmpty(),
-                cursor.text(CalendarContract.Events.ORGANIZER), zone(cursor.text(CalendarContract.Events.EVENT_TIMEZONE)),
-                readAttendees(ref.eventId), readReminders(ref.eventId), cursor.text(CalendarContract.Events.RRULE),
-                // Actual write rights also depend on runtime permission and event restrictions.
+            val organizer = cursor.booleanFlag(CalendarContract.Events.IS_ORGANIZER)
+            val guestPermissions = EventGuestPermissions(
+                cursor.permissionFlag(CalendarContract.Events.GUESTS_CAN_MODIFY),
+                cursor.permissionFlag(CalendarContract.Events.GUESTS_CAN_INVITE_OTHERS),
+                cursor.permissionFlag(CalendarContract.Events.GUESTS_CAN_SEE_GUESTS),
+            )
+            val maySeeGuests = organizer == true || guestPermissions.seeGuests == AccessDecision.ALLOWED
+            EventDetails(
+                occurrence = occurrence, calendar = calendar,
+                location = cursor.text(CalendarContract.Events.EVENT_LOCATION).orEmpty(),
+                description = cursor.text(CalendarContract.Events.DESCRIPTION).orEmpty(),
+                organizer = cursor.text(CalendarContract.Events.ORGANIZER),
+                eventZone = zone(cursor.text(CalendarContract.Events.EVENT_TIMEZONE)),
+                // Provider-declared visibility is authoritative; matching an email is not proof.
+                attendees = if (maySeeGuests) readAttendees(ref.eventId) else emptyList(),
+                reminders = readReminders(ref.eventId), recurrenceRule = cursor.text(CalendarContract.Events.RRULE),
+                // Guest-policy flags describe the event, not effective app mutation permission.
                 canEdit = if (calendar.capabilities.modifyEvents == AccessDecision.DENIED) AccessDecision.DENIED else AccessDecision.UNKNOWN,
-                canRespond = if (calendar.capabilities.respondToInvitations == AccessDecision.DENIED) AccessDecision.DENIED else AccessDecision.UNKNOWN)
+                canRespond = if (calendar.capabilities.respondToInvitations == AccessDecision.DENIED) AccessDecision.DENIED else AccessDecision.UNKNOWN,
+                availability = cursor.number(CalendarContract.Events.AVAILABILITY)?.toInt(),
+                privacy = cursor.number(CalendarContract.Events.ACCESS_LEVEL)?.toInt(),
+                status = cursor.number(CalendarContract.Events.STATUS)?.toInt(),
+                isOrganizer = organizer,
+                selfAttendeeStatus = cursor.number(CalendarContract.Events.SELF_ATTENDEE_STATUS)?.toInt(),
+                guestPermissions = guestPermissions,
+            )
         }
     }
 
@@ -245,10 +263,22 @@ class CalendarReader(
         return EventOccurrence(ref,
             if (number(CalendarContract.Instances.ALL_DAY) == 1L) EventTime.AllDay.fromProvider(start, end) else EventTime.Timed(start, end),
             if (calendar?.capabilities?.readDetails == AccessDecision.ALLOWED) text(CalendarContract.Instances.TITLE).orEmpty() else "Busy",
-            number(CalendarContract.Instances.DISPLAY_COLOR)?.toInt() ?: calendar?.color ?: FallbackColor,
-            number(CalendarContract.Instances.SELF_ATTENDEE_STATUS)?.toInt() == CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED)
+            if (calendar?.capabilities?.readDetails == AccessDecision.ALLOWED)
+                number(CalendarContract.Instances.DISPLAY_COLOR)?.toInt() ?: calendar.color else calendar?.color ?: FallbackColor,
+            calendar?.capabilities?.readDetails == AccessDecision.ALLOWED &&
+                number(CalendarContract.Instances.SELF_ATTENDEE_STATUS)?.toInt() == CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED)
     }
 
+    private fun Cursor.booleanFlag(name: String): Boolean? = when (number(name)) {
+        1L -> true
+        0L -> false
+        else -> null
+    }
+    private fun Cursor.permissionFlag(name: String): AccessDecision = when (booleanFlag(name)) {
+        true -> AccessDecision.ALLOWED
+        false -> AccessDecision.DENIED
+        null -> AccessDecision.UNKNOWN
+    }
     private fun Cursor.text(name: String): String? = getColumnIndex(name).takeIf { it >= 0 && !isNull(it) }?.let(::getString)
     private fun Cursor.number(name: String): Long? = getColumnIndex(name).takeIf { it >= 0 && !isNull(it) }?.let(::getLong)
     private fun Cursor.requiredLong(name: String): Long = number(name) ?: throw IllegalStateException("Missing required calendar field")
@@ -277,7 +307,10 @@ class CalendarReader(
             CalendarContract.Events.DISPLAY_COLOR, CalendarContract.Events.ALL_DAY, CalendarContract.Events.SELF_ATTENDEE_STATUS,
             CalendarContract.Events.EVENT_LOCATION, CalendarContract.Events.DESCRIPTION, CalendarContract.Events.ORGANIZER,
             CalendarContract.Events.EVENT_TIMEZONE, CalendarContract.Events.RRULE, CalendarContract.Events.RDATE,
-            CalendarContract.Events.ORIGINAL_ID, CalendarContract.Events.DTSTART, CalendarContract.Events.DTEND)
+            CalendarContract.Events.ORIGINAL_ID, CalendarContract.Events.DTSTART, CalendarContract.Events.DTEND,
+            CalendarContract.Events.AVAILABILITY, CalendarContract.Events.ACCESS_LEVEL, CalendarContract.Events.STATUS,
+            CalendarContract.Events.IS_ORGANIZER, CalendarContract.Events.GUESTS_CAN_MODIFY,
+            CalendarContract.Events.GUESTS_CAN_INVITE_OTHERS, CalendarContract.Events.GUESTS_CAN_SEE_GUESTS)
         private val attendeeFields = arrayOf(CalendarContract.Attendees.ATTENDEE_EMAIL, CalendarContract.Attendees.ATTENDEE_NAME,
             CalendarContract.Attendees.ATTENDEE_STATUS, CalendarContract.Attendees.ATTENDEE_RELATIONSHIP, CalendarContract.Attendees.ATTENDEE_TYPE)
         private val reminderFields = arrayOf(CalendarContract.Reminders.MINUTES, CalendarContract.Reminders.METHOD)
