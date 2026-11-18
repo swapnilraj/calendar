@@ -100,9 +100,10 @@ class CalendarLocalStore(
             cursor.getString(cursor.getColumnIndexOrThrow("result_ref")))
     }
 
-    internal fun prepare(id: String, signature: String, kind: String) {
+    internal fun prepare(id: String, signature: String, kind: String, metadata: String? = null) {
         writableDatabase.insertWithOnConflict("mutation_journal", null, ContentValues().apply {
             put("id", id); put("signature", signature); put("kind", kind); put("phase", "PREPARED")
+            metadata?.let { put("result_ref", it) }
         }, SQLiteDatabase.CONFLICT_IGNORE)
     }
 

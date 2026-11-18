@@ -93,6 +93,27 @@ class CalendarReaderTest {
         }
     }
 
+    @Test fun calendarIdentityRetainsProviderUidAndNormalizesOnlyBlankOptionalIdentity() = runBlocking {
+        fixture { provider, reader, _ ->
+            provider.calendars.clear()
+            provider.calendars += calendar() + mapOf("_sync_id" to "provider-calendar-A")
+            val current = reader.observeCalendars().ready().single()
+            assertEquals("provider-calendar-A", current.providerId)
+            assertEquals(CalendarIdentity(CalendarId(2), CalendarAccount("fixture@example.invalid", "com.google"),
+                "fixture@example.invalid", "provider-calendar-A"), current.identity)
+            provider.calendars.clear()
+            provider.calendars += calendar() + mapOf("ownerAccount" to " ", "_sync_id" to "", "account_name" to "", "account_type" to "")
+            reader.refresh()
+            val unknown = withTimeout(10_000) {
+                (reader.observeCalendars().first { it is CalendarReadState.Ready && it.value.single().account.name.isEmpty() }
+                    as CalendarReadState.Ready).value.single()
+            }
+            assertEquals(CalendarAccount("", ""), unknown.identity.account)
+            assertNull(unknown.identity.owner)
+            assertNull(unknown.identity.providerId)
+        }
+    }
+
     @Test fun rangeIncludesUtcAllDayAndUsesHalfOpenTimedBoundaries() = runBlocking {
         fixture { provider, reader, _ ->
             provider.events += event(1, "2026-11-17T00:00:00Z", "2026-11-18T00:00:00Z", allDay = 1)

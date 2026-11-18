@@ -121,6 +121,7 @@ class CalendarReader(
                         access.decision(CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR),
                         access.decision(CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR),
                         access.decision(CalendarContract.Calendars.CAL_ACCESS_RESPOND)),
+                    providerId = cursor.text(CalendarContract.Calendars._SYNC_ID),
                 ))
             }
         }
@@ -383,7 +384,8 @@ class CalendarReader(
         private val calendarFields = arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
             CalendarContract.Calendars.CALENDAR_COLOR, CalendarContract.Calendars.ACCOUNT_NAME, CalendarContract.Calendars.ACCOUNT_TYPE,
             CalendarContract.Calendars.OWNER_ACCOUNT, CalendarContract.Calendars.CALENDAR_TIME_ZONE,
-            CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL, CalendarContract.Calendars.VISIBLE, CalendarContract.Calendars.SYNC_EVENTS)
+            CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL, CalendarContract.Calendars.VISIBLE, CalendarContract.Calendars.SYNC_EVENTS,
+            CalendarContract.Calendars._SYNC_ID)
         private val instanceFields = arrayOf(CalendarContract.Instances.EVENT_ID, CalendarContract.Instances.CALENDAR_ID,
             CalendarContract.Instances.BEGIN, CalendarContract.Instances.END, CalendarContract.Instances.TITLE,
             CalendarContract.Instances.DISPLAY_COLOR, CalendarContract.Instances.ALL_DAY, CalendarContract.Instances.SELF_ATTENDEE_STATUS,
