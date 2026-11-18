@@ -129,6 +129,16 @@ class CalendarWriterTest {
         finally { scope.cancel(); scope.coroutineContext[Job]!!.join(); store.close(); context.deleteDatabase(name) }
     }
 
+    @Test fun unsupportedAuthoredRecurrenceNeverFallsBackToOneOffOrStartsJournal() = runBlocking {
+        fixture { provider, writer, _, _ ->
+            val result = writer.create("unsupported-series", draft.copy(recurrence = RecurrenceSpec(RecurrencePattern.Daily)))
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.RECURRENCE)), result)
+            assertEquals(0, provider.batchCount)
+            assertTrue(provider.events.isEmpty())
+            assertEquals(MutationResult.Unavailable, writer.recover("unsupported-series"))
+        }
+    }
+
     @Test fun createsUpdatesDeletesAndPreservesUnrepresentedMetadataAndNonAlertReminders() = runBlocking {
         fixture { provider, writer, _, _ ->
             val created = writer.create("create", draft) as MutationResult.LocalSaved

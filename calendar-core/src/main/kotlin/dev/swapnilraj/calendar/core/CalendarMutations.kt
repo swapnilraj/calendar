@@ -17,6 +17,8 @@ data class EventDraft(
     val privacy: Int? = null,
     /** Null is an unproven legacy/newly unselected destination, not permission to adopt its current ID. */
     val targetIdentity: CalendarIdentity? = null,
+    /** Authored new series only; ordinary updates remain on the separate series port. */
+    val recurrence: RecurrenceSpec? = null,
 )
 
 sealed interface FieldChange<out T> {
@@ -42,7 +44,7 @@ enum class EditableField { TITLE, TIME, ZONE, LOCATION, DESCRIPTION, ALERTS, AVA
 data class EditToken(val value: String)
 data class EditableEvent(val details: EventDetails, val token: EditToken, val allowedFields: Set<EditableField>)
 enum class MutationDenial { CALENDAR_READ_ONLY, OWNERSHIP_UNKNOWN, INVITATION, RECURRENCE, UNSUPPORTED_EVENT }
-enum class InvalidEventField { CALENDAR, TIME, ZONE, ALERTS, AVAILABILITY, PRIVACY }
+enum class InvalidEventField { CALENDAR, TIME, ZONE, ALERTS, AVAILABILITY, PRIVACY, RECURRENCE }
 
 sealed interface EditReadResult {
     data class Ready(val event: EditableEvent) : EditReadResult

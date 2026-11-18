@@ -66,6 +66,8 @@ class CalendarWriter(
     }
 
     override suspend fun create(operationId: String, draft: EventDraft): MutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) {
+        // Never silently downgrade authored recurrence before the series-create encoder is enabled.
+        if (draft.recurrence != null) return@withContext MutationResult.ValidationFailed(setOf(InvalidEventField.RECURRENCE))
         val target = draft.targetIdentity
         if (target == null || target.calendarId != draft.calendarId || target.account.name.isBlank() || target.account.type.isBlank()) return@withContext MutationResult.ValidationFailed(setOf(InvalidEventField.CALENDAR))
         if (!permissions()) return@withContext MutationResult.PermissionRequired
