@@ -4,6 +4,45 @@ Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+At `21d53d1`, the required full gate **passed: 2,019 tests** (core257, app1,745,
+weather17), debug APK assembly and lint, with zero failures, errors or skipped tests. Command:
+`./gradlew test :app:assembleDebug :app:lintDebug`; log:
+`/tmp/daylight-meeting-edit-recurring-gate.log` (5m48s). Debug APK SHA-256:
+`3e59e8cc563fdebdac0b1ef743c449c80c7e1ab14eab3fbdf28fa907dffb36d0`.
+This remains debug-signed local evidence, not a stable production release.
+
+External EDIT review/private reopening is connected and passed13 actual-app entry journeys.
+Add people now atomically promotes one ordinary raw draft into a dedicated meeting draft; browser
+reopening checks its feature and generation. Schema2 meeting creation connects issued recurring
+rights, typed review and frozen commands while preserving schema1 frozen formats. Eleven actual-app
+one-off/recurring journeys passed, including COUNT, multi-day UTC all-day inclusive UNTIL, permissions,
+source changes and source-free recovery without a second batch. These use synthetic provider/SQLite
+fixtures, not live Google sync. New one-off receipt2 is self-contained; historical receipt1 still
+requires its retained local snapshot. Recurring, phone guest-form and ordinary review images were
+recorded, inspected and verified, including the corrected duration/zone labels at 2x RTL.
+
+The previous full attempt failed19 checks:17 owned-meeting tests could not seed through a fixture
+view missing native joined uid2445, one old creation-capability assertion was stale, and one ordinary
+review image needed the new UTC label. Test-only corrections preserve invalid-authority/no-write and
+opaque-metadata/response assertions;107 focused regressions passed before this green full gate.
+
+Nonzero Following prefix writes now repeat the unchanged original raw time context with the cut
+rule, with154 focused checks including explicit cache-model controls. Actual installed-provider
+warm-cache acceptance remains pending, and no production clone profile is admitted. The optional
+SDK-only LOCAL probe APK builds. Its real API35 emulator identity-only run passed for
+`com.android.providers.calendar` version35; the guarded18-case fixture experiment is running, with
+no runtime fixture PASS claimed yet. Evidence: `/tmp/daylight-native-provider-identity-30138a09/`.
+The probe is separate from Google/Workspace sync and UI parity certification.
+
+Remaining implementation includes the owned organizer edit/guest-delta/cancellation screen, advanced
+exception transfer/execution admission, the explicit same-renderer-zone edge on NULL-zone imports,
+and release provisioning. Personal/Workspace round-trips, physical reminder/Doze/reboot/timezone/
+TalkBack/upgrade checks, seven-day beta and stable signed release remain pending. The GitHub
+integration currently cannot access Actions secrets (HTTP403); no signing key was provisioned.
+PR53 typed retirement foundation passed full CI, merged into integration (`7f439b1`) and is attached.
+
+Earlier checkpoint and packet history:
+
 At `bf2ef3f`, the complete required gate passed: **1,490 tests** (core221, app1,252,
 weather17), debug APK assembly and lint; no failures, errors or skipped tests. This includes the
 bounded owned one-off meeting creation backend, namespace-checked incoming-link metadata reads,
