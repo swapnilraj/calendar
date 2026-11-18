@@ -51,7 +51,7 @@ class CalendarSeriesReaderTest {
             put("rrule", null); put("original_id", "10"); put("originalInstanceTime", ref.recurrence!!.originalStart.toEpochMilli().toString())
         }
     }
-    private class Provider : ContentProvider() {
+    internal class Provider : ContentProvider() {
         val calendar = mutableMapOf<String, String?>("_id" to "2", "calendar_access_level" to "700", "account_name" to "owner@example.invalid",
             "account_type" to "com.google", "ownerAccount" to "owner@example.invalid", "calendar_timezone" to "Europe/London", "calendar_color" to "123",
             "calendar_displayName" to "Synthetic", "visible" to "1", "sync_events" to "1", "canModifyTimeZone" to "1", "allowedAvailability" to "0,1,2")
@@ -69,6 +69,14 @@ class CalendarSeriesReaderTest {
         var blocked: CountDownLatch? = null
         var closes = 0
         val privateCalendars = mutableSetOf<String?>()
+        var allowWrites = false
+        var batchCount = 0
+        var failReminder = false
+        var lostAcknowledgement = false
+        var failReadsAfterCommit = false
+        var committed = false
+        var nextId = 900L
+        var beforeBatch: (() -> Unit)? = null
         override fun onCreate() = true
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?, cancellationSignal: CancellationSignal?): Cursor? {
             signal = cancellationSignal
@@ -77,6 +85,7 @@ class CalendarSeriesReaderTest {
         }
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor? {
             val path = uri.pathSegments.first()
+            if (committed && failReadsAfterCommit) error("Synthetic post-commit read failure")
             calls += Call(path, projection?.toList(), selection, args?.toList().orEmpty())
             if (path == failPath) error("Synthetic source failure")
             if (path == nullPath) return null
@@ -85,6 +94,7 @@ class CalendarSeriesReaderTest {
                 "calendars" -> listOf(calendar).filter { id == null || it["_id"] == id.toString() }
                 "events" -> events.filter { row -> when {
                     id != null -> row["_id"] == id.toString()
+                    selection?.startsWith("_id IN") == true -> row["_id"] in args.orEmpty()
                     selection?.contains("_sync_id IN") == true -> row["calendar_id"] == args!![0] && row["_sync_id"] in args.drop(1)
                     selection?.contains("original_id IS NULL") == true -> row["calendar_id"] == args!![0] && row["original_id"] == null && row["original_sync_id"] != null
                     selection?.contains("original_id") == true -> {
@@ -92,16 +102,19 @@ class CalendarSeriesReaderTest {
                         val master = args!![if (scoped) 1 else 0]
                         val sync = args.lastOrNull().takeIf { args.size == 4 }
                         (row["_id"] == master || row["original_id"] == master || (sync != null && row["original_sync_id"] == sync && row["calendar_id"] == args[if (scoped) 0 else 2])) &&
+                            (!selection.contains("deleted = 0") || row["deleted"] == "0") &&
                             (!scoped || row["calendar_id"] == args.first())
                     }
                     else -> true
                 } }
                 "instances" -> instances.filter { row ->
+                    events.any { it["_id"] == row["event_id"] && it["deleted"] != "1" && it["eventStatus"] != "2" } &&
                     row["event_id"] == args!![0] && row["calendar_id"] == args[1] && row["begin"]!!.toLong() < uri.pathSegments[3].toLong() &&
                         row["end"]!!.toLong() > uri.pathSegments[2].toLong()
                 }
                 "reminders", "attendees" -> (if (path == "reminders") reminders else attendees).filter { row ->
-                    if (id != null) row["_id"] == id.toString() else row["event_id"] in args.orEmpty()
+                    if (id != null) row["_id"] == id.toString() else if (selection?.contains("method = ?") == true)
+                        row["event_id"] == args!![0] && row["method"] == args[1] else row["event_id"] in args.orEmpty()
                 }
                 else -> error("Unexpected table")
             }
@@ -117,9 +130,48 @@ class CalendarSeriesReaderTest {
             }.apply { rows.forEach { row -> addRow(fields.map { row[it] }.toTypedArray()) } }
         }
         override fun getType(uri: Uri): String? = null
-        override fun insert(uri: Uri, values: ContentValues?): Uri? = error("Series inspection must not write provider")
-        override fun delete(uri: Uri, selection: String?, args: Array<out String>?): Int = error("Series inspection must not write provider")
-        override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?): Int = error("Series inspection must not write provider")
+        override fun insert(uri: Uri, values: ContentValues?): Uri {
+            check(allowWrites && uri.pathSegments.first() == "reminders") { "No provider event insertion is supported" }
+            if (failReminder) throw android.content.OperationApplicationException("Synthetic atomic rollback")
+            val id = nextId++
+            reminders += mutableMapOf<String, String?>("_id" to id.toString()).apply { values!!.keySet().forEach { put(it, values.get(it)?.toString()) } }
+            return android.content.ContentUris.withAppendedId(uri, id)
+        }
+        override fun delete(uri: Uri, selection: String?, args: Array<out String>?): Int {
+            check(allowWrites)
+            if (uri.pathSegments.first() == "events") {
+                val rows = events.filter { it["_id"] == uri.lastPathSegment }
+                rows.forEach { it["deleted"] = "1" }
+                return rows.size
+            }
+            check(uri.pathSegments.first() == "reminders")
+            val rows = reminders.filter { it["event_id"] == args!![0] && it["method"] == args[1] }.toSet()
+            reminders.removeAll(rows)
+            return rows.size
+        }
+        override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?): Int {
+            check(allowWrites && uri.pathSegments.first() == "events")
+            val rows = events.filter { it["_id"] == uri.lastPathSegment }
+            rows.forEach { row -> values!!.keySet().forEach { row[it] = values.get(it)?.toString() } }
+            return rows.size
+        }
+        override fun applyBatch(operations: ArrayList<android.content.ContentProviderOperation>): Array<android.content.ContentProviderResult> {
+            check(allowWrites)
+            batchCount++
+            beforeBatch?.also { beforeBatch = null }?.invoke()
+            val originalEvents = events.map { it.toMutableMap() }
+            val originalReminders = reminders.map { it.toMutableMap() }
+            val originalAttendees = attendees.map { it.toMutableMap() }
+            val originalId = nextId
+            val result = try { super.applyBatch(operations) } catch (failure: Exception) {
+                events.clear(); events.addAll(originalEvents); reminders.clear(); reminders.addAll(originalReminders)
+                attendees.clear(); attendees.addAll(originalAttendees); nextId = originalId
+                throw failure
+            }
+            committed = true
+            if (lostAcknowledgement) error("Synthetic lost acknowledgement after provider commit")
+            return result
+        }
     }
     private suspend fun fixture(budget: RecurrencePlanningBudget = RecurrencePlanningBudget(),
         block: suspend (Provider, CalendarSeriesReader, CalendarLocalStore, MutableSet<String>) -> Unit) {

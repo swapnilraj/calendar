@@ -49,6 +49,17 @@ class CalendarSeriesReader(
         source(selected).also { if (it.canonical() != expected) throw SeriesSourceConflict() }
     }
 
+    internal fun refresh() { reader.refresh() }
+
+    internal suspend fun selectedReference(ref: EventRef): EventRef? = withContext(io) {
+        ensureRead()
+        when (val result = reader.readDetails(ref)) {
+            is CalendarReadState.Ready -> result.value.occurrence.ref.takeIf { it == ref }
+            CalendarReadState.PermissionRequired -> throw SecurityException()
+            else -> null
+        }.also { ensureRead() }
+    }
+
     internal suspend fun source(selected: EventRef): CalendarSeriesSource = withContext(io) {
         ensureRead()
         val recurrence = selected.recurrence ?: throw SeriesSourceDenied(MutationDenial.RECURRENCE)
