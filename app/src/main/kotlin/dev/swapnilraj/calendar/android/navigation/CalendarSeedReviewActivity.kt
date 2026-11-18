@@ -16,6 +16,8 @@ import dev.swapnilraj.calendar.core.DraftRecord
 import dev.swapnilraj.calendar.core.CalendarReadState
 import dev.swapnilraj.calendar.ui.EventWriteRequest
 import dev.swapnilraj.calendar.ui.EventWriteWorkflow
+import dev.swapnilraj.calendar.ui.ownsPendingNativeOutcome
+import dev.swapnilraj.calendar.ui.events.EventEditorController
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
@@ -36,6 +38,8 @@ class CalendarSeedReviewActivity : ComponentActivity() {
     private var restoreGeneration: String? = null
     private var restoreOnly = false
     private var native: EventWriteRequest? = null
+    private var foreground by mutableStateOf(false)
+    private var nativeOwner: EventEditorController? = null
     private var frame = 0L
     private var edits = 0L
     private var durable: CalendarSeedReviewSnapshot? = null
@@ -55,14 +59,15 @@ class CalendarSeedReviewActivity : ComponentActivity() {
             ReviewTheme {
                 val displayed = result
                 val current = services
-                if (displayed is CalendarSeedReviewResult.Editor && current != null &&
-                    (hasRead() && displayed.environment.calendarReadGranted || displayed.launch.needsRecovery)) {
+                if (displayed is CalendarSeedReviewResult.Editor && current != null) {
                     val editor = native
                     if (editor != null) EventWriteWorkflow(editor, current.mutations, current.drafts,
                         if (hasRead() && displayed.environment.calendarReadGranted) displayed.environment.calendars else emptyList(),
                         displayed.environment.use24Hour, onDismiss = ::finish,
                         onSaved = { setResult(RESULT_OK); finish() }, onDeleted = { finish() },
                         recurringCreationSupported = displayed.environment.recurringCreationSupported, retirement = current.retirement,
+                        presentationVisible = foreground && (hasRead() && displayed.environment.calendarReadGranted || displayed.launch.needsRecovery),
+                        onControllerPresence = ::observeNativeOwner,
                         requestWritePermission = {
                             if (!hasRead()) { reload(); false }
                             else if (checkSelfPermission(Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED) true
@@ -85,6 +90,13 @@ class CalendarSeedReviewActivity : ComponentActivity() {
                     val explicitReload = observedReload != revision
                     observedReload = revision
                     val mounted = result as? CalendarSeedReviewResult.Editor
+                    if (mounted != null && native != null && nativeOwner?.ownsPendingNativeOutcome() == true) {
+                        // Keep the exact controller while its accepted write/cleanup is awaiting
+                        // acknowledgment. Fresh mounting could see an already removed draft.
+                        if (!hasRead()) result = mounted.copy(environment = mounted.environment.copy(
+                            calendars = emptyList(), calendarReadGranted = false))
+                        return@collectLatest
+                    }
                     if (!explicitReload && mounted != null && native != null) {
                         refreshMountedEditor(current, mounted)
                         return@collectLatest
@@ -109,8 +121,13 @@ class CalendarSeedReviewActivity : ComponentActivity() {
         }
     }
 
-    override fun onResume() { super.onResume(); reload() }
-    override fun onStop() { frame++; result = null; super.onStop() }
+    override fun onResume() { super.onResume(); foreground = true; reload() }
+    override fun onStop() {
+        foreground = false
+        frame++
+        if (nativeOwner?.ownsPendingNativeOutcome() != true || result !is CalendarSeedReviewResult.Editor) result = null
+        super.onStop()
+    }
     override fun onSaveInstanceState(outState: Bundle) {
         restoreGeneration?.let { outState.putString(STATE_GENERATION, it) }
         native?.let { outState.putString(STATE_NATIVE, it.encode()) }
@@ -121,7 +138,14 @@ class CalendarSeedReviewActivity : ComponentActivity() {
         val owner = application as? CalendarSeedReviewOwner
         if (owner == null) DaylightTheme(content = content) else owner.CalendarSeedReviewTheme(content)
     }
-    private fun reload() { frame++; result = null; reloads.value++ }
+    private fun reload() {
+        frame++
+        if (nativeOwner?.ownsPendingNativeOutcome() != true || result !is CalendarSeedReviewResult.Editor) result = null
+        reloads.value++
+    }
+    private fun observeNativeOwner(controller: EventEditorController, mounted: Boolean) {
+        if (mounted) nativeOwner = controller else if (nativeOwner === controller) nativeOwner = null
+    }
     private suspend fun refreshMountedEditor(current: CalendarSeedReviewServices, previous: CalendarSeedReviewResult.Editor) {
         val epoch = frame
         val route = native

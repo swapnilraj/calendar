@@ -57,8 +57,12 @@ fun PhoneEventEditor(
             // Keep the controller/scope and outcome effects mounted while hiding every field,
             // child picker and action during a fresh authority check.
             Surface(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center) {
                     CircularProgressIndicator()
+                    TextButton(onClick = ::close, enabled = !controller.state.saving) {
+                        Text(stringResource(R.string.events_close))
+                    }
                 }
             }
         } else PhoneEventEditorContent(controller, writableCalendars, ::close, use24Hour,

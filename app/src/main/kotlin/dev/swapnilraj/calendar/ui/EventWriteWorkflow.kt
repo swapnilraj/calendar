@@ -111,6 +111,7 @@ internal fun EventWriteWorkflow(
     incomingEditReview: CalendarEditReviewResult.Editor? = null,
     presentationVisible: Boolean = true,
     onPromotedMeeting: ((MeetingCreationLaunch) -> Unit)? = null,
+    onControllerPresence: (EventEditorController, Boolean) -> Unit = { _, _ -> },
 ) {
     var retry by remember(request) { mutableIntStateOf(0) }
     val latestPermission by rememberUpdatedState(requestWritePermission)
@@ -184,6 +185,11 @@ internal fun EventWriteWorkflow(
             retirement = retirement, requestWritePermission = if (requestWritePermission != null) ({ latestPermission?.invoke() == true }) else null,
             allowMeetingPromotion = onPromotedMeeting != null)
     }
+    val controllerPresence by rememberUpdatedState(onControllerPresence)
+    DisposableEffect(controller) {
+        controllerPresence(controller, true)
+        onDispose { controllerPresence(controller, false) }
+    }
     LaunchedEffect(controller.state.loading) {
         val state = controller.state
         if (!state.loading && state.problem == null && !state.recoveryRequired && !state.reviewRequired && !state.draftReadFailed && request.delete)
@@ -194,3 +200,6 @@ internal fun EventWriteWorkflow(
         onReplacedLaunch = if (onReplacedLaunch != null) ({ value -> latestReplacement?.invoke(value) }) else null,
         onDiscarded = onDismiss, contentVisible = presentationVisible, onPromotedMeeting = onPromotedMeeting)
 }
+
+/** Ownership observation only: a host must not cancel an accepted write or its cleanup. */
+internal fun EventEditorController.ownsPendingNativeOutcome(): Boolean = state.saving || state.localOutcome != null

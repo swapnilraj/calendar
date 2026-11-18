@@ -15,6 +15,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.EventWriteRequest
 import dev.swapnilraj.calendar.ui.EventWriteWorkflow
+import dev.swapnilraj.calendar.ui.ownsPendingNativeOutcome
+import dev.swapnilraj.calendar.ui.events.EventEditorController
 import dev.swapnilraj.calendar.ui.events.OrdinaryDraftDocument
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
 import java.time.LocalDate
@@ -39,6 +41,8 @@ class CalendarEditReviewActivity : ComponentActivity() {
     private var nativeGeneration: String? = null
     private var restoreOnly = false
     private var native: EventWriteRequest? = null
+    private var foreground by mutableStateOf(false)
+    private var nativeOwner: EventEditorController? = null
     private var frame = 0L
     private val ordering = Mutex()
     private val reloads = MutableStateFlow(0L)
@@ -78,7 +82,8 @@ class CalendarEditReviewActivity : ComponentActivity() {
                             if (hasRead() && displayed.environment.calendarReadGranted) displayed.environment.calendars else emptyList(),
                             displayed.environment.use24Hour, onDismiss = ::finish, onSaved = { setResult(RESULT_OK); finish() }, onDeleted = { finish() },
                             retirement = current.retirement, incomingEditReview = displayed,
-                            presentationVisible = hasRead() && displayed.environment.calendarReadGranted || displayed.sourceFree,
+                            presentationVisible = foreground && (hasRead() && displayed.environment.calendarReadGranted || displayed.sourceFree),
+                            onControllerPresence = ::observeNativeOwner,
                             requestWritePermission = {
                                 if (!hasRead()) { readPermission.launch(Manifest.permission.READ_CALENDAR); false }
                                 else if (checkSelfPermission(Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED) true
@@ -99,6 +104,13 @@ class CalendarEditReviewActivity : ComponentActivity() {
                 combine(reloads, current.changes.onStart { emit(Unit) }) { revision, _ -> revision }.collectLatest { revision ->
                     val explicit = observedReload != revision; observedReload = revision
                     val mounted = result as? CalendarEditReviewResult.Editor
+                    if (mounted != null && native != null && nativeOwner?.ownsPendingNativeOutcome() == true) {
+                        // Keep the exact controller while its accepted write/cleanup is awaiting
+                        // acknowledgment. Fresh mounting could see an already removed draft.
+                        if (!hasRead()) result = mounted.copy(environment = mounted.environment.copy(
+                            calendars = emptyList(), calendarReadGranted = false))
+                        return@collectLatest
+                    }
                     if (!explicit && mounted != null && native != null) {
                         refreshMounted(current, mounted)
                         return@collectLatest
@@ -122,8 +134,13 @@ class CalendarEditReviewActivity : ComponentActivity() {
         }
     }
 
-    override fun onResume() { super.onResume(); reload() }
-    override fun onStop() { frame++; result = null; super.onStop() }
+    override fun onResume() { super.onResume(); foreground = true; reload() }
+    override fun onStop() {
+        foreground = false
+        frame++
+        if (nativeOwner?.ownsPendingNativeOutcome() != true || result !is CalendarEditReviewResult.Editor) result = null
+        super.onStop()
+    }
     override fun onSaveInstanceState(outState: Bundle) {
         reviewGeneration?.let { outState.putString(REVIEW_GENERATION, it) }
         nativeGeneration?.let { outState.putString(NATIVE_GENERATION, it) }
@@ -134,7 +151,14 @@ class CalendarEditReviewActivity : ComponentActivity() {
         if (owner == null) DaylightTheme(content = content) else owner.CalendarEditReviewTheme(content)
     }
     private fun hasRead() = checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
-    private fun reload() { frame++; result = null; reloads.value++ }
+    private fun reload() {
+        frame++
+        if (nativeOwner?.ownsPendingNativeOutcome() != true || result !is CalendarEditReviewResult.Editor) result = null
+        reloads.value++
+    }
+    private fun observeNativeOwner(controller: EventEditorController, mounted: Boolean) {
+        if (mounted) nativeOwner = controller else if (nativeOwner === controller) nativeOwner = null
+    }
     private fun present(value: CalendarEditReviewResult) {
         busy = false
         when (value) {
