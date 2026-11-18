@@ -1,0 +1,2198 @@
+{
+  "acceptanceScope": "native LOCAL fixture matrix only",
+  "apks": {
+    "app": {
+      "bytes": 41889661,
+      "name": "app-debug.apk",
+      "sha256": "3e59e8cc563fdebdac0b1ef743c449c80c7e1ab14eab3fbdf28fa907dffb36d0"
+    },
+    "test": {
+      "bytes": 168356,
+      "name": "app-debug-androidTest.apk",
+      "sha256": "46c4a5e7abff2aea446605159ff410f1875473c10dc3b299ee0f32fd96d5c4fc"
+    }
+  },
+  "component": "dev.swapnilraj.calendar.providerprobe/dev.swapnilraj.calendar.probe.NativeCalendarProviderProbe",
+  "endZoneMode": "distinct",
+  "expectedGuard": {
+    "androidUser": 0,
+    "avd": "daylight_google_reference_userdebug_api35",
+    "bootId": "e6962d8d-29bf-4176-a1b7-3ee7dbbd2ed8",
+    "serial": "emulator-5554"
+  },
+  "googleWorkspaceRoundTrip": "NOT_RUN",
+  "guard": {
+    "androidUser": 0,
+    "avd": "daylight_google_reference_userdebug_api35",
+    "bootId": "e6962d8d-29bf-4176-a1b7-3ee7dbbd2ed8",
+    "buildFingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys",
+    "qemu": "1",
+    "serial": "emulator-5554"
+  },
+  "identityArtifactSha256": "1ce8f04db52efecf3d476095256ebda08ff82df0c8c9602f7ebf8cb5a1f0c4de",
+  "identityPreflightReport": {
+    "batchAssertionCap": 128,
+    "batchAssertionCountKind": "operations-in-attempted-batches",
+    "deadlineKind": "cooperative",
+    "directQueryCap": 320,
+    "googleWorkspaceRoundTrip": "NOT_RUN",
+    "productionProfileActivation": "NONE",
+    "providerIdentity": {
+      "baseSha256": "a1facdbec3de78c6817efe1aea40b804a66c8ccbcd23a72a426d8c21cfebd273",
+      "buildFingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys",
+      "package": "com.android.providers.calendar",
+      "sdk": 35,
+      "securityPatch": "2024-09-05",
+      "signers": [
+        "6cecc50e34ae31bfb5678986d6d6d3736c571ded2f2459527793e1f054eb0c9b"
+      ],
+      "signingHistory": [
+        "6cecc50e34ae31bfb5678986d6d6d3736c571ded2f2459527793e1f054eb0c9b"
+      ],
+      "splits": [],
+      "versionCode": 35
+    },
+    "queryTimeoutSeconds": 30,
+    "runId": "252d9aa4-59cd-4562-8ce0-6c1dde42c94a",
+    "schema": 1,
+    "scope": "native-provider-identity-only",
+    "status": "PASS"
+  },
+  "mode": "fixtures",
+  "probeReport": {
+    "batchAssertionCap": 128,
+    "batchAssertionCountBeforeCleanup": 78,
+    "batchAssertionCountKind": "operations-in-attempted-batches",
+    "calendarInsertAcknowledgment": {
+      "matchesRequestedQuery": true,
+      "queryAbsent": false,
+      "queryKeys": [
+        "account_name",
+        "account_type",
+        "caller_is_syncadapter"
+      ],
+      "unexpectedQueryKeyCount": 0
+    },
+    "cases": [
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-10T14:00:00Z",
+              "end": "2028-03-10T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-11T14:00:00Z",
+              "end": "2028-03-11T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-12T13:00:00Z",
+              "end": "2028-03-12T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            }
+          ],
+          "count": 13,
+          "duplicates": 5,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-10T14:00:00Z",
+              "end": "2028-03-10T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-11T14:00:00Z",
+              "end": "2028-03-11T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-12T13:00:00Z",
+              "end": "2028-03-12T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "PT5400S",
+        "limit": "COUNT",
+        "originalRule": "FREQ=DAILY;COUNT=8",
+        "outcome": "CONTROL_DIFFERENCE_OBSERVED",
+        "prefixCount": 8,
+        "requestedEndZone": "Pacific/Honolulu",
+        "seed": "new-york-spring",
+        "storedEndZone": "Pacific/Honolulu",
+        "tailCount": 5,
+        "variant": "RULE_ONLY_CONTROL"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-10T14:00:00Z",
+              "end": "2028-03-10T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-11T14:00:00Z",
+              "end": "2028-03-11T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-12T13:00:00Z",
+              "end": "2028-03-12T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-10T14:00:00Z",
+              "end": "2028-03-10T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-11T14:00:00Z",
+              "end": "2028-03-11T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-12T13:00:00Z",
+              "end": "2028-03-12T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "PT5400S",
+        "limit": "COUNT",
+        "originalRule": "FREQ=DAILY;COUNT=8",
+        "outcome": "PASS",
+        "prefixCount": 3,
+        "requestedEndZone": "Pacific/Honolulu",
+        "seed": "new-york-spring",
+        "storedEndZone": "Pacific/Honolulu",
+        "tailCount": 5,
+        "variant": "EXACT_CONTEXT"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-10T14:00:00Z",
+              "end": "2028-03-10T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-11T14:00:00Z",
+              "end": "2028-03-11T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-12T13:00:00Z",
+              "end": "2028-03-12T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-10T14:00:00Z",
+              "end": "2028-03-10T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-11T14:00:00Z",
+              "end": "2028-03-11T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-12T13:00:00Z",
+              "end": "2028-03-12T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "PT5400S",
+        "limit": "COUNT",
+        "originalRule": "FREQ=DAILY;COUNT=8",
+        "requestedEndZone": "Pacific/Honolulu",
+        "rollback": "VERIFIED_FINAL_ASSERTION",
+        "seed": "new-york-spring",
+        "storedEndZone": "Pacific/Honolulu",
+        "variant": "ROLLBACK"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-10T14:00:00Z",
+              "end": "2028-03-10T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-11T14:00:00Z",
+              "end": "2028-03-11T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-12T13:00:00Z",
+              "end": "2028-03-12T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            }
+          ],
+          "count": 13,
+          "duplicates": 5,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-10T14:00:00Z",
+              "end": "2028-03-10T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-11T14:00:00Z",
+              "end": "2028-03-11T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-12T13:00:00Z",
+              "end": "2028-03-12T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "PT5400S",
+        "limit": "UNTIL",
+        "originalRule": "FREQ=DAILY;UNTIL=20280317T130000Z",
+        "outcome": "CONTROL_DIFFERENCE_OBSERVED",
+        "prefixCount": 8,
+        "requestedEndZone": "Pacific/Honolulu",
+        "seed": "new-york-spring",
+        "storedEndZone": "Pacific/Honolulu",
+        "tailCount": 5,
+        "variant": "RULE_ONLY_CONTROL"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-10T14:00:00Z",
+              "end": "2028-03-10T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-11T14:00:00Z",
+              "end": "2028-03-11T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-12T13:00:00Z",
+              "end": "2028-03-12T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-10T14:00:00Z",
+              "end": "2028-03-10T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-11T14:00:00Z",
+              "end": "2028-03-11T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-12T13:00:00Z",
+              "end": "2028-03-12T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "PT5400S",
+        "limit": "UNTIL",
+        "originalRule": "FREQ=DAILY;UNTIL=20280317T130000Z",
+        "outcome": "PASS",
+        "prefixCount": 3,
+        "requestedEndZone": "Pacific/Honolulu",
+        "seed": "new-york-spring",
+        "storedEndZone": "Pacific/Honolulu",
+        "tailCount": 5,
+        "variant": "EXACT_CONTEXT"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-10T14:00:00Z",
+              "end": "2028-03-10T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-11T14:00:00Z",
+              "end": "2028-03-11T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-12T13:00:00Z",
+              "end": "2028-03-12T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-10T14:00:00Z",
+              "end": "2028-03-10T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-11T14:00:00Z",
+              "end": "2028-03-11T15:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-12T13:00:00Z",
+              "end": "2028-03-12T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-13T13:00:00Z",
+              "end": "2028-03-13T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-14T13:00:00Z",
+              "end": "2028-03-14T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-15T13:00:00Z",
+              "end": "2028-03-15T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-16T13:00:00Z",
+              "end": "2028-03-16T14:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-03-17T13:00:00Z",
+              "end": "2028-03-17T14:30:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "PT5400S",
+        "limit": "UNTIL",
+        "originalRule": "FREQ=DAILY;UNTIL=20280317T130000Z",
+        "requestedEndZone": "Pacific/Honolulu",
+        "rollback": "VERIFIED_FINAL_ASSERTION",
+        "seed": "new-york-spring",
+        "storedEndZone": "Pacific/Honolulu",
+        "variant": "ROLLBACK"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-31T22:00:00Z",
+              "end": "2028-03-31T23:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-01T22:30:00Z",
+              "end": "2028-04-02T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-02T22:30:00Z",
+              "end": "2028-04-03T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            }
+          ],
+          "count": 13,
+          "duplicates": 5,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-31T22:00:00Z",
+              "end": "2028-03-31T23:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-01T22:30:00Z",
+              "end": "2028-04-02T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-02T22:30:00Z",
+              "end": "2028-04-03T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "PT5400S",
+        "limit": "COUNT",
+        "originalRule": "FREQ=DAILY;COUNT=8",
+        "outcome": "CONTROL_DIFFERENCE_OBSERVED",
+        "prefixCount": 8,
+        "requestedEndZone": "Pacific/Honolulu",
+        "seed": "lord-howe-half-hour",
+        "storedEndZone": "Pacific/Honolulu",
+        "tailCount": 5,
+        "variant": "RULE_ONLY_CONTROL"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-31T22:00:00Z",
+              "end": "2028-03-31T23:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-01T22:30:00Z",
+              "end": "2028-04-02T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-02T22:30:00Z",
+              "end": "2028-04-03T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-31T22:00:00Z",
+              "end": "2028-03-31T23:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-01T22:30:00Z",
+              "end": "2028-04-02T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-02T22:30:00Z",
+              "end": "2028-04-03T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "PT5400S",
+        "limit": "COUNT",
+        "originalRule": "FREQ=DAILY;COUNT=8",
+        "outcome": "PASS",
+        "prefixCount": 3,
+        "requestedEndZone": "Pacific/Honolulu",
+        "seed": "lord-howe-half-hour",
+        "storedEndZone": "Pacific/Honolulu",
+        "tailCount": 5,
+        "variant": "EXACT_CONTEXT"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-31T22:00:00Z",
+              "end": "2028-03-31T23:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-01T22:30:00Z",
+              "end": "2028-04-02T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-02T22:30:00Z",
+              "end": "2028-04-03T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-31T22:00:00Z",
+              "end": "2028-03-31T23:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-01T22:30:00Z",
+              "end": "2028-04-02T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-02T22:30:00Z",
+              "end": "2028-04-03T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "PT5400S",
+        "limit": "COUNT",
+        "originalRule": "FREQ=DAILY;COUNT=8",
+        "requestedEndZone": "Pacific/Honolulu",
+        "rollback": "VERIFIED_FINAL_ASSERTION",
+        "seed": "lord-howe-half-hour",
+        "storedEndZone": "Pacific/Honolulu",
+        "variant": "ROLLBACK"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-31T22:00:00Z",
+              "end": "2028-03-31T23:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-01T22:30:00Z",
+              "end": "2028-04-02T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-02T22:30:00Z",
+              "end": "2028-04-03T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            }
+          ],
+          "count": 13,
+          "duplicates": 5,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-31T22:00:00Z",
+              "end": "2028-03-31T23:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-01T22:30:00Z",
+              "end": "2028-04-02T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-02T22:30:00Z",
+              "end": "2028-04-03T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "PT5400S",
+        "limit": "UNTIL",
+        "originalRule": "FREQ=DAILY;UNTIL=20280407T223000Z",
+        "outcome": "CONTROL_DIFFERENCE_OBSERVED",
+        "prefixCount": 8,
+        "requestedEndZone": "Pacific/Honolulu",
+        "seed": "lord-howe-half-hour",
+        "storedEndZone": "Pacific/Honolulu",
+        "tailCount": 5,
+        "variant": "RULE_ONLY_CONTROL"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-31T22:00:00Z",
+              "end": "2028-03-31T23:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-01T22:30:00Z",
+              "end": "2028-04-02T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-02T22:30:00Z",
+              "end": "2028-04-03T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-31T22:00:00Z",
+              "end": "2028-03-31T23:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-01T22:30:00Z",
+              "end": "2028-04-02T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-02T22:30:00Z",
+              "end": "2028-04-03T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "PT5400S",
+        "limit": "UNTIL",
+        "originalRule": "FREQ=DAILY;UNTIL=20280407T223000Z",
+        "outcome": "PASS",
+        "prefixCount": 3,
+        "requestedEndZone": "Pacific/Honolulu",
+        "seed": "lord-howe-half-hour",
+        "storedEndZone": "Pacific/Honolulu",
+        "tailCount": 5,
+        "variant": "EXACT_CONTEXT"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-31T22:00:00Z",
+              "end": "2028-03-31T23:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-01T22:30:00Z",
+              "end": "2028-04-02T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-02T22:30:00Z",
+              "end": "2028-04-03T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": false,
+              "begin": "2028-03-31T22:00:00Z",
+              "end": "2028-03-31T23:30:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-01T22:30:00Z",
+              "end": "2028-04-02T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-02T22:30:00Z",
+              "end": "2028-04-03T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-03T22:30:00Z",
+              "end": "2028-04-04T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-04T22:30:00Z",
+              "end": "2028-04-05T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-05T22:30:00Z",
+              "end": "2028-04-06T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-06T22:30:00Z",
+              "end": "2028-04-07T00:00:00Z"
+            },
+            {
+              "allDay": false,
+              "begin": "2028-04-07T22:30:00Z",
+              "end": "2028-04-08T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "PT5400S",
+        "limit": "UNTIL",
+        "originalRule": "FREQ=DAILY;UNTIL=20280407T223000Z",
+        "requestedEndZone": "Pacific/Honolulu",
+        "rollback": "VERIFIED_FINAL_ASSERTION",
+        "seed": "lord-howe-half-hour",
+        "storedEndZone": "Pacific/Honolulu",
+        "variant": "ROLLBACK"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": true,
+              "begin": "2028-03-10T00:00:00Z",
+              "end": "2028-03-12T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-11T00:00:00Z",
+              "end": "2028-03-13T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-12T00:00:00Z",
+              "end": "2028-03-14T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            }
+          ],
+          "count": 13,
+          "duplicates": 5,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": true,
+              "begin": "2028-03-10T00:00:00Z",
+              "end": "2028-03-12T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-11T00:00:00Z",
+              "end": "2028-03-13T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-12T00:00:00Z",
+              "end": "2028-03-14T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "P2D",
+        "limit": "COUNT",
+        "originalRule": "FREQ=DAILY;COUNT=8",
+        "outcome": "CONTROL_DIFFERENCE_OBSERVED",
+        "prefixCount": 8,
+        "requestedEndZone": null,
+        "seed": "utc-date-two-day",
+        "storedEndZone": null,
+        "tailCount": 5,
+        "variant": "RULE_ONLY_CONTROL"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": true,
+              "begin": "2028-03-10T00:00:00Z",
+              "end": "2028-03-12T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-11T00:00:00Z",
+              "end": "2028-03-13T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-12T00:00:00Z",
+              "end": "2028-03-14T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": true,
+              "begin": "2028-03-10T00:00:00Z",
+              "end": "2028-03-12T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-11T00:00:00Z",
+              "end": "2028-03-13T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-12T00:00:00Z",
+              "end": "2028-03-14T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "P2D",
+        "limit": "COUNT",
+        "originalRule": "FREQ=DAILY;COUNT=8",
+        "outcome": "PASS",
+        "prefixCount": 3,
+        "requestedEndZone": null,
+        "seed": "utc-date-two-day",
+        "storedEndZone": null,
+        "tailCount": 5,
+        "variant": "EXACT_CONTEXT"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": true,
+              "begin": "2028-03-10T00:00:00Z",
+              "end": "2028-03-12T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-11T00:00:00Z",
+              "end": "2028-03-13T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-12T00:00:00Z",
+              "end": "2028-03-14T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": true,
+              "begin": "2028-03-10T00:00:00Z",
+              "end": "2028-03-12T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-11T00:00:00Z",
+              "end": "2028-03-13T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-12T00:00:00Z",
+              "end": "2028-03-14T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "P2D",
+        "limit": "COUNT",
+        "originalRule": "FREQ=DAILY;COUNT=8",
+        "requestedEndZone": null,
+        "rollback": "VERIFIED_FINAL_ASSERTION",
+        "seed": "utc-date-two-day",
+        "storedEndZone": null,
+        "variant": "ROLLBACK"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": true,
+              "begin": "2028-03-10T00:00:00Z",
+              "end": "2028-03-12T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-11T00:00:00Z",
+              "end": "2028-03-13T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-12T00:00:00Z",
+              "end": "2028-03-14T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            }
+          ],
+          "count": 13,
+          "duplicates": 5,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": true,
+              "begin": "2028-03-10T00:00:00Z",
+              "end": "2028-03-12T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-11T00:00:00Z",
+              "end": "2028-03-13T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-12T00:00:00Z",
+              "end": "2028-03-14T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "P2D",
+        "limit": "UNTIL",
+        "originalRule": "FREQ=DAILY;UNTIL=20280317",
+        "outcome": "CONTROL_DIFFERENCE_OBSERVED",
+        "prefixCount": 8,
+        "requestedEndZone": null,
+        "seed": "utc-date-two-day",
+        "storedEndZone": null,
+        "tailCount": 5,
+        "variant": "RULE_ONLY_CONTROL"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": true,
+              "begin": "2028-03-10T00:00:00Z",
+              "end": "2028-03-12T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-11T00:00:00Z",
+              "end": "2028-03-13T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-12T00:00:00Z",
+              "end": "2028-03-14T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": true,
+              "begin": "2028-03-10T00:00:00Z",
+              "end": "2028-03-12T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-11T00:00:00Z",
+              "end": "2028-03-13T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-12T00:00:00Z",
+              "end": "2028-03-14T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "P2D",
+        "limit": "UNTIL",
+        "originalRule": "FREQ=DAILY;UNTIL=20280317",
+        "outcome": "PASS",
+        "prefixCount": 3,
+        "requestedEndZone": null,
+        "seed": "utc-date-two-day",
+        "storedEndZone": null,
+        "tailCount": 5,
+        "variant": "EXACT_CONTEXT"
+      },
+      {
+        "after": {
+          "bounds": [
+            {
+              "allDay": true,
+              "begin": "2028-03-10T00:00:00Z",
+              "end": "2028-03-12T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-11T00:00:00Z",
+              "end": "2028-03-13T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-12T00:00:00Z",
+              "end": "2028-03-14T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "before": {
+          "bounds": [
+            {
+              "allDay": true,
+              "begin": "2028-03-10T00:00:00Z",
+              "end": "2028-03-12T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-11T00:00:00Z",
+              "end": "2028-03-13T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-12T00:00:00Z",
+              "end": "2028-03-14T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-13T00:00:00Z",
+              "end": "2028-03-15T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-14T00:00:00Z",
+              "end": "2028-03-16T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-15T00:00:00Z",
+              "end": "2028-03-17T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-16T00:00:00Z",
+              "end": "2028-03-18T00:00:00Z"
+            },
+            {
+              "allDay": true,
+              "begin": "2028-03-17T00:00:00Z",
+              "end": "2028-03-19T00:00:00Z"
+            }
+          ],
+          "count": 8,
+          "duplicates": 0,
+          "missingExpected": 0,
+          "unexpectedBounds": 0
+        },
+        "duration": "P2D",
+        "limit": "UNTIL",
+        "originalRule": "FREQ=DAILY;UNTIL=20280317",
+        "requestedEndZone": null,
+        "rollback": "VERIFIED_FINAL_ASSERTION",
+        "seed": "utc-date-two-day",
+        "storedEndZone": null,
+        "variant": "ROLLBACK"
+      }
+    ],
+    "cleanup": {
+      "batchAssertionCount": 79,
+      "deleteAcknowledged": true,
+      "directQueryCount": 186,
+      "status": "VERIFIED_CALENDAR_AND_TRACKED_IDS_ABSENT",
+      "trackedEventCount": 30
+    },
+    "deadlineKind": "cooperative",
+    "directQueryCap": 320,
+    "directQueryCountBeforeCleanup": 182,
+    "endZoneMode": "distinct",
+    "googleWorkspaceRoundTrip": "NOT_RUN",
+    "productionProfileActivation": "NONE",
+    "providerIdentity": {
+      "baseSha256": "a1facdbec3de78c6817efe1aea40b804a66c8ccbcd23a72a426d8c21cfebd273",
+      "buildFingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys",
+      "package": "com.android.providers.calendar",
+      "sdk": 35,
+      "securityPatch": "2024-09-05",
+      "signers": [
+        "6cecc50e34ae31bfb5678986d6d6d3736c571ded2f2459527793e1f054eb0c9b"
+      ],
+      "signingHistory": [
+        "6cecc50e34ae31bfb5678986d6d6d3736c571ded2f2459527793e1f054eb0c9b"
+      ],
+      "splits": [],
+      "versionCode": 35
+    },
+    "queryTimeoutSeconds": 30,
+    "runId": "252d9aa4-59cd-4562-8ce0-6c1dde42c94a",
+    "schema": 1,
+    "scope": "native-local-provider-only",
+    "status": "PASS"
+  },
+  "productionProfileActivation": "NONE",
+  "runId": "252d9aa4-59cd-4562-8ce0-6c1dde42c94a",
+  "schema": 1,
+  "status": "PASS"
+}

@@ -77,3 +77,19 @@ SDK `applyBatch` has no cancellation API and can outlive that deadline. The host
 and draining bounded output without a timeout kill, provider restart, retry or forced cleanup.
 Use the phase progress and process artifact to inspect the same run. Interrupting host monitoring
 leaves the on-device outcome potentially unknown; it does not authorize another fixture run.
+
+## Native LOCAL evidence — 18 November 2026
+
+The guarded API35 experiment passed all18 cases. Six RRULE-only controls reproduced stale cached
+prefix instances (8 prefix plus5 tail,13 total with5 duplicates). Six exact-context splits produced
+3 prefix plus5 tail instances,8 total with no duplicates. Six intentional final-assertion rollback
+cases retained the original8. This covers New York DST, Lord Howe's half-hour transition and
+UTC-date two-day all-day events, each with COUNT and UNTIL.
+
+The [complete bounded host/probe report](audit/evidence/native-local-provider-api35-2026-11-18.json)
+records the exact APK/provider/build/signature pins, bounds, guards and case outcomes. Cleanup
+verified the owned synthetic calendar and all30 tracked event IDs absent (delete acknowledgment
+received;186 direct queries and79 batch assertions overall). The SDK probe input was built after
+`43c2755`; it directly exercises native LOCAL operations, rather than running Daylight's complete
+series writer or a Google sync adapter. Google/Workspace round-trips remain NOT_RUN and production
+profile activation remains NONE. No runtime Google Calendar UX or device reminder claim follows.
