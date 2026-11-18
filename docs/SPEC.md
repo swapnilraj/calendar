@@ -25,6 +25,12 @@ the original event identity for every segment, exposes offset/part and true-dura
 and masks weather in skipped or repeated clock bands. The current-time line sits below event
 surfaces. These synthetic rendering checks do not establish exact Google visual parity.
 
+Ordinary owned guest-free one-off events now have native create/edit/confirmed-delete routes. The
+editor opens without write permission; Save/Delete requests it, and a grant never retries the
+mutation automatically. Ask-each-time leaves the calendar unselected. The writer freshly validates
+rights/source/token and journals linked local writes; results explicitly describe device-local
+saves/deletes. Recurrence/guest writes and server propagation remain separate pending work.
+
 1. **Events always win.** Weather is painted under the hour lines and events. Nothing covers an event
    or its text, and event colours are never tinted.
 2. **Glanceable, not readable.** "Rainy evening, dark by five" should land in under a second without

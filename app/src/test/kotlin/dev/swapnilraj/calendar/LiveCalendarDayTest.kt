@@ -11,7 +11,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.semantics.SemanticsActions
 import com.github.takahirom.roborazzi.captureRoboImage
-import dev.swapnilraj.calendar.core.CalendarSelection
+import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.data.calendar.CalendarReader
 import dev.swapnilraj.calendar.ui.LiveCalendarDay
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
@@ -187,6 +187,91 @@ class LiveCalendarDayTest {
             compose.waitForIdle()
             compose.onNodeWithText("Fixture meeting").assertDoesNotExist()
             assertEquals(CalendarSelection.Explicit(emptySet()), runBlocking { settings.calendarSelection.first() })
+        } finally { scope.cancel() }
+    }
+
+    @Test fun liveCreateActionOpensEditorAndReturnsToCalendarAfterOneLocalSave() {
+        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, FixtureProvider())
+        val context = RuntimeEnvironment.getApplication()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        var creates = 0
+        var saved: EventDraft? = null
+        val writer = object : CalendarMutations {
+            override suspend fun loadForEdit(ref: EventRef): EditReadResult = EditReadResult.Denied(MutationDenial.UNSUPPORTED_EVENT)
+            override suspend fun create(operationId: String, draft: EventDraft): MutationResult {
+                creates++; saved = draft
+                val dates = (draft.time as EventTime.AllDay).dates
+                return MutationResult.LocalSaved(EventRef(draft.calendarId, 99,
+                    dates.start.atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+                    dates.endExclusive.atStartOfDay(java.time.ZoneOffset.UTC).toInstant()))
+            }
+            override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult = error("Unexpected update")
+            override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult = error("Unexpected delete")
+            override suspend fun recover(operationId: String): MutationResult = MutationResult.Uncertain(operationId, null)
+        }
+        val store = dev.swapnilraj.calendar.events.EventEditorControllerTest.Store()
+        try {
+            val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
+            compose.setContent { DaylightTheme {
+                LiveCalendarDay(reader, CalendarSelection.ProviderVisible,
+                    ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"), true, 64f, {}, {},
+                    mutations = writer, drafts = store)
+            } }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Create event").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Create event").performClick()
+            compose.onNodeWithText("New event").assertIsDisplayed()
+            compose.onAllNodesWithText("2026-11-17").assertCountEquals(2)
+            assertEquals(0, creates)
+            compose.onNodeWithText("Fixture calendar · owner@example.invalid").performScrollTo().performClick()
+            compose.onNodeWithText("Save").performScrollTo().performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("New event").fetchSemanticsNodes().isEmpty() }
+            assertEquals(1, creates)
+            assertEquals(CalendarId(3), saved?.calendarId)
+            assertEquals(EventTime.AllDay(CalendarDateRange.day(java.time.LocalDate.parse("2026-11-17"))), saved?.time)
+            compose.onNodeWithText("Create event").assertIsDisplayed()
+        } finally { scope.cancel() }
+    }
+
+    @Test fun nativeDetailsRequireFreshEligibilityAndDeletionRequiresConfirmation() {
+        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, FixtureProvider())
+        val context = RuntimeEnvironment.getApplication()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        var eligible = false
+        var deletes = 0
+        val ref = EventRef(CalendarId(3), 7, Instant.parse("2026-11-17T09:00:00Z"), Instant.parse("2026-11-17T10:00:00Z"))
+        val source = EditableEvent(EventDetails(EventOccurrence(ref, EventTime.Timed(ref.instanceStart, ref.instanceEnd), "Fixture meeting", 1),
+            null, eventZone = java.time.ZoneId.of("Europe/London")), EditToken("fixture-token"), EditableField.entries.toSet())
+        val writer = object : CalendarMutations {
+            override suspend fun loadForEdit(ref: EventRef): EditReadResult = if (eligible) EditReadResult.Ready(source) else EditReadResult.Denied(MutationDenial.OWNERSHIP_UNKNOWN)
+            override suspend fun create(operationId: String, draft: EventDraft): MutationResult = error("Unexpected create")
+            override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult = error("Unexpected update")
+            override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult {
+                assertEquals(source.token, token); assertEquals(source.details.occurrence.ref, ref)
+                deletes++; return MutationResult.LocalDeleted(ref)
+            }
+            override suspend fun recover(operationId: String): MutationResult = MutationResult.Uncertain(operationId, null)
+        }
+        val store = dev.swapnilraj.calendar.events.EventEditorControllerTest.Store()
+        try {
+            val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
+            compose.setContent { DaylightTheme {
+                LiveCalendarDay(reader, CalendarSelection.ProviderVisible,
+                    ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"), true, 64f, {}, {}, mutations = writer, drafts = store)
+            } }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Fixture meeting").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Join meeting").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Edit event").assertDoesNotExist()
+            compose.runOnIdle { eligible = true; reader.refresh() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Edit event").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Delete event").performScrollTo().performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Delete this event?").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(0, deletes)
+            val confirmation = isRoot() and hasAnyDescendant(hasText("Delete this event?"))
+            compose.onNode(hasText("Delete event") and hasAnyAncestor(confirmation)).performClick()
+            compose.waitUntil(10_000) { deletes == 1 }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Delete this event?").fetchSemanticsNodes().isEmpty() }
+            compose.onNodeWithText("Create event").assertIsDisplayed()
         } finally { scope.cancel() }
     }
 

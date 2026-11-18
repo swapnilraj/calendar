@@ -10,7 +10,7 @@ Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
   Wave 0 session.** The earlier two agents reviewed dependencies/ownership only.
 - Implementation branch: `codex/daily-driver`. Initial read-contract/module bootstrap and scope docs are implemented;
   mutation and persistence ports will be frozen before their dependent worker packets. A new module or contract alone does not establish native editing or new views.
-- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (253 tests), including
+- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (339 tests), including
   merged provider reads, native detail components, day fixes, reminder components and preferences. No device/cloud/beta result is claimed.
 
 ## Active implementation packets
@@ -43,8 +43,8 @@ wiring and integration; workers do not overwrite shared contracts or each other'
 | M2 calendars/ranges/sidebar | Partial: reads/preferences verified; sidebar/live filters verified locally | Stable identity, independent persisted filters, shared ranges/observer and coverage states |
 | M3 planning views | Partial: month component verified; live Day/Month routing verified; other views pending | Day/three-day/week/month/agenda, date navigation, leap/six-row/dense/RTL cases |
 | M4 native details | Partial: live native read flow verified locally | Complete readable event context, correct occurrence identity and meeting links |
-| M5 native ordinary writes | Partial: writer/journal verified; editor/permission wiring pending | Batched create/edit/delete/duplicate, conflict/draft/uncertain-create and offline recovery |
-| M6 recurrence | Partial: rule engine verified; series mutations pending | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
+| M5 native ordinary writes | Partial: native one-off create/edit/confirmed-delete and permission/recovery verified locally | Batched create/edit/delete/duplicate, conflict/draft/uncertain-create and offline recovery |
+| M6 recurrence | Partial: rule engine and bounded scope planner verified; provider series mutations pending | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
 | M7 meetings | Planned | Invitation/RSVP/reschedule/recurrence-change/cancellation observed in second account |
 | M8 search/Android entry points | Planned | Filtered ranged search, settings, agenda widget and safe occurrence-preserving intents |
 | M9 reminders | Planned | App-owned alerts/snooze and permission/background/Doze/reboot/timezone/upgrade recovery |
@@ -66,8 +66,8 @@ gates pass. Do not turn the audit totals into a percentage-complete estimate.
 
 - A2: merged via PR #13; durable drafts/journal and one-off writer verified locally; actual Google sync pending.
 - B3: merged via PR #11; 21 recurrence rule tests. Series writes remain pending.
-- C2: merged via PR #12; 15 month tests and three inspected baselines. App month routing pending.
-- D2: merged via PR #14; native editor/recovery controller tests pass; app write routing pending.
+- C2: merged via PR #12; month component and live month routing verified. C4 agenda component passes 16 tests; app agenda routing pending.
+- D2/D3: native editor and exact-command recovery now wired to ordinary one-off app actions; local tests pass. PR #23 adds frozen-command recovery; provider/server checks remain pending.
 - Lead: shared read range/native-detail wiring, transition rendering, and contract integration.
 - Physical Google, notification delivery, beta and release gates remain pending.
 
@@ -84,12 +84,17 @@ gates pass. Do not turn the audit totals into a percentage-complete estimate.
 - DST rendering now uses transition segments, true-duration/offset descriptions and ambiguous-weather
   masking; current-time decoration sits below events. Five synthetic DST images and nine affected
   baseline images were inspected. Logical scroll anchors and device comparison remain pending.
-  Remaining views and editor routes are still pending.
-- Before write UI completion: separate read-only edit eligibility from WRITE permission, and expose
-  definitely safe journal retry separately from unknown recovery failure so interrupted drafts cannot
-  become permanently locked or be blindly resubmitted.
+  Remaining views are still pending; native ordinary one-off editor routes now pass local integration tests.
+- Native details enable edit/delete only after fresh read-only writer eligibility. First Save/Delete
+  requests WRITE permission, with no automatic retry after grant. Ask-each-time requires an explicit
+  calendar choice. Live create and confirmed-delete journeys, denied eligibility, exact occurrence
+  routes, and permission recovery pass synthetic tests. The integrated editor image was inspected.
+- Proven retry-safe recovery is separate from unknown outcomes; typed original commands survive
+  restart without rebasing tokens or patches. Unknown/legacy/corrupt outcomes remain locked.
+- No invitation or recurrence write path is enabled yet. Draft discovery after lost navigation,
+  duplicate/drag/resize, richer metadata, and server verification remain pending.
 
-Latest local integration checkpoint: `253` tests, debug APK and lint passed with live calendar
-drawer/month navigation, atomic preference-read recovery and DST renderer integration. This does not
-establish device sync or delivery. PRs #16–#18 are merged remotely; navigation and recovery-contract
-PRs #19–#20 are awaiting CI. Local verification of the combined remote changes is still required.
+Latest local integration checkpoint: `339` tests, debug APK and lint passed with native one-off
+write routes, exact-command recovery, bounded recurrence planning, the agenda component and all
+previous navigation/rendering work. PRs #16–#22 are merged remotely. PRs #23–#25 and the app write
+route publication are awaiting CI/integration. Local save is not verified Google/Workspace sync.
