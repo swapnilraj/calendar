@@ -81,7 +81,9 @@ class CalendarEditReviewServices(
         // The pure factory captures generation/operation ID before any handoff await. Preserve its
         // source authority, then use a separate renderer proof for a genuinely missing source zone.
         val initial = EventEditorController.initialRecord(read.original, read.editable, doc.request.nativeId, true, clock)
-        val native = OrdinaryDraftDocument.decode(initial).copy(fields = CalendarEditSuggestions.overlay(read.fields, doc.request), sourceBaseline = read.baseline)
+        val native = OrdinaryDraftDocument.decode(initial).copy(
+            fields = CalendarEditSuggestions.overlay(read.fields, doc.request), sourceBaseline = read.baseline,
+            zoneAuthored = authorsMissingZone(doc, read))
         val candidate = native.record(clock.instant())
         val prepared = doc.copy(revision = UUID.randomUUID().toString(), prepared = candidate)
         val preparedRecord = prepared.record(clock.instant())
@@ -241,13 +243,21 @@ class CalendarEditReviewServices(
     private fun issues(doc: CalendarEditReviewDocument, read: SourceRead.Ready): Set<CalendarEditReviewIssue> {
         val suggested = CalendarEditSuggestions.overlay(read.fields, doc.request)
         return CalendarEditSuggestions.issues(read.fields, suggested, read.editable.allowedFields, doc.request).toMutableSet().apply {
-            // A renderer must not masquerade as an explicitly authored missing provider zone.
+            // A proposed zone is semantic authoring even when it equals the original renderer.
+            if (authorsMissingZone(doc, read) && EditableField.ZONE !in read.editable.allowedFields)
+                add(CalendarEditReviewIssue.FIELD_NOT_ALLOWED)
+            // A renderer alone still cannot authorize changing a missing-zone source's times.
             if (read.original.eventZone == null && !read.fields.allDay && !suggested.allDay &&
-                (doc.request.proposed.timeZone?.id == read.fields.zone || doc.request.proposed.timeZone == null && suggested != read.fields &&
-                    listOf(suggested.startDate, suggested.endDate, suggested.startTime, suggested.endTime) != listOf(read.fields.startDate, read.fields.endDate, read.fields.startTime, read.fields.endTime)))
+                doc.request.proposed.timeZone == null &&
+                listOf(suggested.startDate, suggested.endDate, suggested.startTime, suggested.endTime, suggested.startOffset, suggested.endOffset) !=
+                listOf(read.fields.startDate, read.fields.endDate, read.fields.startTime, read.fields.endTime, read.fields.startOffset, read.fields.endOffset))
                 add(CalendarEditReviewIssue.ZONE_AUTHORING_REVIEW)
         }
     }
+    private fun authorsMissingZone(doc: CalendarEditReviewDocument, read: SourceRead.Ready): Boolean =
+        read.original.eventZone == null && !read.fields.allDay &&
+            !(doc.request.proposed.occurrence.allDay ?: read.fields.allDay) && doc.request.proposed.timeZone != null
+
     private fun review(doc: CalendarEditReviewDocument, record: DraftRecord, read: SourceRead.Ready, environment: CalendarEditReviewEnvironment): CalendarEditReviewResult {
         val issues = issues(doc, read)
         return if (issues.isEmpty()) CalendarEditReviewResult.Review(snapshot(doc, record, read.original.eventZone), environment)

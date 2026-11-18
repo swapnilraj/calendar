@@ -217,13 +217,19 @@ class CalendarEditReviewServicesTest {
         } finally { TimeZone.setDefault(prior) }
     }
 
-    @Test fun explicitSameRendererZoneCannotMasqueradeAsAuthoredMissingSourceZone() = runBlocking {
+    @Test fun explicitSameRendererZoneBecomesAuthoredOnlyAfterApplyWithOriginalMissingZoneBaseline() = runBlocking {
         f.editable = f.editable.copy(details = f.editable.details.copy(eventZone = null))
         val zone = ZoneId.of("Asia/Tokyo")
         val request = f.request(f.seed().copy(timeZone = zone, occurrence = CalendarOccurrenceHints(f.start.plusSeconds(3600), null, null)), zone)
-        val result = services.open(request) as CalendarEditReviewResult.Unsupported
-        assertTrue(CalendarEditReviewIssue.ZONE_AUTHORING_REVIEW in result.reasons)
+        val result = services.open(request) as CalendarEditReviewResult.Review
         assertNull(f.store.load(request.nativeId)); assertEquals(request.proposed, result.snapshot.request.proposed)
+        assertNull(result.snapshot.sourceZone); assertEquals(0, f.writes)
+        services.applySuggestions(result.snapshot) as CalendarEditReviewResult.Editor
+        val native = OrdinaryDraftDocument.decode(requireNotNull(f.store.load(request.nativeId)))
+        assertTrue(native.zoneAuthored); assertEquals("Asia/Tokyo", native.fields.zone)
+        assertEquals("", org.json.JSONObject(native.sourceBaseline).getString("zone"))
+        assertEquals("", org.json.JSONObject(native.sourceBaseline).getString("sourceZone"))
+        assertEquals(0, f.writes)
     }
 
     @Test fun secondNativeLoadCannotRefreshChangedTokenEvenWithIdenticalDisplayFields() = runBlocking {

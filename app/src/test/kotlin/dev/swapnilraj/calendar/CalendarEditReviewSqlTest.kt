@@ -118,21 +118,44 @@ class CalendarEditReviewSqlTest {
         assertEquals("Remote source title", f.provider.value("title")); assertEquals(0, f.provider.batchCount)
     } }
 
-    @Test fun directNativeProofShowsSameRendererExplicitZoneCannotAuthorMissingZoneSoFeatureBlocksIt() = runBlocking { fixture { f ->
-        val proposed = CalendarDraftSeed(CalendarOccurrenceHints(start.plusSeconds(3600), start.plusSeconds(7200), false), null, null, null, emptyList(), null, zone, null, null)
+    @Test fun explicitSameRendererZoneAuthorsOnlyNativeZoneWithReceipt4() = runBlocking { zoneAuthoringJourney(false) }
+
+    @Test fun proposedTimesAndSameRendererZoneAuthorBothNativeDeltasWithReceipt4() = runBlocking { zoneAuthoringJourney(true) }
+
+    private suspend fun zoneAuthoringJourney(editTime: Boolean) = fixture { f ->
+        val proposed = CalendarDraftSeed(
+            if (editTime) CalendarOccurrenceHints(start.plusSeconds(3600), start.plusSeconds(7200), false)
+            else CalendarOccurrenceHints(null, null, null), null, null, null, emptyList(), null, zone, null, null)
         val request = f.request(proposed)
-        val blocked = f.services.open(request) as CalendarEditReviewResult.Unsupported
-        assertTrue(CalendarEditReviewIssue.ZONE_AUTHORING_REVIEW in blocked.reasons); assertNull(f.store.load(request.nativeId))
-        // Isolate the underlying unchanged ordinary contract, without weakening its provider zone.
-        val source = (f.writer.loadForEdit(ref) as EditReadResult.Ready).event; val original = source.details.editorSeed()
-        val record = EventEditorController.initialRecord(original, source, "null-zone-explicit-proof", true, clock)
-        val fields = EventEditorController.fieldsFor(original.copy(eventZone = zone))
-        val native = OrdinaryDraftDocument.decode(record).copy(fields = CalendarEditSuggestions.overlay(fields, request),
-            sourceBaseline = EventEditorController.sourceBaseline(original, source, zone.id)).record(clock.instant())
-        assertEquals(DraftChangeResult.Applied, f.store.compareAndSet(native.id, null, native))
-        val launch = OrdinaryDraftDocument.decode(native).launch; val controller = f.controller(launch); f.save(controller)
-        assertEquals(FieldChange.Keep, f.patches.single().eventZone)
-        assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.ZONE)), controller.state.result)
-        assertEquals(0, f.provider.batchCount); assertNull(f.provider.value("eventTimezone"))
-    } }
+        val review = f.services.open(request) as CalendarEditReviewResult.Review
+        assertNull(review.snapshot.sourceZone); assertNull(f.store.load(request.nativeId)); assertEquals(0, f.provider.batchCount)
+        val before = f.provider.snapshot("events").single(); val reminders = f.provider.snapshot("reminders")
+        f.travelBeforeNativeCas = true
+        val editor = f.services.applySuggestions(review.snapshot) as CalendarEditReviewResult.Editor
+        val native = OrdinaryDraftDocument.decode(requireNotNull(f.store.load(request.nativeId)))
+        assertTrue(native.zoneAuthored); assertFalse(native.hasRequest)
+        val baseline = org.json.JSONObject(native.sourceBaseline)
+        assertEquals("", baseline.getString("zone")); assertEquals("", baseline.getString("sourceZone"))
+        assertEquals("Asia/Tokyo", baseline.getString(OrdinaryEditDisplayProof.KEY))
+        if (!editTime) assertEquals(review.snapshot.original, native.fields)
+        assertFalse(EventEditorController.encodeRawFields(native.fields).has("zoneAuthored"))
+        assertEquals(0, f.provider.batchCount)
+        val controller = f.controller(editor.launch); assertTrue(controller.state.zoneAuthored); assertFalse(controller.state.reviewRequired)
+        f.save(controller); assertTrue(controller.state.result is MutationResult.LocalSaved)
+        val patch = f.patches.single(); assertEquals(FieldChange.Set(zone), patch.eventZone)
+        if (editTime) assertEquals(FieldChange.Set(EventTime.Timed(start.plusSeconds(3600), start.plusSeconds(7200))), patch.time)
+        else assertEquals(FieldChange.Keep, patch.time)
+        val operation = requireNotNull(f.store.operation(native.operationId))
+        val receipt = org.json.JSONObject(requireNotNull(operation.resultRef))
+        assertEquals(4, receipt.getInt("version")); assertEquals("ORDINARY_EDIT_RECEIPT_V4", receipt.getString("feature"))
+        val command = receipt.getJSONObject("command")
+        assertEquals(zone.id, command.getString("zone")); assertEquals(editTime, command.has("time")); assertFalse(command.has("zoneAuthored"))
+        val after = f.provider.snapshot("events").single()
+        assertEquals(zone.id, after["eventTimezone"]); assertEquals(zone.id, after["eventEndTimezone"])
+        val changed = setOf("eventTimezone", "eventEndTimezone") + if (editTime) setOf("dtstart", "dtend") else emptySet()
+        assertEquals(before.filterKeys { it !in changed }, after.filterKeys { it !in changed })
+        assertEquals(reminders, f.provider.snapshot("reminders")); assertEquals(1, f.provider.batchCount)
+        assertNull(f.store.load(request.nativeId)); assertEquals(CalendarEditReviewResult.Consumed, f.services.open(request))
+        assertEquals(1, f.provider.batchCount)
+    }
 }
