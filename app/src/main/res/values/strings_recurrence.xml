@@ -1,0 +1,22 @@
+<resources>
+    <string name="recurrence_series">Part of a series</string>
+    <string name="recurrence_custom">Custom recurrence</string>
+    <string name="recurrence_utc">UTC</string>
+    <plurals name="recurrence_daily"><item quantity="one">Every day</item><item quantity="other">Every %1$s days</item></plurals>
+    <plurals name="recurrence_weekly"><item quantity="one">Every week</item><item quantity="other">Every %1$s weeks</item></plurals>
+    <plurals name="recurrence_monthly"><item quantity="one">Every month</item><item quantity="other">Every %1$s months</item></plurals>
+    <plurals name="recurrence_yearly"><item quantity="one">Every year</item><item quantity="other">Every %1$s years</item></plurals>
+    <plurals name="recurrence_count"><item quantity="one">for %1$s occurrence</item><item quantity="other">for %1$s occurrences</item></plurals>
+    <string name="recurrence_on">%1$s on %2$s</string>
+    <string name="recurrence_month_day">%1$s on day %2$s</string>
+    <string name="recurrence_ordinal_day">%1$s on the %2$s %3$s</string>
+    <string name="recurrence_first">first</string><string name="recurrence_second">second</string>
+    <string name="recurrence_third">third</string><string name="recurrence_fourth">fourth</string><string name="recurrence_fifth">fifth</string>
+    <string name="recurrence_last">last</string><string name="recurrence_second_last">second to last</string>
+    <string name="recurrence_third_last">third to last</string><string name="recurrence_fourth_last">fourth to last</string>
+    <string name="recurrence_fifth_last">fifth to last</string>
+    <string name="recurrence_through">through %1$s</string>
+    <string name="recurrence_through_zone">through %1$s (%2$s)</string>
+    <string name="recurrence_until">until %1$s (%2$s)</string>
+    <string name="recurrence_with_end">%1$s; %2$s</string>
+</resources>
