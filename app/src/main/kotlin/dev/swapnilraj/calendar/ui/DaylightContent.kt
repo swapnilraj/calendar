@@ -147,6 +147,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState)
                         preferenceOverride = preferences,
                         mutations = mutations,
                         seriesMutations = seriesMutations,
+                        search = app.calendarSearch,
                         drafts = app.calendarLocalStore,
                         onLocalSaved = { scope.launch { snackbar.showSnackbar(localSaved) } },
                         onLocalDeleted = { scope.launch { snackbar.showSnackbar(localDeleted) } },

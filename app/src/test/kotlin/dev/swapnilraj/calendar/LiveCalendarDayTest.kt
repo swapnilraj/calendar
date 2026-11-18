@@ -625,8 +625,111 @@ class LiveCalendarDayTest {
         } finally { scope.cancel() }
     }
 
+    private fun isolatedSearchSettings(view: dev.swapnilraj.calendar.ui.calendars.CalendarViewOption = dev.swapnilraj.calendar.ui.calendars.CalendarViewOption.WEEK): dev.swapnilraj.calendar.data.Settings {
+        val values = kotlinx.coroutines.flow.MutableStateFlow<androidx.datastore.preferences.core.Preferences>(androidx.datastore.preferences.core.emptyPreferences())
+        val dataStore = object : androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> {
+            override val data = values
+            override suspend fun updateData(transform: suspend (androidx.datastore.preferences.core.Preferences) -> androidx.datastore.preferences.core.Preferences) =
+                transform(values.value).also { values.value = it }
+        }
+        return dev.swapnilraj.calendar.data.Settings(RuntimeEnvironment.getApplication(), dataStore).also { settings -> runBlocking {
+            settings.setDisplaySettings(dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions(
+                defaultView = view,
+                firstWeekday = dev.swapnilraj.calendar.ui.settings.FirstWeekdayOption.MONDAY, weatherVisible = false))
+        } }
+    }
+
+    @Test fun realSearchOpensNativeDetailsOutsideTheVisibleWeekWithoutLosingItsOccurrence() =
+        searchNavigationJourney(dev.swapnilraj.calendar.ui.calendars.CalendarViewOption.WEEK)
+
+    @Test fun daySearchMovesPagerToResultDateAfterClosingNativeDetails() =
+        searchNavigationJourney(dev.swapnilraj.calendar.ui.calendars.CalendarViewOption.DAY)
+
+    private fun searchNavigationJourney(view: dev.swapnilraj.calendar.ui.calendars.CalendarViewOption) {
+        val provider = FixtureProvider().apply {
+            canonicalSearchMetadata = true
+            start = Instant.parse("2027-01-01T09:00:00Z").toEpochMilli()
+            end = Instant.parse("2027-01-01T10:00:00Z").toEpochMilli()
+        }
+        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
+        val context = RuntimeEnvironment.getApplication()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val settings = isolatedSearchSettings(view)
+        try {
+            val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
+            val search = dev.swapnilraj.calendar.data.calendar.CalendarSearchReader(context.contentResolver, reader, { true })
+            compose.setContent { DaylightTheme {
+                LiveCalendarDay(reader, CalendarSelection.ProviderVisible, ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"), true, 64f, {}, {},
+                    settings = settings, search = search)
+            } }
+            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Calendars").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Fixture meeting").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.onNodeWithText("Search events").performClick()
+            compose.onNodeWithTag("search_query").performTextReplacement("Fixture")
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("search_results").performScrollToNode(hasText("Fixture meeting"))
+            compose.onNodeWithText("Jan 1, 2027", substring = true).assertExists()
+            compose.waitForIdle()
+            if (view == dev.swapnilraj.calendar.ui.calendars.CalendarViewOption.WEEK)
+                compose.onNode(isRoot() and hasAnyDescendant(hasTestTag("search_sheet")))
+                    .captureRoboImage("src/test/screenshots/integration_live_search.png")
+            compose.onNodeWithText("Fixture meeting").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Join meeting").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("search_sheet").assertDoesNotExist()
+            val detailsRoot = isRoot() and hasAnyDescendant(hasText("Join meeting"))
+            compose.onNode(hasText("Close") and hasAnyAncestor(detailsRoot)).performScrollTo().performClick()
+            if (view == dev.swapnilraj.calendar.ui.calendars.CalendarViewOption.DAY) {
+                compose.onNodeWithContentDescription("Day 2027-01-01").assertIsDisplayed()
+                compose.onNodeWithContentDescription("Day 2026-11-17").assertDoesNotExist()
+                compose.waitForIdle()
+                compose.onRoot().captureRoboImage("src/test/screenshots/integration_search_day_result.png")
+            } else {
+                compose.onNodeWithTag("multiday_header_2026-12-28").assertExists()
+                compose.onNodeWithTag("multiday_header_2027-01-01").assertExists()
+            }
+            assertTrue(provider.detailQueries > 0)
+        } finally { scope.cancel() }
+    }
+
+    @Test fun searchRetainsQueryAcrossCalendarChoiceAndEmptySelectionNeverStartsARead() {
+        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, FixtureProvider().apply { canonicalSearchMetadata = true })
+        val context = RuntimeEnvironment.getApplication()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val settings = isolatedSearchSettings()
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        try {
+            val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
+            val delegate = dev.swapnilraj.calendar.data.calendar.CalendarSearchReader(context.contentResolver, reader, { true })
+            val search = object : CalendarSearch {
+                override fun observe(request: CalendarSearchRequest): kotlinx.coroutines.flow.Flow<CalendarReadState<CalendarSearchSnapshot>> {
+                    calls.incrementAndGet(); return delegate.observe(request)
+                }
+            }
+            compose.setContent { DaylightTheme {
+                LiveCalendarDay(reader, CalendarSelection.ProviderVisible, ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"), true, 64f, {}, {}, settings = settings, search = search)
+            } }
+            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Calendars").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.onNodeWithText("Search events").performClick()
+            compose.onNodeWithTag("search_query").performTextReplacement("Fixture")
+            compose.waitUntil(10_000) { calls.get() > 0 }
+            compose.onNodeWithText("Choose calendars").performScrollTo().performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Select none").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Select none").performClick()
+            compose.waitUntil(10_000) { runBlocking { settings.calendarSelection.first() } == CalendarSelection.Explicit(emptySet()) }
+            val before = calls.get()
+            compose.onNodeWithText("Search events").performClick()
+            compose.onNodeWithTag("search_query").assertTextContains("Fixture")
+            compose.onNodeWithText(context.getString(R.string.search_no_selection)).assertExists()
+            compose.waitForIdle()
+            assertEquals(before, calls.get())
+        } finally { scope.cancel() }
+    }
+
     private class FixtureProvider : ContentProvider() {
         @Volatile var failCalendars = false
+        var canonicalSearchMetadata = false
         var recurring = false
         var declined = false
         var eventPrivacy: Int? = null
@@ -636,8 +739,8 @@ class LiveCalendarDayTest {
         private val details = java.util.concurrent.atomic.AtomicInteger()
         val rangeQueries get() = ranges.get()
         val detailQueries get() = details.get()
-        private val start = Instant.parse("2026-11-17T09:00:00Z").toEpochMilli()
-        private val end = Instant.parse("2026-11-17T10:00:00Z").toEpochMilli()
+        var start = Instant.parse("2026-11-17T09:00:00Z").toEpochMilli()
+        var end = Instant.parse("2026-11-17T10:00:00Z").toEpochMilli()
         override fun onCreate() = true
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?,
             args: Array<out String>?, order: String?): Cursor {
@@ -669,6 +772,7 @@ class LiveCalendarDayTest {
                         "availability" -> eventAvailability
                         "selfAttendeeStatus" -> if (declined) CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED else 0
                         "allDay" -> 0
+                        "deleted" -> if (canonicalSearchMetadata) 0 else null
                         else -> null
                     }
                 }.toTypedArray())

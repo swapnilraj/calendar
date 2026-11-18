@@ -11,6 +11,7 @@ import dev.swapnilraj.calendar.data.calendar.CalendarLocalStore
 import dev.swapnilraj.calendar.data.calendar.CalendarWriter
 import dev.swapnilraj.calendar.data.calendar.CalendarSeriesReader
 import dev.swapnilraj.calendar.data.calendar.CalendarSeriesWriter
+import dev.swapnilraj.calendar.data.calendar.CalendarSearchReader
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +27,8 @@ class CalendarApp : Application() {
     val calendarSeriesReader by lazy { CalendarSeriesReader(contentResolver, calendarReader, calendarLocalStore,
         { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
     val calendarSeriesWriter by lazy { CalendarSeriesWriter(contentResolver, calendarSeriesReader, calendarLocalStore,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
+    val calendarSearch by lazy { CalendarSearchReader(contentResolver, calendarReader,
         { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
     val settings by lazy { Settings(this) }
     val weather by lazy {

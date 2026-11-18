@@ -36,6 +36,8 @@ import dev.swapnilraj.calendar.ui.events.prepareNewDraft
 import dev.swapnilraj.calendar.ui.events.prepareEditDraft
 import dev.swapnilraj.calendar.ui.events.prepareDuplicateDraft
 import dev.swapnilraj.calendar.ui.settings.*
+import dev.swapnilraj.calendar.ui.search.defaultSearchRange
+import dev.swapnilraj.calendar.ui.search.validSearchRange
 import androidx.compose.foundation.lazy.LazyColumn
 import dev.swapnilraj.calendar.ui.month.MonthView
 import dev.swapnilraj.calendar.ui.month.monthDates
@@ -78,6 +80,7 @@ internal fun LiveCalendarDay(
     draftClock: Clock = Clock.systemUTC(),
     preferenceOverride: CalendarPreferenceState? = null,
     seriesMutations: CalendarSeriesMutations? = null,
+    search: CalendarSearch? = null,
 ) {
     val scope = rememberCoroutineScope()
     val selectedDateState = rememberSaveable { mutableStateOf<String?>(null) }
@@ -85,12 +88,16 @@ internal fun LiveCalendarDay(
     var seriesScopeText by rememberSaveable { mutableStateOf<String?>(null) }
     var seriesWriteText by rememberSaveable { mutableStateOf<String?>(null) }
     var showDrafts by rememberSaveable { mutableStateOf(false) }
+    var showSearch by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var searchRangeText by rememberSaveable { mutableStateOf<String?>(null) }
     var preparingWrite by remember { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showDefaultCalendar by rememberSaveable { mutableStateOf(false) }
     var savingSettings by remember { mutableStateOf(false) }
     var settingsSaveFailed by remember { mutableStateOf(false) }
     var scrollMinute by rememberSaveable { mutableDoubleStateOf(-1.0) }
+    var dayNavigationRevision by rememberSaveable { mutableIntStateOf(0) }
     val preferencesFlow = remember(settings, preferenceOverride != null) { if (preferenceOverride != null) flowOf(CalendarPreferenceState.Loading) else settings?.calendarPreferences ?: flowOf(CalendarPreferenceState.Loading) }
     val observedPreferences by preferencesFlow.collectAsStateWithLifecycle(initialValue = CalendarPreferenceState.Loading)
     val preferenceState = preferenceOverride ?: observedPreferences
@@ -219,6 +226,9 @@ internal fun LiveCalendarDay(
     }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val drawerActions: @Composable ColumnScope.() -> Unit = {
+        if (search != null) TextButton(onClick = { scope.launch { drawer.close(); showSearch = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+            Text(stringResource(R.string.search_title))
+        }
         if (settings != null) TextButton(onClick = { scope.launch { drawer.close(); showSettings = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Text(stringResource(R.string.settings_title))
         }
@@ -276,13 +286,13 @@ internal fun LiveCalendarDay(
             }
             Box(Modifier.weight(1f)) {
                 if (view == CalendarViewOption.DAY) {
-                    DayScreen(displayNow, use24Hour, preferences.hourHeight, forDay, onSaveHourHeight,
+                    key(dayNavigationRevision) { DayScreen(displayNow, use24Hour, preferences.hourHeight, forDay, onSaveHourHeight,
                         onEventClick = { it.ref?.let(::openEvent) }, initialDate = visibleDate,
                         initialScrollHour = scrollMinute.takeIf { it >= 0 }?.div(60),
                         actions = controls, leadingActions = openCalendars, compactTitle = settings != null,
                         summary = summary, background = background,
                         onVisibleDateChanged = { selectedDateState.value = it.toString() }, onRetry = reader::refresh,
-                        onScrollMinuteChanged = { scrollMinute = it })
+                        onScrollMinuteChanged = { scrollMinute = it }) }
                 } else Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         openCalendars(); controls()
@@ -398,6 +408,29 @@ internal fun LiveCalendarDay(
             onDismiss = { writeRequestText = null },
             onSaved = { writeRequestText = null; reader.refresh(); onLocalSaved() },
             onDeleted = { writeRequestText = null; reader.refresh(); onLocalDeleted() })
+    }
+    if (showSearch && search != null) {
+        val searchRange = remember(searchRangeText, displayNow.toLocalDate()) {
+            runCatching { searchRangeText?.split('/')?.let { CalendarDateRange(LocalDate.parse(it[0]), LocalDate.parse(it[1])) } }
+                .getOrNull()?.takeIf(::validSearchRange) ?: defaultSearchRange(displayNow.toLocalDate())
+        }
+        SearchWorkflow(search, effectiveSelection, displayNow.zone, options.showDeclined, searchQuery, searchRange,
+            onQueryChange = { searchQuery = it },
+            onRangeChange = { searchRangeText = "${it.start}/${it.endExclusive}" },
+            onChooseCalendars = { showSearch = false; scope.launch { drawer.open() } },
+            onOpen = { hit ->
+                val date = when (val time = hit.occurrence.time) {
+                    is EventTime.AllDay -> time.dates.start
+                    is EventTime.Timed -> time.start.atZone(displayNow.zone).toLocalDate()
+                }.coerceIn(MultiDayMinDate, MultiDayMaxDate)
+                selectedDateState.value = date.toString()
+                dayNavigationRevision++
+                if (view == CalendarViewOption.AGENDA) agendaWindow(date, 31).let { agendaRangeText = "${it.start}/${it.endExclusive}" }
+                if (view == CalendarViewOption.THREE_DAY || view == CalendarViewOption.WEEK)
+                    planningMultiDayRange(date, multiDays, firstWeekday).let { multiDayRangeText = "${it.start}/${it.endExclusive}" }
+                showSearch = false
+                openEvent(hit.occurrence.ref)
+            }, onDismiss = { showSearch = false })
     }
     if (seriesMutations != null && drafts != null) {
         seriesScopeText?.let { raw ->

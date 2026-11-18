@@ -76,12 +76,22 @@ runtime wiring.
 Owned guest-free recurring details now use a separate native scoped route. Supported actions are
 issued by the provider adapter per scope; the picker never defaults a destructive scope or enables
 unknown rights. Entire-series non-temporal edits use the master template and retain exception
-payloads; selected existing-exception edits use that occurrence. New exceptions, following scopes and
-temporal/pattern changes remain unavailable until their executors are integrated. Opening an editor
+payloads; selected existing-exception edits use that occurrence. Supported RRULE templates can create a new linked this-occurrence edit/cancellation through one
+asserted public exception transaction, preserving observed bounds and cloned child data. Following
+deletion truncates at the original recurrence identity and removes only future exception originals;
+raw exclusions and past overrides stay intact. Following edits and temporal/pattern changes remain
+unavailable until their executors are integrated. Opening an editor
 requires its exact durable series draft; submitted operations recover without a live source, and a
 missing completed draft never becomes a fresh request. Write grants never automatically resubmit.
 Explicit discard retires the old controller so it cannot delete a newly prepared replacement draft.
 A failed swipe flush restores the sheet and keeps edits visible.
+
+The drawer Search route uses debounced cancellable provider search with app calendar and declined
+filters. Query/range survive calendar selection changes, and explicit no-selection starts no search
+read. Every timed result includes a date/year; all-day results retain their floating UTC dates.
+Opening a result navigates day/week/three-day/month/agenda to its date before native details. The day
+pager explicitly seeks external search selections while retaining the shared logical time anchor.
+Changed query/range/calendar/zone/declined context clears old private rows before effects run.
 
 1. **Events always win.** Weather is painted under the hour lines and events. Nothing covers an event
    or its text, and event colours are never tinted.
