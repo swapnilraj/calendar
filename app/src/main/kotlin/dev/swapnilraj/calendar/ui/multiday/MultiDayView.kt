@@ -138,7 +138,7 @@ fun MultiDayView(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(enabled = hourHeight > 32f, onClick = { zoom(hourHeight - 16); onSaveHourHeight(hourHeight) },
                     modifier = Modifier.semantics { contentDescription = zoomOutLabel }) { Text("−") }
-                Text(stringResource(R.string.multiday_zoom_level, hourHeight.toInt()),
+                Text(stringResource(R.string.multiday_zoom_level, (hourHeight / 64f * 100).toInt()),
                     style = MaterialTheme.typography.labelSmall.copy(textDirection = TextDirection.Content),
                     textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
                 TextButton(enabled = hourHeight < 160f, onClick = { zoom(hourHeight + 16); onSaveHourHeight(hourHeight) },
