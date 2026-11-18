@@ -266,8 +266,16 @@ object RecurrenceEditing {
             require(a == FieldChange.Keep || b == FieldChange.Keep || a == b)
             return if (b == FieldChange.Keep) a else b
         }
-        return EventPatch(field(base.title, extra.title), field(base.time, extra.time), field(base.eventZone, extra.eventZone),
-            field(base.location, extra.location), field(base.description, extra.description), field(base.alertMinutes, extra.alertMinutes))
+        return base.copy(
+            title = field(base.title, extra.title),
+            time = field(base.time, extra.time),
+            eventZone = field(base.eventZone, extra.eventZone),
+            location = field(base.location, extra.location),
+            description = field(base.description, extra.description),
+            alertMinutes = field(base.alertMinutes, extra.alertMinutes),
+            availability = field(base.availability, extra.availability),
+            privacy = field(base.privacy, extra.privacy),
+        )
     }
     private fun invalid(reason: String) = RecurrencePlanningResult.Invalid(reason)
     private fun review(reason: String) = RecurrencePlanningResult.NeedsReview(reason)
