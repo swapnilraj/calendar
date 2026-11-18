@@ -131,6 +131,7 @@ class CalendarRecurringMeetingCreateTest {
         assertNull(f.store.operationHeader("old-series")); assertEquals(0, f.p.batchCount)
         for ((index, token) in listOf(v1, v2).withIndex()) {
             val oneoff = draft.copy(recurrence = null)
+            f.store.prepareLegacyMeetingCreate("oneoff-$index", token, oneoff, guests)
             assertTrue(f.writer.create("oneoff-$index", token, oneoff, guests) is MeetingMutationResult.LocalSaved)
             val op = f.store.operation("oneoff-$index")!!
             assertEquals("MEETING_V1_CREATE", op.kind); assertEquals(1, f.receipt(op.id).getInt("version"))

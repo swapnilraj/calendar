@@ -111,6 +111,7 @@ class CalendarMeetingCreateTest {
 
     @Test fun lostOrMalformedInsertAcknowledgementsNeverSearchForRowsOrReplayCreate()=runBlocking{
         listOf("lost","event","attendee").forEach{mode->fixture{f->val token=f.creation().token
+            f.store.prepareLegacyMeetingCreate("uncertain",token,draft,guests)
             f.p.lostAck=mode=="lost";f.p.malformedAck=mode=="event";f.p.malformedAttendeeAck=mode=="attendee"
             assertTrue((f.writer.create("uncertain",token,draft,guests) as MeetingMutationResult.Common).outcome is MutationResult.Uncertain)
             assertEquals("ATTEMPTED",f.store.operation("uncertain")!!.phase);f.p.queries.clear();f.store.close()
@@ -175,12 +176,14 @@ class CalendarMeetingCreateTest {
     @Test fun learnedEventUidCannotDowngradeToNullBlankOrUnavailableProjection()=runBlocking{
         for(field in listOf("_sync_id","uid2445"))for(missing in listOf<String?>(null,""))fixture{f->
             val token=f.creation().token;f.p.afterCommit={f.p.db.execSQL("UPDATE events SET $field='known-created-identity'")}
+            f.store.prepareLegacyMeetingCreate("pinned",token,draft,guests)
             assertTrue(f.writer.create("pinned",token,draft,guests) is MeetingMutationResult.LocalSaved)
             f.p.afterCommit=null;f.p.db.execSQL("UPDATE events SET $field = ?",arrayOf(missing));f.p.queries.clear()
             assertEquals(common(MutationResult.Uncertain("pinned",1)),f.writer.recover("pinned"))
             assertTrue(f.p.queries.none{it.path=="attendees"});assertEquals("known-created-identity",JSONObject(f.store.operation("pinned")!!.resultRef!!).getString(field))
         }
         fixture{f->val token=f.creation().token;f.p.afterCommit={f.p.db.execSQL("UPDATE events SET uid2445='known-uid2445'")}
+            f.store.prepareLegacyMeetingCreate("projection",token,draft,guests)
             assertTrue(f.writer.create("projection",token,draft,guests) is MeetingMutationResult.LocalSaved)
             f.p.afterCommit=null;f.p.rejectEventUidProjection=true;f.p.queries.clear()
             assertEquals(common(MutationResult.Uncertain("projection",1)),f.writer.recover("projection"));assertTrue(f.p.queries.none{it.path=="attendees"})

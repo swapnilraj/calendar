@@ -29,6 +29,7 @@ internal class CalendarMeetingCreateWriter(
 ) {
     private val mutex = Mutex()
     private val recurring = CalendarRecurringMeetingCreateWriter(resolver, reader, store, hasPermission, this, io, readBudgets)
+    private val oneOffV2 = CalendarOneOffMeetingCreateWriterV2(resolver, reader, store, hasPermission, this, readBudgets)
     private val authoredFields = CalendarWriter(resolver, reader, store, hasPermission, io, readBudgets)
     internal class Review(val reason: String) : Exception()
     internal class Invalid(val reason: String) : Exception()
@@ -84,6 +85,7 @@ internal class CalendarMeetingCreateWriter(
             val frozenInputs=parseGuests(command.getJSONArray("guests"))
             val signature=meetingHash(CommandFeature+command.toString())
             val existing=store.operation(id)
+            if(existing==null||oneOffV2.handles(existing))return@withLock oneOffV2.create(id,command,signature,existing)
             if(existing!=null){
                 if(existing.kind!=Kind||existing.signature!=signature)return@withLock common(MutationResult.Conflict(null))
                 if(existing.phase !in setOf("PREPARED","FAILED"))return@withLock recover(existing,false)
@@ -163,6 +165,7 @@ internal class CalendarMeetingCreateWriter(
     }}
     private suspend fun recover(operation:CalendarLocalStore.Operation,retry:Boolean):MeetingMutationResult{
         if(operation.phase=="ABANDONED")return common(MutationResult.Retired(operation.id))
+        if(oneOffV2.handles(operation))return oneOffV2.recover(operation,retry)
         val proof=proof(operation)?:return common(MutationResult.Uncertain(operation.id,null))
         if(operation.phase in setOf("PREPARED","FAILED"))return common(if(retry)MutationResult.SafeToRetry(operation.id)else MutationResult.Unavailable)
         val id=proof.getLong("event");fun uncertain()=common(MutationResult.Uncertain(operation.id,id))
@@ -230,6 +233,12 @@ internal class CalendarMeetingCreateWriter(
             else {if(token(raw)!=token.value)throw Conflict();raw}
         return Source(legacySourceCalendar(base,readBudgets.maxCanonicalBytes))
     }
+    internal fun issuedOneOffSource(token:EditToken):Pair<String,Map<String,String?>> {
+        val raw=store.edit(token.value)?:throw Conflict()
+        return raw to decodeIssuedSource(raw,token,readBudgets.maxCanonicalBytes)
+    }
+    internal fun initialOneOffPayload(calendar:Map<String,String?>,draft:EventDraft,inputs:List<MeetingGuestInput>) =
+        initialRecurringPayload(calendar,draft,inputs)
     private suspend fun calendar(id:CalendarId):Source{
         val uri=ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,id.value)
         val row=try{rows(uri,CalendarFields,maxRows=1).singleOrNull()}catch(_:IllegalArgumentException){rows(uri,CalendarFields.filter{it!="_sync_id"}.toTypedArray(),maxRows=1).singleOrNull()}?:throw Conflict()
@@ -295,6 +304,15 @@ internal class CalendarMeetingCreateWriter(
             if(draft.recurrence!=null)CalendarRecurringMeetingCreateWriter.fingerprint(token,draft,guests,maxBytes)
             else Kind to meetingHash(CommandFeature+commandJson(token,draft,guests,maxBytes).toString())
         internal fun legacySourceRaw(calendar:Map<String,String?>)=Source(calendar).encode()
+        internal fun decodeIssuedSource(raw:String,token:EditToken,maxBytes:Int):Map<String,String?> {
+            checkStoredJson(raw,maxBytes)
+            val base=if(token.value.startsWith(MeetingRecurringCreationSource.TokenPrefix))MeetingRecurringCreationSource.decode(raw,token,maxBytes).baseRaw
+                else {require(token(raw)==token.value);raw}
+            return legacySourceCalendar(base,maxBytes)
+        }
+        internal fun oneOffCommand(token:EditToken,draft:EventDraft,guests:List<MeetingGuestInput>,maxBytes:Int)=commandJson(token,draft,guests,maxBytes)
+        internal fun oneOffDraft(json:JSONObject)=parseDraft(json)
+        internal fun oneOffGuests(array:JSONArray)=parseGuests(array)
         internal fun legacySourceCalendar(raw:String,maxBytes:Int):Map<String,String?> {
             checkStoredJson(raw,maxBytes);val json=JSONObject(raw);require(json.getString("feature")==SourceFeature)
             val source=Source(meetingRow(json.getJSONObject("calendar")));require(source.identity==meetingParseIdentity(json.getJSONObject("identity")))
