@@ -52,6 +52,29 @@ class OrdinaryAtomicRetirementTest {
         assertEquals(DraftPreparationResult.Unavailable, prepareEditorFieldsDraft(initial, source, "draft", true, fields, store, clock))
         assertEquals("Racing draft", JSONObject(store.records.getValue("draft").payload).getString("title"))
     }
+    @Test fun newOnlyPreparationReturnsExactOwnCandidateForConfirmedAndUnknownAcknowledgments() = runBlocking {
+        for (unknown in listOf(false, true)) {
+            store.records.clear(); store.unknownAcknowledgment = unknown
+            val fields = EventEditorController.fieldsFor(initial).copy(startTime = "11:00", endTime = "12:00")
+            val ready = prepareEditorFieldsDraft(initial, source, "grid", true, fields, store, clock) as DraftPreparationResult.Ready
+            assertEquals(store.records.getValue("grid"), ready.exactRecord)
+            assertEquals(ready.launch, DraftBrowserCodec.read(requireNotNull(ready.exactRecord)).launch)
+            assertEquals(if (unknown) DraftChangeResult.Unavailable else DraftChangeResult.Applied, store.compareAndSet("grid", ready.exactRecord, null))
+            assertNull(store.records["grid"])
+        }
+    }
+    @Test fun cancelledPreparationProofCannotDeleteRevisedOrFrozenSuccessor() = runBlocking {
+        for (freeze in listOf(false, true)) {
+            store.records.clear()
+            val ready = prepareEditorFieldsDraft(initial, source, "grid", true, EventEditorController.fieldsFor(initial), store, clock) as DraftPreparationResult.Ready
+            val editor = controller(ready.launch)
+            if (freeze) editor.save() else { editor.change { it.copy(title = "New retained raw input") }; assertTrue(editor.flushDraft()) }
+            val successor = store.records.getValue("grid")
+            assertNotEquals(ready.exactRecord, successor)
+            assertEquals(DraftChangeResult.Changed, store.compareAndSet("grid", ready.exactRecord, null))
+            assertEquals(successor, store.records["grid"])
+        }
+    }
     @Test fun legacyFrozenPreparedFlagStillLaunchesSourceFreeAndCannotNormalSave() = runBlocking {
         val original = controller(prepare(edit = true)); original.requestDelete(); original.confirmDelete()
         val record = store.records.getValue("draft")

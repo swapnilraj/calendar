@@ -50,6 +50,22 @@ class OrdinaryRetirementScreenTest {
             expectedGeneration = stored.generation, retirement = retirement, requestWritePermission = { error("No permission needed for local retirement") })
     }
     @After fun close() { scope.cancel() }
+    @Test fun unavailableEditSourceRetainsEditHeadingWithoutCreationControls() = runBlocking<Unit> {
+        val time = draft.time as EventTime.Timed
+        val ref = EventRef(draft.calendarId, 42, time.start, time.end)
+        val source = EditableEvent(EventDetails(EventOccurrence(ref, draft.time, draft.title, 1), eventTestCalendar()), EditToken("source"), EditableField.entries.toSet())
+        val launch = (prepareEditDraft(draft, source, "unavailable-edit", store) as DraftPreparationResult.Ready).launch
+        val editor = EventEditorController(draft, null, launch.draftId, writer, store, scope, recoveryRef = ref,
+            expectedGeneration = launch.generation, recurringCreationSupported = true)
+        assertTrue(editor.isEditing); assertTrue(editor.state.reviewRequired)
+        compose.setContent { DaylightTheme { EventEditorSheet(editor, listOf(eventTestCalendar()), {}, {}, {}) } }
+        compose.onNodeWithText("Edit event").assertIsDisplayed()
+        compose.onNodeWithText("New event").assertDoesNotExist()
+        compose.onNodeWithText("Personal · fixture@example.test").assertDoesNotExist()
+        compose.onNodeWithText("Does not repeat").assertDoesNotExist()
+        compose.onNodeWithText("Save").performScrollTo().assertIsNotEnabled()
+        assertEquals(0, calls)
+    }
     @Test fun noReplacementCallbackNeverOffersAnEphemeralNewLaunch() {
         val editor = frozen()
         compose.setContent { DaylightTheme { EventEditorSheet(editor, listOf(eventTestCalendar()), {}, {}, {}) } }
