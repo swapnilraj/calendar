@@ -124,6 +124,24 @@ A bounded discovery absence never proves a tracked event disappeared; tracked ke
 separately. Private SQLite delivery history retains generation/post identity and rejects stale action
 tokens after snooze reposts. Background app delivery is not enabled by these components alone.
 
+The Application owns one reminder runtime/coordinator/ledger, with fresh reminder configuration and
+device-zone suppliers. Startup registers recovery, resume and local event changes reconcile, and
+private alarm/action/recovery receivers plus the permission-protected job service are registered.
+Exact-alarm access has an inexact fallback. Reminders remain disabled by default; the drawer's Event
+reminders action opens explicit calendar selection and permission/delivery setup. Saving confirmed
+local choices triggers reconciliation; missing permissions show setup without prompting automatically.
+Raw choices remain mounted during permission recovery, and explicit reload starts a fresh collector
+and form only after the user requests discard. An uncertain preference save is read back before any
+success acknowledgement. Device delivery is not claimed by a local save.
+Delivery setup shows Checking until its latest requested reconciliation completes, and never presents
+old Ready health while current notification/calendar permissions or precise-alarm access are missing.
+Reminder setup enrolls settings CAS and readback in the runtime's configuration-change ordering before
+acknowledging a save. Old in-flight delivery cannot cross that acknowledged application update; after
+source awaits, delivery and snooze also recheck fresh configuration and permissions. Known disable or
+permission loss attempts alarm/notification teardown independently of ledger success. Unknown settings
+remain unavailable, and known permission loss permits narrow teardown without running a delivery cycle.
+This does not make private settings, CalendarProvider and Android notifications one atomic transaction.
+
 Reminder preferences have a separate DataStore read state within the app preference store. Missing
 settings start disabled; corrupt or unavailable settings never substitute disabled configuration or
 overwrite the stored value. Background configuration suppliers perform a fresh read. Setup saves use
@@ -136,8 +154,12 @@ resolver verifies the persisted post/token, current enabled namespace and freshl
 occurrence key before fetching details. It follows moved exceptions instead of trusting an old event
 number, then rechecks detail namespace, configuration and persisted post before publishing. Stale,
 retired, replaced or unverifiable posts expose no private details. A matching interrupted post can open without changing its delivery state or inventing an
-acknowledgement. Resolver tests do not establish physical notification navigation; Activity/runtime
-activation and device acceptance remain separate evidence.
+acknowledgement. Private notification opens now use their own native read-only Activity, leaving
+calendar display selection and open editor drafts unchanged. It clears old details when the post or
+context changes, observes only while started, and clears details on stop. Explicit setup can send a
+generic test notification without calendar, provider or ledger writes; system acceptance is distinct
+from a person observing delivery. Synthetic-provider journeys cover the connected settings/runtime
+and notification-open Activity; physical background delivery and account acceptance remain separate.
 
 Native editing retains known visibility and availability and distinguishes unchanged fields from an
 explicit clear. Unknown source metadata is preserved. Duplicate-draft components copy one occurrence
