@@ -32,8 +32,9 @@ import java.time.format.DateTimeFormatter
 fun DayGrid(date: LocalDate, events: List<CalEvent>, hourHeight: Float, now: ZonedDateTime,
     zone: ZoneId, use24Hour: Boolean, onEventClick: (CalEvent) -> Unit,
     modifier: Modifier = Modifier,
-    background: @Composable BoxScope.() -> Unit = {}) {
-    val gutterWidth = calendarGutter(date, use24Hour)
+    background: @Composable BoxScope.() -> Unit = {},
+    showTimeGutter: Boolean = true) {
+    val gutterWidth = if (showTimeGutter) calendarGutter(date, use24Hour) else 0.dp
     val minimumHeight = minimumEventHeight().value
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val fontScale = LocalDensity.current.fontScale
@@ -65,12 +66,12 @@ fun DayGrid(date: LocalDate, events: List<CalEvent>, hourHeight: Float, now: Zon
             val gutter = if (rtl) size.width - gutterWidth.toPx() else gutterWidth.toPx()
             val hourPx = hourHeight.dp.toPx()
             for (hour in 0..24) drawLine(gridColor, Offset(gutter, hour * hourPx), Offset(if (rtl) 0f else size.width, hour * hourPx), 0.5.dp.toPx())
-            drawLine(gridColor, Offset(gutter, 0f), Offset(gutter, size.height), 0.5.dp.toPx())
+            if (showTimeGutter) drawLine(gridColor, Offset(gutter, 0f), Offset(gutter, size.height), 0.5.dp.toPx())
         }
         val locale = LocalLocale.current.platformLocale
         val formatter = remember(use24Hour, locale) { DateTimeFormatter.ofPattern(if (use24Hour) "HH:mm" else "h a", locale) }
         val bandFormatter = remember(use24Hour, locale) { DateTimeFormatter.ofPattern(if (use24Hour) "HH:mm" else "h:mm a", locale) }
-        geometry.clockChanges.forEach { band ->
+        if (showTimeGutter) geometry.clockChanges.forEach { band ->
             fun clock(minute: Double): String = if (minute >= 1440.0) "24:00"
                 else LocalTime.MIDNIGHT.plusSeconds((minute * 60).toLong()).format(bandFormatter)
             val label = stringResource(
@@ -90,9 +91,7 @@ fun DayGrid(date: LocalDate, events: List<CalEvent>, hourHeight: Float, now: Zon
                     .width(gutterWidth).padding(end = 8.dp)
                     .clearAndSetSemantics { contentDescription = label })
         }
-        for (hour in 1..23) Text(LocalTime.of(hour, 0).format(formatter), color = labelColor, fontSize = 10.sp,
-            textAlign = TextAlign.End, maxLines = 1, softWrap = false,
-            modifier = Modifier.offset(y = (hourHeight * hour - 8 * fontScale).dp).width(gutterWidth).padding(end = 8.dp))
+        if (showTimeGutter) DayTimeGutter(hourHeight, use24Hour, Modifier.width(gutterWidth))
         // Current-time decoration is below event surfaces so it cannot strike through their text.
         if (date == now.withZoneSameInstant(zone).toLocalDate()) {
             val time = now.withZoneSameInstant(zone).toLocalTime()
