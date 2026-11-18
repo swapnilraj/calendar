@@ -28,18 +28,27 @@ internal data class SeriesScopeRequest(val selected: EventRef, val action: Serie
     }
 }
 
-internal data class SeriesWriteRequest(val id: String, val selected: EventRef, val scope: RecurrenceScope, val action: SeriesEditorAction) {
-    fun encode(): String = JSONObject().put("id", id).put("ref", SeriesJson.ref(selected)).put("scope", scope.name).put("action", action.name).toString()
-    fun matches(launch: SeriesEditorLaunch): Boolean = id == launch.draftId && selected == launch.selected && scope == launch.scope && action == launch.action
+internal data class SeriesWriteRequest(val id: String, val selected: EventRef, val scope: RecurrenceScope,
+    val action: SeriesEditorAction, val generation: String? = null) {
+    fun encode(): String = JSONObject().put("id", id).put("ref", SeriesJson.ref(selected)).put("scope", scope.name)
+        .put("action", action.name).apply { generation?.let { put("generation", it) } }.toString()
+    fun matches(launch: SeriesEditorLaunch): Boolean = id == launch.draftId && selected == launch.selected &&
+        scope == launch.scope && action == launch.action && generation == launch.generation
     companion object {
-        fun from(launch: SeriesEditorLaunch) = SeriesWriteRequest(launch.draftId, launch.selected, launch.scope, launch.action)
+        fun from(launch: SeriesEditorLaunch) = SeriesWriteRequest(launch.draftId, launch.selected, launch.scope, launch.action, launch.generation)
         fun decode(raw: String): SeriesWriteRequest? = runCatching { JSONObject(raw).let {
-            require(it.keys().asSequence().toSet() == setOf("id", "ref", "scope", "action"))
+            val keys = it.keys().asSequence().toSet()
+            require(keys == setOf("id", "ref", "scope", "action") || keys == setOf("id", "ref", "scope", "action", "generation"))
+            val generation = if (it.has("generation")) (it.get("generation") as? String)?.also { value ->
+                require(UUID.fromString(value).toString() == value)
+            } ?: error("Invalid generation") else null
             SeriesWriteRequest(it.getString("id").also { id -> require(id.isNotBlank()) }, SeriesJson.ref(it.getJSONObject("ref")),
-                RecurrenceScope.valueOf(it.getString("scope")), SeriesEditorAction.valueOf(it.getString("action")))
+                RecurrenceScope.valueOf(it.getString("scope")), SeriesEditorAction.valueOf(it.getString("action")), generation)
         } }.getOrNull()
     }
 }
+
+private data class OpenedSeriesDraft(val launch: SeriesEditorLaunch, val calendar: CalendarIdentity?)
 
 internal class PermissionAwareSeriesMutations(private val delegate: CalendarSeriesMutations,
     private val hasWritePermission: () -> Boolean, private val requestWritePermission: () -> Unit) : CalendarSeriesMutations by delegate {
@@ -89,18 +98,24 @@ catch (_: Exception) { SeriesReadResult.Unavailable }
 @Composable
 internal fun SeriesWriteWorkflow(request: SeriesWriteRequest?, mutations: CalendarSeriesMutations, drafts: DraftStore,
     onDismiss: () -> Unit, onSaved: (SeriesMutationResult.LocalSaved) -> Unit,
-    onDeleted: (SeriesMutationResult.LocalDeleted) -> Unit, clock: Clock = Clock.systemUTC()) {
+    onDeleted: (SeriesMutationResult.LocalDeleted) -> Unit, clock: Clock = Clock.systemUTC(),
+    requestWritePermission: (suspend () -> Boolean)? = null,
+    onReplacedLaunch: ((SeriesEditorLaunch) -> Unit)? = null) {
     var retry by remember(request) { mutableIntStateOf(0) }
     var loading by remember(request, retry) { mutableStateOf(true) }
-    val stored by produceState<SeriesEditorLaunch?>(null, request, drafts, retry) {
+    val stored by produceState<OpenedSeriesDraft?>(null, request, drafts, retry) {
         loading = true
         value = try {
-            withContext(Dispatchers.IO) { request?.let { drafts.load(it.id)?.let(SeriesDraftCodec::describe)?.takeIf(it::matches) } }
+            withContext(Dispatchers.IO) { request?.let { requested -> drafts.load(requested.id)?.let { record ->
+                val document = SeriesDraftCodec.decode(record)
+                val launch = document.launch()
+                if (requested.matches(launch)) OpenedSeriesDraft(launch, document.context?.calendar) else null
+            } } }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { null }
         loading = false
     }
-    val launch = stored?.takeIf { request?.matches(it) == true }
+    val launch = stored?.launch?.takeIf { request?.matches(it) == true }
     if (request == null || launch == null) {
         SeriesRouteNotice(if (loading) null else SeriesReadResult.Unavailable, onDismiss, { retry++ })
         return
@@ -121,17 +136,24 @@ internal fun SeriesWriteWorkflow(request: SeriesWriteRequest?, mutations: Calend
     val effectiveLaunch = replacement?.launch ?: launch
     val effectiveSource = replacementSource ?: (source as? SeriesReadResult.Ready)?.series
     val scope = rememberCoroutineScope()
+    val permission by rememberUpdatedState(requestWritePermission)
+    val replacementHandler by rememberUpdatedState(onReplacedLaunch)
     val controller = remember(request, effectiveLaunch, effectiveSource, mutations, drafts, replacementVersion) {
         SeriesEventEditorController(effectiveLaunch, effectiveSource, mutations, drafts, scope,
-            recoveryOnly = effectiveLaunch.needsRecovery, clock = clock)
+            recoveryOnly = effectiveLaunch.needsRecovery, clock = clock,
+            requestWritePermission = requestWritePermission?.let { { permission?.invoke() ?: false } })
     }
-    SeriesEventEditorSheet(controller, onDismiss, onSaved, onDeleted, onReview = { result ->
+    SeriesEventEditorSheet(controller, onDismiss, onSaved, onDeleted, onReview = if (onReplacedLaunch == null) null else { result ->
         if (result is SeriesReadResult.Ready && result.series.selectedDetails.occurrence.ref == request.selected &&
-            result.series.snapshot.validatedSelection == request.selected && !preparing) scope.launch {
+            result.series.snapshot.validatedSelection == request.selected && stored?.calendar != null &&
+            result.series.selectedDetails.calendar?.identity == stored?.calendar && !preparing) scope.launch {
             preparing = true
             try {
                 val prepared = prepareSeriesDraft(result.series, request.scope, request.action, request.id, drafts, clock)
-                if (prepared is SeriesDraftPreparationResult.Ready) { replacementSource = result.series; replacement = prepared; replacementVersion++ }
+                if (prepared is SeriesDraftPreparationResult.Ready) {
+                    replacementSource = result.series; replacement = prepared; replacementVersion++
+                    replacementHandler?.invoke(prepared.launch)
+                }
                 else preparationFailed = true
             } finally { preparing = false }
         }

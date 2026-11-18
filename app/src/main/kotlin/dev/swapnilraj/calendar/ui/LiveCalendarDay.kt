@@ -649,7 +649,9 @@ internal fun LiveCalendarDay(
             val request = remember(raw) { SeriesWriteRequest.decode(raw) }
             SeriesWriteWorkflow(request, seriesMutations, drafts, onDismiss = { seriesWriteText = null },
                 onSaved = { seriesWriteText = null; reader.refresh(); onLocalSaved() },
-                onDeleted = { seriesWriteText = null; reader.refresh(); onLocalDeleted() }, clock = draftClock)
+                onDeleted = { seriesWriteText = null; reader.refresh(); onLocalDeleted() }, clock = draftClock,
+                requestWritePermission = requestMeetingWritePermission,
+                onReplacedLaunch = { seriesWriteText = SeriesWriteRequest.from(it).encode() })
         }
     }
     if (meetingWritable) meetingWriteText?.let { raw ->
