@@ -41,6 +41,13 @@ guest policy using readable labels. Calendar-default visibility is never inferre
 guest access shows unavailable rather than an empty guest list. Cancelled events have no featured
 Join or mutation actions; stored links remain explicit links. Account labels hide raw provider types.
 
+The live view chooser now exposes Day, 3 days, Week, Month and Agenda with shared app-local filters.
+Three-day/week selection does not shift its range; explicit navigation changes it, and week windows
+align to the locale's first weekday (clamped at supported year bounds). Readable multi-day columns
+pan horizontally on narrow/large-text layouts. Date headers open the shared day-event sheet.
+Day and multi-day views share a logical wall-minute anchor through view switches; day restoration
+converts it using current density/zoom instead of persisting pixels. Old pixel state is not reused.
+
 1. **Events always win.** Weather is painted under the hour lines and events. Nothing covers an event
    or its text, and event colours are never tinted.
 2. **Glanceable, not readable.** "Rainy evening, dark by five" should land in under a second without

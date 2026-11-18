@@ -190,6 +190,49 @@ class LiveCalendarDayTest {
         } finally { scope.cancel() }
     }
 
+    @Test fun agendaKeepsOneRangeWhenAnotherDateOpensAndRetainsFilteredNavigation() {
+        val provider = FixtureProvider()
+        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
+        val context = RuntimeEnvironment.getApplication()
+        val settings = dev.swapnilraj.calendar.data.Settings(context)
+        runBlocking {
+            settings.setCalendarSelection(CalendarSelection.ProviderVisible)
+            settings.setCalendarView("AGENDA")
+        }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
+            compose.setContent { DaylightTheme {
+                LiveCalendarDay(reader, CalendarSelection.ProviderVisible,
+                    ZonedDateTime.parse("2026-11-16T09:20:00Z[Europe/London]"), true, 64f, {}, {}, settings = settings)
+            } }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitForIdle()
+            compose.onRoot().captureRoboImage("src/test/screenshots/integration_live_agenda.png")
+            assertEquals(1, provider.rangeQueries)
+            compose.onNodeWithText("Fixture meeting").performScrollTo().performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Join meeting").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(1, provider.rangeQueries) // Selecting November17 must not slide the November16 window.
+            val detailsRoot = isRoot() and hasAnyDescendant(hasText("Join meeting"))
+            compose.onNode(hasText("Close") and hasAnyAncestor(detailsRoot)).performScrollTo().performClick()
+            compose.onNodeWithText("Later").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("No events in the displayed range.").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(2, provider.rangeQueries)
+            compose.onNodeWithContentDescription("Go to today").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(3, provider.rangeQueries)
+            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.onNodeWithText("Select none").performClick()
+            compose.onNodeWithText("Close").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isEmpty() }
+            assertEquals("AGENDA", runBlocking { settings.calendarView.first() })
+            assertEquals(CalendarSelection.Explicit(emptySet()), runBlocking { settings.calendarSelection.first() })
+        } finally {
+            scope.cancel()
+            runBlocking { settings.setCalendarSelection(CalendarSelection.ProviderVisible); settings.setCalendarView("DAY") }
+        }
+    }
+
     @Test fun liveCreateActionOpensEditorAndReturnsToCalendarAfterOneLocalSave() {
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, FixtureProvider())
         val context = RuntimeEnvironment.getApplication()
@@ -230,6 +273,48 @@ class LiveCalendarDayTest {
             assertEquals(EventTime.AllDay(CalendarDateRange.day(java.time.LocalDate.parse("2026-11-17"))), saved?.time)
             compose.onNodeWithText("Create event").assertIsDisplayed()
         } finally { scope.cancel() }
+    }
+
+    @Test fun threeDayAndLocaleWeekKeepTheirRangesWhenOpeningAnotherColumn() {
+        val provider = FixtureProvider()
+        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
+        val context = RuntimeEnvironment.getApplication()
+        val settings = dev.swapnilraj.calendar.data.Settings(context)
+        runBlocking { settings.setCalendarSelection(CalendarSelection.ProviderVisible); settings.setCalendarView("THREE_DAY") }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
+            compose.setContent { DaylightTheme {
+                LiveCalendarDay(reader, CalendarSelection.ProviderVisible,
+                    ZonedDateTime.parse("2026-11-16T09:20:00Z[Europe/London]"), true, 64f, {}, {}, settings = settings)
+            } }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(1, provider.rangeQueries)
+            compose.onNodeWithText("Fixture meeting").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Join meeting").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(1, provider.rangeQueries)
+            val detailsRoot = isRoot() and hasAnyDescendant(hasText("Join meeting"))
+            compose.onNode(hasText("Close") and hasAnyAncestor(detailsRoot)).performScrollTo().performClick()
+            compose.waitForIdle()
+            compose.onRoot().captureRoboImage("src/test/screenshots/integration_live_three_day.png")
+            compose.onNodeWithContentDescription("Change view. Current view: 3 days").performClick()
+            compose.onNodeWithText("Week").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("multiday_header_2026-11-15").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("multiday_header_2026-11-21").assertExists()
+            assertEquals(2, provider.rangeQueries)
+            compose.waitForIdle()
+            compose.onRoot().captureRoboImage("src/test/screenshots/integration_live_week.png")
+            compose.onNodeWithText("Later").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("multiday_header_2026-11-22").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(3, provider.rangeQueries)
+            compose.onNodeWithText("Today").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(4, provider.rangeQueries)
+            assertEquals("WEEK", runBlocking { settings.calendarView.first() })
+        } finally {
+            scope.cancel()
+            runBlocking { settings.setCalendarSelection(CalendarSelection.ProviderVisible); settings.setCalendarView("DAY") }
+        }
     }
 
     @Test fun nativeDetailsRequireFreshEligibilityAndDeletionRequiresConfirmation() {

@@ -7,9 +7,10 @@ remain pending. [SPEC.md](SPEC.md) is the behaviour contract and
 
 ## Current Wave 0 — first implementation packet
 
-- [ ] **DD-00 Bootstrap:** carry approved scope into docs, add pure `:calendar-core`, establish tested
+- [x] **DD-00 Bootstrap:** carry approved scope into docs, add pure `:calendar-core`, establish tested
   identity/date contracts and build/wiring seams. Done when baseline and new contract tests compile
-  and pass with debug build/lint. In progress; do not mark complete before lead verification.
+  and pass with debug build/lint. Lead verified the baseline and integrated contracts; latest local
+  checkpoint has378 tests, debug APK and lint passing. Device/account acceptance remains M0 below.
 - [ ] **M0 compatibility:** dedicated personal/Workspace test-account harness and organizer/attendee
   checks for mutations, offline sync, recurrence and reminders. Real-device/account evidence pending.
 
