@@ -4,6 +4,7 @@ import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.*
 import java.time.*
 import java.util.Locale
+import java.util.TimeZone
 import kotlinx.coroutines.*
 import org.junit.After
 import org.junit.Assert.*
@@ -69,6 +70,25 @@ class PhoneEventEditorPresentationTest {
         edited.change { it.copy(zone = "Asia/Kolkata") }
         assertFalse(view.requiresProviderZoneChoice); assertTrue(view.canSave)
         assertEquals(0, writer.creates); assertEquals(0, writer.updates)
+    }
+    @Test fun importedNullZoneTitleKeepAfterTravelUsesControllerProofInsteadOfFreshSystemZone() = runBlocking {
+        val oldZone = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("GMT+05:30"))
+            val imported = draft.copy(eventZone = null)
+            val time = draft.time as EventTime.Timed
+            val ref = EventRef(draft.calendarId, 42, time.start, time.end)
+            val source = EditableEvent(EventDetails(EventOccurrence(ref, draft.time, draft.title, 1), eventTestCalendar()), EditToken("null-zone"), EditableField.entries.toSet())
+            val first = preparedEditor(imported, source, "null-zone", writer, store, scope)
+            first.change { it.copy(title = "Retained title only") }; assertTrue(first.flushDraft())
+            TimeZone.setDefault(TimeZone.getTimeZone("Europe/London"))
+            val restored = preparedEditor(imported, source, "null-zone", writer, store, scope)
+            val view = PhoneEventEditorPresentation(restored, listOf(eventTestCalendar()))
+            assertFalse(restored.state.reviewRequired); assertFalse(restored.hasAuthoredTemporalChanges)
+            assertFalse(view.requiresProviderZoneChoice); assertTrue(view.canSave)
+            restored.save(); assertEquals(1, writer.updates)
+            assertEquals(FieldChange.Keep, writer.patch!!.time); assertEquals(FieldChange.Keep, writer.patch!!.eventZone)
+        } finally { TimeZone.setDefault(oldZone) }
     }
     @Test fun unknownRightsAndForeignConstructorCalendarCannotBecomeEditorAuthority() = runBlocking {
         val ref = EventRef(draft.calendarId, 42, (draft.time as EventTime.Timed).start, (draft.time as EventTime.Timed).end)
