@@ -1,0 +1,26 @@
+<resources>
+    <string name="agenda_title">Agenda</string>
+    <string name="agenda_earlier">Earlier</string>
+    <string name="agenda_later">Later</string>
+    <string name="agenda_today">Today</string>
+    <string name="agenda_go_to_today">Go to today</string>
+    <string name="agenda_choose_date">Choose date</string>
+    <string name="agenda_go_to_date">Go to date</string>
+    <string name="agenda_cancel">Cancel</string>
+    <string name="agenda_selected_outside">Selected date is outside the displayed range.</string>
+    <string name="agenda_show_selected">Show selected date</string>
+    <string name="agenda_no_events_range">No events in the displayed range.</string>
+    <string name="agenda_no_events_day">No events for this date.</string>
+    <string name="agenda_no_title">No title</string>
+    <string name="agenda_all_day">All day</string>
+    <string name="agenda_declined">Declined</string>
+    <string name="agenda_continues_before">Continues from an earlier day</string>
+    <string name="agenda_continues_after">Continues on a later day</string>
+    <string name="agenda_open_event">Open event</string>
+    <string name="agenda_select_date">Select %1$s</string>
+    <string name="agenda_date_picker">Choose agenda date. Selected: %1$s</string>
+    <plurals name="agenda_duration_minutes">
+        <item quantity="one">%d minute</item>
+        <item quantity="other">%d minutes</item>
+    </plurals>
+</resources>
