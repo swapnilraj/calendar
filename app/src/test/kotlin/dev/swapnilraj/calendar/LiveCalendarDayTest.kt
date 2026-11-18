@@ -19,6 +19,7 @@ import java.time.Instant
 import java.time.ZonedDateTime
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.filterIsInstance
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -243,10 +244,8 @@ class LiveCalendarDayTest {
             override suspend fun loadForEdit(ref: EventRef): EditReadResult = EditReadResult.Denied(MutationDenial.UNSUPPORTED_EVENT)
             override suspend fun create(operationId: String, draft: EventDraft): MutationResult {
                 creates++; saved = draft
-                val dates = (draft.time as EventTime.AllDay).dates
-                return MutationResult.LocalSaved(EventRef(draft.calendarId, 99,
-                    dates.start.atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
-                    dates.endExclusive.atStartOfDay(java.time.ZoneOffset.UTC).toInstant()))
+                val time = draft.time as EventTime.Timed
+                return MutationResult.LocalSaved(EventRef(draft.calendarId, 99, time.start, time.end))
             }
             override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult = error("Unexpected update")
             override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult = error("Unexpected delete")
@@ -270,7 +269,8 @@ class LiveCalendarDayTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithText("New event").fetchSemanticsNodes().isEmpty() }
             assertEquals(1, creates)
             assertEquals(CalendarId(3), saved?.calendarId)
-            assertEquals(EventTime.AllDay(CalendarDateRange.day(java.time.LocalDate.parse("2026-11-17"))), saved?.time)
+            assertEquals(EventTime.Timed(Instant.parse("2026-11-17T09:30:00Z"), Instant.parse("2026-11-17T10:30:00Z")), saved?.time)
+            assertEquals(listOf(10), saved?.alertMinutes)
             compose.onNodeWithText("Create event").assertIsDisplayed()
         } finally { scope.cancel() }
     }
@@ -508,8 +508,64 @@ class LiveCalendarDayTest {
         } finally { scope.cancel() }
     }
 
+    @Test fun settingsSaveChangesDisplayAndDefaultsWithoutLosingFiltersOrFailedInputs() {
+        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, FixtureProvider().apply { declined = true })
+        val context = RuntimeEnvironment.getApplication()
+        val values = kotlinx.coroutines.flow.MutableStateFlow<androidx.datastore.preferences.core.Preferences>(androidx.datastore.preferences.core.emptyPreferences())
+        var failWrites = false
+        val dataStore = object : androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> {
+            override val data = values
+            override suspend fun updateData(transform: suspend (androidx.datastore.preferences.core.Preferences) -> androidx.datastore.preferences.core.Preferences): androidx.datastore.preferences.core.Preferences {
+                if (failWrites) throw java.io.IOException("Synthetic write failure")
+                return transform(values.value).also { values.value = it }
+            }
+        }
+        val settings = dev.swapnilraj.calendar.data.Settings(context, dataStore)
+        val options = dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions(
+            defaultView = dev.swapnilraj.calendar.ui.calendars.CalendarViewOption.WEEK,
+            firstWeekday = dev.swapnilraj.calendar.ui.settings.FirstWeekdayOption.MONDAY,
+            showWeekends = false, showDeclined = false,
+            displayZone = dev.swapnilraj.calendar.ui.settings.DisplayZoneOption.Fixed(java.time.ZoneId.of("America/Los_Angeles")),
+            weatherVisible = false, timedReminderMinutes = 30)
+        runBlocking { settings.setDisplaySettings(options); settings.setCalendarSelection(CalendarSelection.Explicit(setOf(CalendarId(3)))) }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
+            compose.setContent { DaylightTheme {
+                LiveCalendarDay(reader, CalendarSelection.ProviderVisible, ZonedDateTime.parse("2026-11-17T00:20:00Z"), true, 64f, {}, {}, settings = settings)
+            } }
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("multiday_header_2026-11-16").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("multiday_header_2026-11-21").assertDoesNotExist()
+            compose.onNodeWithText("Fixture meeting").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.onNodeWithText("Settings").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings_duration").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("settings_duration").performTextReplacement("75")
+            compose.onNodeWithTag("settings_fields").performScrollToNode(hasContentDescription("Show declined events"))
+            compose.onNodeWithContentDescription("Show declined events").performClick()
+            failWrites = true
+            compose.onNodeWithTag("settings_save").performClick()
+            compose.onNodeWithText(context.getString(R.string.navigation_preferences_unavailable)).assertIsDisplayed()
+            compose.onNodeWithTag("settings_duration").performScrollTo().assertTextContains("75")
+            assertEquals(options, runBlocking { settings.calendarPreferences.filterIsInstance<dev.swapnilraj.calendar.data.CalendarPreferenceState.Ready>().first().value.options })
+            compose.onNode(isRoot() and hasAnyDescendant(hasTestTag("settings_sheet")))
+                .captureRoboImage("src/test/screenshots/integration_settings_retry.png")
+            failWrites = false
+            compose.onNodeWithTag("settings_save").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings_sheet").fetchSemanticsNodes().isEmpty() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
+            val saved = runBlocking { settings.calendarPreferences.filterIsInstance<dev.swapnilraj.calendar.data.CalendarPreferenceState.Ready>().first().value }
+            assertEquals(75, saved.options.defaultDurationMinutes)
+            assertTrue(saved.options.showDeclined)
+            assertFalse(saved.options.showWeekends)
+            assertEquals(CalendarSelection.Explicit(setOf(CalendarId(3))), saved.selection)
+            assertEquals("WEEK", saved.view)
+        } finally { scope.cancel() }
+    }
+
     private class FixtureProvider : ContentProvider() {
         @Volatile var failCalendars = false
+        var declined = false
         var eventPrivacy: Int? = null
         var eventAvailability: Int? = null
         val queries = java.util.concurrent.atomic.AtomicInteger()
@@ -547,7 +603,8 @@ class LiveCalendarDayTest {
                         "description" -> "https://meet.google.com/aaa-bbbb-ccc"
                         "accessLevel" -> eventPrivacy
                         "availability" -> eventAvailability
-                        "allDay", "selfAttendeeStatus" -> 0
+                        "selfAttendeeStatus" -> if (declined) CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED else 0
+                        "allDay" -> 0
                         else -> null
                     }
                 }.toTypedArray())

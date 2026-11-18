@@ -17,6 +17,7 @@ class WeatherRepositoryTest {
         },{clock})
         val zone=ZoneId.of("Europe/London")
         repository.refresh(zone)
+        assertEquals(zone,repository.state.value.zone)
         assertEquals(listOf(hour),repository.state.value.forecast)
         clock=30*60_000L-1;repository.refresh(zone);assertEquals(1,calls)
         clock++;offline=true;repository.refresh(zone)

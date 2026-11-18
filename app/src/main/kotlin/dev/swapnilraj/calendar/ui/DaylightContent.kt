@@ -29,6 +29,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.swapnilraj.calendar.CalendarApp
+import dev.swapnilraj.calendar.data.CalendarPreferenceState
+import dev.swapnilraj.calendar.ui.settings.*
+import dev.swapnilraj.calendar.ui.theme.DaylightTheme
+import androidx.compose.foundation.isSystemInDarkTheme
 import dev.swapnilraj.calendar.data.WeatherState
 import dev.swapnilraj.calendar.weather.daySummary
 import dev.swapnilraj.calendar.weather.hoursForDay
@@ -38,6 +42,25 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun DaylightContent(app: CalendarApp) {
+    val preferences by app.settings.calendarPreferences.collectAsStateWithLifecycle(initialValue = CalendarPreferenceState.Loading)
+    CalendarPreferenceTheme(preferences) { DaylightBody(app, preferences) }
+}
+
+@Composable
+internal fun CalendarPreferenceTheme(preferences: CalendarPreferenceState, content: @Composable () -> Unit) {
+    val options = (preferences as? CalendarPreferenceState.Ready)?.value?.options
+    val dark = when (options?.theme ?: SettingsTheme.SYSTEM) {
+        SettingsTheme.SYSTEM -> isSystemInDarkTheme()
+        SettingsTheme.LIGHT -> false
+        SettingsTheme.DARK -> true
+    }
+    DaylightTheme(dark, content)
+}
+
+@Composable
+private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState) {
+    val options = (preferences as? CalendarPreferenceState.Ready)?.value?.options ?: CalendarSettingsOptions()
+    val weatherVisible = preferences is CalendarPreferenceState.Ready && options.weatherVisible
     val context = LocalContext.current
     val noLinkHandler = stringResource(dev.swapnilraj.calendar.R.string.navigation_no_link_handler)
     val linkUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_link_unavailable)
@@ -46,9 +69,13 @@ fun DaylightContent(app: CalendarApp) {
     val localDeleted = stringResource(dev.swapnilraj.calendar.R.string.navigation_local_deleted)
     val draftUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_draft_unavailable)
     val scope = rememberCoroutineScope()
-    var now by remember { mutableStateOf(ZonedDateTime.now()) }
+    var deviceNow by remember { mutableStateOf(ZonedDateTime.now()) }
+    val now = when (val zone = options.displayZone) {
+        DisplayZoneOption.Device -> deviceNow
+        is DisplayZoneOption.Fixed -> deviceNow.withZoneSameInstant(zone.zone)
+    }
     LaunchedEffect(Unit) {
-        while (true) { now = ZonedDateTime.now(); delay(60_000 - System.currentTimeMillis() % 60_000) }
+        while (true) { deviceNow = ZonedDateTime.now(); delay(60_000 - System.currentTimeMillis() % 60_000) }
     }
     val snackbar = remember { SnackbarHostState() }
     val writeRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -58,19 +85,20 @@ fun DaylightContent(app: CalendarApp) {
     val mutations = remember(app, context, writeRequest) { PermissionAwareMutations(app.calendarWriter,
         { ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED },
         { writeRequest.launch(Manifest.permission.WRITE_CALENDAR) }) }
-    val weather by app.weather.state.collectAsStateWithLifecycle()
+    val latestWeather by app.weather.state.collectAsStateWithLifecycle()
+    val weather = latestWeather.takeIf { it.zone == deviceNow.zone } ?: WeatherState()
     var locationAllowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) }
     var lastWeatherPermission by remember { mutableStateOf<Boolean?>(null) }
     val locationRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val previouslyAllowed = locationAllowed
         locationAllowed = granted
-        if (granted && previouslyAllowed) scope.launch { app.weather.refresh(now.zone, force = true) }
+        if (weatherVisible && granted && previouslyAllowed) scope.launch { app.weather.refresh(deviceNow.zone, force = true) }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                now = ZonedDateTime.now()
+                deviceNow = ZonedDateTime.now()
                 app.calendarReader.refresh()
                 locationAllowed = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
             }
@@ -80,13 +108,14 @@ fun DaylightContent(app: CalendarApp) {
     }
     Surface(Modifier.fillMaxSize()) {
         PermissionGate {
-            LaunchedEffect(now.zone, locationAllowed) {
+            LaunchedEffect(deviceNow.zone, locationAllowed, weatherVisible) {
+                if (!weatherVisible) return@LaunchedEffect
                 var changedPermission = lastWeatherPermission != null && lastWeatherPermission != locationAllowed
                 lastWeatherPermission = locationAllowed
                 lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                    app.weather.refresh(now.zone, force = changedPermission)
+                    app.weather.refresh(deviceNow.zone, force = changedPermission)
                     changedPermission = false
-                    while (true) { delay(30 * 60_000L); app.weather.refresh(now.zone) }
+                    while (true) { delay(30 * 60_000L); app.weather.refresh(deviceNow.zone) }
                 }
             }
                 Box(Modifier.fillMaxSize()) {
@@ -104,14 +133,15 @@ fun DaylightContent(app: CalendarApp) {
                                 }
                             }
                         },
-                        actions = { WeatherOptions(weather,
+                        actions = { if (weatherVisible) WeatherOptions(weather,
                             onLocation = { locationRequest.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
-                            onRefresh = { scope.launch { app.weather.refresh(now.zone, force = true) } }) },
+                            onRefresh = { scope.launch { app.weather.refresh(deviceNow.zone, force = true) } }) },
                         summary = { date ->
                             val summary = remember(weather.forecast, date, now.zone) { daySummary(weather.forecast, date, now.zone) }
-                            summary?.let { WeatherSummary(it, weather.stale) }
+                            if (weatherVisible) summary?.let { WeatherSummary(it, weather.stale, options.weatherUnits) }
                         },
                         settings = app.settings,
+                        preferenceOverride = preferences,
                         mutations = mutations,
                         drafts = app.calendarLocalStore,
                         onLocalSaved = { scope.launch { snackbar.showSnackbar(localSaved) } },
@@ -121,7 +151,7 @@ fun DaylightContent(app: CalendarApp) {
                         background = { date ->
                             val hours = remember(weather.forecast, date, now.zone) { hoursForDay(weather.forecast, date, now.zone) }
                             // DayScreen owns the zoom; the layer derives hour height from its measured full-day height.
-                            hours?.let { WeatherBackground(it) }
+                            if (weatherVisible) hours?.let { WeatherBackground(it) }
                         })
                     SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
                 }
