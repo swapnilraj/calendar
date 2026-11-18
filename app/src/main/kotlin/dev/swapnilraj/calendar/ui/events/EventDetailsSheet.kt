@@ -37,9 +37,11 @@ fun EventDetailsStateSheet(
     onOpenLink: (String) -> Unit,
     displayZone: ZoneId = ZoneId.systemDefault(),
     use24Hour: Boolean = true,
+    onEdit: ((EventRef) -> Unit)? = null,
+    onDelete: ((EventRef) -> Unit)? = null,
 ) {
     if (state is CalendarReadState.Ready) {
-        EventDetailsSheet(state.value, onDismiss, onOpenLink, displayZone, use24Hour)
+        EventDetailsSheet(state.value, onDismiss, onOpenLink, displayZone, use24Hour, onEdit, onDelete)
     } else {
         ModalBottomSheet(onDismissRequest = onDismiss) {
             Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -70,9 +72,11 @@ fun EventDetailsSheet(
     onOpenLink: (String) -> Unit,
     displayZone: ZoneId = ZoneId.systemDefault(),
     use24Hour: Boolean = true,
+    onEdit: ((EventRef) -> Unit)? = null,
+    onDelete: ((EventRef) -> Unit)? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        EventDetailsContent(details, onDismiss, onOpenLink, displayZone, use24Hour)
+        EventDetailsContent(details, onDismiss, onOpenLink, displayZone, use24Hour, onEdit, onDelete)
     }
 }
 
@@ -83,6 +87,8 @@ fun EventDetailsContent(
     onOpenLink: (String) -> Unit,
     displayZone: ZoneId = ZoneId.systemDefault(),
     use24Hour: Boolean = true,
+    onEdit: ((EventRef) -> Unit)? = null,
+    onDelete: ((EventRef) -> Unit)? = null,
 ) {
     val locale = LocalLocale.current.platformLocale
     val links = remember(details.description, details.location) {
@@ -182,6 +188,14 @@ fun EventDetailsContent(
                 }
                 Text(stringResource(R.string.events_reminder_item, method, timing))
             }
+        }
+        if (details.canEdit == AccessDecision.ALLOWED) {
+            onEdit?.let { action -> Button(onClick = { action(details.occurrence.ref) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.events_editor_edit))
+            } }
+            onDelete?.let { action -> TextButton(onClick = { action(details.occurrence.ref) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.events_editor_delete))
+            } }
         }
         TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.events_close)) }
     }

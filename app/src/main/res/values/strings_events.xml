@@ -42,4 +42,46 @@
     <plurals name="events_duration_minutes"><item quantity="one">%1$d minute</item><item quantity="other">%1$d minutes</item></plurals>
     <plurals name="events_minutes_before"><item quantity="one">%1$d minute before</item><item quantity="other">%1$d minutes before</item></plurals>
     <plurals name="events_minutes_after"><item quantity="one">%1$d minute after</item><item quantity="other">%1$d minutes after</item></plurals>
+    <string name="events_editor_create">New event</string>
+    <string name="events_editor_edit">Edit event</string>
+    <string name="events_editor_title">Title</string>
+    <string name="events_editor_start_date">Start date (YYYY-MM-DD)</string>
+    <string name="events_editor_end_date">End date (YYYY-MM-DD)</string>
+    <string name="events_editor_last_date">Last all-day date (YYYY-MM-DD)</string>
+    <string name="events_editor_start_time">Start time (HH:MM)</string>
+    <string name="events_editor_end_time">End time (HH:MM)</string>
+    <string name="events_editor_zone">Time zone, for example Europe/London</string>
+    <string name="events_editor_alerts">Notification minutes before, separated by commas</string>
+    <string name="events_editor_choose">Choose</string>
+    <string name="events_editor_use_date">Use date</string>
+    <string name="events_editor_use_time">Use time</string>
+    <string name="events_editor_choose_offset">This time occurs twice. Choose an offset.</string>
+    <string name="events_editor_first_offset">First occurrence (%1$s)</string>
+    <string name="events_editor_second_offset">Second occurrence (%1$s)</string>
+    <string name="events_editor_no_calendar">No writable calendar is available.</string>
+    <string name="events_editor_local_save">Saving updates this device. Account sync is handled by your calendar provider.</string>
+    <string name="events_editor_save">Save</string>
+    <string name="events_editor_cancel">Cancel</string>
+    <string name="events_editor_delete">Delete event</string>
+    <string name="events_editor_confirm_delete">Delete this event?</string>
+    <string name="events_editor_delete_description">The event will be removed from this device. Account changes follow calendar synchronization.</string>
+    <string name="events_editor_recover">Review operation</string>
+    <string name="events_editor_review">Reload latest for review</string>
+    <string name="events_editor_invalid">Check the calendar, dates, time zone, duration, and notification values.</string>
+    <string name="events_editor_ambiguous">Choose the first or second occurrence for each repeated time.</string>
+    <string name="events_editor_nonexistent">This clock time does not exist because the clocks change. Choose a valid time.</string>
+    <string name="events_editor_permission">Calendar write access is required. Your draft is retained.</string>
+    <string name="events_editor_denied">This event cannot be changed with the current access rights.</string>
+    <string name="events_editor_conflict">The event changed elsewhere. Review the latest event before applying your draft.</string>
+    <string name="events_editor_uncertain">The operation may have completed. Review it before creating or changing anything again.</string>
+    <string name="events_editor_unavailable">The calendar could not be updated. Your draft is retained.</string>
+    <string name="events_editor_draft_unavailable">The draft could not be read or stored. Retry after restoring local storage access.</string>
+    <string name="events_editor_unsupported">Meetings with guests and recurring events require their dedicated editing workflow.</string>
+    <string name="events_editor_draft_version">This draft uses an unsupported version and has not been overwritten.</string>
+    <string name="events_editor_stale_draft">Your retained draft is shown below. The source changed; it will not be overwritten. Compare the latest event before discarding this draft.</string>
+    <string name="events_editor_latest">Latest event</string>
+    <string name="events_editor_latest_field">%1$s: %2$s</string>
+    <string name="events_editor_discard_reload">Discard draft and load latest</string>
+    <string name="events_editor_discard_confirm">Discard your unsaved draft?</string>
+    <string name="events_editor_discard_description">Your retained draft changes will be removed. The latest event will be loaded for a new edit. No calendar event is changed by this action.</string>
 </resources>
