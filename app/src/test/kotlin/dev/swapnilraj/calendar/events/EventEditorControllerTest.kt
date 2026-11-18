@@ -439,7 +439,7 @@ class EventEditorControllerTest {
         val oldSource = editable().copy(details = editable().details.copy(calendar = originalCalendar))
         val replacements = listOf(originalCalendar.copy(account = originalCalendar.account.copy(name = "other@example.test")),
             originalCalendar.copy(account = originalCalendar.account.copy(type = "OtherProvider")),
-            originalCalendar.copy(ownerAccount = "different-owner@example.test"),
+            originalCalendar.copy(owner = "different-owner@example.test"),
             originalCalendar.copy(providerId = "namespace-b"), originalCalendar.copy(providerId = null))
         for (replacement in replacements) {
             val store = Store(); val writer = Writer()
@@ -475,6 +475,21 @@ class EventEditorControllerTest {
         val store = Store(); val writer = Writer(); controller(store, writer, editable()).flushDraft()
         val restored = controller(store, writer, editable().copy(details = editable().details.copy(calendar = null)))
         assertTrue(restored.state.reviewRequired); restored.save(); assertEquals(0, writer.updates)
+    }
+
+    @Test fun frozenEditRecoveryRetainsTheOriginalCommandAcrossNamespaceChange() {
+        val store = Store(); val writer = Writer().apply { next = MutationResult.Uncertain("old-operation", ref.eventId) }
+        val original = controller(store, writer, editable())
+        original.change { it.copy(title = "Authorized original edit") }; original.save()
+        val command = writer.updatedCommands.single(); val operation = writer.ids.single()
+        val replacement = editable().copy(token = EditToken("replacement-token"), details = editable().details.copy(
+            calendar = eventTestCalendar().copy(account = CalendarAccount("replacement@example.test", "OtherProvider"))))
+        val restored = controller(store, writer, replacement)
+        assertTrue(restored.state.recoveryRequired); restored.save(); assertEquals(1, writer.updates)
+        writer.safeRecovery = true; restored.recover(); assertEquals(1, writer.updates)
+        restored.retryOriginal()
+        assertEquals(listOf(command, command), writer.updatedCommands)
+        assertEquals(listOf(operation, operation), writer.ids)
     }
 
     class Store : DraftStore {

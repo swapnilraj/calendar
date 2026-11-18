@@ -22,7 +22,7 @@ class EventEditorMetadataTest {
     private val store = EventEditorControllerTest.Store()
     private val fixture = EventEditorControllerTest()
     private val writer = fixture.Writer()
-    private fun source(draft: EventDraft = initial) = EditableEvent(EventDetails(EventOccurrence(ref, draft.time, draft.title, 1), null,
+    private fun source(draft: EventDraft = initial) = EditableEvent(EventDetails(EventOccurrence(ref, draft.time, draft.title, 1), eventTestCalendar(),
         availability = draft.availability, privacy = draft.privacy), EditToken("source"), EditableField.entries.toSet())
     private fun editor(draft: EventDraft = initial, existing: EditableEvent? = null) = EventEditorController(draft, existing, "metadata", writer, store, scope)
     @After fun stop() { scope.cancel() }
