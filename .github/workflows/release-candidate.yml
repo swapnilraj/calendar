@@ -78,6 +78,7 @@ jobs:
           data = subprocess.check_output([str(tool), 'dump', 'badging', 'app/build/outputs/apk/release/app-release-unsigned.apk'], text=True)
           package = re.search(r"^package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", data, re.M)
           assert package and package.groups() == ('dev.swapnilraj.calendar', os.environ['CANDIDATE_CODE'], os.environ['CANDIDATE_VERSION']), 'Unexpected APK package/version'
+          assert 'application-debuggable' not in data, 'Release APK must not be debuggable'
           PY
       - name: Sign with the owner's stable identity
         env:
