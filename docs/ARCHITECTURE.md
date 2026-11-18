@@ -68,6 +68,11 @@ remain separate until their integration gates pass.
   delivery state and snoozes; it is not a competing calendar event database.
 - Mutation outcomes include local success, conflict, permission/provider failure and uncertain outcome.
   Unknown create outcomes must be reconciled, never blindly retried.
+- Reminder delivery contracts bind each audible post to a durable per-post token, separate from the
+  generation alias. Snooze/dismiss actions must match that token; stale notification actions cannot
+  act on a later post. Series mutation ports require a complete selected-bound source and fresh token;
+  UI-generated recurrence plans are never accepted as provider execution authority. Nullable privacy/
+  availability patches distinguish Keep from an explicit clear and preserve unknown source values.
 - AlarmManager owns reminder delivery; JobScheduler reconciles, alongside provider reminder signals.
   The notification ledger is independent from display selection. Background/device behaviour remains
   unverified until the explicit acceptance gates pass.
