@@ -32,6 +32,7 @@ class ReminderRuntimeOrderingTest {
         override fun cancelAll() { transitions += "cancel"; periodic = false; content = false }
     }
     private class Operations(private val enabled: () -> Boolean) : ReminderOperations {
+        override fun suppressDelivery() = ReminderSuppressionResult(true, AlarmSchedulingResult.CANCELLED)
         override suspend fun reconcile() = if (enabled())
             ReminderCycleResult(ReminderCycleStatus.READY, AlarmSchedulingResult.EXACT)
         else ReminderCycleResult(ReminderCycleStatus.DISABLED, AlarmSchedulingResult.CANCELLED)

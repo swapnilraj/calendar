@@ -42,11 +42,13 @@ class ReminderCoordinator(
     suspend fun reconcile(): ReminderCycleResult = mutex.withLock {
         try { cycle() }
         catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { ReminderCycleResult(ReminderCycleStatus.UNAVAILABLE, cancelAlarm()) }
+        catch (_: Exception) { ReminderCycleResult(ReminderCycleStatus.UNAVAILABLE, safeCancelAlarm()) }
     }
 
     /** A stale wake-up may reconcile current state, but can never force delivery of its old key. */
     suspend fun onAlarm(@Suppress("UNUSED_PARAMETER") expected: ReminderVersion): ReminderCycleResult = reconcile()
+
+    private class StaleConfiguration : Exception()
 
     private class Counts { var posted = 0; var deferred = 0; var uncertain = 0; var permissionRequired = false }
     private data class Resolved(val values: Map<ReminderKey, ReminderResolution>, val permissionRequired: Boolean = false)
@@ -56,16 +58,18 @@ class ReminderCoordinator(
         val now = clock.instant()
         val window = InstantBounds(now.minus(catchUp), now.plus(horizon))
         if (!config.enabled) {
+            val suppression = suppressDelivery() // Independent of a broken/unavailable ledger.
             val empty = ReminderSourceSnapshot(window, emptyList(), emptySet(), emptyMap())
             ledger.reconcile(empty, emptySet(), emptyMap(), now)
-            notifications.cancelAllOwn()
-            return ReminderCycleResult(ReminderCycleStatus.DISABLED, cancelAlarm())
+            return ReminderCycleResult(if (suppression.accepted) ReminderCycleStatus.DISABLED else ReminderCycleStatus.UNAVAILABLE, suppression.alarm)
         }
         if (!canDeliver()) return permissionRequired()
         val tracked = ledger.trackedForRevalidation(window).filter { it.key.calendarId in config.enabledCalendars }
         val resolved = resolve(tracked.map { it.key }.toSet(), config)
         if (resolved.permissionRequired) return permissionRequired()
+        ensureCurrentConfiguration(config)
         val loaded = source.loadDueWindow(window, config)
+        ensureCurrentConfiguration(config)
         if (loaded == ReminderSourceResult.PermissionRequired) return permissionRequired()
         val snapshot = (loaded as? ReminderSourceResult.Ready)?.snapshot?.takeIf { it.window == window }
             ?.let { safeSnapshot(it, config) }
@@ -76,14 +80,17 @@ class ReminderCoordinator(
         ledger.reconcile(reconciliation, config.enabledCalendars, resolved.values, now)
             .cancelNotifications.forEach(notifications::cancel)
         ledger.expireBefore(now.minus(catchUp)).cancelNotifications.forEach(notifications::cancel)
+        ensureCurrentConfiguration(config)
         recover(ledger.interruptedDeliveries(), resolved.values, config, counts)
         while (true) {
+            ensureCurrentConfiguration(config)
             if (!canDeliver()) return permissionRequired(counts)
             val claims = ledger.claimDue(clock.instant(), batchSize)
             if (claims.isEmpty()) break
             deliver(claims, config, counts)
             if (counts.permissionRequired) return permissionRequired(counts)
         }
+        ensureCurrentConfiguration(config)
         val alarm = armNext()
         val status = when {
             snapshot == null -> ReminderCycleStatus.UNAVAILABLE
@@ -132,6 +139,7 @@ class ReminderCoordinator(
     private suspend fun recover(claims: List<ReminderClaim>, resolutions: Map<ReminderKey, ReminderResolution>,
         config: ReminderConfiguration, counts: Counts) {
         for (claim in claims) {
+            ensureCurrentConfiguration(config)
             val record = claim.record
             when (val resolution = resolutions[record.key]) {
                 ReminderResolution.GoneOrIneligible -> {
@@ -164,6 +172,8 @@ class ReminderCoordinator(
                 return
             }
             for (claim in claims) {
+                ensureCurrentConfiguration(config)
+                if (!canDeliver()) { counts.permissionRequired = true; return }
                 val record = claim.record
                 val resolution = resolved.values[record.key]
                 if (resolution == ReminderResolution.GoneOrIneligible) {
@@ -187,6 +197,8 @@ class ReminderCoordinator(
                     unattempted.remove(claim)
                     continue
                 }
+                ensureCurrentConfiguration(config)
+                if (!canDeliver()) { counts.permissionRequired = true; return }
                 unattempted.remove(claim) // From here an exception may follow an accepted notification.
                 val outcome = try { notifications.post(candidate, postIdentity) }
                     catch (cancelled: CancellationException) {
@@ -248,6 +260,10 @@ class ReminderCoordinator(
         }
         val record = postedForAction(identity) ?: return@withLock ReminderActionResult.IGNORED
         val result = resolve(setOf(record.key), config)
+        val fresh = try { ensureCurrentConfiguration(config); true }
+            catch (_: StaleConfiguration) { false }
+        if (!fresh) return@withLock ReminderActionResult.IGNORED
+        if (!canDeliver()) { suppressDelivery(); return@withLock ReminderActionResult.PERMISSION_REQUIRED }
         if (result.permissionRequired) return@withLock ReminderActionResult.PERMISSION_REQUIRED
         if (result.values[record.key] == ReminderResolution.GoneOrIneligible) {
             if (ledger.dismiss(record.version, identity.token)) notifications.cancel(alias)
@@ -257,6 +273,9 @@ class ReminderCoordinator(
         val candidate = (result.values[record.key] as? ReminderResolution.Eligible)?.candidate
             ?: return@withLock ReminderActionResult.SOURCE_UNAVAILABLE
         if (!sameOccurrence(candidate, record, config)) return@withLock ReminderActionResult.IGNORED
+        try { ensureCurrentConfiguration(config) }
+        catch (_: StaleConfiguration) { return@withLock ReminderActionResult.IGNORED }
+        if (!canDeliver()) { suppressDelivery(); return@withLock ReminderActionResult.PERMISSION_REQUIRED }
         val snoozed = ledger.snooze(record.version, identity.token, minutes, clock.instant()) ?: return@withLock ReminderActionResult.IGNORED
         notifications.cancel(snoozed.notificationAlias)
         armNext()
@@ -284,14 +303,49 @@ class ReminderCoordinator(
         return record.takeIf { it.state == ReminderDeliveryState.POSTED && it.postToken == identity.token }
     }
 
+    /** Teardown attempts are independent; cancellation is rethrown only after both resources.
+     * No configuration, source or ledger access is permitted on this narrow recovery path.
+     */
+    fun suppressDelivery(): ReminderSuppressionResult {
+        var cancellation: CancellationException? = null
+        val notificationsAccepted = try { notifications.cancelAllOwn(); true }
+            catch (cancelled: CancellationException) { cancellation = cancelled; false }
+            catch (_: Exception) { false }
+        val alarm = try { cancelAlarm() }
+            catch (cancelled: CancellationException) { if (cancellation == null) cancellation = cancelled; AlarmSchedulingResult.UNAVAILABLE }
+            catch (_: Exception) { AlarmSchedulingResult.UNAVAILABLE }
+        cancellation?.let { throw it }
+        return ReminderSuppressionResult(notificationsAccepted, alarm)
+    }
+
+    private suspend fun ensureCurrentConfiguration(expected: ReminderConfiguration) {
+        val current = try { configuration() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) {
+            val lost = try { !canDeliver() }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { false }
+            if (lost) suppressDelivery()
+            throw StaleConfiguration()
+        }
+        if (current != expected) {
+            if (!current.enabled) suppressDelivery()
+            throw StaleConfiguration()
+        }
+    }
+
     private fun canDeliver(): Boolean = permissions().let { it.calendarAccess && it.canPostNotifications }
     private fun permissionRequired(counts: Counts = Counts()): ReminderCycleResult {
-        notifications.cancelAllOwn()
-        return ReminderCycleResult(ReminderCycleStatus.PERMISSION_REQUIRED, cancelAlarm(), counts.posted, counts.deferred, counts.uncertain)
+        val suppression = suppressDelivery()
+        return ReminderCycleResult(if (suppression.accepted) ReminderCycleStatus.PERMISSION_REQUIRED else ReminderCycleStatus.UNAVAILABLE,
+            suppression.alarm, counts.posted, counts.deferred, counts.uncertain)
     }
     private suspend fun armNext(): AlarmSchedulingResult = ledger.nextScheduled()?.let {
         alarms.replaceNext(ReminderAlarmRequest(it.effectiveDue, it.version))
     } ?: cancelAlarm()
     private fun cancelAlarm(): AlarmSchedulingResult = alarms.replaceNext(null)
+    private fun safeCancelAlarm(): AlarmSchedulingResult = try { cancelAlarm() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { AlarmSchedulingResult.UNAVAILABLE }
     private fun deferred() = ReminderResolution.Deferred(ReminderSourceProblem.QUERY_FAILED)
 }

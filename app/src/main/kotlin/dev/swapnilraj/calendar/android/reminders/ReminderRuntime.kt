@@ -3,6 +3,7 @@ package dev.swapnilraj.calendar.android.reminders
 import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.atomic.AtomicBoolean
+import dev.swapnilraj.calendar.core.AlarmSchedulingResult
 import dev.swapnilraj.calendar.core.ReminderConfiguration
 import dev.swapnilraj.calendar.core.ReminderPostIdentity
 import dev.swapnilraj.calendar.core.ReminderVersion
@@ -16,7 +17,14 @@ import kotlinx.coroutines.sync.withLock
 /** The Application owns exactly one runtime/coordinator. Framework components never create stores. */
 interface ReminderRuntimeOwner { val reminderRuntime: ReminderRuntime }
 
+/** Cancellation acceptance is not a physical-device observation or a ledger-history proof. */
+data class ReminderSuppressionResult(val notificationCancellationAccepted: Boolean, val alarm: AlarmSchedulingResult) {
+    val accepted: Boolean get() = notificationCancellationAccepted && alarm == AlarmSchedulingResult.CANCELLED
+}
+
 interface ReminderOperations {
+    /** Narrow teardown only: no settings/provider/ledger access and no production no-op default. */
+    fun suppressDelivery(): ReminderSuppressionResult
     suspend fun reconcile(): ReminderCycleResult
     suspend fun onAlarm(version: ReminderVersion): ReminderCycleResult
     suspend fun snooze(identity: ReminderPostIdentity, minutes: Int): ReminderActionResult
@@ -24,6 +32,7 @@ interface ReminderOperations {
 }
 
 class CoordinatorReminderOperations(private val coordinator: ReminderCoordinator) : ReminderOperations {
+    override fun suppressDelivery() = coordinator.suppressDelivery()
     override suspend fun reconcile() = coordinator.reconcile()
     override suspend fun onAlarm(version: ReminderVersion) = coordinator.onAlarm(version)
     override suspend fun snooze(identity: ReminderPostIdentity, minutes: Int) = coordinator.snooze(identity, minutes)
@@ -53,6 +62,7 @@ class ReminderRuntime(
     private val canObserveCalendar: () -> Boolean,
     private val broadcastTimeoutMillis: Long = 8_000,
     private val jobTimeoutMillis: Long = 120_000,
+    private val deliveryPermissions: (() -> ReminderPermissionState)? = null,
 ) {
     private val mutableHealth = MutableStateFlow(ReminderRuntimeHealth(ReminderRuntimeStatus.UNKNOWN))
     val health: StateFlow<ReminderRuntimeHealth> = mutableHealth.asStateFlow()
@@ -71,15 +81,34 @@ class ReminderRuntime(
     }
     fun onResume(): Job = scope.launch { reconcile() }
 
+    /** Enroll every settings CAS + exact readback in this boundary. The callback MUST NOT call or
+     * await runtime actions (the mutex is non-reentrant). A cancelled/unknown ACK can still have
+     * changed durable settings, so an app-owned fresh cycle is queued after releasing the boundary.
+     * This orders this runtime's writers/delivery, not independent providers or external writers.
+     */
+    suspend fun <T> updateConfiguration(change: suspend () -> T): T {
+        var entered = false
+        try {
+            return ordering.withLock {
+                entered = true
+                mutableHealth.value = ReminderRuntimeHealth(ReminderRuntimeStatus.UNKNOWN)
+                change()
+            }
+        } finally {
+            if (entered) scope.launch { reconcile() }
+        }
+    }
+
     private data class Registration(val configuration: ReminderConfiguration, val healthy: Boolean)
     private suspend fun register(): Registration? {
         val config = try { configuration() }
         catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { unavailable(); return null }
+        catch (_: Exception) { unavailable(); suppressForProvenPermissionLoss(); return null }
         currentCoroutineContext().ensureActive()
         val healthy = try {
             if (config.enabled) jobs.ensureRegistered(canObserveCalendar()) else { jobs.cancelAll(); true }
-        } catch (_: RuntimeException) { false }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: RuntimeException) { false }
         if (!healthy) degraded()
         return Registration(config, healthy)
     }
@@ -165,6 +194,20 @@ class ReminderRuntime(
             }
         }
         finished(retry)
+    }
+
+    private fun suppressForProvenPermissionLoss() {
+        val readLost = try { !canObserveCalendar() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { false }
+        val fresh = try { deliveryPermissions?.invoke() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { null }
+        if (readLost || fresh?.let { !it.calendarAccess || !it.canPostNotifications } == true) {
+            try { operations.suppressDelivery() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Health remains unavailable; never fall back to full delivery. */ }
+        }
     }
 
     private fun unavailable() { mutableHealth.value = ReminderRuntimeHealth(ReminderRuntimeStatus.UNAVAILABLE) }

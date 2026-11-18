@@ -10,6 +10,8 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -47,6 +49,7 @@ class ReminderCoordinatorTest {
         var omit = emptySet<ReminderKey>()
         var cancelResolution = false
         var observedIdentities: Map<CalendarId, ReminderCalendarIdentity>? = null
+        var afterResolve: (suspend () -> Unit)? = null
         override suspend fun loadDueWindow(window: InstantBounds, configuration: ReminderConfiguration): ReminderSourceResult {
             this.window = window
             if (permissionRequired) return ReminderSourceResult.PermissionRequired
@@ -60,9 +63,11 @@ class ReminderCoordinatorTest {
             if (cancelResolution) throw CancellationException("cancelled before posting")
             if (permissionRequired) return ReminderResolutionResult.PermissionRequired
             if (unavailable) return ReminderResolutionResult.Unavailable
-            return ReminderResolutionResult.Ready(keys.filterNot { it in omit }.associateWith {
+            val result = ReminderResolutionResult.Ready(keys.filterNot { it in omit }.associateWith {
                 resolutions[it] ?: candidates[it]?.let(ReminderResolution::Eligible) ?: ReminderResolution.GoneOrIneligible
             })
+            afterResolve?.invoke()
+            return result
         }
     }
 
@@ -72,6 +77,7 @@ class ReminderCoordinatorTest {
         var lastSnapshot: ReminderSourceSnapshot? = null
         var lastResolutions = emptyMap<ReminderKey, ReminderResolution>()
         var failPostAckOnce = false
+        var reconcileFailure: Exception? = null
         private var token = 0
         override suspend fun trackedForRevalidation(window: InstantBounds): List<ReminderRecord> = rows.values.filter {
             it.state in setOf(ReminderDeliveryState.SCHEDULED, ReminderDeliveryState.SNOOZED, ReminderDeliveryState.DEFERRED,
@@ -79,6 +85,7 @@ class ReminderCoordinatorTest {
         }
         override suspend fun reconcile(snapshot: ReminderSourceSnapshot, enabledCalendars: Set<CalendarId>,
             resolutions: Map<ReminderKey, ReminderResolution>, now: Instant): ReminderPlanChanges {
+            reconcileFailure?.let { throw it }
             lastSnapshot = snapshot; lastResolutions = resolutions
             val disabled = rows.values.filter { it.key.calendarId !in enabledCalendars }
             for (row in disabled) {
@@ -162,6 +169,7 @@ class ReminderCoordinatorTest {
         val postIdentities = mutableListOf<ReminderPostIdentity>()
         val cancelled = mutableListOf<ReminderNotificationAlias>()
         var clears = 0
+        var clearFailure: Exception? = null
         var result = ReminderPostResult.POSTED
         override fun post(candidate: ReminderCandidate, identity: ReminderPostIdentity): ReminderPostResult {
             posts.add(identity.alias); postIdentities.add(identity)
@@ -172,12 +180,15 @@ class ReminderCoordinatorTest {
         }
         override fun isActive(identity: ReminderPostIdentity) = identity in active
         override fun cancel(alias: ReminderNotificationAlias) { cancelled.add(alias); active.removeAll { it.alias == alias } }
-        override fun cancelAllOwn() { clears++; active.clear() }
+        override fun cancelAllOwn() { clears++; clearFailure?.let { throw it }; active.clear() }
     }
     private class Alarms : ReminderAlarmPort {
         var next: ReminderAlarmRequest? = null
         var precision = AlarmSchedulingResult.EXACT
+        var cancellations = 0
+        var cancelFailure: Exception? = null
         override fun replaceNext(alarm: ReminderAlarmRequest?): AlarmSchedulingResult {
+            if (alarm == null) { cancellations++; cancelFailure?.let { throw it } }
             next = alarm; return if (alarm == null) AlarmSchedulingResult.CANCELLED else precision
         }
     }
@@ -185,6 +196,96 @@ class ReminderCoordinatorTest {
         configuration: ReminderConfiguration = config, permission: ReminderPermissionState = permissions,
         clock: Clock = Clock.fixed(now, ZoneOffset.UTC)) =
         ReminderCoordinator(source, ledger, alarms, notifications, { configuration }, { permission }, clock)
+
+    @Test fun disablingUnpinningOrReplacingNamespaceDuringDeliveryResolutionCannotPostOldCandidate() = runBlocking {
+        for (next in listOf(config.copy(enabled = false), config.copy(enabledCalendars = emptySet(), expectedCalendarIdentities = emptyMap()),
+            config.copy(expectedCalendarIdentities = mapOf(id to ReminderCalendarIdentity("replacement-account"))))) {
+            var current = config
+            val candidate = candidate(); val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+            val source = Source().apply { candidates[candidate.key] = candidate; afterResolve = { entered.complete(Unit); release.await() } }
+            val ledger = Ledger(); val sink = Notifications(); val alarms = Alarms()
+            val coordinator = ReminderCoordinator(source, ledger, alarms, sink, { current }, { permissions }, Clock.fixed(now, ZoneOffset.UTC))
+            val cycle = async { coordinator.reconcile() }
+            entered.await(); current = next; release.complete(Unit)
+            assertEquals(ReminderCycleStatus.UNAVAILABLE, cycle.await().status)
+            assertTrue(sink.posts.isEmpty())
+            assertEquals(ReminderDeliveryState.DEFERRED, ledger.rows.getValue(candidate.key).state)
+            assertNull(alarms.next)
+        }
+    }
+
+    @Test fun unreadableConfigurationAfterResolutionDefersRatherThanGuessingDisabled() = runBlocking {
+        var failed = false
+        val candidate = candidate(); val source = Source().apply {
+            candidates[candidate.key] = candidate; afterResolve = { failed = true }
+        }
+        val ledger = Ledger(); val sink = Notifications()
+        val coordinator = ReminderCoordinator(source, ledger, Alarms(), sink, { if (failed) error("Unreadable settings") else config }, { permissions }, Clock.fixed(now, ZoneOffset.UTC))
+        assertEquals(ReminderCycleStatus.UNAVAILABLE, coordinator.reconcile().status)
+        assertTrue(sink.posts.isEmpty()); assertEquals(0, sink.clears)
+        assertEquals(ReminderDeliveryState.DEFERRED, ledger.rows.getValue(candidate.key).state)
+    }
+
+    @Test fun changedConfigurationOrNotificationPermissionDuringSnoozeDoesNotMutateOrArm() = runBlocking {
+        for (mode in 0..3) {
+            var current = config; var access = permissions
+            val candidate = candidate(); val posted = record(candidate, ReminderDeliveryState.POSTED)
+            val source = Source().apply {
+                candidates[candidate.key] = candidate
+                afterResolve = { when (mode) {
+                    0 -> current = config.copy(enabled = false)
+                    1 -> current = config.copy(enabledCalendars = emptySet())
+                    2 -> current = config.copy(expectedCalendarIdentities = mapOf(id to ReminderCalendarIdentity("other-account")))
+                    else -> access = permissions.copy(notificationPermission = false)
+                } }
+            }
+            val ledger = Ledger(listOf(posted)); val sink = Notifications(); val alarms = Alarms()
+            val coordinator = ReminderCoordinator(source, ledger, alarms, sink, { current }, { access }, Clock.fixed(now, ZoneOffset.UTC))
+            assertEquals(if (mode == 3) ReminderActionResult.PERMISSION_REQUIRED else ReminderActionResult.IGNORED,
+                coordinator.snooze(posted.postIdentity, 5))
+            assertEquals(ReminderDeliveryState.POSTED, ledger.rows.getValue(candidate.key).state)
+            assertNull(ledger.rows.getValue(candidate.key).snoozedUntil); assertNull(alarms.next)
+        }
+    }
+
+    @Test fun disabledLedgerFailureCannotPreventIndependentNotificationAndAlarmTeardown() = runBlocking {
+        val candidate = candidate(); val posted = record(candidate, ReminderDeliveryState.POSTED)
+        val ledger = Ledger(listOf(posted)).apply { reconcileFailure = IllegalStateException("Broken ledger") }
+        val sink = Notifications().apply { active += posted.postIdentity!! }; val alarms = Alarms()
+        val result = engine(Source(), ledger, sink, alarms, config.copy(enabled = false)).reconcile()
+        assertEquals(ReminderCycleStatus.UNAVAILABLE, result.status)
+        assertTrue(sink.active.isEmpty()); assertEquals(1, sink.clears); assertTrue(alarms.cancellations > 0)
+        assertEquals(ReminderDeliveryState.POSTED, ledger.rows.getValue(candidate.key).state) // No false history claim.
+    }
+
+    @Test fun disabledCleanupFailureNeverReportsDisabledEvenWhenLedgerSucceeds() = runBlocking {
+        for (notificationFails in listOf(true, false)) {
+            val sink = Notifications().apply { if (notificationFails) clearFailure = java.io.IOException("Broken notification service") }
+            val alarms = Alarms().apply { if (!notificationFails) cancelFailure = java.io.IOException("Broken alarm service") }
+            val ledger = Ledger()
+            val result = engine(Source(), ledger, sink, alarms, config.copy(enabled = false)).reconcile()
+            assertEquals(ReminderCycleStatus.UNAVAILABLE, result.status)
+            assertEquals(1, sink.clears); assertEquals(1, alarms.cancellations)
+            assertNotNull(ledger.lastSnapshot)
+        }
+    }
+
+    @Test fun narrowSuppressionAttemptsBothResourcesOnFailureAndCancellationWithoutAnyReads() {
+        for (cancel in listOf(false, true)) {
+            val sink = Notifications().apply { clearFailure = if (cancel) CancellationException("Cancelled cleanup") else java.io.IOException("Broken binder") }
+            val alarms = Alarms(); var configurationReads = 0
+            val source = Source(); val ledger = Ledger()
+            val coordinator = ReminderCoordinator(source, ledger, alarms, sink, { configurationReads++; error("No settings read permitted") }, { permissions })
+            if (cancel) {
+                try { coordinator.suppressDelivery(); fail("Cancellation must propagate") } catch (_: CancellationException) { }
+            } else assertFalse(coordinator.suppressDelivery().accepted)
+            assertEquals(1, sink.clears); assertEquals(1, alarms.cancellations); assertEquals(0, configurationReads)
+            assertTrue(source.calls.isEmpty()); assertNull(source.window); assertNull(ledger.lastSnapshot)
+        }
+        val sink = Notifications(); val alarms = Alarms().apply { cancelFailure = java.io.IOException("Broken alarm service") }
+        assertEquals(AlarmSchedulingResult.UNAVAILABLE, engine(Source(), Ledger(), sink, alarms).suppressDelivery().alarm)
+        assertEquals(1, sink.clears)
+    }
 
     @Test fun discoversLongAdvanceReminderAndPostsOnlyOnce() = runBlocking {
         val reminder = candidate(start = now.plus(Duration.ofDays(365)), minutes = 365 * 24 * 60)

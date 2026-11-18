@@ -26,6 +26,7 @@ class ReminderRuntimeTest {
         override fun cancelAll() { cancellations++ }
     }
     private class Operations : ReminderOperations {
+        override fun suppressDelivery() = ReminderSuppressionResult(true, AlarmSchedulingResult.CANCELLED)
         var reconciles = 0; var actions = 0
         var block: (suspend () -> Unit)? = null
         var result = ReminderCycleResult(ReminderCycleStatus.READY, AlarmSchedulingResult.EXACT)

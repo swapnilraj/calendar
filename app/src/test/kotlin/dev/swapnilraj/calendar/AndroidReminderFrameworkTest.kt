@@ -50,6 +50,7 @@ class AndroidReminderFrameworkTest {
         jobs = AndroidReminderJobs(context, service)
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         runtime = ReminderRuntime(object : ReminderOperations {
+            override fun suppressDelivery() = ReminderSuppressionResult(true, AlarmSchedulingResult.CANCELLED)
             override suspend fun reconcile(): ReminderCycleResult {
                 calls++
                 if (block) awaitCancellation()
