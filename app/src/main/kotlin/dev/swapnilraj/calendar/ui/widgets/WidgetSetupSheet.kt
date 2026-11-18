@@ -77,13 +77,14 @@ fun WidgetSetupSheet(
                         val label = when (calendars) {
                             CalendarReadState.Loading -> R.string.widget_setup_loading
                             CalendarReadState.PermissionRequired -> R.string.widget_setup_permission
+                            CalendarReadState.LimitExceeded -> R.string.read_limit_widget_metadata
                             CalendarReadState.Unavailable -> R.string.widget_setup_unavailable
                             is CalendarReadState.Ready -> if (unique.isEmpty()) R.string.calendars_no_calendars else null
                         }
                         if (label != null) Text(stringResource(label), style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content), modifier = Modifier.padding(24.dp))
                         if (calendars == CalendarReadState.Loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 24.dp))
                         if (calendars == CalendarReadState.PermissionRequired && onRequestPermission != null) TextButton(enabled = !saving, onClick = onRequestPermission, modifier = Modifier.padding(horizontal = 16.dp)) { Text(stringResource(R.string.widget_setup_allow)) }
-                        if (calendars == CalendarReadState.Unavailable || calendars == CalendarReadState.PermissionRequired) TextButton(enabled = !saving, onClick = onRetryMetadata, modifier = Modifier.padding(horizontal = 16.dp)) { Text(stringResource(R.string.widget_setup_retry)) }
+                        if (calendars in setOf(CalendarReadState.Unavailable, CalendarReadState.PermissionRequired, CalendarReadState.LimitExceeded)) TextButton(enabled = !saving, onClick = onRetryMetadata, modifier = Modifier.padding(horizontal = 16.dp)) { Text(stringResource(R.string.widget_setup_retry)) }
                     }
                     if (draft.followApp) {
                         item(key = "app_preview") {
@@ -148,7 +149,7 @@ fun WidgetSetupSheet(
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     TextButton(enabled = !saving, onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.widget_setup_cancel)) }
-                    Button(enabled = !saving, onClick = { onSave(draft.choice()) }, modifier = Modifier.weight(1f).testTag("widget_setup_save")) { Text(stringResource(if (saving) R.string.widget_setup_saving else R.string.widget_setup_save)) }
+                    Button(enabled = !saving && calendars != CalendarReadState.LimitExceeded, onClick = { onSave(draft.choice()) }, modifier = Modifier.weight(1f).testTag("widget_setup_save")) { Text(stringResource(if (saving) R.string.widget_setup_saving else R.string.widget_setup_save)) }
                 }
             }
         }

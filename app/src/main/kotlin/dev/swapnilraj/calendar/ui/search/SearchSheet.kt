@@ -49,7 +49,8 @@ fun SearchSheet(
     val range = state.calendar.range
     val rangeLabel = stringResource(R.string.search_range, range.start.format(formatter), range.endExclusive.minusDays(1).format(formatter))
     val changeRangeLabel = stringResource(R.string.search_change_range)
-    val calendarsById = remember(state.snapshot?.calendars) { state.snapshot?.calendars.orEmpty().associateBy { it.id } }
+    val readySnapshot = state.snapshot.takeIf { state.status in setOf(SearchStatus.RESULTS, SearchStatus.NO_MATCHES, SearchStatus.NO_CALENDARS, SearchStatus.NO_SELECTION) }
+    val calendarsById = remember(readySnapshot?.calendars) { readySnapshot?.calendars.orEmpty().associateBy { it.id } }
     var pickingRange by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val use24Hour = android.text.format.DateFormat.is24HourFormat(LocalContext.current)
@@ -85,7 +86,7 @@ fun SearchSheet(
                         }
                         TextButton(onClick = onChooseCalendars, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.search_choose_calendars)) }
                     }
-                    val snapshot = state.snapshot
+                    val snapshot = readySnapshot
                     snapshot?.coverage?.distinct()?.forEach { issue ->
                         item(key = "coverage:${issue.calendarId.value}:${issue.reason}") {
                             val calendar = calendarsById[issue.calendarId]
@@ -107,6 +108,7 @@ fun SearchSheet(
                             SearchStatus.WAITING -> R.string.search_waiting
                             SearchStatus.LOADING -> R.string.search_loading
                             SearchStatus.PERMISSION_REQUIRED -> R.string.search_permission
+                            SearchStatus.LIMIT_EXCEEDED -> R.string.read_limit_search
                             SearchStatus.UNAVAILABLE -> R.string.search_unavailable
                             SearchStatus.NO_CALENDARS -> R.string.search_no_calendars
                             SearchStatus.NO_SELECTION -> R.string.search_no_selection
@@ -117,7 +119,7 @@ fun SearchSheet(
                             modifier = Modifier.padding(16.dp).semantics { liveRegion = LiveRegionMode.Polite })
                         if (state.status == SearchStatus.WAITING || state.status == SearchStatus.LOADING) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
                         if (state.status == SearchStatus.PERMISSION_REQUIRED && onRequestPermission != null) TextButton(onClick = onRequestPermission) { Text(stringResource(R.string.search_allow_calendar)) }
-                        if (state.status == SearchStatus.UNAVAILABLE || state.status == SearchStatus.PERMISSION_REQUIRED) TextButton(onClick = onRetry) { Text(stringResource(R.string.search_retry)) }
+                        if (state.status in setOf(SearchStatus.UNAVAILABLE, SearchStatus.PERMISSION_REQUIRED, SearchStatus.LIMIT_EXCEEDED)) TextButton(onClick = onRetry) { Text(stringResource(R.string.search_retry)) }
                         if (state.status == SearchStatus.RESULTS) Text(pluralStringResource(R.plurals.search_result_count, state.hits.size, state.hits.size),
                             style = MaterialTheme.typography.titleSmall.copy(textDirection = TextDirection.Content), modifier = Modifier.padding(16.dp).semantics { liveRegion = LiveRegionMode.Polite })
                     }

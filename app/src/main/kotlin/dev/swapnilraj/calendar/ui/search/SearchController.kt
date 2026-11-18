@@ -24,7 +24,7 @@ fun expandedSearchRange(range: CalendarDateRange, earlier: Boolean): CalendarDat
     return expanded.takeIf { it != range && validSearchRange(it) }
 }
 
-enum class SearchStatus { EMPTY_QUERY, INVALID_QUERY, INVALID_RANGE, WAITING, LOADING, PERMISSION_REQUIRED, UNAVAILABLE, NO_CALENDARS, NO_SELECTION, NO_MATCHES, RESULTS }
+enum class SearchStatus { EMPTY_QUERY, INVALID_QUERY, INVALID_RANGE, WAITING, LOADING, PERMISSION_REQUIRED, LIMIT_EXCEEDED, UNAVAILABLE, NO_CALENDARS, NO_SELECTION, NO_MATCHES, RESULTS }
 data class SearchUiState(
     val query: String,
     val calendar: CalendarRequest,
@@ -73,6 +73,7 @@ class SearchController(scope: CoroutineScope, private val port: CalendarSearch,
                                 when (result) {
                                     CalendarReadState.Loading -> publish(SearchStatus.LOADING)
                                     CalendarReadState.PermissionRequired -> publish(SearchStatus.PERMISSION_REQUIRED)
+                                    CalendarReadState.LimitExceeded -> publish(SearchStatus.LIMIT_EXCEEDED)
                                     CalendarReadState.Unavailable -> publish(SearchStatus.UNAVAILABLE)
                                     is CalendarReadState.Ready -> if (result.value.request == request) {
                                         val snapshot = normalized(result.value)

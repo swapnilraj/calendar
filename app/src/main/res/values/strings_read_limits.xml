@@ -1,0 +1,7 @@
+<resources>
+    <string name="read_limit_search">This search contains too much calendar data. Narrow the phrase or date range, or choose fewer calendars, then try again.</string>
+    <string name="read_limit_day">Too many events to show this day. Choose fewer calendars, then try again.</string>
+    <string name="read_limit_widget_metadata">Calendar information is too large to load here. This widget can’t be configured yet.</string>
+    <string name="read_limit_choose_calendars">Choose calendars</string>
+    <string name="read_limit_retry">Retry</string>
+</resources>
