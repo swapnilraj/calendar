@@ -33,6 +33,7 @@ class CalendarRecurringCreateTest {
         var allowUpdates = false
         var nativeMeetingMode = false
         var malformedAttendeeAck = false
+        var malformedLastEventAck = false
         var rejectEventUidProjection = false
         val insertedEventValues = mutableListOf<ContentValues>()
         var failAttendee = false
@@ -194,6 +195,7 @@ class CalendarRecurringCreateTest {
             committed = true
             afterCommit?.invoke()
             if (lostAck) error("Synthetic lost acknowledgement")
+            if (malformedLastEventAck) results.indexOfLast { it.uri?.pathSegments?.firstOrNull()=="events" }.takeIf { it>=0 }?.let { results[it]=ContentProviderResult(Uri.parse("content://${CalendarContract.AUTHORITY}/events/not-an-id")) }
             if (malformedAttendeeAck) results[2] = ContentProviderResult(Uri.parse("content://${CalendarContract.AUTHORITY}/attendees/not-an-id"))
             if (malformedAck) results[1] = ContentProviderResult(Uri.parse("content://${CalendarContract.AUTHORITY}/events/not-an-id"))
             return results

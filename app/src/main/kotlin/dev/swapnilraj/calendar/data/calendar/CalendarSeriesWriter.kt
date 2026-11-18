@@ -35,8 +35,9 @@ class CalendarSeriesWriter(
     private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
 ) : CalendarSeriesMutations {
     private val mutex = Mutex()
+    private val followingEdits = CalendarFollowingSeriesWriter(resolver, sourceReader, store, hasPermission, this, io, budget, readBudgets)
     private class Unsupported(val reason: String) : Exception()
-    private class Invalid(val fields: Set<InvalidEventField>) : Exception()
+    internal class Invalid(val fields: Set<InvalidEventField>) : Exception()
     private data class Prepared(val operations: ArrayList<ContentProviderOperation>, val receipt: JSONObject, val source: CalendarSeriesSource,
         val insertedAt: Int? = null)
     private data class ExceptionTemplate(val ref: EventRef, val allDay: Boolean, val zone: String, val duration: String)
@@ -74,8 +75,10 @@ class CalendarSeriesWriter(
                 supported.copy(fields = series.allowedFields, recurrence = AccessDecision.ALLOWED)
             } catch (_: Unsupported) { supported }
             catch (_: SeriesSourceReview) { supported }
+            val followingEdit = followingEdits.capabilities(source, series)
+            val followingRights = followingEdit?.copy(delete = following.delete) ?: following
             series.copy(allowedFields = temporal.fields, scopes = mapOf(RecurrenceScope.ALL to temporal,
-                RecurrenceScope.THIS to thisCapabilities, RecurrenceScope.FOLLOWING to following))
+                RecurrenceScope.THIS to thisCapabilities, RecurrenceScope.FOLLOWING to followingRights))
         }
     } catch (_: SecurityException) { SeriesReadResult.PermissionRequired }
     catch (denied: SeriesSourceDenied) { SeriesReadResult.Denied(denied.reason) }
@@ -87,6 +90,7 @@ class CalendarSeriesWriter(
             try { store.abandoned(operationId) { retirementFingerprint(selected, token, command) }?.let { return@withLock common(it) } }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { return@withLock common(MutationResult.Unavailable) }
+            if (command is SeriesCommand.FollowingEdit) return@withLock followingEdits.mutate(operationId, selected, token, command)
             if (!permissions()) return@withLock common(MutationResult.PermissionRequired)
             var attempted = false
             var dispatch: CalendarLocalStore.Operation? = null
@@ -113,8 +117,6 @@ class CalendarSeriesWriter(
                     is RecurrencePlanningResult.Invalid -> return@withLock SeriesMutationResult.Invalid(planned.reason)
                     is RecurrencePlanningResult.Ready -> Unit
                 }
-                if (command is SeriesCommand.FollowingEdit)
-                    throw Unsupported("Following scopes require a separately verified split and transfer executor")
                 val prepared = prepare(source, token, command, planned)
                 val parcel = Parcel.obtain()
                 try {
@@ -578,6 +580,9 @@ class CalendarSeriesWriter(
         }
     }
 
+    internal fun followingAssertions(source: CalendarSeriesSource) = assertions(source)
+    internal fun followingChanges(calendar: Map<String, String?>, reminders: Map<Long, List<Map<String, String?>>>,
+        master: Map<String, String?>, patch: EventPatch) = changes(calendar, reminders, master, patch)
     private fun assertions(source: CalendarSeriesSource): ArrayList<ContentProviderOperation> = arrayListOf(assertRow(
         ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI, source.snapshot.identity.calendarId.value), source.calendar)).apply {
         val id = source.snapshot.identity.masterEventId.toString()
@@ -612,7 +617,7 @@ class CalendarSeriesWriter(
         catch (_: Exception) { return@withLock common(MutationResult.Unavailable) }
         if (!hasPermission(Manifest.permission.READ_CALENDAR)) return@withLock common(MutationResult.PermissionRequired)
         try { store.operation(operationId)?.let { operation ->
-            try { recover(operation, true) }
+            try { if (CalendarFollowingSeriesWriter.handles(operation.kind)) followingEdits.recover(operationId) else recover(operation, true) }
             catch (denied: SecurityException) { throw denied }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { common(MutationResult.Uncertain(operationId, null)) }
@@ -1028,6 +1033,21 @@ class CalendarSeriesWriter(
                 is RecurrenceEnd.ThroughDate -> JSONObject().put("date", e.date.toString())
                 is RecurrenceEnd.ExactUntil -> JSONObject().put("instant", e.instant.toString())
             }) }
+        }
+        internal fun frozenCommandJson(command: SeriesCommand) = commandJson(command)
+        internal fun parseFollowingCommand(snapshot: RecurrenceSeriesSnapshot, raw: JSONObject): SeriesCommand.FollowingEdit {
+            require(raw.getString("type") == "following" && raw.getJSONObject("selectedPatch").length() == 0)
+            val boundary = raw.getJSONObject("expected")
+            val key = if (boundary.has("date")) RecurrenceKey.Date(java.time.LocalDate.parse(boundary.getString("date")))
+                else RecurrenceKey.Timed(Instant.parse(boundary.getString("instant")))
+            val synthetic = JSONObject().put("type", "whole").put("expected", startJson(snapshot.start)).put("patch", raw.getJSONObject("patch"))
+                .put("duration", raw.get("duration")).put("rule", raw.getJSONObject("rule"))
+            if (raw.has("start")) synthetic.put("start", raw.getJSONObject("start"))
+            val intent = parseWholeCommand(synthetic).intent
+            val result = SeriesCommand.FollowingEdit(RecurrenceEditIntent.FollowingSeriesEdit(key, intent.fields,
+                intent.newMasterStart, intent.duration, intent.rule))
+            require(commandJson(result).toString() == raw.toString())
+            return result
         }
         private fun commandJson(command: SeriesCommand): JSONObject {
             fun duration(value: RecurrenceDurationChange): Any = when (value) {
