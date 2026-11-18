@@ -23,7 +23,7 @@ import org.robolectric.shadows.ShadowContentResolver
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class CalendarWriterTest {
-    private class Provider : ContentProvider() {
+    internal class Provider : ContentProvider() {
         val calendar = mutableMapOf<String, String?>("_id" to "2", "account_name" to "owner@example.invalid", "account_type" to "com.google",
             "ownerAccount" to "owner@example.invalid", "calendar_displayName" to "Synthetic", "calendar_color" to "12345",
             "calendar_timezone" to "Europe/London", "calendar_access_level" to "700", "allowedReminders" to "0,1,2", "maxReminders" to "5",
@@ -38,6 +38,7 @@ class CalendarWriterTest {
         var failReadsAfterCommit = false
         var committed = false
         var beforeBatch: (() -> Unit)? = null
+        var afterQuery: ((String) -> Unit)? = null
         val queryCounts = mutableMapOf<String, Int>()
         fun resetQueryCounts() = queryCounts.clear()
         override fun onCreate() = true
@@ -69,7 +70,7 @@ class CalendarWriterTest {
                 else -> table(uri).filter { selected(it, uri, selection, args) }
             }
             val fields = projection ?: arrayOf("_id")
-            return MatrixCursor(fields).apply { rows.forEach { row -> addRow(fields.map { row[it] }.toTypedArray()) } }
+            return MatrixCursor(fields).apply { rows.forEach { row -> addRow(fields.map { row[it] }.toTypedArray()) } }.also { afterQuery?.invoke(tableName) }
         }
         override fun insert(uri: Uri, values: ContentValues?): Uri {
             if (uri.pathSegments.first() == "reminders" && failReminder) throw OperationApplicationException("Synthetic rollback")
@@ -246,9 +247,9 @@ class CalendarWriterTest {
         fixture { provider, writer, store, _ ->
             store.prepare("prepared", "test-signature", "CREATE")
             assertEquals(MutationResult.Uncertain("prepared", null), writer.recover("prepared"))
-            store.mark("prepared", "FAILED")
+            assertTrue(store.mark(requireNotNull(store.operation("prepared")), "FAILED"))
             assertEquals(MutationResult.Uncertain("prepared", null), writer.recover("prepared"))
-            store.mark("prepared", "COMMITTED", "not-json")
+            store.forceOperationForTest("prepared", "COMMITTED", "not-json")
             assertEquals(MutationResult.Uncertain("prepared", null), writer.recover("prepared"))
             assertEquals(0, provider.batchCount)
         }
@@ -304,11 +305,11 @@ class CalendarWriterTest {
 
             assertEquals(MutationResult.Unavailable, writer.recover("missing-operation"))
             store.prepare("unknown", "synthetic-signature", "CREATE")
-            store.mark("unknown", "ATTEMPTED")
+            assertTrue(store.attempt(requireNotNull(store.operation("unknown"))))
             assertEquals(MutationResult.Uncertain("unknown", null), writer.recover("unknown"))
-            store.mark("unknown", "FUTURE_UNRECOGNIZED_PHASE")
+            store.forceOperationForTest("unknown", "FUTURE_UNRECOGNIZED_PHASE")
             assertEquals(MutationResult.Uncertain("unknown", null), writer.recover("unknown"))
-            store.mark("unknown", "PREPARED", "not-valid-result-metadata")
+            store.forceOperationForTest("unknown", "PREPARED", "not-valid-result-metadata")
             assertEquals(MutationResult.Uncertain("unknown", null), writer.recover("unknown"))
             store.prepare("unknown-kind", "synthetic-signature", "UNRECOGNIZED_KIND")
             assertEquals(MutationResult.Uncertain("unknown-kind", null), writer.recover("unknown-kind"))
@@ -672,7 +673,7 @@ class CalendarWriterTest {
             val legacy = org.json.JSONObject().put("calendar", 2).put("event", ref.eventId)
                 .put("start", ref.instanceStart.toString()).put("end", ref.instanceEnd.toString())
             store.prepare("legacy", "legacy", "DELETE")
-            store.mark("legacy", "COMMITTED", legacy.toString())
+            store.forceOperationForTest("legacy", "COMMITTED", legacy.toString())
             provider.calendar["account_name"] = "replacement@example.invalid"
             provider.calendar["_sync_id"] = "replacement"
             provider.resetQueryCounts()
@@ -689,7 +690,7 @@ class CalendarWriterTest {
             val ref = (writer.create("created", draft) as MutationResult.LocalSaved).ref
             val receipt = org.json.JSONObject(store.operation("created")!!.resultRef!!)
             store.prepare("legacy", "old-signature", "CREATE")
-            store.mark("legacy", "COMMITTED", receipt.getJSONObject("ref").toString())
+            store.forceOperationForTest("legacy", "COMMITTED", receipt.getJSONObject("ref").toString())
             val reopened = CalendarLocalStore(RuntimeEnvironment.getApplication(), store.databaseName)
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             try {
@@ -725,10 +726,10 @@ class CalendarWriterTest {
             assertEquals(MutationResult.Uncertain("deleted", null), writer.recover("deleted"))
             val receipt = org.json.JSONObject(store.operation("created")!!.resultRef!!)
             receipt.getJSONObject("identity").put("name", "replacement@example.invalid")
-            store.mark("created", "COMMITTED", receipt.toString())
+            store.forceOperationForTest("created", "COMMITTED", receipt.toString())
             assertEquals(MutationResult.Uncertain("created", null), writer.recover("created"))
             receipt.getJSONObject("identity").put("name", "owner@example.invalid").remove("providerId")
-            store.mark("created", "COMMITTED", receipt.toString())
+            store.forceOperationForTest("created", "COMMITTED", receipt.toString())
             assertEquals(MutationResult.Uncertain("created", null), writer.recover("created"))
             assertEquals(2, provider.batchCount)
         }
