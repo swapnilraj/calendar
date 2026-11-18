@@ -38,6 +38,8 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
     private var verified = false
     private var retirementProven = false
     private var pendingRaw: MeetingCreationDocument? = null
+    private var cleanupAttempt: DraftRecord? = null
+    private var cleanupChanged = false
     val hasPendingRawInput: Boolean get() = pendingRaw != null
     val frozen: Boolean get() = document?.frozen != null
     val canChange: Boolean get() = !state.busy && canChangeIgnoringBusy()
@@ -51,7 +53,7 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
 
     suspend fun load() = exclusive {
         if (stopped || document != null) return@exclusive
-        val record = read() ?: run { state = MeetingCreationState(loading = false, problem = MeetingCreationProblem.DRAFT_UNAVAILABLE); return@exclusive }
+        val record = (lookup() as? DraftLookup.Known)?.record ?: run { state = MeetingCreationState(loading = false, problem = MeetingCreationProblem.DRAFT_UNAVAILABLE); return@exclusive }
         val doc = try { MeetingCreationDraftCodec.decode(record) } catch (_: Exception) {
             state = MeetingCreationState(loading = false, problem = MeetingCreationProblem.DRAFT_REVIEW); return@exclusive
         }
@@ -245,8 +247,12 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
     private fun canAcceptRaw() = canChangeIgnoringBusy() || (!stopped && !state.loading && !frozen && pendingRaw != null &&
         expected != null && state.problem in setOf(MeetingCreationProblem.DRAFT_UNAVAILABLE, MeetingCreationProblem.STALE_DRAFT))
     private fun canChangeIgnoringBusy() = !stopped && !state.loading && document != null && !frozen && expected != null && state.problem !in setOf(MeetingCreationProblem.STALE_DRAFT, MeetingCreationProblem.DRAFT_UNAVAILABLE, MeetingCreationProblem.DRAFT_REVIEW)
-    private suspend fun read(): DraftRecord? = try { store.load(launch.draftId) } catch (e: CancellationException) { throw e }
-        catch (_: Exception) { null }
+    private sealed interface DraftLookup {
+        data class Known(val record: DraftRecord?) : DraftLookup
+        data object Unavailable : DraftLookup
+    }
+    private suspend fun lookup(): DraftLookup = try { DraftLookup.Known(store.load(launch.draftId)) }
+        catch (e: CancellationException) { throw e } catch (_: Exception) { DraftLookup.Unavailable }
     private suspend fun ownsRecord(): Boolean {
         val current = try { store.load(launch.draftId) } catch (e: CancellationException) { throw e }
             catch (_: Exception) { state = state.copy(problem = MeetingCreationProblem.DRAFT_UNAVAILABLE, retryReady = false); return false }
@@ -259,7 +265,7 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
             val next = candidate.copy(revision = uuid())
             val record = MeetingCreationDraftCodec.record(next, clock.instant())
             val result = try { store.compareAndSet(launch.draftId, old, record) } catch (_: Exception) { DraftChangeResult.Unavailable }
-            if (result != DraftChangeResult.Changed && read() == record) {
+            if (result != DraftChangeResult.Changed && lookup() == DraftLookup.Known(record)) {
                 expected = record; document = next
                 state = state.copy(fields = next.fields, policyAccepted = next.policyAccepted,
                     allowedGuestTypes = next.authority?.allowedTypes.orEmpty(), problem = null, recoveryRequired = next.frozen != null)
@@ -269,11 +275,31 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
     }
     private suspend fun deleteExact(): Boolean = storage.withLock { withContext(NonCancellable) {
         val old = expected ?: return@withContext false
+        if (cleanupChanged) { state = state.copy(problem = MeetingCreationProblem.STALE_DRAFT); return@withContext false }
+        // A later explicit action can confirm absence only for this exact earlier cleanup attempt.
+        if (cleanupAttempt == old) when (val current = lookup()) {
+            is DraftLookup.Known -> if (current.record == null) return@withContext completeCleanup()
+                else if (current.record != old) { cleanupChanged = true; state = state.copy(problem = MeetingCreationProblem.STALE_DRAFT); return@withContext false }
+            DraftLookup.Unavailable -> { state = state.copy(problem = MeetingCreationProblem.DRAFT_UNAVAILABLE); return@withContext false }
+        }
+        cleanupAttempt = old
         val result = try { store.compareAndSet(launch.draftId, old, null) } catch (_: Exception) { DraftChangeResult.Unavailable }
-        val absent = try { store.load(launch.draftId) == null } catch (_: Exception) { false }
-        if (result != DraftChangeResult.Changed && absent) { expected = null; true }
-        else { state = state.copy(problem = if(result == DraftChangeResult.Changed) MeetingCreationProblem.STALE_DRAFT else MeetingCreationProblem.DRAFT_UNAVAILABLE); false }
+        if (result == DraftChangeResult.Changed) {
+            cleanupChanged = true; state = state.copy(problem = MeetingCreationProblem.STALE_DRAFT); return@withContext false
+        }
+        when (val current = lookup()) {
+            is DraftLookup.Known -> if (current.record == null) completeCleanup() else {
+                cleanupChanged = current.record != old
+                state = state.copy(problem = if (cleanupChanged) MeetingCreationProblem.STALE_DRAFT else MeetingCreationProblem.DRAFT_UNAVAILABLE); false
+            }
+            DraftLookup.Unavailable -> { state = state.copy(problem = MeetingCreationProblem.DRAFT_UNAVAILABLE); false }
+        }
     } }
+    private fun completeCleanup(): Boolean {
+        expected = null; cleanupAttempt = null; cleanupChanged = false
+        if (state.problem == MeetingCreationProblem.DRAFT_UNAVAILABLE) state = state.copy(problem = null)
+        return true
+    }
     private suspend fun exclusive(block: suspend () -> Unit) {
         if (!action.compareAndSet(false,true)) return
         state = state.copy(busy = true)

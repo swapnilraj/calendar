@@ -226,6 +226,30 @@ class MeetingCreationControllerTest {
         val f=Fixture(); val c=f.ready(); f.next=MeetingMutationResult.LocalSaved(f.ref,RecurrenceScope.THIS); c.save()
         assertEquals(f.ref,c.state.localSaved); assertFalse(c.canDiscard); assertFalse(c.state.acknowledged); c.acknowledgeLocalSave(); assertTrue(c.state.acknowledged); assertTrue(f.store.rows.isEmpty()); c.save(); assertEquals(1,f.calls.size); assertEquals(0,f.retireCalls)
     }
+    @Test fun unknownLocalSaveCleanupAckCanLaterConfirmExactAttemptAbsentWithoutAnotherCasOrProviderCall() = runBlocking {
+        val f=Fixture(); val c=f.ready(); f.next=MeetingMutationResult.LocalSaved(f.ref,RecurrenceScope.THIS); c.save()
+        var deletes=0; f.store.beforeCas={ _, replacement -> if(replacement==null) deletes++ }
+        f.store.unknownAfter=true; f.store.failRead=true; c.acknowledgeLocalSave()
+        assertTrue(f.store.rows.isEmpty()); assertEquals(MeetingCreationProblem.DRAFT_UNAVAILABLE,c.state.problem); assertEquals(1,deletes)
+        f.store.failRead=false; c.acknowledgeLocalSave(); assertNull(c.state.problem); assertEquals(1,deletes)
+        c.save(); assertEquals(1,f.calls.size); assertEquals(0,f.retireCalls)
+    }
+    @Test fun unknownFrozenDiscardCleanupAckCanLaterConfirmAbsenceButNeverAdoptAReplacement() = runBlocking {
+        for (replacement in listOf(false,true)) {
+            val f=Fixture(); val c=f.ready(); c.save(); val old=f.record(); f.retired=true
+            var deletes=0; f.store.beforeCas={ _, next -> if(next==null) deletes++ }
+            f.store.unknownAfter=true; f.store.failRead=true; c.requestDiscard(); c.confirmDiscard()
+            assertFalse(c.state.discarded); assertTrue(f.store.rows.isEmpty()); assertEquals(1,f.retireCalls)
+            val newer=old.copy(updatedAt=old.updatedAt.plusSeconds(1))
+            if(replacement) f.store.rows["draft"]=newer
+            f.store.failRead=false; c.requestDiscard(); c.confirmDiscard()
+            assertEquals(!replacement,c.state.discarded); assertEquals(1,deletes); assertEquals(1,f.retireCalls); assertEquals(1,f.calls.size)
+            if(replacement) {
+                assertEquals(newer,f.record()); assertEquals(MeetingCreationProblem.STALE_DRAFT,c.state.problem)
+                f.store.rows.clear(); c.requestDiscard(); c.confirmDiscard(); assertFalse(c.state.discarded)
+            }
+        }
+    }
     @Test fun allDaySuccessUsesUtcExclusiveDateBounds() = runBlocking {
         val f=Fixture(); val c=f.ready(); c.changeFields(c.state.fields!!.event.copy(allDay=true,startDate="2028-06-15",endDate="2028-06-16",zone="Pacific/Auckland"))
         val start=LocalDate.parse("2028-06-15").atStartOfDay(ZoneOffset.UTC).toInstant()
