@@ -71,6 +71,12 @@ internal fun CalendarApp.calendarEntryRenderer() = CalendarEntryContent { state,
     }
 }
 
+@Composable
+internal fun CalendarApp.calendarSeedReviewRendererTheme(content: @Composable () -> Unit) {
+    val prefs by settings.calendarPreferences.collectAsStateWithLifecycle(initialValue = CalendarPreferenceState.Loading)
+    CalendarPreferenceTheme(prefs, content)
+}
+
 internal fun CalendarApp.calendarEntryReviewer() = CalendarEntryReviewHandler { activity, command ->
     when (val resolution = command.resolution) {
         is CalendarEntryResolution.Date -> {
