@@ -161,6 +161,7 @@ internal fun LiveCalendarDay(
     val metadataFlow = remember(reader) { reader.observeCalendars() }
     val metadata by metadataFlow.collectAsStateWithLifecycle(initialValue = CalendarReadState.Loading)
     val calendars = (metadata as? CalendarReadState.Ready)?.value.orEmpty()
+    val verifiedDefault = verifiedCreationCalendar(preferences, calendars)
     val writable = mutations != null && drafts != null
     val seriesWritable = seriesMutations != null && drafts != null
     fun beginCreate(date: LocalDate, allDay: Boolean) {
@@ -169,8 +170,8 @@ internal fun LiveCalendarDay(
             scope.launch {
                 try {
                     val requested = EventWriteRequest.create(date, displayNow.zone, preferences.defaultCalendar)
-                    val calendar = calendars.firstOrNull { it.id == preferences.defaultCalendar && it.capabilities.createEvents == AccessDecision.ALLOWED }?.id
-                    val initial = eventCreationDraft(date, allDay, displayNow, options, calendar)
+                    val calendar = verifiedDefault
+                    val initial = eventCreationDraft(date, allDay, displayNow, options, calendar?.id, calendar?.identity)
                     if (initial == null) { onDraftFailure(); return@launch }
                     val prepared = prepareNewDraft(initial, requested.draftId, calendar != null, requireNotNull(drafts), draftClock)
                     if (prepared is DraftPreparationResult.Ready)
@@ -210,10 +211,13 @@ internal fun LiveCalendarDay(
         preparingWrite = true
         scope.launch {
             try {
-                val target = calendars.firstOrNull { it.id == details.occurrence.ref.calendarId && it.capabilities.createEvents == AccessDecision.ALLOWED }?.id
-                    ?: calendars.firstOrNull { it.id == preferences.defaultCalendar && it.capabilities.createEvents == AccessDecision.ALLOWED }?.id
-                val requested = EventWriteRequest.create(visibleDate, displayNow.zone, target)
-                val prepared = prepareDuplicateDraft(details, target, requested.draftId, requireNotNull(drafts), clock = draftClock)
+                val sourceIdentity = details.calendar?.identity
+                val target = calendars.firstOrNull { it.id == details.occurrence.ref.calendarId &&
+                    it.identity == sourceIdentity && it.capabilities.createEvents == AccessDecision.ALLOWED }
+                    ?: verifiedDefault
+                val requested = EventWriteRequest.create(visibleDate, displayNow.zone, target?.id)
+                val prepared = prepareDuplicateDraft(details, target?.id, requested.draftId, requireNotNull(drafts), clock = draftClock,
+                    targetIdentity = target?.identity)
                 if (prepared is DraftPreparationResult.Ready)
                     writeRequestText = EventWriteRequest.fromLaunch(prepared.launch, visibleDate, displayNow.zone).encode()
                 else onDraftFailure()
@@ -226,6 +230,8 @@ internal fun LiveCalendarDay(
     }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val drawerActions: @Composable ColumnScope.() -> Unit = {
+        if (metadata is CalendarReadState.Ready && preferences.defaultCalendar != null && verifiedDefault == null) Text(stringResource(R.string.navigation_default_calendar_changed),
+            modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
         if (search != null) TextButton(onClick = { scope.launch { drawer.close(); showSearch = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Text(stringResource(R.string.search_title))
         }
@@ -256,7 +262,7 @@ internal fun LiveCalendarDay(
     }
     ModalNavigationDrawer(drawerState = drawer, gesturesEnabled = settings != null, drawerContent = {
         when (metadata) {
-            is CalendarReadState.Ready -> CalendarDrawerSheet(calendars, effectiveSelection, preferences.defaultCalendar,
+            is CalendarReadState.Ready -> CalendarDrawerSheet(calendars, effectiveSelection, verifiedDefault?.id,
                 onSelectionChanged = { value -> scope.launch {
                     if (settings?.setCalendarSelection(value, calendars) == false) onPreferenceFailure()
                 } },

@@ -61,6 +61,16 @@ Explicit known privacy/availability are retained; unresolved metadata is shown f
 inherited Calendar default visibility must be approved for its target calendar; changing calendars
 invalidates that inherited approval. Frozen legacy commands lacking proof remain recovery-only.
 
+Creation destinations include calendar ID, account name/type, owner and optional provider UID.
+Defaults, raw drafts, frozen commands and journal receipts retain that identity; a reused numeric ID
+never grants permission to save to its replacement. Missing or changed proof requires explicit calendar
+reselection while retaining draft fields. A temporarily missing UID does not erase a remembered pin,
+but disables its use until matching metadata returns or the user explicitly selects a destination.
+Cosmetic calendar renames/colour changes do not invalidate it. Submitted legacy commands without
+namespace proof allow read-only recovery, never retry. Copied calendar-default privacy approval is
+bound to the complete destination identity. Local commit readback verifies namespace before reading
+private event details and before acknowledging the receipt.
+
 The drawer Settings screen now saves display preferences atomically with the existing calendar
 selection/default/view/zoom snapshot. First weekday, hidden weekend columns, declined-event filtering,
 device/fixed display zone, system/light/dark theme and weather visibility/units apply to the live app.

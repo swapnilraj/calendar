@@ -28,6 +28,7 @@ class Settings(context: Context, dataStore: DataStore<Preferences>? = null) {
     private val key = floatPreferencesKey("hour_height")
     private val selectedCalendarsKey = stringSetPreferencesKey("selected_calendar_ids")
     private val defaultCalendarKey = longPreferencesKey("default_calendar_id")
+    private val defaultIdentityKey = stringPreferencesKey("default_calendar_identity_v1")
     private val knownCalendarsKey = stringSetPreferencesKey("known_calendar_accounts")
     private val viewKey = stringPreferencesKey("calendar_view")
     private val views = setOf("DAY", "MONTH", "THREE_DAY", "WEEK", "AGENDA")
@@ -65,7 +66,8 @@ class Settings(context: Context, dataStore: DataStore<Preferences>? = null) {
             values[defaultCalendarKey]?.takeIf { it >= 0 }?.let(::CalendarId),
             currentView,
             (values[key] ?: 64f).takeIf(Float::isFinite)?.coerceIn(32f, 160f) ?: 64f,
-            CalendarSettingsCodec.read(values, currentView))
+            CalendarSettingsCodec.read(values, currentView),
+            CalendarIdentityPreferences.decode(values[defaultIdentityKey])?.takeIf { it.calendarId.value == values[defaultCalendarKey] })
     }
 
     suspend fun setDisplaySettings(options: CalendarSettingsOptions): Boolean = try {
@@ -108,8 +110,16 @@ class Settings(context: Context, dataStore: DataStore<Preferences>? = null) {
             }
             values[defaultCalendarKey]?.let { id ->
                 val calendar = unique.firstOrNull { it.id.value == id }
+                val expected = CalendarIdentityPreferences.decode(values[defaultIdentityKey])
+                val current = calendar?.identity
+                val knownDifferent = expected != null && current != null && (expected.calendarId != current.calendarId ||
+                    expected.account != current.account || (expected.owner != null && current.owner != null && expected.owner != current.owner) ||
+                    (expected.providerId != null && current.providerId != null && expected.providerId != current.providerId))
                 if (calendar == null || calendar.capabilities.createEvents != AccessDecision.ALLOWED ||
-                    (previous != null && calendarIdentity(calendar) !in previous)) values.remove(defaultCalendarKey)
+                    (previous != null && calendarIdentity(calendar) !in previous) || knownDifferent) {
+                    values.remove(defaultCalendarKey)
+                    values.remove(defaultIdentityKey)
+                }
             }
             values[knownCalendarsKey] = identities.values.toSet()
         }
@@ -124,7 +134,14 @@ class Settings(context: Context, dataStore: DataStore<Preferences>? = null) {
     suspend fun setDefaultCalendar(id: CalendarId?, calendars: List<CalendarInfo>? = null): Boolean = try {
         store.edit { values ->
             if (calendars != null) values[knownCalendarsKey] = calendars.map(::calendarIdentity).toSet()
-            if (id == null) values.remove(defaultCalendarKey) else values[defaultCalendarKey] = id.value
+            if (id == null) {
+                values.remove(defaultCalendarKey); values.remove(defaultIdentityKey)
+            } else {
+                values[defaultCalendarKey] = id.value
+                val current = calendars?.firstOrNull { it.id == id && it.capabilities.createEvents == AccessDecision.ALLOWED }
+                if (current != null) values[defaultIdentityKey] = CalendarIdentityPreferences.encode(current.identity)
+                else values.remove(defaultIdentityKey)
+            }
         }
         true
     } catch (_: IOException) { false }

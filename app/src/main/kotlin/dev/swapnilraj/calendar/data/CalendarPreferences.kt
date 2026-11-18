@@ -1,6 +1,7 @@
 package dev.swapnilraj.calendar.data
 
 import dev.swapnilraj.calendar.core.CalendarId
+import dev.swapnilraj.calendar.core.CalendarIdentity
 import dev.swapnilraj.calendar.core.CalendarSelection
 import dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions
 import dev.swapnilraj.calendar.ui.calendars.CalendarViewOption
@@ -12,6 +13,7 @@ data class CalendarPreferences(
     val view: String,
     val hourHeight: Float,
     val options: CalendarSettingsOptions = CalendarSettingsOptions(defaultView = CalendarViewOption.entries.firstOrNull { it.name == view } ?: CalendarViewOption.DAY),
+    val defaultCalendarIdentity: CalendarIdentity? = null,
 )
 
 sealed interface CalendarPreferenceState {

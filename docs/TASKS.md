@@ -10,7 +10,7 @@ remain pending. [SPEC.md](SPEC.md) is the behaviour contract and
 - [x] **DD-00 Bootstrap:** carry approved scope into docs, add pure `:calendar-core`, establish tested
   identity/date contracts and build/wiring seams. Done when baseline and new contract tests compile
   and pass with debug build/lint. Lead verified the baseline and integrated contracts; latest local
-  checkpoint has 790 tests, debug APK and lint passing. Device/account acceptance remains M0 below.
+  checkpoint has 972 tests, debug APK and lint passing. Device/account acceptance remains M0 below.
 - [ ] **M0 compatibility:** dedicated personal/Workspace test-account harness and organizer/attendee
   checks for mutations, offline sync, recurrence and reminders. Real-device/account evidence pending.
 

@@ -16,4 +16,5 @@
     <string name="navigation_edit_unavailable">This event can’t be edited here yet.</string>
     <string name="navigation_local_saved">Saved on this device. Account synchronization is handled by your calendar service.</string>
     <string name="navigation_local_deleted">Deleted on this device. Account synchronization is handled by your calendar service.</string>
+    <string name="navigation_default_calendar_changed">Choose a default calendar again to confirm where new events will be saved.</string>
 </resources>

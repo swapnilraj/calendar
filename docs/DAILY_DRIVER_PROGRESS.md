@@ -10,7 +10,7 @@ Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
   Wave 0 session.** The earlier two agents reviewed dependencies/ownership only.
 - Implementation branch: `codex/daily-driver`. Initial read-contract/module bootstrap and scope docs are implemented;
   mutation and persistence ports will be frozen before their dependent worker packets. A new module or contract alone does not establish native editing or new views.
-- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (790 tests), including
+- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (972 tests), including
   merged provider reads, native detail components, day fixes, reminder components and preferences. No device/cloud/beta result is claimed.
 
 ## Active implementation packets
@@ -45,9 +45,9 @@ wiring and integration; workers do not overwrite shared contracts or each other'
 | M3 planning views | Partial: all five views routed and tested; device/dense acceptance pending | Day/three-day/week/month/agenda, date navigation, leap/six-row/dense/RTL cases |
 | M4 native details | Partial: live native context and guest-visibility rules verified locally | Complete readable event context, correct occurrence identity and meeting links |
 | M5 native ordinary writes | Partial: native one-off create/edit/delete/duplicate, durable drafts and metadata verified locally | Batched create/edit/delete/duplicate, conflict/draft/uncertain-create and offline recovery |
-| M6 recurrence | Partial: preserving ALL/existing-THIS executor and scoped editor components tested; app routing/new exceptions/following pending | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
+| M6 recurrence | Partial: live scoped route, ALL non-temporal edits/delete, THIS exception edits/cancel and FOLLOWING delete tested; temporal/pattern/following edits pending | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
 | M7 meetings | Planned | Invitation/RSVP/reschedule/recurrence-change/cancellation observed in second account |
-| M8 search/Android entry points | Partial: live settings applied; widget components tested; search and entry-point wiring pending | Filtered ranged search, settings, agenda widget and safe occurrence-preserving intents |
+| M8 search/Android entry points | Partial: live settings and filtered search routed; widget components tested; widget/intent/background wiring pending | Filtered ranged search, settings, agenda widget and safe occurrence-preserving intents |
 | M9 reminders | Partial: source/ledger/delivery/runtime components tested; app/background/device wiring pending | App-owned alerts/snooze and permission/background/Doze/reboot/timezone/upgrade recovery |
 | Seven-day beta | Not started | Work/personal week including weekend/offline/remote edits/recurrence/reminders/upgrade |
 | Durable APK release | Not started | Stable signed upgradeable APK, checksum, release notes and durable download |
@@ -66,7 +66,7 @@ gates pass. Do not turn the audit totals into a percentage-complete estimate.
 ## Current next packets
 
 - A2: merged via PR #13; durable drafts/journal and one-off writer verified locally; actual Google sync pending.
-- B3: merged via PR #11; 21 recurrence rule tests. Series writes remain pending.
+- B3: merged via PR #11; recurrence rules and pure edit plans are tested. Bounded supported series writes now have synthetic integrated evidence; full temporal/pattern/following edits remain pending.
 - C2: merged via PR #12; month component and live month routing verified. C4/C5 agenda, three-day and week components and live routing now pass local integration tests.
 - D2/D3: native editor and exact-command recovery now wired to ordinary one-off app actions; local tests pass. PR #23 adds frozen-command recovery; provider/server checks remain pending.
 - Lead: shared read range/native-detail wiring, transition rendering, and contract integration.
@@ -84,7 +84,7 @@ gates pass. Do not turn the audit totals into a percentage-complete estimate.
   drawer/month screenshots recorded and inspected.
 - DST rendering now uses transition segments, true-duration/offset descriptions and ambiguous-weather
   masking; current-time decoration sits below events. Five synthetic DST images and nine affected
-  baseline images were inspected. Logical scroll anchors and device comparison remain pending.
+  baseline images were inspected. Logical scroll anchors pass synthetic regression checks; device comparison remains pending.
   Day, 3 days, Week, Month and Agenda now share app filters; selected-date changes within
   multi-day/agenda ranges preserve the range and open the intended occurrence. Week windows use
   locale alignment. Logical wall-minute restoration passes a density-change regression.
@@ -95,30 +95,49 @@ gates pass. Do not turn the audit totals into a percentage-complete estimate.
   routes, and permission recovery pass synthetic tests. The integrated editor image was inspected.
 - Proven retry-safe recovery is separate from unknown outcomes; typed original commands survive
   restart without rebasing tokens or patches. Unknown/legacy/corrupt outcomes remain locked.
-- No invitation or recurrence write path is enabled yet. Durable draft discovery/recovery, duplication
+- Invitation writes remain pending. Supported bounded recurrence writes now use the native scoped route. Durable draft discovery/recovery, duplication
   and availability/privacy editing now have focused integrated evidence; cross-calendar inherited
   visibility now requires explicit calendar-specific approval. Drag/resize, colour and server verification remain pending.
 - Rich native context and explicit guest visibility now pass reader/UI tests; free/busy and writer
   eligibility preflights avoid restricted child reads. The real reminder source/SQL ledger/coordinator/adapters pass integrated restart, snooze and
   stale-action tests; runtime components are tested but background app wiring remains pending.
 
-Latest local integration checkpoint: **790 tests**, debug APK and lint passed with
-`./gradlew test :app:assembleDebug :app:lintDebug` (174 core, 599 app, 17 weather; no failures/skips).
+Latest local integration checkpoint: **972 tests**, debug APK and lint passed with
+`./gradlew test :app:assembleDebug :app:lintDebug` (174 core, 781 app, 17 weather; no failures/skips).
 The live Settings route applies first weekday, weekends, declined filtering, display zone, theme,
 weather visibility/units and event defaults. Failed saves retain inputs; display-zone changes do not
 change device-location weather. Timed FAB and all-day date creation use independent reminder defaults.
 Three new settings/theme integration images and the updated drawer baseline were recorded/inspected.
 
-The combined checkpoint also includes bounded recurring writes (ALL preserving non-temporal edits/
-delete and THIS existing-exception edits/cancel), scoped editor components, private agenda widget
-components and pure DST-aware grid edit previews. Their component/provider tests are not app journey
-or Google propagation evidence: scoped routing, widget setup/background wiring and gestures remain.
-Two recurring-editor, five widget and two Fahrenheit component screenshots were inspected.
+The combined checkpoint includes the native scoped recurrence route: ALL non-temporal edits/delete,
+THIS existing/new exception edits/cancellation, and FOLLOWING deletion at the original recurrence
+identity. Synthetic UI→adapter→SQLite→transactional-provider tests cover fresh readback and recovery
+without a second write; the fixture does not implement Google recurrence expansion or cloud sync.
+Temporal/pattern changes, following edits and new recurring creation remain unfinished.
 
-PRs #30–#35 are merged remotely. #36 publishes metadata/visibility hardening; #37 publishes reminder
-source/ledger. Newer local packets are being published in bounded follow-ups. The APK is a debug build,
-not evidence of stable signing, Google/Workspace sync, device delivery or beta acceptance.
+Search now uses the real bounded-range provider adapter, respects app filters/declined settings, and
+opens exact results outside the visible day/week before native details. Timed results show dates/years;
+changed query/range/calendar/zone context removes old private rows synchronously. Search/day-navigation
+and recurring-following-deletion screenshots were recorded and inspected.
 
-Next implementation: search adapter/UI; scoped recurring route; full new-exception/following/temporal
-execution; widget and reminder configuration/runtime wiring; invitations/RSVP and drag/resize. Required
-account/device, seven-day beta and release gates remain pending. Local save never means verified sync.
+Creation commands, durable drafts, default-calendar preferences, frozen retries and journal receipts
+are bound to calendar namespace identity. Reused IDs require explicit reselection; legacy unbound
+submissions cannot retry. Missing UID metadata disables a retained pin, while cosmetic renames remain
+valid. Duplicate inherited privacy approval is also namespace-bound. Focused backend/editor/preference
+checks pass and the namespace review screenshot was inspected; independent F20 review found no concrete
+remaining bypass in these paths. This does not prove identity across an indistinguishable provider reset.
+
+Widget lifecycle receipts, queued-job ownership and configuration UI have component evidence. The
+actual durable FIFO configuration actor and host/bootstrap proof, application wiring and device checks
+remain pending. App-owned reminder delivery is likewise not enabled yet.
+
+PRs #30–#39 are merged remotely. #40 publishes weekday-only/Fahrenheit display components. Newer local
+packets are being published in bounded follow-ups. The APK is a debug build, not evidence of stable
+signing, Google/Workspace sync, device delivery or beta acceptance.
+
+Next implementation: row/cell/retained-payload bounds for normal reads, search and mutation source
+snapshots; full recurrence execution; widget and reminder configuration/runtime wiring; invitations/
+RSVP and drag/resize. F17 found that existing row limits alone do not bound large text/child/canonical
+payloads; this release blocker is not resolved by the namespace fix. F19 verified cache entries and
+replay are removed after the last subscriber; payload bounds are a separate issue. Required account/
+device, seven-day beta and release gates remain pending. Local save never means verified server sync.

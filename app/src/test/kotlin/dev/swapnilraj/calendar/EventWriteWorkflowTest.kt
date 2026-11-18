@@ -55,7 +55,7 @@ class EventWriteWorkflowTest {
         var permission = false
         var requests = 0
         val guarded = PermissionAwareMutations(writer, { permission }, { requests++ })
-        val draft = EventDraft(calendar.id, EventTime.AllDay(CalendarDateRange.day(date)), ZoneOffset.UTC, "Fixture")
+        val draft = EventDraft(calendar.id, EventTime.AllDay(CalendarDateRange.day(date)), ZoneOffset.UTC, "Fixture", targetIdentity = calendar.identity)
         assertEquals(MutationResult.PermissionRequired, guarded.create("stable", draft))
         assertEquals(1, requests); assertEquals(0, writer.creates)
         permission = true
@@ -105,7 +105,7 @@ class EventWriteWorkflowTest {
         val writer = Writer(ref)
         val request = EventWriteRequest.create(date, ZoneOffset.UTC, calendar.id)
         val store = EventEditorControllerTest.Store()
-        runBlocking { prepareNewDraft(EventDraft(calendar.id, EventTime.AllDay(CalendarDateRange.day(date)), ZoneOffset.UTC, "Fixture"),
+        runBlocking { prepareNewDraft(EventDraft(calendar.id, EventTime.AllDay(CalendarDateRange.day(date)), ZoneOffset.UTC, "Fixture", targetIdentity = calendar.identity),
             request.draftId, true, store) }
         val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(compose)
         restoration.setContent { DaylightTheme {
