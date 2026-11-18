@@ -360,6 +360,7 @@ internal fun LiveCalendarDay(
                     CalendarReadState.Loading -> CalendarReadState.Loading
                     CalendarReadState.PermissionRequired -> CalendarReadState.PermissionRequired
                     CalendarReadState.Unavailable -> CalendarReadState.Unavailable
+                    CalendarReadState.LimitExceeded -> CalendarReadState.LimitExceeded
                     is CalendarReadState.Ready -> if (state.value.occurrences.any { it.ref == ref }) {
                         when (val result = reader.readDetails(ref)) {
                             is CalendarReadState.Ready -> {
@@ -387,6 +388,7 @@ internal fun LiveCalendarDay(
                             CalendarReadState.Loading -> CalendarReadState.Loading
                             CalendarReadState.PermissionRequired -> CalendarReadState.PermissionRequired
                             CalendarReadState.Unavailable -> CalendarReadState.Unavailable
+                            CalendarReadState.LimitExceeded -> CalendarReadState.LimitExceeded
                         }
                     } else CalendarReadState.Unavailable
                 })
@@ -401,6 +403,7 @@ internal fun LiveCalendarDay(
             CalendarReadState.Loading -> CalendarReadState.Loading
             CalendarReadState.PermissionRequired -> CalendarReadState.PermissionRequired
             CalendarReadState.Unavailable -> CalendarReadState.Unavailable
+            CalendarReadState.LimitExceeded -> CalendarReadState.LimitExceeded
         }
         EventDetailsStateSheet(shown, onDismiss = { openedEvent = null }, onRetry = reader::refresh,
             onOpenLink = onOpenLink, displayZone = displayNow.zone, use24Hour = use24Hour,
@@ -515,6 +518,7 @@ private fun CalendarReadNotice(state: CalendarReadState<*>, onRetry: () -> Unit)
         when (state) {
             CalendarReadState.Loading -> { Text(stringResource(R.string.navigation_loading)); CircularProgressIndicator() }
             CalendarReadState.PermissionRequired -> Text(stringResource(R.string.events_permission_required))
+            CalendarReadState.LimitExceeded -> Text(stringResource(R.string.navigation_read_limit))
             CalendarReadState.Unavailable -> {
                 Text(stringResource(R.string.navigation_unavailable))
                 TextButton(onClick = onRetry) { Text(stringResource(R.string.events_retry)) }
@@ -528,6 +532,7 @@ internal fun CalendarReadState<CalendarSnapshot>.forDay(date: LocalDate, zone: Z
     CalendarReadState.Loading -> CalendarState.Loading
     CalendarReadState.PermissionRequired -> CalendarState.PermissionRequired
     CalendarReadState.Unavailable -> CalendarState.Unavailable
+    CalendarReadState.LimitExceeded -> CalendarState.LimitExceeded
     is CalendarReadState.Ready -> if (date !in value.request.range) CalendarState.Loading else CalendarState.Ready(
         value.occurrences.filter { it.time.intersects(CalendarDateRange.day(date), zone) }.map { occurrence ->
             val ref = occurrence.ref

@@ -17,4 +17,6 @@
     <string name="navigation_local_saved">Saved on this device. Account synchronization is handled by your calendar service.</string>
     <string name="navigation_local_deleted">Deleted on this device. Account synchronization is handled by your calendar service.</string>
     <string name="navigation_default_calendar_changed">Choose a default calendar again to confirm where new events will be saved.</string>
+    <string name="navigation_read_limit">Too much calendar data to show safely. Choose fewer calendars or a shorter date range.</string>
+    <string name="navigation_edit_read_limit">This event contains too much data to edit safely here. Your draft is retained.</string>
 </resources>
