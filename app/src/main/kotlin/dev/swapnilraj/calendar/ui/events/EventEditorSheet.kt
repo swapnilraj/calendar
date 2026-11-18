@@ -170,7 +170,7 @@ fun EventEditorContent(
             OffsetChoices(fields.endDate, fields.endTime, fields.zone, fields.endOffset, canEdit(EditableField.TIME)) { value ->
                 controller.change { it.copy(endOffset = value) }
             }
-            OutlinedTextField(fields.zone, { value -> controller.change { it.copy(zone = value) } },
+            OutlinedTextField(fields.zone, controller::authorZone,
                 label = { Text(stringResource(R.string.events_editor_zone)) }, enabled = canEdit(EditableField.ZONE),
                 singleLine = true, modifier = Modifier.fillMaxWidth())
         }
