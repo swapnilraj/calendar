@@ -10,8 +10,8 @@ Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
   Wave 0 session.** The earlier two agents reviewed dependencies/ownership only.
 - Implementation branch: `codex/daily-driver`. Initial read-contract/module bootstrap and scope docs are implemented;
   mutation and persistence ports will be frozen before their dependent worker packets. A new module or contract alone does not establish native editing or new views.
-- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed, including
-  12 new core contract tests and existing app/weather checks. No device/cloud/beta result is claimed.
+- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (67 tests), including
+  core contracts, merged day geometry, and persistent calendar preferences. No device/cloud/beta result is claimed.
 
 ## Active implementation packets
 
@@ -23,13 +23,14 @@ Six workers have isolated worktrees under `/workspace/daylight-workers/`, based 
 | Packet | Owner/worktree | Current deliverable |
 |---|---|---|
 | A1 | Provider | Live metadata, range and detail reader with synthetic-provider tests |
-| B1 | Temporal | Pure transition-aware day geometry and boundary tests |
+| B1 | Temporal | Merged via PR #4; 14 geometry tests passed; renderer wiring pending |
 | C1 | Calendar | All-day overflow/semantics, font sizing and RTL fixes |
 | D1 | Events | Native details component with safe link actions and UI tests |
 | E1 | Android | Reminder health/setup and notification components |
-| F1 | Verification | Read-only device readiness and controlled M0 evidence matrix |
+| F1 | Verification | Merged via PR #5; readiness and M0 matrix; actual device cases NOT_RUN |
 
-These packets are **in progress**, not integrated user-facing features. The lead owns application
+Remaining packets are **in progress**, not integrated user-facing features. App-local selection and
+creation-default persistence now pass a round-trip regression, but their sidebar/editor UI is pending. The lead owns application
 wiring and integration; workers do not overwrite shared contracts or each other's files.
 
 ## Milestone acceptance ledger
