@@ -348,11 +348,19 @@ only self responses on the master and active exceptions; ALL guest changes requi
 unambiguous mapping and preserve other guests, responses and overrides. Unsupported scopes refuse
 before dispatch. Organizer cancellation and attendee decline are distinct commands. Dedicated durable
 meeting drafts freeze the exact command before submission; recovery is read-only. Local outcomes do
-not establish invitation delivery. The interface is a dependency contract, not enabled meeting writes.
+not establish invitation delivery. Eligible RSVP is connected to the native interface. Owned one-off
+meeting creation has a bounded provider executor: exact owner/account identity, one explicit organizer
+row, required/optional invited guests and reminders are inserted and asserted atomically. It omits
+implicit self-row and organizer flags, journals exact requests, and verifies native rows/occurrence
+before local success. Recurring or delegated meeting creation remains review-only. The guest-creation
+interface is not yet connected, and invitation delivery still requires controlled account verification.
 New meeting editors require atomic complete-record draft comparison for creation, replacement and
 deletion. A storage/acknowledgement failure requires readback before dispatch; a mismatch retains inputs
-for review. A sequence of separate load/upsert calls is not atomic. Existing ordinary/series editor
-fences still need migration to this storage capability; its introduction does not certify them.
+for review. A sequence of separate load/upsert calls is not atomic. Series/response editors use atomic
+records and generations; ordinary-editor migration and connected frozen-command retirement workflows
+remain pending. A malformed child acknowledgement must never trigger a replay; where only a parent
+ID was acknowledged, conservative uncertainty may outlive that partial in-memory identity until a
+durable partial-receipt workflow is implemented.
 
 ### M8 — Search, preferences and Android entry points
 

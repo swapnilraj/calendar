@@ -83,5 +83,5 @@ is not no-dispatch or retry proof. Blocked results distinguish possible dispatch
 commit. A matching late `MutationResult.Retired` stops an ordinary editor without rewriting or
 deleting its raw record; mismatched IDs remain uncertain. Backend/store fencing now includes exact
 request comparison, permanent ABANDONED handling before provider access, guarded journal transitions,
-and independent SQLite-helper race/reopen tests. Meeting creation remains unsupported by retirement
-until its actual backend command encoder exists. User-facing retirement workflows remain pending.
+and independent SQLite-helper race/reopen tests. Owned one-off meeting creation now supplies its
+actual canonical command encoder to the same fence. User-facing retirement workflows remain pending.
