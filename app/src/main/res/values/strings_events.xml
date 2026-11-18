@@ -1,0 +1,45 @@
+<resources>
+    <string name="events_loading">Loading event…</string>
+    <string name="events_permission_required">Calendar access is needed to read this event.</string>
+    <string name="events_unavailable">This event could not be read. It may have changed or been removed.</string>
+    <string name="events_retry">Retry</string>
+    <string name="events_no_title">No title</string>
+    <string name="events_all_day">All day</string>
+    <string name="events_declined">Declined</string>
+    <string name="events_display_zone">Displayed in %1$s</string>
+    <string name="events_event_zone">Event time zone: %1$s</string>
+    <string name="events_calendar">Calendar</string>
+    <string name="events_account">%1$s · %2$s</string>
+    <string name="events_join">Join meeting</string>
+    <string name="events_location">Location</string>
+    <string name="events_open_map">Open in maps</string>
+    <string name="events_notes">Notes</string>
+    <string name="events_links">Links</string>
+    <string name="events_organizer">Organizer</string>
+    <string name="events_guests">Guests</string>
+    <string name="events_accepted">Accepted</string>
+    <string name="events_tentative">Maybe</string>
+    <string name="events_invited">Invited</string>
+    <string name="events_no_response">No response</string>
+    <string name="events_optional">Optional guest</string>
+    <string name="events_repeat">Repeats</string>
+    <string name="events_repeat_rule">Recurrence rule: %1$s</string>
+    <string name="events_reminders">Reminders</string>
+    <string name="events_no_reminders">No reminders</string>
+    <string name="events_notification">Notification</string>
+    <string name="events_email">Email</string>
+    <string name="events_sms">SMS</string>
+    <string name="events_alarm">Alarm</string>
+    <string name="events_default_timing">Calendar default timing</string>
+    <string name="events_default_reminder">Default reminder</string>
+    <string name="events_other_reminder">Other reminder</string>
+    <string name="events_at_start">At start</string>
+    <string name="events_reminder_item">%1$s · %2$s</string>
+    <string name="events_close">Close</string>
+    <string name="events_zero_duration">No duration</string>
+    <string name="events_subsecond_duration">Less than one second</string>
+    <plurals name="events_duration_seconds"><item quantity="one">%1$d second</item><item quantity="other">%1$d seconds</item></plurals>
+    <plurals name="events_duration_minutes"><item quantity="one">%1$d minute</item><item quantity="other">%1$d minutes</item></plurals>
+    <plurals name="events_minutes_before"><item quantity="one">%1$d minute before</item><item quantity="other">%1$d minutes before</item></plurals>
+    <plurals name="events_minutes_after"><item quantity="one">%1$d minute after</item><item quantity="other">%1$d minutes after</item></plurals>
+</resources>
