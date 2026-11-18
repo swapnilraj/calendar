@@ -494,3 +494,12 @@ retirement do not query the calendar provider, rewrite a draft or change the exi
 hashes, receipt format or database schema. Series, meetings, meeting creation and recurring ordinary
 requests remain Unsupported by this retirement service until their own encoders ship. Connected
 discard/replacement actions and application composition remain a separate implementation packet.
+
+## Internal authored recurrence preparation
+
+The internal authored-recurrence compiler and raw-field codecs preserve incomplete draft input,
+validate bounded daily/weekly/monthly/yearly intent, retain explicit time-zone and UTC-offset
+choices, and distinguish invalid input from provider-semantics review. These helpers alone do not
+expose repeat controls or authorize native writes. Provider expansion, actual first-instance checks
+and invitation delivery require separate implementation and verification; imported recurrence stays
+unchanged.
