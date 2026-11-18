@@ -101,7 +101,7 @@ class CalendarRecurringCreateTest {
             }?.toTypedArray() else projected
             val table = when {
                 path == "instances" -> "instance_view"
-                nativeMeetingMode && (path == "attendees" || path == "reminders" && uri.pathSegments.size == 2) ->
+                path == "attendees" || path == "reminders" && uri.pathSegments.size == 2 ->
                     "(SELECT $path.*, events.calendar_id, events.organizer, events.uid2445 FROM $path JOIN events ON $path.event_id = events._id)"
                 else -> path
             }

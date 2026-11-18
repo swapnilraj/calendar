@@ -46,6 +46,10 @@ internal class NativeSeriesTemporalJourneyProvider : ContentProvider() {
         db.execSQL("CREATE TABLE attendees (_id INTEGER,event_id INTEGER,attendeeName TEXT,attendeeEmail TEXT,attendeeStatus INTEGER,attendeeRelationship INTEGER,attendeeType INTEGER,attendeeIdentity TEXT,attendeeIdNamespace TEXT)")
         db.execSQL("CREATE TABLE extendedproperties (_id INTEGER,event_id INTEGER,name TEXT,value TEXT)")
         db.execSQL("CREATE VIEW instance_view AS SELECT _id AS event_id,dtstart AS begin,COALESCE(dtend,dtstart+native_duration_ms) AS end,e.* FROM events e WHERE deleted=0")
+        // Native CalendarProvider joins both Attendees URI shapes and Reminders_ID to the
+        // parent event. Reminders collection queries must remain raw membership/payload reads.
+        db.execSQL("CREATE VIEW reminder_join AS SELECT r.*,e.calendar_id,e.organizer,e.uid2445,e._sync_id FROM reminders r JOIN events e ON e._id=r.event_id")
+        db.execSQL("CREATE VIEW attendee_join AS SELECT a.*,e.calendar_id,e.organizer,e.uid2445,e._sync_id FROM attendees a JOIN events e ON e._id=a.event_id")
     }
     fun setCalendar(column: String, value: String?) = db.update("calendars", ContentValues().apply { if (value == null) putNull(column) else put(column, value) }, "_id=2", null)
     fun count(table: String) = db.rawQuery("SELECT COUNT(*) FROM $table", null).use { it.moveToFirst(); it.getInt(0) }
@@ -91,7 +95,13 @@ internal class NativeSeriesTemporalJourneyProvider : ContentProvider() {
             while (cursor.moveToNext()) cursor.getString(1).takeIf { it != "native_duration_ms" }?.let(::add)
         }.toTypedArray() } else null
         if (path == "instances") { where += "(begin+$beginDelta) < CAST(? AS INTEGER) AND (end+$endDelta) > CAST(? AS INTEGER)"; bind += uri.pathSegments[3]; bind += uri.pathSegments[2] }
-        val result = db.query(if (path == "instances") "instance_view" else path, projected, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
+        val queryTable = when {
+            path == "instances" -> "instance_view"
+            path == "attendees" -> "attendee_join"
+            path == "reminders" && uri.pathSegments.size == 2 -> "reminder_join"
+            else -> path
+        }
+        val result = db.query(queryTable, projected, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
         afterQuery?.invoke(path)
         return result
     }
