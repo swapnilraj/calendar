@@ -102,7 +102,11 @@ class GridEditorIntegrationTest {
         compose.onNode(choose).performScrollTo().performClick()
         repeat(2) { compose.mainClock.advanceTimeByFrame() }
         compose.waitForIdle()
-        val row = hasText(calendar.displayName) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
+        // The offscreen calendar drawer also exposes a default-calendar radio.
+        // Select only the active phone editor's calendar-picker window.
+        val row = hasText(calendar.displayName) and
+            SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton) and
+            hasAnyAncestor(isDialog())
         compose.waitUntil(10_000) {
             compose.mainClock.advanceTimeByFrame()
             compose.onAllNodes(row and isEnabled()).fetchSemanticsNodes().size == 1
