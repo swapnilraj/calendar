@@ -46,12 +46,13 @@ fun DayHeader(date: LocalDate, today: LocalDate, allDayEvents: List<CalEvent>, z
     val dateFocus = remember { FocusRequester() }
     val overflowFocus = remember { FocusRequester() }
     var returnFocus by remember(date) { mutableStateOf<FocusRequester?>(null) }
+    val overflowVisible by rememberUpdatedState(allDayEvents.size > 3)
     LaunchedEffect(showEvents) {
         if (!showEvents && returnFocus != null) {
             // Let the modal window detach before restoring keyboard focus in the activity.
             withFrameNanos { }
             withFrameNanos { }
-            returnFocus?.requestFocus()
+            (if (overflowVisible) returnFocus else dateFocus)?.requestFocus()
         }
     }
     val viewLabel = stringResource(R.string.calendar_view_day_events, dateLabel)
@@ -100,6 +101,7 @@ fun DayHeader(date: LocalDate, today: LocalDate, allDayEvents: List<CalEvent>, z
                             if (event.declined) ", ${stringResource(R.string.calendar_declined)}" else "") },
                         leadingContent = { Box(Modifier.size(12.dp).background(androidx.compose.ui.graphics.Color(event.color or 0xff000000.toInt()), CircleShape)) },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable {
+                            returnFocus = null // Event details will own focus in the next modal.
                             showEvents = false
                             onEventClick(event)
                         })

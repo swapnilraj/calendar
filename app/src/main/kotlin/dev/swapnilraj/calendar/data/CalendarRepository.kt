@@ -13,6 +13,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.*
 
 sealed interface CalendarState {
+    data object Loading : CalendarState
     data class Ready(val events: List<CalEvent>) : CalendarState
     data object PermissionRequired : CalendarState
     data object Unavailable : CalendarState

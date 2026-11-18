@@ -5,6 +5,11 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+Implementation checkpoint (18 November 2026): the live day pager now reads a shared three-day window
+and opens native details, including existing meeting links. Changing its calendar selection or date
+context closes old details. These automated read workflows do not establish real Google sync, native
+editing, all planned views, or reminder delivery; see DAILY_DRIVER_PROGRESS.md for remaining gates.
+
 1. **Events always win.** Weather is painted under the hour lines and events. Nothing covers an event
    or its text, and event colours are never tinted.
 2. **Glanceable, not readable.** "Rainy evening, dark by five" should land in under a second without

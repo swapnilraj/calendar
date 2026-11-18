@@ -1,12 +1,10 @@
 package dev.swapnilraj.calendar.ui
 
 import android.content.ActivityNotFoundException
-import android.content.ContentUris
 import android.content.Intent
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.provider.CalendarContract
 import android.text.format.DateFormat
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.RowScope
@@ -20,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -40,8 +39,11 @@ import kotlinx.coroutines.launch
 @Composable
 fun DaylightContent(app: CalendarApp) {
     val context = LocalContext.current
+    val noLinkHandler = stringResource(dev.swapnilraj.calendar.R.string.navigation_no_link_handler)
+    val linkUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_link_unavailable)
     val scope = rememberCoroutineScope()
     val savedHeight by app.settings.hourHeight.collectAsStateWithLifecycle(initialValue = null)
+    val calendarSelection by app.settings.calendarSelection.collectAsStateWithLifecycle(initialValue = null)
     var now by remember { mutableStateOf(ZonedDateTime.now()) }
     LaunchedEffect(Unit) {
         while (true) { now = ZonedDateTime.now(); delay(60_000 - System.currentTimeMillis() % 60_000) }
@@ -60,6 +62,7 @@ fun DaylightContent(app: CalendarApp) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 now = ZonedDateTime.now()
+                app.calendarReader.refresh()
                 locationAllowed = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
             }
         }
@@ -78,18 +81,19 @@ fun DaylightContent(app: CalendarApp) {
                 }
             }
             savedHeight?.let { initialHeight ->
+              calendarSelection?.let { selectedCalendars ->
                 Box(Modifier.fillMaxSize()) {
-                    DayScreen(now, DateFormat.is24HourFormat(context), initialHeight, app.calendars::events,
+                    LiveCalendarDay(app.calendarReader, selectedCalendars, now, DateFormat.is24HourFormat(context), initialHeight,
                         onSaveHourHeight = { height -> scope.launch { app.settings.setHourHeight(height) } },
-                        onEventClick = { event ->
-                            try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, event.id))
-                                    .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, event.start.toEpochMilli())
-                                    .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, event.end.toEpochMilli()))
-                            } catch (_: ActivityNotFoundException) {
-                                scope.launch { snackbar.showSnackbar("No calendar app is available to open this event") }
-                            } catch (_: SecurityException) {
-                                scope.launch { snackbar.showSnackbar("This event couldn’t be opened") }
+                        onOpenLink = { value ->
+                            val uri = Uri.parse(value)
+                            if (uri.scheme?.lowercase() in setOf("http", "https", "geo", "mailto", "tel")) {
+                                try { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                                catch (_: ActivityNotFoundException) {
+                                    scope.launch { snackbar.showSnackbar(noLinkHandler) }
+                                } catch (_: SecurityException) {
+                                    scope.launch { snackbar.showSnackbar(linkUnavailable) }
+                                }
                             }
                         },
                         actions = { WeatherOptions(weather,
@@ -106,6 +110,7 @@ fun DaylightContent(app: CalendarApp) {
                         })
                     SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
                 }
+              }
             }
         }
     }

@@ -1,0 +1,4 @@
+<resources>
+    <string name="navigation_no_link_handler">No app is available to open this link</string>
+    <string name="navigation_link_unavailable">This link couldn’t be opened</string>
+</resources>

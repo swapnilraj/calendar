@@ -52,6 +52,13 @@ wiring; initial contracts are being implemented, not yet a complete repository/e
 
 Target boundaries:
 
+Current live read path: `CalendarApp.calendarReader` → one visible three-day request in
+`LiveCalendarDay` → per-day presentation maps with full occurrence references → native event details.
+Pager and details collectors share the same request. Provider invalidation refreshes both, while
+selection/date/zone changes clear the selected detail. The old `CalendarRepository` remains only as
+legacy migration code/tests, not the application-wired source. Write/editor and new-view components
+remain separate until their integration gates pass.
+
 - Android provider adapters share range invalidation and expose calendar metadata, details and typed
   mutation outcomes. Display segmentation is separate from occurrence/master/original-instance identity.
 - Pure recurrence plans are interpreted by one Android batch writer. `org.dmfs:lib-recur:0.17.1` is

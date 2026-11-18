@@ -36,7 +36,9 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
     onEventClick: (CalEvent) -> Unit, initialDate: LocalDate = now.toLocalDate(), initialScrollHour: Double? = null,
     actions: @Composable RowScope.() -> Unit = {},
     summary: @Composable RowScope.(LocalDate) -> Unit = {},
-    background: @Composable BoxScope.(LocalDate) -> Unit = {}) {
+    background: @Composable BoxScope.(LocalDate) -> Unit = {},
+    onVisibleDateChanged: (LocalDate) -> Unit = {},
+    onRetry: () -> Unit = {}) {
     val zone = now.zone
     val anchorText = rememberSaveable { initialDate.toString() }
     val anchor = LocalDate.parse(anchorText)
@@ -45,6 +47,7 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
     var height by rememberSaveable { mutableFloatStateOf(initialHourHeight.coerceIn(32f, 160f)) }
     var sharedScroll by rememberSaveable { mutableIntStateOf(-1) }
     val visibleDate = anchor.plusDays((pager.currentPage - MiddlePage).toLong())
+    LaunchedEffect(visibleDate) { onVisibleDateChanged(visibleDate) }
     val locale = LocalLocale.current.platformLocale
     val fontScale = LocalDensity.current.fontScale
     Surface(Modifier.fillMaxSize()) {
@@ -80,13 +83,14 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
         HorizontalPager(pager, modifier = Modifier.weight(1f), key = { it }) { page ->
             val date = anchor.plusDays((page - MiddlePage).toLong())
             var retry by remember { mutableIntStateOf(0) }
-            val flow = remember(date, zone, retry) { eventsForDay(date, zone) }
-            val state by flow.collectAsStateWithLifecycle(initialValue = CalendarState.Ready(emptyList()))
+            val flow = remember(date, zone, retry, eventsForDay) { eventsForDay(date, zone) }
+            val state by key(flow) { flow.collectAsStateWithLifecycle(initialValue = CalendarState.Loading) }
             Column(Modifier.fillMaxSize().semantics { contentDescription = "Day ${date}" }) {
+                if (state == CalendarState.Loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                 if (state == CalendarState.Unavailable || state == CalendarState.PermissionRequired) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(if (state == CalendarState.PermissionRequired) "Calendar access is needed" else "Calendars couldn’t be read", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                        TextButton(onClick = { retry++ }) { Text("Retry") }
+                        TextButton(onClick = { onRetry(); retry++ }) { Text("Retry") }
                     }
                 }
                 DayPage(date, (state as? CalendarState.Ready)?.events.orEmpty(), now, zone, use24Hour, height,
