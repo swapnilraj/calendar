@@ -143,7 +143,9 @@ class NativeSeriesTemporalJourneyTest {
 
     private fun openAll() {
         shown(title); compose.onNodeWithText(title).performClick()
-        shown("Edit event"); compose.onNodeWithText("Edit event").performScrollTo().performClick()
+        val edit = hasContentDescription("Edit event") and hasClickAction() and isEnabled()
+        compose.waitUntil(15_000) { compose.onAllNodes(edit).fetchSemanticsNodes().size == 1 }
+        compose.onNode(edit).performClick() // Fixed phone details toolbar; no inline scrolling action.
         shown("Entire series"); compose.onNodeWithText("Entire series").performClick()
         shown("Edit recurring event"); shown("Master start and duration")
     }
