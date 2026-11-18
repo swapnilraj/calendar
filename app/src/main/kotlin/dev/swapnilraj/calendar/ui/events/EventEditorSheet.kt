@@ -48,11 +48,11 @@ fun EventEditorSheet(
     }
     ModalBottomSheet(onDismissRequest = ::close, sheetState = sheetState) {
         EventEditorContent(controller, writableCalendars, ::close,
-            onReviewExisting = if (controller.canReviewLatest) ({ scope.launch { controller.reloadExisting()?.let { onReviewExisting?.invoke(it) } }; Unit }) else null,
+            onReviewExisting = if (controller.canReviewLatest) ({ scope.launch { controller.reloadExisting()?.let { onReviewExisting?.invoke(it) } } }) else null,
             onDiscardAndReload = null, use24Hour = use24Hour,
-            onUpgradeDraft = if (onReplacedLaunch != null) ({ scope.launch { controller.upgradeLegacyDraft()?.let(onReplacedLaunch) }; Unit }) else null,
-            onReplaceDraft = if (onReplacedLaunch != null) ({ scope.launch { controller.replaceDraft()?.let(onReplacedLaunch) }; Unit }) else null,
-            onDiscardDraft = if (onDiscarded != null) ({ scope.launch { if (controller.discardDraft()) onDiscarded() }; Unit }) else null)
+            onUpgradeDraft = if (onReplacedLaunch != null) ({ scope.launch { controller.upgradeLegacyDraft()?.let(onReplacedLaunch) } }) else null,
+            onReplaceDraft = if (onReplacedLaunch != null) ({ scope.launch { controller.replaceDraft()?.let(onReplacedLaunch) } }) else null,
+            onDiscardDraft = if (onDiscarded != null) ({ scope.launch { if (controller.discardDraft()) onDiscarded() } }) else null)
     }
 }
 

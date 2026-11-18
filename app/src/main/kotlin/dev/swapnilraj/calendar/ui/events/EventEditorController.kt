@@ -80,13 +80,16 @@ class EventEditorController(
     val canReplace: Boolean get() = canDiscard && document?.let { it.launch.kind == EditorDraftKind.CREATE || it.sourceIdentity != null } == true
     val canInspectRetirement: Boolean get() = !closed && !state.saving && document?.frozen != null && retirement != null
     val canAcknowledge: Boolean get() = !closed && !state.saving && state.localOutcome != null && atomic != null
-    val canReviewLatest: Boolean get() = !closed && !state.saving && document?.launch?.kind == EditorDraftKind.EDIT && document?.sourceIdentity != null
+    val canReviewLatest: Boolean get() = !closed && !state.saving && document?.launch?.kind == EditorDraftKind.EDIT && document?.sourceIdentity != null && document?.hasRequest == false && !recoveryOnly
 
     init { scope.launch { restore() } }
     private suspend fun restore() {
         try {
             val record = drafts.load(draftId) ?: error("Missing durable draft")
             require(record.id == draftId)
+            if (record.version !in setOf(LEGACY_VERSION, PREVIOUS_VERSION, VERSION)) {
+                state = state.copy(loading = false, draftReadFailed = true, problem = EditorProblem.DRAFT_VERSION); return
+            }
             var doc = OrdinaryDraftDocument.decode(record)
             require(doc.generation == expectedGeneration)
             require(doc.legacy || atomic != null)
@@ -348,7 +351,11 @@ class EventEditorController(
         }
     }
     suspend fun reloadExisting(): EditReadResult? {
-        val doc = document ?: return null; val ref = doc.launch.ref ?: return null; val pin = doc.sourceIdentity ?: return null
+        if (document?.hasRequest == true || recoveryOnly) return null
+        return loadReplacementSource()
+    }
+    private suspend fun loadReplacementSource(): EditReadResult? {
+        val doc = document ?: return null; val ref = doc.launch.ref ?: return null; val pin = doc.sourceIdentity ?: return EditReadResult.Unavailable
         val result = try { mutations.loadForEdit(ref) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { EditReadResult.Unavailable }
         if (result is EditReadResult.Ready && (result.event.details.occurrence.ref != ref || !sameSourceNamespace(pin, result.event))) {
             state = state.copy(reviewLatest = null, problem = EditorProblem.CONFLICT); return EditReadResult.Unavailable
@@ -404,7 +411,7 @@ class EventEditorController(
             val doc = document ?: return null
             var fresh: EditableEvent? = null
             if (replace && doc.launch.kind == EditorDraftKind.EDIT) {
-                fresh = (reloadExisting() as? EditReadResult.Ready)?.event ?: return null
+                fresh = (loadReplacementSource() as? EditReadResult.Ready)?.event ?: return null
             }
             if (!verifyLease() || !fenceOriginal() || !removeExact()) return null
             closed = true

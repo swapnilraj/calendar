@@ -37,13 +37,14 @@ suspend fun prepareEditorFieldsDraft(
     fields: EventEditorFields,
     store: AtomicDraftStore,
     clock: Clock = Clock.systemUTC(),
-): DraftPreparationResult = prepareDraft(initial, existing, draftId, initialCalendarSelected, store, clock, rawFields = fields)
+): DraftPreparationResult = prepareDraft(initial, existing, draftId, initialCalendarSelected, store, clock, rawFields = fields, newOnly = true)
 
 private suspend fun prepareDraft(initial: EventDraft, existing: EditableEvent?, id: String, selected: Boolean,
-    store: DraftStore, clock: Clock, notices: List<EditorNotice> = emptyList(), defaultVisibilityCalendar: String = "", defaultVisibilityIdentity: CalendarIdentity? = null, rawFields: EventEditorFields? = null): DraftPreparationResult = try {
+    store: DraftStore, clock: Clock, notices: List<EditorNotice> = emptyList(), defaultVisibilityCalendar: String = "", defaultVisibilityIdentity: CalendarIdentity? = null, rawFields: EventEditorFields? = null, newOnly: Boolean = false): DraftPreparationResult = try {
     require(id.isNotBlank())
     val atomic = store as? AtomicDraftStore ?: error("Atomic draft storage required")
     val old = store.load(id)
+    require(!newOnly || old == null)
     val record = old ?: EventEditorController.initialRecord(initial, existing, id, selected, clock, notices, defaultVisibilityCalendar, defaultVisibilityIdentity).let { candidate ->
         if (rawFields == null) candidate else {
             val doc = OrdinaryDraftDocument.decode(candidate)
@@ -61,7 +62,7 @@ private suspend fun prepareDraft(initial: EventDraft, existing: EditableEvent?, 
             catch (_: Exception) { DraftChangeResult.Unavailable }
         val durable = store.load(id)
         if (changed != DraftChangeResult.Changed && durable == record) DraftPreparationResult.Ready(launch)
-        else if (changed == DraftChangeResult.Changed && durable != null) {
+        else if (!newOnly && changed == DraftChangeResult.Changed && durable != null) {
             val collision = DraftBrowserCodec.read(durable).launch
             if (collision != null && editorDraftTarget(collision.ref) == expected) DraftPreparationResult.Ready(collision) else DraftPreparationResult.Unavailable
         } else DraftPreparationResult.Unavailable
