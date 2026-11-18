@@ -121,6 +121,7 @@ internal fun PhoneEventEditorContent(
                 HorizontalDivider(Modifier.padding(start = 64.dp))
                 PhoneEditorRow(PhoneEventGlyph.AVAILABILITY, stringResource(R.string.events_availability), phoneMetadataLabel(fields.availability, false), view.canEdit(EditableField.AVAILABILITY), { panel = PhoneEditorPanel.AVAILABILITY })
                 PhoneEditorRow(PhoneEventGlyph.VISIBILITY, stringResource(R.string.events_visibility), phoneMetadataLabel(fields.privacy, true), view.canEdit(EditableField.PRIVACY), { panel = PhoneEditorPanel.PRIVACY })
+                if (!view.needsAttention && controller.canReplace && onReplace != null) TextButton(onClick = { confirm = "replace" }, modifier = Modifier.padding(start = 52.dp)) { Text(stringResource(R.string.phone_event_replace)) }
                 if (!view.needsAttention && controller.canDiscard && onDiscard != null) TextButton(onClick = { confirm = "discard" }, modifier = Modifier.padding(start = 52.dp)) { Text(stringResource(R.string.phone_event_discard)) }
                 Text(stringResource(R.string.phone_event_local_save), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 64.dp, end = 24.dp, top = 20.dp))
                 if (controller.isEditing && controller.existing != null && !controller.recoveryOnly) TextButton(onClick = controller::requestDelete, enabled = !view.blocked, modifier = Modifier.padding(start = 52.dp)) { Text(stringResource(R.string.events_editor_delete)) }

@@ -34,17 +34,29 @@ class PhoneEventEditorScreenTest {
     private val draft = EventDraft(CalendarId(2), EventTime.Timed(Instant.parse("2028-06-15T09:00:00Z"), Instant.parse("2028-06-15T10:00:00Z")), ZoneOffset.UTC,
         "Planning for next week", location = "Garden room", alertMinutes = listOf(10), targetIdentity = eventTestIdentity())
     private fun editor() = preparedEditor(draft, null, "phone", writer, store, scope, recurringCreationSupported = true)
-    private fun show(controller: EventEditorController, dark: Boolean = false, largeRtl: Boolean = false, onDismiss: () -> Unit = {}, onSaved: (EventRef) -> Unit = {}) {
+    private fun show(controller: EventEditorController, dark: Boolean = false, largeRtl: Boolean = false, onDismiss: () -> Unit = {}, onSaved: (EventRef) -> Unit = {}, onReplacedLaunch: ((EditorDraftLaunch) -> Unit)? = null) {
         RuntimeEnvironment.setFontScale(if (largeRtl) 2f else 1f)
         compose.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, if (largeRtl) 2f else density.fontScale), LocalLayoutDirection provides if (largeRtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-                DaylightTheme(dark = dark) { PhoneEventEditor(controller, listOf(eventTestCalendar()), onDismiss, onSaved, {}) }
+                DaylightTheme(dark = dark) { PhoneEventEditor(controller, listOf(eventTestCalendar()), onDismiss, onSaved, {}, onReplacedLaunch = onReplacedLaunch) }
             }
         }
         compose.waitForIdle()
     }
     @After fun stop() { scope.cancel(); RuntimeEnvironment.setFontScale(1f) }
+    @Test fun normalDraftReplacementIsVisibleAndRequiresConfirmationBeforePublishingFreshLaunch() {
+        var replacement: EditorDraftLaunch? = null
+        val controller = editor(); val oldGeneration = controller.generation
+        show(controller, onReplacedLaunch = { replacement = it })
+        compose.onNodeWithText("Start a new draft").performScrollTo().assertIsDisplayed().performClick()
+        compose.waitForIdle(); assertNull(replacement); assertEquals(oldGeneration, controller.generation); assertEquals(0,writer.creates)
+        compose.onNodeWithText("Stop any pending original change, then keep these fields in a new draft. Choose a calendar again and review its visibility before tapping Save.").assertIsDisplayed()
+        compose.onNodeWithText("Confirm").performClick()
+        compose.waitUntil(5_000) { replacement != null }
+        assertNotEquals(oldGeneration,replacement!!.generation); assertNotEquals("phone",replacement!!.draftId)
+        assertEquals(0,writer.creates)
+    }
     @Test fun toolbarSaveRemainsVisibleAfterScrollingAndOnlyExplicitSaveWrites() {
         var saved: EventRef? = null; val controller = editor(); show(controller, onSaved = { saved = it })
         compose.onNodeWithText("Saving updates this device. Your calendar account handles sync.").performScrollTo()
