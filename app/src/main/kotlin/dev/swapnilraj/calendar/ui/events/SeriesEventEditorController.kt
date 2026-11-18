@@ -342,10 +342,25 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
         if (mapping.ordinal == 0) {
             if (result.identity != doc.identity) return false
         } else if (result.identity.masterEventId <= 0 || result.identity.masterEventId == doc.identity.masterEventId) return false
-        result.selected?.let { selected ->
-            require(selected.calendarId == result.identity.calendarId && selected.eventId == result.identity.masterEventId &&
-                selected.recurrence?.masterEventId == result.identity.masterEventId)
+        // The bounded following adapter verifies its first native template and always returns it.
+        // Generic whole-series ordinal exhaustion may return null; this scope never does.
+        val selected = requireNotNull(result.selected)
+        val recurrence = requireNotNull(selected.recurrence)
+        val start = (command.intent.newTailStart as? FieldChange.Set)?.value ?: requireNotNull(context.nominalTail(doc.selected)).start
+        val duration = when (val change = command.intent.duration) {
+            RecurrenceDurationChange.KeepRaw -> context.durationRaw
+            is RecurrenceDurationChange.TimedElapsed -> "PT${change.duration.seconds}S"
+            is RecurrenceDurationChange.AllDayDays -> "P${change.days}D"
         }
+        val template = (RecurrenceMasterTemplates.resolve(start, duration) as? RecurrenceMasterTemplateResult.Ready)?.template ?: return false
+        val bounds = when (val time = template.time) {
+            is EventTime.Timed -> time.start to time.end
+            is EventTime.AllDay -> time.dates.start.atStartOfDay(java.time.ZoneOffset.UTC).toInstant() to
+                time.dates.endExclusive.atStartOfDay(java.time.ZoneOffset.UTC).toInstant()
+        }
+        require(selected.calendarId == result.identity.calendarId && selected.eventId == result.identity.masterEventId &&
+            recurrence.masterEventId == result.identity.masterEventId && recurrence.originalStart == bounds.first &&
+            selected.instanceStart == bounds.first && selected.instanceEnd == bounds.second)
         true
     } catch (_: Exception) { false } }
     private suspend fun removeExact(expected: DraftRecord): Boolean = storage.withLock {

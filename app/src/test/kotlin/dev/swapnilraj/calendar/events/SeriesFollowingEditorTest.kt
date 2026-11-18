@@ -241,11 +241,12 @@ class SeriesFollowingEditorTest {
         assertEquals(1, f.calls.size)
     }
 
-    @Test fun verifiedNewTailWithoutSelectedOrdinalCanStillComplete() = runBlocking {
+    @Test fun boundedFollowingWithoutVerifiedFirstTemplateStaysUncertain() = runBlocking {
         val editor = editor(); val saved = tailResult(selected = null)
         f.next = saved
         editor.change { it.copy(title = "Tail with exhausted selected ordinal") }; editor.save(); editor.confirmFollowingReview()
-        assertEquals(saved, editor.state.result); assertFalse(f.store.records.containsKey("series"))
+        assertNull(editor.state.localOutcome); assertTrue(editor.state.recoveryRequired)
+        assertTrue(f.store.records.containsKey("series"))
     }
 
     @Test fun foreignOldZeroOrContradictoryTailResultsRemainUncertainAndKeepFrozenDraft() = runBlocking {
@@ -253,7 +254,10 @@ class SeriesFollowingEditorTest {
         val invalid = listOf(tailResult(calendar = 3), tailResult(master = 41), tailResult(master = 0, selected = null),
             tailResult(selected = baseRef.copy(calendarId = CalendarId(3))),
             tailResult(selected = baseRef.copy(recurrence = RecurrenceRef(41, f.original))),
-            tailResult(selected = baseRef.copy(recurrence = null)), tailResult(selected = baseRef.copy(eventId = 41)))
+            tailResult(selected = baseRef.copy(recurrence = null)), tailResult(selected = baseRef.copy(eventId = 41)),
+            tailResult(selected = baseRef.copy(recurrence = RecurrenceRef(99, f.actual))),
+            tailResult(selected = baseRef.copy(instanceStart = f.original.plusSeconds(1))),
+            tailResult(selected = baseRef.copy(instanceEnd = f.original.plusSeconds(3601))))
         for (result in invalid) {
             f.store.records.clear(); f.calls.clear()
             val editor = editor(); f.next = result
@@ -300,5 +304,19 @@ class SeriesFollowingEditorTest {
         f.recovered = tailResult(calendar = 3); restored.recover()
         assertTrue(restored.state.recoveryRequired); assertNull(restored.state.localOutcome)
         assertEquals(record, f.store.records.getValue("series")); assertEquals(1, f.calls.size)
+    }
+
+    @Test fun verifiedChangedTailMustMatchFrozenStartDurationAndOriginalKeyExactly() = runBlocking {
+        val editor = editor()
+        val start = Instant.parse("2028-06-26T10:30:00Z")
+        val selected = EventRef(CalendarId(2), 99, start, start.plusSeconds(5400), RecurrenceRef(99, start))
+        editor.change { it.copy(temporal = it.temporal!!.copy(startDate = "2028-06-26", startTime = "10:30", durationMode = "ELAPSED", hours = "1", minutes = "30")) }
+        f.next = SeriesMutationResult.Common(MutationResult.Uncertain("ignored", null))
+        editor.save(); editor.confirmFollowingReview()
+        val record = f.store.records.getValue("series")
+        val restored = f.controller(SeriesDraftCodec.describe(record)!!, null)
+        val saved = tailResult(selected = selected); f.recovered = saved; restored.recover()
+        assertEquals(saved, restored.state.result); assertTrue(f.store.records.isEmpty())
+        assertEquals(1, f.calls.size)
     }
 }
