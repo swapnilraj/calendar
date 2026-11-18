@@ -221,3 +221,12 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 | 2026-11-17 | Pinned core-ktx, coroutines-android, lifecycle-runtime-compose in `:app` | Runtime permission checks, observer-driven data loading off the main thread, and lifecycle-aware collection |
 | 2026-11-17 | Pinned DataStore Preferences and BOM-managed Compose test manifest | Remember zoom across launches and render isolated calendar screens with synthetic data in JVM tests |
 | 2026-11-17 | Day grid uses rgb(25,25,25) in dark mode | Match the desktop weather substrate; keep dynamic color on the surrounding UI and event colors intact |
+
+### Bounded search boundary
+
+Search requests retain the selected calendar scope, display zone and declined policy and return exact
+occurrence references with plain text only. The default UI range spans the previous 12 through next 24
+months; custom/expanded windows are bounded to 10 years per request. Results are limited to 200 with
+explicit expansion up to 1000 and a truncation signal, never an inferred total. The provider adapter
+shares reader invalidation and must bound raw scans before identity/materialization or private joins.
+Search UI and adapter are being implemented; a new port does not enable a search route.
