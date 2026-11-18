@@ -23,11 +23,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import dev.swapnilraj.calendar.android.reminders.ReminderRuntimeOwner
 import dev.swapnilraj.calendar.android.reminders.ReminderRuntime
+import dev.swapnilraj.calendar.android.widgets.*
 
-class CalendarApp : Application(), ReminderRuntimeOwner {
+class CalendarApp : Application(), ReminderRuntimeOwner, AgendaWidgetApplicationOwner {
     private val calendarScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     private val reminderScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
     override val reminderRuntime: ReminderRuntime by lazy { createReminderRuntime(reminderScope) }
+    private val widgetScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
+    override val agendaWidgetServices by lazy { createWidgetServices(widgetScope) }
+    override val agendaWidgetRuntime get() = agendaWidgetServices.runtime
+    override val agendaWidgetFramework get() = agendaWidgetServices.framework
     internal val reminderSource by lazy { CalendarReminderSource(contentResolver,
         { permission -> checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED }) }
     internal val reminderLedger by lazy { SqliteReminderLedger(calendarLocalStore) }
@@ -37,6 +42,7 @@ class CalendarApp : Application(), ReminderRuntimeOwner {
     override fun onCreate() {
         super.onCreate()
         reminderRuntime.onProcessStarted()
+        agendaWidgetServices
     }
     val calendarReader by lazy { CalendarReader(contentResolver, calendarScope) }
     val calendarLocalStore by lazy { CalendarLocalStore(this) }

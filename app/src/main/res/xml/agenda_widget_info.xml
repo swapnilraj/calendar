@@ -5,4 +5,6 @@
     android:initialLayout="@layout/widget_agenda"
     android:description="@string/widget_agenda_description"
     android:resizeMode="horizontal|vertical" android:updatePeriodMillis="0"
+    android:configure="dev.swapnilraj.calendar.android.widgets.AgendaWidgetConfigureActivity"
+    android:widgetFeatures="reconfigurable"
     android:widgetCategory="home_screen" />

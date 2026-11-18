@@ -42,9 +42,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
-fun DaylightContent(app: CalendarApp) {
+fun DaylightContent(app: CalendarApp, widgetNavigation: WidgetCalendarNavigation? = null, onWidgetNavigationConsumed: (String) -> Unit = {}) {
     val preferences by app.settings.calendarPreferences.collectAsStateWithLifecycle(initialValue = CalendarPreferenceState.Loading)
-    CalendarPreferenceTheme(preferences) { DaylightBody(app, preferences) }
+    CalendarPreferenceTheme(preferences) { DaylightBody(app, preferences, widgetNavigation, onWidgetNavigationConsumed) }
 }
 
 @Composable
@@ -59,7 +59,7 @@ internal fun CalendarPreferenceTheme(preferences: CalendarPreferenceState, conte
 }
 
 @Composable
-private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState) {
+private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState, widgetNavigation: WidgetCalendarNavigation?, onWidgetNavigationConsumed: (String) -> Unit) {
     val options = (preferences as? CalendarPreferenceState.Ready)?.value?.options ?: CalendarSettingsOptions()
     val weatherVisible = preferences is CalendarPreferenceState.Ready && options.weatherVisible
     val context = LocalContext.current
@@ -151,6 +151,8 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState)
                         mutations = mutations,
                         seriesMutations = seriesMutations,
                         search = app.calendarSearch,
+                        widgetNavigation = widgetNavigation,
+                        onWidgetNavigationConsumed = onWidgetNavigationConsumed,
                         meetings = app.calendarMeetings,
                         requestMeetingWritePermission = {
                             if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED) true
