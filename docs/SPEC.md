@@ -20,6 +20,11 @@ Journal recovery distinguishes an unknown outcome from proof that a command neve
 atomically rolled back. Such proof permits only an explicit retry using the original operation ID,
 payload and edit token; recovery itself never writes. Missing or unreadable journals remain unknown.
 
+The day renderer now splits timed events at offset transitions on the fixed wall-clock grid, retains
+the original event identity for every segment, exposes offset/part and true-duration descriptions,
+and masks weather in skipped or repeated clock bands. The current-time line sits below event
+surfaces. These synthetic rendering checks do not establish exact Google visual parity.
+
 1. **Events always win.** Weather is painted under the hour lines and events. Nothing covers an event
    or its text, and event colours are never tinted.
 2. **Glanceable, not readable.** "Rainy evening, dark by five" should land in under a second without

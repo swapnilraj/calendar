@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import dev.swapnilraj.calendar.R
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.swapnilraj.calendar.data.CalEvent
 import java.time.ZoneId
+import java.time.Duration
 
 fun eventTextColor(color: Color): Color {
     // Choose the larger contrast ratio; the best of black/white is always >= 4.5:1.
@@ -31,7 +33,7 @@ fun eventTextColor(color: Color): Color {
 
 @Composable
 fun EventBlock(event: CalEvent, heightDp: Float, zone: ZoneId, use24Hour: Boolean,
-    modifier: Modifier = Modifier, onClick: (CalEvent) -> Unit) {
+    modifier: Modifier = Modifier, onClick: (CalEvent) -> Unit, timedSegment: TimedEvent? = null) {
     val color = Color(event.color or 0xff000000.toInt())
     val foreground = if (event.declined) MaterialTheme.colorScheme.onSurface else eventTextColor(color)
     val locale = LocalLocale.current.platformLocale
@@ -39,23 +41,54 @@ fun EventBlock(event: CalEvent, heightDp: Float, zone: ZoneId, use24Hour: Boolea
     val title = event.title.ifBlank { untitled }
     val range = eventTimeLabel(event, zone, use24Hour, locale)
     val time = if (event.allDay) "${stringResource(R.string.calendar_all_day)}, $range" else range
+    val affected = timedSegment?.clockChangeAffected == true && timedSegment.segment != null
+    val segmentTime = if (affected) eventSegmentTimeLabel(timedSegment, use24Hour, locale) else null
+    val part = if (timedSegment != null && timedSegment.partCount > 1)
+        stringResource(R.string.dst_part, timedSegment.partIndex + 1, timedSegment.partCount) else null
+    val duration = if (affected) stringResource(R.string.dst_duration,
+        realDurationLabel(timedSegment.segment.eventDuration)) else null
+    val previousDay = if (timedSegment?.partIndex == 0 && timedSegment.segment != null && timedSegment.segment.start > event.start)
+        stringResource(R.string.dst_previous_day) else null
+    val nextDay = if (timedSegment != null && timedSegment.partIndex == timedSegment.partCount - 1 &&
+        timedSegment.segment != null && timedSegment.segment.end < event.end) stringResource(R.string.dst_next_day) else null
+    val presentation = listOfNotNull(time, segmentTime, duration, part, previousDay, nextDay).joinToString(", ")
     val declined = stringResource(R.string.calendar_declined)
     val open = stringResource(R.string.calendar_open_event)
     val titleHeight = minimumEventHeight().value
     val fontScale = LocalDensity.current.fontScale
-    Surface(modifier.semantics { contentDescription = "$title, $time${if (event.declined) ", $declined" else ""}" }
+    val timeFits = heightDp >= titleHeight + (if (affected) 14f else 29f) * fontScale
+    val displayedTitle = if (affected && !timeFits)
+        stringResource(R.string.dst_offset_title, timedSegment.segment.offsetLabel, title) else title
+    Surface(modifier.semantics { contentDescription = "$title, $presentation${if (event.declined) ", $declined" else ""}" }
         .clickable(onClickLabel = open) { onClick(event) },
         shape = RoundedCornerShape(6.dp),
         color = if (event.declined) Color.Transparent else color,
         border = if (event.declined) BorderStroke(1.dp, color) else null,
         contentColor = foreground) {
         Column(Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
-            Text(title, fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.Medium,
-                maxLines = if (heightDp >= titleHeight * 2 - 8f) 2 else 1, overflow = TextOverflow.Ellipsis,
+            Text(displayedTitle, fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.Medium,
+                maxLines = if (heightDp >= titleHeight * 2 - 8f && !(affected && timeFits)) 2 else 1,
+                overflow = TextOverflow.Ellipsis,
                 textDecoration = if (event.declined) TextDecoration.LineThrough else null)
-            if (heightDp >= titleHeight + 29f * fontScale && !event.allDay) {
-                Text(time, fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (timeFits && !event.allDay) {
+                val visibleTime = if (!affected) time else if (part == null) segmentTime!!
+                    else stringResource(R.string.dst_offset_part, timedSegment.segment.offsetLabel, part)
+                Text(visibleTime, fontSize = 10.sp,
+                    lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
+}
+
+@Composable
+private fun realDurationLabel(duration: Duration): String {
+    if (duration.seconds == 0L && !duration.isZero) return stringResource(R.string.dst_less_than_second)
+    val hours = duration.seconds / 3600
+    val minutes = duration.seconds / 60 % 60
+    val seconds = duration.seconds % 60
+    val parts = mutableListOf<String>()
+    if (hours > 0) parts += pluralStringResource(R.plurals.dst_hours, hours.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), hours)
+    if (minutes > 0) parts += pluralStringResource(R.plurals.dst_minutes, minutes.toInt(), minutes)
+    if (seconds > 0 || parts.isEmpty()) parts += pluralStringResource(R.plurals.dst_seconds, seconds.toInt(), seconds)
+    return parts.joinToString(", ")
 }

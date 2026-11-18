@@ -10,7 +10,7 @@ Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
   Wave 0 session.** The earlier two agents reviewed dependencies/ownership only.
 - Implementation branch: `codex/daily-driver`. Initial read-contract/module bootstrap and scope docs are implemented;
   mutation and persistence ports will be frozen before their dependent worker packets. A new module or contract alone does not establish native editing or new views.
-- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (238 tests), including
+- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (253 tests), including
   merged provider reads, native detail components, day fixes, reminder components and preferences. No device/cloud/beta result is claimed.
 
 ## Active implementation packets
@@ -23,7 +23,7 @@ Six workers have isolated worktrees under `/workspace/daylight-workers/`, based 
 | Packet | Owner/worktree | Current deliverable |
 |---|---|---|
 | A1 | Provider | Merged via PR #6; 10 provider tests; live three-day pager/details wired |
-| B1 | Temporal | Merged via PR #4; 14 geometry tests passed; renderer wiring pending |
+| B1 | Temporal | Merged via PR #4; geometry and live renderer tested; synthetic DST screens inspected |
 | C1 | Calendar | Merged via PR #10; D1/D3/D4/D5 automated checks and inspected screens pass |
 | D1 | Events | Merged via PR #8; live native details wired; remaining M4 metadata/actions pending |
 | E1 | Android | Merged via PR #9; component tests pass; scheduler/delivery pending |
@@ -39,7 +39,7 @@ wiring and integration; workers do not overwrite shared contracts or each other'
 |---|---|---|
 | Wave 0 bootstrap | In progress | Core module/contracts, preserved baseline, tests/build/lint verified |
 | M0 Google compatibility | Pending external verification | Dedicated personal/Workspace two-account/provider/device round-trips |
-| M1 rendering/accessibility | Partial: D1/D3/D4/D5 automated checks pass; D2 renderer pending | Correct D1–D5 regression tests and inspected all-day/font/RTL/DST screens |
+| M1 rendering/accessibility | Partial: D1–D5 automated checks/screens pass; device accessibility pending | Correct D1–D5 regression tests and inspected all-day/font/RTL/DST screens |
 | M2 calendars/ranges/sidebar | Partial: reads/preferences verified; sidebar/live filters verified locally | Stable identity, independent persisted filters, shared ranges/observer and coverage states |
 | M3 planning views | Partial: month component verified; live Day/Month routing verified; other views pending | Day/three-day/week/month/agenda, date navigation, leap/six-row/dense/RTL cases |
 | M4 native details | Partial: live native read flow verified locally | Complete readable event context, correct occurrence identity and meeting links |
@@ -81,12 +81,15 @@ gates pass. Do not turn the audit totals into a percentage-complete estimate.
   creation default. Month day sheets survive adjacent-month range loading. Preference read failures
   block provider subscriptions until explicit retry; persisted explicit-none stays empty. Two new
   drawer/month screenshots recorded and inspected.
-- Next rendering work: D2 transition segments/weather masking, logical scroll anchors, and
-  current-time line below event text. Remaining views and editor routes are still pending.
+- DST rendering now uses transition segments, true-duration/offset descriptions and ambiguous-weather
+  masking; current-time decoration sits below events. Five synthetic DST images and nine affected
+  baseline images were inspected. Logical scroll anchors and device comparison remain pending.
+  Remaining views and editor routes are still pending.
 - Before write UI completion: separate read-only edit eligibility from WRITE permission, and expose
   definitely safe journal retry separately from unknown recovery failure so interrupted drafts cannot
   become permanently locked or be blindly resubmitted.
 
-Latest local integration checkpoint: `238` tests, debug APK and lint passed with live calendar
-drawer/month navigation and atomic preference-read recovery. This does not establish device sync
-or delivery. PRs #16–#17 are merged; preference PR #18 and navigation publication are in progress.
+Latest local integration checkpoint: `253` tests, debug APK and lint passed with live calendar
+drawer/month navigation, atomic preference-read recovery and DST renderer integration. This does not
+establish device sync or delivery. PRs #16–#18 are merged remotely; navigation and recovery-contract
+PRs #19–#20 are awaiting CI. Local verification of the combined remote changes is still required.
