@@ -40,6 +40,9 @@ internal class CalendarOwnedMeetingWriter(private val resolver:ContentResolver,p
             val details=when(val r=reader.readDetails(selected)){is CalendarReadState.Ready->r.value;CalendarReadState.PermissionRequired->throw SecurityException();CalendarReadState.LimitExceeded->throw ProviderReadLimitExceeded();else->throw OwnedMeetingConflict()}
             if(details.occurrence.ref!=selected||provider.capture(selected,before.identity).canonical(readBudgets.maxCanonicalBytes)!=raw)throw OwnedMeetingConflict()
             val token=EditToken(OwnedMeetingSource.token(raw));val types=before.guestTypes()
+            // Pure assertion construction only: an already infeasible admitted source must not
+            // issue capabilities or a persisted token. Future authored inputs remain separately capped.
+            checkParcel(batch(before,Model(emptyMap(),emptySet(),emptyMap(),emptyList(),null,before.selected,false)).ops)
             val guestRows=before.attendees.filter{it["_id"]!=before.self["_id"]}.map { row->MeetingGuestRow(before.guestRef(token,row),EventAttendee(row["attendeeEmail"].orEmpty(),row["attendeeName"],row["attendeeStatus"]?.toIntOrNull()?:Int.MIN_VALUE,row["attendeeRelationship"]?.toIntOrNull()?:Int.MIN_VALUE,row["attendeeType"]?.toIntOrNull()?:Int.MIN_VALUE),before.guestActions(row)) }
             val fields=mutableSetOf(EditableField.TITLE,EditableField.LOCATION,EditableField.DESCRIPTION,EditableField.TIME,EditableField.ALERTS,EditableField.PRIVACY)
             if(before.calendar["canModifyTimeZone"]=="1"&&before.event["allDay"]=="0")fields+=EditableField.ZONE

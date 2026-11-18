@@ -221,4 +221,17 @@ class CalendarOwnedMeetingWriterTest {
         assertTrue(f.writer.loadForEdit(f.selected) is MeetingReadResult.NeedsReview);assertEquals(0,f.p.batchCount)
     }}
 
+    @Test fun readableSourceWhoseMinimalAssertedBatchExceedsParcelBudgetIssuesNoTokenOrJournal()=runBlocking{fixture{f->
+        f.p.db.execSQL("UPDATE events SET title=?,description=?",arrayOf("x".repeat(40_000),"y".repeat(40_000)))
+        withContext(Dispatchers.IO+readBudgetContext(ProviderReadBudgets().mutation)){
+            val captured=OwnedMeetingProvider(RuntimeEnvironment.getApplication().contentResolver,f.grants::contains,ProviderReadBudgets()).capture(f.selected)
+            assertTrue(captured.canonical(ProviderReadBudgets().maxCanonicalBytes).length>80_000)
+        }
+        val snapshots=f.store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots",null).use{it.moveToFirst();it.getInt(0)}
+        val journal=f.store.readableDatabase.rawQuery("SELECT COUNT(*) FROM mutation_journal",null).use{it.moveToFirst();it.getInt(0)}
+        val result=f.writer.loadForEdit(f.selected);assertTrue(result is MeetingReadResult.NeedsReview)
+        assertEquals(snapshots,f.store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots",null).use{it.moveToFirst();it.getInt(0)})
+        assertEquals(journal,f.store.readableDatabase.rawQuery("SELECT COUNT(*) FROM mutation_journal",null).use{it.moveToFirst();it.getInt(0)});assertEquals(0,f.p.batchCount)
+    }}
+
 }
