@@ -33,12 +33,13 @@ import dev.swapnilraj.calendar.ui.events.DraftPreparationResult
 import dev.swapnilraj.calendar.ui.events.prepareNewDraft
 import dev.swapnilraj.calendar.ui.events.prepareEditDraft
 import dev.swapnilraj.calendar.ui.events.prepareDuplicateDraft
+import dev.swapnilraj.calendar.ui.settings.*
+import androidx.compose.foundation.lazy.LazyColumn
 import dev.swapnilraj.calendar.ui.month.MonthView
 import dev.swapnilraj.calendar.ui.month.monthDates
 import dev.swapnilraj.calendar.ui.month.MonthDaySheet
 import dev.swapnilraj.calendar.ui.month.monthEventsByDate
 import java.time.*
-import java.time.temporal.WeekFields
 import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -71,15 +72,21 @@ internal fun LiveCalendarDay(
     onLocalDeleted: () -> Unit = {},
     onDraftFailure: () -> Unit = {},
     draftClock: Clock = Clock.systemUTC(),
+    preferenceOverride: CalendarPreferenceState? = null,
 ) {
     val scope = rememberCoroutineScope()
-    var dateText by rememberSaveable { mutableStateOf(now.toLocalDate().toString()) }
+    val selectedDateState = rememberSaveable { mutableStateOf<String?>(null) }
     var writeRequestText by rememberSaveable { mutableStateOf<String?>(null) }
     var showDrafts by rememberSaveable { mutableStateOf(false) }
     var preparingWrite by remember { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showDefaultCalendar by rememberSaveable { mutableStateOf(false) }
+    var savingSettings by remember { mutableStateOf(false) }
+    var settingsSaveFailed by remember { mutableStateOf(false) }
     var scrollMinute by rememberSaveable { mutableDoubleStateOf(-1.0) }
-    val preferencesFlow = remember(settings) { settings?.calendarPreferences ?: flowOf(CalendarPreferenceState.Loading) }
-    val preferenceState by preferencesFlow.collectAsStateWithLifecycle(initialValue = CalendarPreferenceState.Loading)
+    val preferencesFlow = remember(settings, preferenceOverride != null) { if (preferenceOverride != null) flowOf(CalendarPreferenceState.Loading) else settings?.calendarPreferences ?: flowOf(CalendarPreferenceState.Loading) }
+    val observedPreferences by preferencesFlow.collectAsStateWithLifecycle(initialValue = CalendarPreferenceState.Loading)
+    val preferenceState = preferenceOverride ?: observedPreferences
     val preferences = if (settings == null) CalendarPreferences(selection, null, "DAY", hourHeight) else {
         when (val state = preferenceState) {
             is CalendarPreferenceState.Ready -> state.value
@@ -89,18 +96,26 @@ internal fun LiveCalendarDay(
             }
         }
     }
+    val options = preferences.options
+    val displayNow = when (val zone = options.displayZone) {
+        DisplayZoneOption.Device -> now
+        is DisplayZoneOption.Fixed -> now.withZoneSameInstant(zone.zone)
+    }
+    val visibleDate = selectedDateState.value?.let(LocalDate::parse) ?: displayNow.toLocalDate()
+    val dateText = visibleDate.toString()
+    fun currentDate(): LocalDate = selectedDateState.value?.let(LocalDate::parse) ?: displayNow.toLocalDate()
+    LaunchedEffect(Unit) { if (selectedDateState.value == null) selectedDateState.value = dateText }
     val effectiveSelection = preferences.selection
     val availableViews = listOf(CalendarViewOption.DAY, CalendarViewOption.THREE_DAY, CalendarViewOption.WEEK, CalendarViewOption.MONTH, CalendarViewOption.AGENDA)
     val view = availableViews.firstOrNull { it.name == preferences.view } ?: CalendarViewOption.DAY
-    var monthDayText by rememberSaveable(view, effectiveSelection, now.zone) { mutableStateOf<String?>(null) }
-    val visibleDate = LocalDate.parse(dateText)
+    var monthDayText by rememberSaveable(view, effectiveSelection, displayNow.zone) { mutableStateOf<String?>(null) }
     var agendaRangeText by rememberSaveable(view) {
         val initial = agendaWindow(visibleDate, 31)
         mutableStateOf("${initial.start}/${initial.endExclusive}")
     }
     val agendaRange = remember(agendaRangeText) { agendaRangeText.split('/').let { CalendarDateRange(LocalDate.parse(it[0]), LocalDate.parse(it[1])) } }
     val month = YearMonth.from(visibleDate)
-    val firstWeekday = WeekFields.of(LocalLocale.current.platformLocale).firstDayOfWeek
+    val firstWeekday = options.firstWeekday.resolve(LocalLocale.current.platformLocale)
     val multiDays = if (view == CalendarViewOption.WEEK) 7 else 3
     var multiDayRangeText by rememberSaveable(view, firstWeekday) {
         val initial = planningMultiDayRange(visibleDate, multiDays, firstWeekday)
@@ -114,35 +129,43 @@ internal fun LiveCalendarDay(
         CalendarViewOption.THREE_DAY, CalendarViewOption.WEEK -> multiDayRange
         else -> CalendarDateRange(visibleDate.minusDays(1), visibleDate.plusDays(2))
     }
-    val request = remember(range, now.zone, effectiveSelection) { CalendarRequest(range, now.zone, effectiveSelection) }
+    val request = remember(range, displayNow.zone, effectiveSelection) { CalendarRequest(range, displayNow.zone, effectiveSelection) }
     var openedEvent by remember { mutableStateOf<OpenedEvent?>(null) }
-    fun openEvent(ref: EventRef) { openedEvent = OpenedEvent(ref, dateText, view, effectiveSelection, now.zone) }
-    val selected = openedEvent?.takeIf { it.dateText == dateText && it.view == view && it.selection == effectiveSelection && it.zone == now.zone }?.ref
-    LaunchedEffect(dateText, view, effectiveSelection, now.zone) {
+    fun openEvent(ref: EventRef) { openedEvent = OpenedEvent(ref, currentDate().toString(), view, effectiveSelection, displayNow.zone) }
+    val selected = openedEvent?.takeIf { it.dateText == dateText && it.view == view && it.selection == effectiveSelection && it.zone == displayNow.zone }?.ref
+    LaunchedEffect(dateText, view, effectiveSelection, displayNow.zone) {
         if (openedEvent != null && selected == null) openedEvent = null
     }
-    val snapshots = remember(reader, request) { reader.observeEvents(request) }
+    val providerSnapshots = remember(reader, request) { reader.observeEvents(request) }
+    val snapshots = remember(providerSnapshots, options.showDeclined) {
+        if (options.showDeclined) providerSnapshots else providerSnapshots.map { state ->
+            if (state is CalendarReadState.Ready) CalendarReadState.Ready(state.value.copy(occurrences = state.value.occurrences.filterNot { it.declined }))
+            else state
+        }
+    }
     val snapshot by key(snapshots) { snapshots.collectAsStateWithLifecycle(initialValue = CalendarReadState.Loading) }
     val metadataFlow = remember(reader) { reader.observeCalendars() }
     val metadata by metadataFlow.collectAsStateWithLifecycle(initialValue = CalendarReadState.Loading)
     val calendars = (metadata as? CalendarReadState.Ready)?.value.orEmpty()
     val writable = mutations != null && drafts != null
-    val createDateAction: ((LocalDate) -> Unit)? = onCreateDate ?: if (writable) ({ date ->
-        if (!preparingWrite) {
+    fun beginCreate(date: LocalDate, allDay: Boolean) {
+        if (writable && !preparingWrite) {
             preparingWrite = true
             scope.launch {
                 try {
-                    val requested = EventWriteRequest.create(date, now.zone, preferences.defaultCalendar)
+                    val requested = EventWriteRequest.create(date, displayNow.zone, preferences.defaultCalendar)
                     val calendar = calendars.firstOrNull { it.id == preferences.defaultCalendar && it.capabilities.createEvents == AccessDecision.ALLOWED }?.id
-                    val initial = EventDraft(calendar ?: CalendarId(0), EventTime.AllDay(CalendarDateRange.day(date)), null, "")
+                    val initial = eventCreationDraft(date, allDay, displayNow, options, calendar)
+                    if (initial == null) { onDraftFailure(); return@launch }
                     val prepared = prepareNewDraft(initial, requested.draftId, calendar != null, requireNotNull(drafts), draftClock)
                     if (prepared is DraftPreparationResult.Ready)
-                        writeRequestText = EventWriteRequest.fromLaunch(prepared.launch, date, now.zone).encode()
+                        writeRequestText = EventWriteRequest.fromLaunch(prepared.launch, date, displayNow.zone).encode()
                     else onDraftFailure()
                 } finally { preparingWrite = false }
             }
         }
-    }) else null
+    }
+    val createDateAction: ((LocalDate) -> Unit)? = onCreateDate ?: if (writable) ({ date -> beginCreate(date, true) }) else null
     fun beginEdit(ref: EventRef, delete: Boolean) {
         if (!writable || preparingWrite) return
         openedEvent = null
@@ -151,10 +174,10 @@ internal fun LiveCalendarDay(
             try {
                 val loaded = requireNotNull(mutations).loadForEdit(ref)
                 if (loaded is EditReadResult.Ready && loaded.event.details.occurrence.ref == ref) {
-                    val requested = EventWriteRequest.edit(ref, now.zone, delete)
+                    val requested = EventWriteRequest.edit(ref, displayNow.zone, delete)
                     val prepared = prepareEditDraft(loaded.event.details.editorSeed(), loaded.event, requested.draftId, requireNotNull(drafts), draftClock)
                     if (prepared is DraftPreparationResult.Ready)
-                        writeRequestText = EventWriteRequest.fromLaunch(prepared.launch, visibleDate, now.zone, delete).encode()
+                        writeRequestText = EventWriteRequest.fromLaunch(prepared.launch, visibleDate, displayNow.zone, delete).encode()
                     else onDraftFailure()
                 } else onDraftFailure()
             } finally { preparingWrite = false }
@@ -168,10 +191,10 @@ internal fun LiveCalendarDay(
             try {
                 val target = calendars.firstOrNull { it.id == details.occurrence.ref.calendarId && it.capabilities.createEvents == AccessDecision.ALLOWED }?.id
                     ?: calendars.firstOrNull { it.id == preferences.defaultCalendar && it.capabilities.createEvents == AccessDecision.ALLOWED }?.id
-                val requested = EventWriteRequest.create(visibleDate, now.zone, target)
+                val requested = EventWriteRequest.create(visibleDate, displayNow.zone, target)
                 val prepared = prepareDuplicateDraft(details, target, requested.draftId, requireNotNull(drafts), clock = draftClock)
                 if (prepared is DraftPreparationResult.Ready)
-                    writeRequestText = EventWriteRequest.fromLaunch(prepared.launch, visibleDate, now.zone).encode()
+                    writeRequestText = EventWriteRequest.fromLaunch(prepared.launch, visibleDate, displayNow.zone).encode()
                 else onDraftFailure()
             } finally { preparingWrite = false }
         }
@@ -182,6 +205,9 @@ internal fun LiveCalendarDay(
     }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val drawerActions: @Composable ColumnScope.() -> Unit = {
+        if (settings != null) TextButton(onClick = { scope.launch { drawer.close(); showSettings = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+            Text(stringResource(R.string.settings_title))
+        }
         if (writable) {
             HorizontalDivider()
             TextButton(onClick = { scope.launch { drawer.close(); showDrafts = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
@@ -236,12 +262,12 @@ internal fun LiveCalendarDay(
             }
             Box(Modifier.weight(1f)) {
                 if (view == CalendarViewOption.DAY) {
-                    DayScreen(now, use24Hour, preferences.hourHeight, forDay, onSaveHourHeight,
+                    DayScreen(displayNow, use24Hour, preferences.hourHeight, forDay, onSaveHourHeight,
                         onEventClick = { it.ref?.let(::openEvent) }, initialDate = visibleDate,
                         initialScrollHour = scrollMinute.takeIf { it >= 0 }?.div(60),
                         actions = controls, leadingActions = openCalendars, compactTitle = settings != null,
                         summary = summary, background = background,
-                        onVisibleDateChanged = { dateText = it.toString() }, onRetry = reader::refresh,
+                        onVisibleDateChanged = { selectedDateState.value = it.toString() }, onRetry = reader::refresh,
                         onScrollMinuteChanged = { scrollMinute = it })
                 } else Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -249,36 +275,36 @@ internal fun LiveCalendarDay(
                     }
                     when (val state = snapshot) {
                         is CalendarReadState.Ready -> if (view == CalendarViewOption.AGENDA) {
-                            AgendaView(agendaRange, visibleDate, state.value.occurrences, now.zone,
-                                onSelectDate = { dateText = it.toString() }, onOpenEvent = ::openEvent,
+                            AgendaView(agendaRange, visibleDate, state.value.occurrences, displayNow.zone,
+                                onSelectDate = { selectedDateState.value = it.toString() }, onOpenEvent = ::openEvent,
                                 onRequestRange = { agendaRangeText = "${it.start}/${it.endExclusive}" },
-                                today = now.toLocalDate(), modifier = Modifier.weight(1f))
+                                today = displayNow.toLocalDate(), modifier = Modifier.weight(1f))
                         } else if (view == CalendarViewOption.THREE_DAY || view == CalendarViewOption.WEEK) {
-                            key(view) { MultiDayView(multiDayRange, visibleDate, state.value.occurrences, now, now.zone, use24Hour,
+                            key(view) { MultiDayView(multiDayRange, visibleDate, state.value.occurrences, displayNow, displayNow.zone, use24Hour,
                                 preferences.hourHeight, onSaveHourHeight,
-                                onSelectDate = { dateText = it.toString() }, onOpenEvent = ::openEvent,
+                                onSelectDate = { selectedDateState.value = it.toString() }, onOpenEvent = ::openEvent,
                                 onShowDateEvents = { monthDayText = it.toString() },
                                 onNavigateRange = { next ->
                                     val aligned = if (view == CalendarViewOption.WEEK)
-                                        planningMultiDayRange(LocalDate.parse(dateText), 7, firstWeekday) else next
+                                        planningMultiDayRange(currentDate(), 7, firstWeekday) else next
                                     multiDayRangeText = "${aligned.start}/${aligned.endExclusive}"
                                 }, initialScrollMinute = scrollMinute.takeIf { it >= 0 }, onScrollMinuteChanged = { scrollMinute = it },
-                                summary = summary, background = background, modifier = Modifier.weight(1f)) }
-                        } else MonthView(month, visibleDate, firstWeekday, state.value.occurrences, now.zone,
-                            onSelectDate = { dateText = it.toString() }, onOpenEvent = ::openEvent,
+                                summary = summary, background = background, modifier = Modifier.weight(1f), showWeekends = options.showWeekends) }
+                        } else MonthView(month, visibleDate, firstWeekday, state.value.occurrences, displayNow.zone,
+                            onSelectDate = { selectedDateState.value = it.toString() }, onOpenEvent = ::openEvent,
                             onCreateDate = { createDateAction?.invoke(it) },
                             onNavigateMonth = { next ->
                                 // Date picker/Today select a date immediately before navigating its month.
-                                val currentDay = LocalDate.parse(dateText).dayOfMonth
-                                dateText = next.atDay(minOf(currentDay, next.lengthOfMonth())).toString()
+                                val currentDay = currentDate().dayOfMonth
+                                selectedDateState.value = next.atDay(minOf(currentDay, next.lengthOfMonth())).toString()
                             },
-                            today = now.toLocalDate(), modifier = Modifier.weight(1f), allowCreation = canCreate,
-                            onShowDateEvents = { monthDayText = it.toString() })
+                            today = displayNow.toLocalDate(), modifier = Modifier.weight(1f), allowCreation = canCreate,
+                            onShowDateEvents = { monthDayText = it.toString() }, showWeekends = options.showWeekends)
                         else -> CalendarReadNotice(state, reader::refresh)
                     }
                 }
                 if (canCreate && createDateAction != null) {
-                    ExtendedFloatingActionButton(onClick = { createDateAction(visibleDate) },
+                    ExtendedFloatingActionButton(onClick = { if (onCreateDate != null) onCreateDate(visibleDate) else beginCreate(visibleDate, false) },
                         modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)) { Text(stringResource(R.string.navigation_create_event)) }
                 }
             }
@@ -288,7 +314,7 @@ internal fun LiveCalendarDay(
         val date = LocalDate.parse(text)
         val ready = (snapshot as? CalendarReadState.Ready)?.value
         if (ready != null && date in ready.request.range) {
-            MonthDaySheet(date, monthEventsByDate(listOf(date), ready.occurrences, now.zone).getValue(date), now.zone,
+            MonthDaySheet(date, monthEventsByDate(listOf(date), ready.occurrences, displayNow.zone).getValue(date), displayNow.zone,
                 onDismiss = { monthDayText = null }, onOpenEvent = { monthDayText = null; openEvent(it) },
                 onCreateDate = if (canCreate) createDateAction?.let { create -> { monthDayText = null; create(date) } } else null)
         } else ModalBottomSheet(onDismissRequest = { monthDayText = null }) {
@@ -318,7 +344,7 @@ internal fun LiveCalendarDay(
         }
         val state by key(details) { details.collectAsStateWithLifecycle(initialValue = CalendarReadState.Loading) }
         EventDetailsStateSheet(state, onDismiss = { openedEvent = null }, onRetry = reader::refresh,
-            onOpenLink = onOpenLink, displayZone = now.zone, use24Hour = use24Hour,
+            onOpenLink = onOpenLink, displayZone = displayNow.zone, use24Hour = use24Hour,
             onEdit = if (writable) ({ value -> beginEdit(value, false) }) else null,
             onDelete = if (writable) ({ value -> beginEdit(value, true) }) else null,
             onDuplicate = if (writable) ::duplicate else null)
@@ -330,11 +356,39 @@ internal fun LiveCalendarDay(
             onSaved = { writeRequestText = null; reader.refresh(); onLocalSaved() },
             onDeleted = { writeRequestText = null; reader.refresh(); onLocalDeleted() })
     }
+    if (showSettings && settings != null) SettingsSheet(options, availableViews,
+        onSave = { updated ->
+            if (!savingSettings) scope.launch {
+                savingSettings = true
+                try {
+                    if (settings.setDisplaySettings(updated)) { showSettings = false; settingsSaveFailed = false }
+                    else settingsSaveFailed = true
+                } finally { savingSettings = false }
+            }
+        }, onDismiss = { showSettings = false; settingsSaveFailed = false },
+        onChooseDefaultCalendar = { showDefaultCalendar = true }, onOpenReminderSetup = null,
+        saving = savingSettings,
+        saveError = if (settingsSaveFailed) stringResource(R.string.navigation_preferences_unavailable) else null)
+    if (showDefaultCalendar && settings != null) AlertDialog(onDismissRequest = { showDefaultCalendar = false },
+        title = { Text(stringResource(R.string.calendars_creation_default)) },
+        text = { LazyColumn {
+            if (metadata is CalendarReadState.Ready) {
+                item { TextButton(onClick = { scope.launch {
+                    if (settings.setDefaultCalendar(null, calendars)) showDefaultCalendar = false else onPreferenceFailure()
+                } }) { Text(stringResource(R.string.calendars_ask_each_time)) } }
+                calendars.filter { it.capabilities.createEvents == AccessDecision.ALLOWED }.forEach { calendar -> item {
+                    TextButton(onClick = { scope.launch {
+                        if (settings.setDefaultCalendar(calendar.id, calendars)) showDefaultCalendar = false else onPreferenceFailure()
+                    } }) { Text("${calendar.displayName} · ${calendar.account.name}") }
+                } }
+            } else item { CalendarReadNotice(metadata, reader::refresh) }
+        } },
+        confirmButton = { TextButton(onClick = { showDefaultCalendar = false }) { Text(stringResource(R.string.calendars_close)) } })
     if (showDrafts && drafts != null && writable) DraftBrowserSheet(drafts, onDismiss = { showDrafts = false },
         onOpen = { launch ->
             showDrafts = false
-            writeRequestText = EventWriteRequest.fromLaunch(launch, visibleDate, now.zone).encode()
-        }, displayZone = now.zone)
+            writeRequestText = EventWriteRequest.fromLaunch(launch, visibleDate, displayNow.zone).encode()
+        }, displayZone = displayNow.zone)
 }
 
 /** Locale week alignment is a navigation policy, independent of event/recurrence expansion. */

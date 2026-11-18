@@ -13,6 +13,8 @@ import dev.swapnilraj.calendar.core.CalendarId
 import dev.swapnilraj.calendar.core.CalendarSelection
 import dev.swapnilraj.calendar.core.CalendarInfo
 import dev.swapnilraj.calendar.core.AccessDecision
+import dev.swapnilraj.calendar.data.settings.CalendarSettingsCodec
+import dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions
 import java.util.Base64
 import java.io.IOException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -58,11 +60,18 @@ class Settings(context: Context, dataStore: DataStore<Preferences>? = null) {
                 raw.toLongOrNull()?.takeIf { it >= 0 }?.let(::CalendarId)
             }.toSet())
         } ?: CalendarSelection.ProviderVisible
+        val currentView = values[viewKey]?.takeIf { it in views } ?: "DAY"
         return CalendarPreferences(selection,
             values[defaultCalendarKey]?.takeIf { it >= 0 }?.let(::CalendarId),
-            values[viewKey]?.takeIf { it in views } ?: "DAY",
-            (values[key] ?: 64f).takeIf(Float::isFinite)?.coerceIn(32f, 160f) ?: 64f)
+            currentView,
+            (values[key] ?: 64f).takeIf(Float::isFinite)?.coerceIn(32f, 160f) ?: 64f,
+            CalendarSettingsCodec.read(values, currentView))
     }
+
+    suspend fun setDisplaySettings(options: CalendarSettingsOptions): Boolean = try {
+        store.edit { CalendarSettingsCodec.write(it, options) }
+        true
+    } catch (_: IOException) { false }
 
     suspend fun setCalendarView(view: String): Boolean {
         if (view !in views) return false
