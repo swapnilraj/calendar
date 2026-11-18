@@ -149,8 +149,8 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState)
                         seriesMutations = seriesMutations,
                         search = app.calendarSearch,
                         drafts = app.calendarLocalStore,
-                        onLocalSaved = { scope.launch { snackbar.showSnackbar(localSaved) } },
-                        onLocalDeleted = { scope.launch { snackbar.showSnackbar(localDeleted) } },
+                        onLocalSaved = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localSaved) } },
+                        onLocalDeleted = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localDeleted) } },
                         onDraftFailure = { scope.launch { snackbar.showSnackbar(draftUnavailable) } },
                         onPreferenceFailure = { scope.launch { snackbar.showSnackbar(preferencesUnavailable) } },
                         background = { date ->

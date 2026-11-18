@@ -7,6 +7,11 @@ import androidx.activity.enableEdgeToEdge
 import dev.swapnilraj.calendar.ui.DaylightContent
 
 class MainActivity : ComponentActivity() {
+    override fun onResume() {
+        super.onResume()
+        (application as CalendarApp).reminderRuntime.onResume()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

@@ -17,9 +17,18 @@ import android.content.pm.PackageManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import dev.swapnilraj.calendar.android.reminders.ReminderRuntimeOwner
+import dev.swapnilraj.calendar.android.reminders.ReminderRuntime
 
-class CalendarApp : Application() {
+class CalendarApp : Application(), ReminderRuntimeOwner {
     private val calendarScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+    private val reminderScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
+    override val reminderRuntime: ReminderRuntime by lazy { createReminderRuntime(reminderScope) }
+
+    override fun onCreate() {
+        super.onCreate()
+        reminderRuntime.onProcessStarted()
+    }
     val calendarReader by lazy { CalendarReader(contentResolver, calendarScope) }
     val calendarLocalStore by lazy { CalendarLocalStore(this) }
     val calendarWriter by lazy { CalendarWriter(contentResolver, calendarReader, calendarLocalStore,

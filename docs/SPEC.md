@@ -123,18 +123,21 @@ the contract alone does not establish bounded provider reads.
    without copying anyone's branding, icons or fonts.
 6. **No accounts.** Calendar data comes from Android's calendar store. No sign-in, and no server of our own.
 
-Reminder framework components declare notification and persisted-job boot permissions. Their presence
-is a prerequisite for runtime wiring; app-owned background delivery is not yet enabled or device-verified.
-Notification permission must still be requested through explicit setup before posting.
+The Application owns one reminder runtime/coordinator/ledger, with fresh reminder configuration and
+device-zone suppliers. Startup registers recovery, resume and local event changes reconcile, and
+private alarm/action/recovery receivers plus the permission-protected job service are registered.
+Exact-alarm access has an inexact fallback. Reminders remain disabled by default; calendar setup and
+notification-open navigation are still pending integration, and no device delivery is claimed.
+Notification permission must be requested through explicit setup before posting.
 Runtime startup, resume, notification actions and content-job rearming serialize configuration reads
 with job registration/cancellation. An older suspended read cannot cancel a newer enabled registration
-or resurrect observation after a later disable. Health publication follows that operation ordering.
+or resurrect observation after a later disable. Cycle health is published within the operation boundary.
 Reminder preferences have a separate DataStore read state within the app preference store. Missing
 settings start disabled; corrupt or unavailable settings never substitute disabled configuration or
 overwrite the stored value. Background configuration suppliers perform a fresh read. Setup saves use
 an atomic expected-snapshot comparison, so delayed setup or namespace strengthening cannot overwrite
 newer choices. A lost acknowledgement requires readback/review. Display filters and event defaults do
-not select reminder calendars. These persistence seams do not enable delivery before runtime wiring.
+not select reminder calendars. These persistence seams do not themselves enable reminder setup.
 
 ## Approved daily-driver target (18 November 2026)
 
