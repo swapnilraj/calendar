@@ -29,7 +29,7 @@ class NullZoneTravelEditTest {
     private val start = Instant.parse("2028-06-15T09:00:00Z")
     private val ref = EventRef(CalendarId(2), 7, start, start.plusSeconds(3600))
     private val clock = Clock.fixed(Instant.parse("2028-06-01T00:00:00.123456789Z"), ZoneOffset.UTC)
-    private suspend fun fixture(block: suspend (Fixture) -> Unit) {
+    internal suspend fun fixture(block: suspend (Fixture) -> Unit) {
         val oldZone = TimeZone.getDefault()
         try {
             TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
@@ -60,7 +60,7 @@ class NullZoneTravelEditTest {
             }
         } finally { TimeZone.setDefault(oldZone) }
     }
-    private inner class Fixture(val provider: NativeSeriesTemporalJourneyProvider, val store: CalendarLocalStore, val scope: CoroutineScope,
+    internal inner class Fixture(val provider: NativeSeriesTemporalJourneyProvider, val store: CalendarLocalStore, val scope: CoroutineScope,
         val writer: CalendarWriter) {
         val patches = mutableListOf<EventPatch>()
         val captured = object : CalendarMutations by writer {
