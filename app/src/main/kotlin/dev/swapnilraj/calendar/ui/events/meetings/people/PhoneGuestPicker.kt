@@ -70,6 +70,7 @@ internal fun PhoneGuestPicker(rows: List<MeetingCreationGuestFields>, enabled: B
     LaunchedEffect(session,contactsPermissionGranted) { session.observePermission(contactsPermissionGranted) }
     BackHandler { close() }
     val active=enabled && !finishing && !closed
+    val proseStyle=LocalTextStyle.current.copy(textDirection=TextDirection.ContentOrLtr)
     Surface(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
             Row(Modifier.fillMaxWidth().heightIn(min=64.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -88,12 +89,12 @@ internal fun PhoneGuestPicker(rows: List<MeetingCreationGuestFields>, enabled: B
                         TextButton(enabled=active && session.query.isNotEmpty(),onClick={session.changeQuery("")}) {Text(stringResource(R.string.guest_picker_clear))}
                         TextButton(enabled=active && session.query.isNotEmpty(),onClick={onAdd(session.query,null);session.changeQuery("")}) {Text(stringResource(R.string.guest_picker_add_email))}
                     }
-                    Text(stringResource(R.string.guest_picker_manual_help),style=MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.guest_picker_manual_help),style=MaterialTheme.typography.bodySmall.copy(textDirection=TextDirection.ContentOrLtr))
                 }
                 if(source!=null) item {
                     if(!session.optedIn) TextButton(enabled=active,onClick={session.optIn();if(!contactsPermissionGranted) requestContactsPermission()}) {Text(stringResource(R.string.guest_picker_enable_contacts))}
                     else if(!contactsPermissionGranted) {
-                        Text(stringResource(R.string.guest_picker_permission_help))
+                        Text(stringResource(R.string.guest_picker_permission_help),style=proseStyle)
                         TextButton(enabled=active,onClick=requestContactsPermission) {Text(stringResource(R.string.guest_picker_permission_retry))}
                     }
                 }
@@ -114,19 +115,19 @@ internal fun PhoneGuestPicker(rows: List<MeetingCreationGuestFields>, enabled: B
                                     }
                                 }
                             }
-                            if(result.truncated) item {Text(stringResource(R.string.guest_picker_refine))}
+                            if(result.truncated) item {Text(stringResource(R.string.guest_picker_refine),style=proseStyle)}
                         }
-                        DeviceContactSearchResult.Unavailable, DeviceContactSearchResult.LimitExceeded -> item {Text(stringResource(R.string.guest_picker_unavailable))}
-                        DeviceContactSearchResult.PermissionRequired -> item {Text(stringResource(R.string.guest_picker_permission_help))}
-                        DeviceContactSearchResult.InvalidQuery -> item {Text(stringResource(R.string.guest_picker_invalid_query))}
-                        else -> item {Text(stringResource(R.string.guest_picker_query_help))}
+                        DeviceContactSearchResult.Unavailable, DeviceContactSearchResult.LimitExceeded -> item {Text(stringResource(R.string.guest_picker_unavailable),style=proseStyle)}
+                        DeviceContactSearchResult.PermissionRequired -> item {Text(stringResource(R.string.guest_picker_permission_help),style=proseStyle)}
+                        DeviceContactSearchResult.InvalidQuery -> item {Text(stringResource(R.string.guest_picker_invalid_query),style=proseStyle)}
+                        else -> item {Text(stringResource(R.string.guest_picker_query_help),style=proseStyle)}
                     }
                 }
                 if(rows.isNotEmpty()) {
                     item {Text(stringResource(R.string.guest_picker_draft_rows),style=MaterialTheme.typography.titleSmall)}
                     items(rows,key={it.rowId}) {row->Column {Text(row.email,style=LocalTextStyle.current.copy(textDirection=TextDirection.ContentOrLtr));if(row.name.isNotEmpty()) Text(row.name)}}
                 }
-                if(flushFailed) item {Text(stringResource(R.string.guest_picker_flush_failed),color=MaterialTheme.colorScheme.error,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
+                if(flushFailed) item {Text(stringResource(R.string.guest_picker_flush_failed),style=proseStyle,color=MaterialTheme.colorScheme.error,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
             }
         }
     }
