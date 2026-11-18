@@ -63,7 +63,9 @@ fun PhoneEventEditor(
             onReview = if (onReviewExisting != null) ({ scope.launch { controller.reloadExisting()?.let(onReviewExisting) } }) else null,
             onUpgrade = if (onReplacedLaunch != null) ({ scope.launch { controller.upgradeLegacyDraft()?.let(onReplacedLaunch) } }) else null,
             onReplace = if (onReplacedLaunch != null) ({ scope.launch { controller.replaceDraft()?.let(onReplacedLaunch) } }) else null,
-            onDiscard = if (onDiscarded != null) ({ scope.launch { if (controller.discardDraft()) onDiscarded() } }) else null)
+            onDiscard = if (onDiscarded != null) ({ scope.launch { if (controller.discardDraft()) onDiscarded() } }) else null,
+            onInspectRetirement = { scope.launch { controller.inspectRetirement() } },
+            onAcknowledgeOutcome = { scope.launch { controller.acknowledgeLocalOutcome() } })
     }
 }
 
@@ -73,6 +75,7 @@ internal fun PhoneEventEditorContent(
     controller: EventEditorController, calendars: List<CalendarInfo>, onClose: () -> Unit,
     use24Hour: Boolean = true, onReview: (() -> Unit)? = null, onUpgrade: (() -> Unit)? = null,
     onReplace: (() -> Unit)? = null, onDiscard: (() -> Unit)? = null,
+    onInspectRetirement: (() -> Unit)? = null, onAcknowledgeOutcome: (() -> Unit)? = null,
 ) {
     val view = PhoneEventEditorPresentation(controller, calendars)
     val state = view.state; val fields = view.fields
@@ -97,7 +100,9 @@ internal fun PhoneEventEditorContent(
             Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(scroll).padding(bottom = 32.dp)) {
                 if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                 PhoneEditorStatus(controller, onReview, onUpgrade, onReplace = { confirm = "replace" }.takeIf { onReplace != null },
-                    onDiscard = { confirm = "discard" }.takeIf { onDiscard != null }, onRetryDelete = { confirm = "retryDelete" }, use24Hour = use24Hour)
+                    onDiscard = { confirm = "discard" }.takeIf { onDiscard != null }, onRetryDelete = { confirm = "retryDelete" }, use24Hour = use24Hour,
+                    onInspectRetirement = onInspectRetirement ?: { scope.launch { controller.inspectRetirement() }; Unit },
+                    onAcknowledgeOutcome = onAcknowledgeOutcome ?: { scope.launch { controller.acknowledgeLocalOutcome() }; Unit })
                 val titleLabel = stringResource(R.string.phone_event_title)
                 TextField(fields.title, { value -> controller.change { it.copy(title = value) } }, enabled = view.canEdit(EditableField.TITLE),
                     placeholder = { Text(stringResource(R.string.phone_event_add_title)) }, textStyle = MaterialTheme.typography.headlineMedium,
@@ -163,8 +168,9 @@ internal fun PhoneEditorRow(icon: PhoneEventGlyph, title: String, subtitle: Stri
 }
 
 @Composable
-private fun PhoneEditorStatus(controller: EventEditorController, onReview: (() -> Unit)?, onUpgrade: (() -> Unit)?, onReplace: (() -> Unit)?, onDiscard: (() -> Unit)?, onRetryDelete: () -> Unit, use24Hour: Boolean) {
-    val state = controller.state; val scope = rememberCoroutineScope()
+private fun PhoneEditorStatus(controller: EventEditorController, onReview: (() -> Unit)?, onUpgrade: (() -> Unit)?, onReplace: (() -> Unit)?, onDiscard: (() -> Unit)?, onRetryDelete: () -> Unit, use24Hour: Boolean,
+    onInspectRetirement: () -> Unit, onAcknowledgeOutcome: () -> Unit) {
+    val state = controller.state
     val attention = state.legacy || state.reviewRequired || state.recoveryRequired || controller.hasFrozenSubmission || state.draftReadFailed || state.localOutcome != null
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         state.problem?.let { Text(stringResource(if (it == EditorProblem.PERMISSION && controller.hasFrozenSubmission) R.string.phone_event_pending_permission else phoneEditorProblem(it)), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }
@@ -177,8 +183,8 @@ private fun PhoneEditorStatus(controller: EventEditorController, onReview: (() -
         if (controller.canUpgrade && onUpgrade != null) TextButton(onClick = onUpgrade) { Text(stringResource(R.string.phone_event_continue)) }
         if (attention && controller.canReplace && onReplace != null) TextButton(onClick = onReplace) { Text(stringResource(R.string.phone_event_replace)) }
         if (attention && controller.canDiscard && onDiscard != null) TextButton(onClick = onDiscard) { Text(stringResource(R.string.phone_event_discard)) }
-        if (controller.canInspectRetirement) TextButton(onClick = { scope.launch { controller.inspectRetirement() } }, enabled = !state.saving) { Text(stringResource(R.string.phone_event_check_discard)) }
-        if (controller.canAcknowledge) TextButton(onClick = { scope.launch { controller.acknowledgeLocalOutcome() } }) { Text(stringResource(R.string.phone_event_finish_close)) }
+        if (controller.canInspectRetirement) TextButton(onClick = onInspectRetirement, enabled = !state.saving) { Text(stringResource(R.string.phone_event_check_discard)) }
+        if (controller.canAcknowledge) TextButton(onClick = onAcknowledgeOutcome) { Text(stringResource(R.string.phone_event_finish_close)) }
     }
 }
 

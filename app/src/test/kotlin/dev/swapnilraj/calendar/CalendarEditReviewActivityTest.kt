@@ -192,6 +192,57 @@ class CalendarEditReviewActivityTest {
         } finally { replay.pause().stop().destroy() }
     }
 
+    @Test fun readLossMaskPreservesFinishCloseCleanupAfterExactDeleteButBeforeAcknowledgment() {
+        setup()
+        val request = f.request()
+        val proofStarted = CompletableDeferred<Unit>(); val releaseProof = CompletableDeferred<Unit>()
+        val cleanupCommitted = CompletableDeferred<Unit>(); val releaseAck = CompletableDeferred<Unit>()
+        var cleanupAttempts = 0; var cleanupCancelled = false
+        f.store.beforeChange = { id, _, next ->
+            if (id == request.nativeId && next == null && ++cleanupAttempts == 1) error("Synthetic first cleanup unavailable")
+        }
+        val host = launch(request)
+        try {
+            shown(app.getString(R.string.incoming_edit_review_apply)); apply(); save()
+            shown(app.getString(R.string.phone_event_finish_close))
+            assertEquals(1, f.writes); assertEquals(1, cleanupAttempts)
+            val native = requireNotNull(f.store.rows[request.nativeId])
+            val receipt = requireNotNull(f.store.rows[request.reviewId])
+            assertTrue(OrdinaryDraftDocument.decode(native).hasRequest)
+            f.store.afterChange = { id, expected, next ->
+                if (id == request.nativeId && next == null) {
+                    assertEquals(native, expected)
+                    shadowOf(app).denyPermissions(Manifest.permission.READ_CALENDAR)
+                    f.environment = CalendarReadState.Ready((f.environment as CalendarReadState.Ready).value.copy(calendars = emptyList(), calendarReadGranted = false))
+                    f.store.beforeLoad = { loaded ->
+                        if (loaded == request.nativeId && !proofStarted.isCompleted) {
+                            proofStarted.complete(Unit); releaseProof.await()
+                        }
+                    }
+                    cleanupCommitted.complete(Unit); f.changes.emit(Unit)
+                    try { releaseAck.await() } finally { cleanupCancelled = !currentCoroutineContext().isActive }
+                }
+            }
+            compose.onNodeWithText(app.getString(R.string.phone_event_finish_close)).performScrollTo().performClick()
+            compose.waitUntil(8_000) { cleanupCommitted.isCompleted && proofStarted.isCompleted }
+            compose.onNodeWithText("Proposed synthetic title").assertDoesNotExist()
+            compose.onNodeWithText(app.getString(R.string.phone_event_finish_close)).assertDoesNotExist()
+            compose.onNodeWithText(app.getString(R.string.events_editor_save)).assertDoesNotExist()
+            assertFalse(cleanupCancelled); assertNull(f.store.rows[request.nativeId])
+            assertEquals(receipt, f.store.rows[request.reviewId])
+            releaseProof.complete(Unit); compose.waitForIdle()
+            releaseAck.complete(Unit)
+            compose.waitUntil(8_000) { compose.onAllNodesWithText(app.getString(R.string.events_editor_save)).fetchSemanticsNodes(); host.get().isFinishing }
+            assertFalse(cleanupCancelled); assertEquals(2, cleanupAttempts); assertEquals(1, f.writes)
+            assertNull(f.store.rows[request.nativeId]); assertEquals(receipt, f.store.rows[request.reviewId])
+        } finally { releaseProof.complete(Unit); releaseAck.complete(Unit); host.pause().stop().destroy() }
+        val replay = launch(request)
+        try {
+            shown(app.getString(R.string.incoming_edit_review_consumed))
+            assertEquals(1, f.writes); assertEquals(2, cleanupAttempts)
+        } finally { replay.pause().stop().destroy() }
+    }
+
     @Test fun frozenResumeAndRecoverUseReceiptBackendProofWithoutMutableUidSourceRead() {
         setup(write = false)
         val request = f.request()

@@ -16,6 +16,7 @@ internal class EditReviewStore : AtomicDraftStore {
     val rows = linkedMapOf<String, DraftRecord>()
     var unavailableAck = false; var failNative = false; var failReceipt = false; var hideReceipt = false
     var beforeChange: (suspend (String, DraftRecord?, DraftRecord?) -> Unit)? = null
+    var afterChange: (suspend (String, DraftRecord?, DraftRecord?) -> Unit)? = null
     var beforeLoad: (suspend (String) -> Unit)? = null
     override suspend fun load(id: String): DraftRecord? {
         beforeLoad?.invoke(id)
@@ -30,6 +31,7 @@ internal class EditReviewStore : AtomicDraftStore {
         if (failReceipt && replacement?.let(::isCalendarEditHandoffReceipt) == true) return DraftChangeResult.Unavailable
         if (rows[id] != expected) return DraftChangeResult.Changed
         if (replacement == null) rows.remove(id) else rows[id] = replacement
+        afterChange?.invoke(id, expected, replacement)
         return if (unavailableAck) DraftChangeResult.Unavailable else DraftChangeResult.Applied
     }
 }
