@@ -171,7 +171,7 @@ def validate_descriptor(value):
     return value
 
 
-def require_pass(report, mode, run_id):
+def require_pass(report, mode, run_id, end_zone_mode=None):
     if not isinstance(report, dict) or report.get("schema") != 1 or report.get("runId") != run_id or report.get("status") != "PASS":
         raise Refusal("native probe did not report a matching PASS; inspect retained cleanup status")
     expected_scope = "native-provider-identity-only" if mode == "identity" else "native-local-provider-only"
@@ -179,6 +179,8 @@ def require_pass(report, mode, run_id):
         raise Refusal("native report scope does not match the requested operation")
     descriptor = validate_descriptor(report.get("providerIdentity"))
     if mode == "fixtures":
+        if end_zone_mode not in ("distinct", "null") or report.get("endZoneMode") != end_zone_mode:
+            raise Refusal("native fixture end-zone mode does not match the explicit host request")
         if report.get("cleanup", {}).get("status") != "VERIFIED_CALENDAR_AND_TRACKED_IDS_ABSENT":
             raise Refusal("fixture cleanup absence was not verified")
         cases = report.get("cases")
@@ -194,8 +196,10 @@ def require_pass(report, mode, run_id):
             if key not in expected or key in seen:
                 raise Refusal("fixture matrix is duplicated or incomplete")
             seen.add(key)
-            if "requestedEndZone" not in case or "storedEndZone" not in case or case["requestedEndZone"] != case["storedEndZone"]:
-                raise Refusal("initial end-zone preservation did not match")
+            expected_end_zone = "Pacific/Honolulu" if key[0] != "utc-date-two-day" and end_zone_mode == "distinct" else None
+            if ("requestedEndZone" not in case or "storedEndZone" not in case or
+                    case["requestedEndZone"] != expected_end_zone or case["storedEndZone"] != expected_end_zone):
+                raise Refusal("initial end-zone preservation did not match the requested seed/mode")
             variants = [case.get("before")]
             if key[2] != "RULE_ONLY_CONTROL":
                 variants.append(case.get("after"))
@@ -418,7 +422,7 @@ def run(args):
         report = guarded_instrument(args.mode, pins, "instrumentation")
         state["probeReport"] = report
         state["guard"] = guard_device(adb, args)
-        actual = require_pass(report, args.mode, args.run_id)
+        actual = require_pass(report, args.mode, args.run_id, getattr(args, "end_zone_mode", None))
         if actual["buildFingerprint"] != state["guard"]["buildFingerprint"] or (pins and actual != pins):
             raise Refusal("completed report does not match the guarded pinned provider/build")
         state["status"] = "PASS"

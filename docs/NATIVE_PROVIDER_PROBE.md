@@ -61,13 +61,16 @@ logcat/account listings. The runner uses a UUID-specific LOCAL calendar and fina
 calendar ID/account/type/name/owner before deleting only that fixture. The negative control need
 not reproduce a bug; exact-context and rollback cases must pass. Distinct end zones are the default.
 If native setup rejects that input, inspect the failed report; an explicitly requested new UUID run
-can use `--end-zone-mode null`. The script never falls back or retries automatically.
+can use `--end-zone-mode null`. Native mode and every seed's requested/stored end zone must match
+the explicit host request. The script never falls back or retries automatically.
 
 Artifacts are created exclusively with no overwrites: APK SHA-256/size and guard metadata, bounded
 instrumentation stdout, parsed native reports, and a final `result.json`. A non-PASS, incomplete
 protocol, identity change, or cleanup failure exits nonzero while retaining available reports.
 Inspect the native report's cleanup status. Never automatically rerun an uncertain run or issue
-external cleanup. A reused fixture UUID is refused by the runner's preflight rather than adopted.
+external cleanup. Always use a fresh fixture UUID. The runner refuses an existing UUID namespace;
+it has no registry of prior cleaned runs and cannot prove that an explicitly supplied UUID was never
+used before.
 
 The 15-minute native deadline is cooperative; direct queries have 30-second cancellation signals.
 SDK `applyBatch` has no cancellation API and can outlive that deadline. The host continues monitoring
