@@ -132,6 +132,8 @@ local choices triggers reconciliation; missing permissions show setup without pr
 Raw choices remain mounted during permission recovery, and explicit reload starts a fresh collector
 and form only after the user requests discard. An uncertain preference save is read back before any
 success acknowledgement. Device delivery is not claimed by a local save.
+Delivery setup shows Checking until its latest requested reconciliation completes, and never presents
+old Ready health while current notification/calendar permissions or precise-alarm access are missing.
 Notification permission must be requested through explicit setup before posting.
 Runtime startup, resume, notification actions and content-job rearming serialize configuration reads
 with job registration/cancellation. An older suspended read cannot cancel a newer enabled registration

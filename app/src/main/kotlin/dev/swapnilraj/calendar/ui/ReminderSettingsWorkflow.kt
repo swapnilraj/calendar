@@ -46,9 +46,17 @@ internal fun ReminderSettingsWorkflow(app: CalendarApp, onDismiss: () -> Unit) {
     var permissionsOpen by rememberSaveable { mutableStateOf(false) }
     var finishAfterSetup by rememberSaveable { mutableStateOf(false) }
     var permissions by remember { mutableStateOf(ReminderPermissionReader(context).read()) }
+    var refreshVersion by remember { mutableLongStateOf(0) }
+    var healthPending by remember { mutableStateOf(true) }
     fun refreshPermissions() {
         permissions = ReminderPermissionReader(context).read()
-        app.reminderRuntime.onResume()
+        val version = ++refreshVersion
+        healthPending = true
+        val refresh = app.reminderRuntime.onResume()
+        scope.launch {
+            refresh.join()
+            if (version == refreshVersion) healthPending = false
+        }
     }
     val calendarPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refreshPermissions(); app.calendarReader.refresh() }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refreshPermissions() }
@@ -106,7 +114,13 @@ internal fun ReminderSettingsWorkflow(app: CalendarApp, onDismiss: () -> Unit) {
             Surface(Modifier.fillMaxSize()) {
                 Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                     TextButton(onClick = ::close) { Text(stringResource(if (finishAfterSetup) R.string.reminder_workflow_done else R.string.reminder_workflow_back)) }
-                    Text(stringResource(when (health.status) {
+                    val shownHealth = when {
+                        healthPending -> ReminderRuntimeStatus.UNKNOWN
+                        health.status == ReminderRuntimeStatus.READY && (!permissions.calendarAccess || !permissions.canPostNotifications) -> ReminderRuntimeStatus.PERMISSION_REQUIRED
+                        health.status == ReminderRuntimeStatus.READY && !permissions.exactAlarmAccess -> ReminderRuntimeStatus.DEGRADED
+                        else -> health.status
+                    }
+                    Text(stringResource(when (shownHealth) {
                         ReminderRuntimeStatus.UNKNOWN -> R.string.reminder_workflow_checking
                         ReminderRuntimeStatus.READY -> R.string.reminder_workflow_ready
                         ReminderRuntimeStatus.DISABLED -> R.string.reminder_workflow_disabled
