@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.events.EventEditorControllerTest
+import dev.swapnilraj.calendar.ui.events.prepareNewDraft
 import dev.swapnilraj.calendar.ui.*
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
 import java.time.*
@@ -73,6 +74,8 @@ class EventWriteWorkflowTest {
         val guarded = PermissionAwareMutations(writer, { permission }, { requests++ })
         val request = EventWriteRequest.create(date, ZoneOffset.UTC, null)
         val store = EventEditorControllerTest.Store()
+        runBlocking { prepareNewDraft(EventDraft(CalendarId(0), EventTime.AllDay(CalendarDateRange.day(date)), ZoneOffset.UTC, ""),
+            request.draftId, false, store) }
         compose.setContent { DaylightTheme {
             EventWriteWorkflow(request, guarded, store, listOf(calendar), true,
                 onDismiss = {}, onSaved = { saved = it }, onDeleted = {})
@@ -96,5 +99,26 @@ class EventWriteWorkflowTest {
         assertEquals(1, writer.creates)
         assertEquals(calendar.id, writer.saved?.calendarId)
         assertEquals(EventTime.AllDay(CalendarDateRange.day(date)), writer.saved?.time)
+    }
+
+    @Test fun restoredCompletedCreateWithMissingDraftNeverSeedsAnotherOperation() {
+        val writer = Writer(ref)
+        val request = EventWriteRequest.create(date, ZoneOffset.UTC, calendar.id)
+        val store = EventEditorControllerTest.Store()
+        runBlocking { prepareNewDraft(EventDraft(calendar.id, EventTime.AllDay(CalendarDateRange.day(date)), ZoneOffset.UTC, "Fixture"),
+            request.draftId, true, store) }
+        val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(compose)
+        restoration.setContent { DaylightTheme {
+            EventWriteWorkflow(request, writer, store, listOf(calendar), true, {}, {}, {})
+        } }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Save").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Save").performScrollTo().performClick()
+        compose.waitUntil(10_000) { writer.creates == 1 && store.records.isEmpty() }
+        restoration.emulateSavedInstanceStateRestore()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("This draft could not be opened.").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Save").assertDoesNotExist()
+        compose.onNodeWithText("Retry").performClick()
+        compose.waitForIdle()
+        assertEquals(1, writer.creates)
     }
 }

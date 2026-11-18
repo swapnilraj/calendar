@@ -40,6 +40,7 @@ fun CalendarDrawerSheet(
     onSelectionChanged: (CalendarSelection) -> Unit,
     onDefaultCalendarChanged: (CalendarId?) -> Unit,
     onDismiss: () -> Unit,
+    footer: @Composable ColumnScope.() -> Unit = {},
 ) {
     val unique = remember(calendars) { calendars.distinctBy { it.id } }
     val selected = selectedCalendarIds(unique, selection)
@@ -133,6 +134,7 @@ fun CalendarDrawerSheet(
                 }
             }
         }
+        footer()
     }
 }
 
