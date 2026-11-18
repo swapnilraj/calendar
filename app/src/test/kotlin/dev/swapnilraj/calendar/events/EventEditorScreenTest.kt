@@ -29,7 +29,7 @@ class EventEditorScreenTest {
     private val calendar = CalendarInfo(CalendarId(2), "Personal", 1, CalendarAccount("fixture@example.test", "Fixture"),
         "fixture@example.test", ZoneOffset.UTC, 700, true, true, CalendarCapabilities(createEvents = AccessDecision.ALLOWED))
     private val draft = EventDraft(calendar.id, EventTime.Timed(Instant.parse("2028-06-15T09:00:00Z"),
-        Instant.parse("2028-06-15T10:00:00Z")), ZoneOffset.UTC, "Future appointment", alertMinutes = listOf(10))
+        Instant.parse("2028-06-15T10:00:00Z")), ZoneOffset.UTC, "Future appointment", alertMinutes = listOf(10), targetIdentity = calendar.identity)
     private val ref = EventRef(calendar.id, 42, (draft.time as EventTime.Timed).start, (draft.time as EventTime.Timed).end)
     private var writes = 0
     private var writeResult: MutationResult? = null

@@ -29,4 +29,6 @@
     <string name="events_copy_calendar_visibility_review">Calendar default can change who sees this copy when its calendar changes. Choose Calendar default, Private, Public, or Confidential for the selected calendar before saving.</string>
     <string name="events_copy_visibility_required">Choose a visibility policy for the selected calendar before saving this copy.</string>
     <string name="events_copy_visibility_recovery_only">The original copy request has no verified visibility choice for its calendar. Its outcome can be checked, but retrying this request is disabled. Review the calendar before preparing another copy.</string>
+    <string name="events_calendar_reselection">Reselect the destination calendar to verify its account before saving. The draft fields are retained.</string>
+    <string name="events_calendar_recovery_only">The original request has no verified destination calendar binding. Its outcome can be checked, but retrying it is disabled. No current calendar account will be substituted.</string>
 </resources>

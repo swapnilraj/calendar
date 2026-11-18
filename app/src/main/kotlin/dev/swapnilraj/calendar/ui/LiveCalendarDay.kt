@@ -147,6 +147,7 @@ internal fun LiveCalendarDay(
     val metadataFlow = remember(reader) { reader.observeCalendars() }
     val metadata by metadataFlow.collectAsStateWithLifecycle(initialValue = CalendarReadState.Loading)
     val calendars = (metadata as? CalendarReadState.Ready)?.value.orEmpty()
+    val verifiedDefault = verifiedCreationCalendar(preferences, calendars)
     val writable = mutations != null && drafts != null
     fun beginCreate(date: LocalDate, allDay: Boolean) {
         if (writable && !preparingWrite) {
@@ -154,8 +155,8 @@ internal fun LiveCalendarDay(
             scope.launch {
                 try {
                     val requested = EventWriteRequest.create(date, displayNow.zone, preferences.defaultCalendar)
-                    val calendar = calendars.firstOrNull { it.id == preferences.defaultCalendar && it.capabilities.createEvents == AccessDecision.ALLOWED }?.id
-                    val initial = eventCreationDraft(date, allDay, displayNow, options, calendar)
+                    val calendar = verifiedDefault
+                    val initial = eventCreationDraft(date, allDay, displayNow, options, calendar?.id, calendar?.identity)
                     if (initial == null) { onDraftFailure(); return@launch }
                     val prepared = prepareNewDraft(initial, requested.draftId, calendar != null, requireNotNull(drafts), draftClock)
                     if (prepared is DraftPreparationResult.Ready)
@@ -189,10 +190,13 @@ internal fun LiveCalendarDay(
         preparingWrite = true
         scope.launch {
             try {
-                val target = calendars.firstOrNull { it.id == details.occurrence.ref.calendarId && it.capabilities.createEvents == AccessDecision.ALLOWED }?.id
-                    ?: calendars.firstOrNull { it.id == preferences.defaultCalendar && it.capabilities.createEvents == AccessDecision.ALLOWED }?.id
-                val requested = EventWriteRequest.create(visibleDate, displayNow.zone, target)
-                val prepared = prepareDuplicateDraft(details, target, requested.draftId, requireNotNull(drafts), clock = draftClock)
+                val sourceIdentity = details.calendar?.identity
+                val target = calendars.firstOrNull { it.id == details.occurrence.ref.calendarId &&
+                    it.identity == sourceIdentity && it.capabilities.createEvents == AccessDecision.ALLOWED }
+                    ?: verifiedDefault
+                val requested = EventWriteRequest.create(visibleDate, displayNow.zone, target?.id)
+                val prepared = prepareDuplicateDraft(details, target?.id, requested.draftId, requireNotNull(drafts), clock = draftClock,
+                    targetIdentity = target?.identity)
                 if (prepared is DraftPreparationResult.Ready)
                     writeRequestText = EventWriteRequest.fromLaunch(prepared.launch, visibleDate, displayNow.zone).encode()
                 else onDraftFailure()
@@ -205,6 +209,8 @@ internal fun LiveCalendarDay(
     }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val drawerActions: @Composable ColumnScope.() -> Unit = {
+        if (metadata is CalendarReadState.Ready && preferences.defaultCalendar != null && verifiedDefault == null) Text(stringResource(R.string.navigation_default_calendar_changed),
+            modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
         if (settings != null) TextButton(onClick = { scope.launch { drawer.close(); showSettings = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Text(stringResource(R.string.settings_title))
         }
@@ -232,7 +238,7 @@ internal fun LiveCalendarDay(
     }
     ModalNavigationDrawer(drawerState = drawer, gesturesEnabled = settings != null, drawerContent = {
         when (metadata) {
-            is CalendarReadState.Ready -> CalendarDrawerSheet(calendars, effectiveSelection, preferences.defaultCalendar,
+            is CalendarReadState.Ready -> CalendarDrawerSheet(calendars, effectiveSelection, verifiedDefault?.id,
                 onSelectionChanged = { value -> scope.launch {
                     if (settings?.setCalendarSelection(value, calendars) == false) onPreferenceFailure()
                 } },
@@ -268,7 +274,8 @@ internal fun LiveCalendarDay(
                         actions = controls, leadingActions = openCalendars, compactTitle = settings != null,
                         summary = summary, background = background,
                         onVisibleDateChanged = { selectedDateState.value = it.toString() }, onRetry = reader::refresh,
-                        onScrollMinuteChanged = { scrollMinute = it })
+                        onScrollMinuteChanged = { scrollMinute = it },
+                        onChooseCalendars = if (settings != null) ({ scope.launch { drawer.open() }; Unit }) else null)
                 } else Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         openCalendars(); controls()
@@ -330,6 +337,7 @@ internal fun LiveCalendarDay(
                     CalendarReadState.Loading -> CalendarReadState.Loading
                     CalendarReadState.PermissionRequired -> CalendarReadState.PermissionRequired
                     CalendarReadState.Unavailable -> CalendarReadState.Unavailable
+                    CalendarReadState.LimitExceeded -> CalendarReadState.LimitExceeded
                     is CalendarReadState.Ready -> if (state.value.occurrences.any { it.ref == ref }) {
                         val result = reader.readDetails(ref)
                         if (result is CalendarReadState.Ready && mutations != null) {
@@ -417,6 +425,7 @@ private fun CalendarReadNotice(state: CalendarReadState<*>, onRetry: () -> Unit)
         when (state) {
             CalendarReadState.Loading -> { Text(stringResource(R.string.navigation_loading)); CircularProgressIndicator() }
             CalendarReadState.PermissionRequired -> Text(stringResource(R.string.events_permission_required))
+            CalendarReadState.LimitExceeded -> Text(stringResource(R.string.navigation_read_limit))
             CalendarReadState.Unavailable -> {
                 Text(stringResource(R.string.navigation_unavailable))
                 TextButton(onClick = onRetry) { Text(stringResource(R.string.events_retry)) }
@@ -430,6 +439,7 @@ internal fun CalendarReadState<CalendarSnapshot>.forDay(date: LocalDate, zone: Z
     CalendarReadState.Loading -> CalendarState.Loading
     CalendarReadState.PermissionRequired -> CalendarState.PermissionRequired
     CalendarReadState.Unavailable -> CalendarState.Unavailable
+    CalendarReadState.LimitExceeded -> CalendarState.LimitExceeded
     is CalendarReadState.Ready -> if (date !in value.request.range) CalendarState.Loading else CalendarState.Ready(
         value.occurrences.filter { it.time.intersects(CalendarDateRange.day(date), zone) }.map { occurrence ->
             val ref = occurrence.ref

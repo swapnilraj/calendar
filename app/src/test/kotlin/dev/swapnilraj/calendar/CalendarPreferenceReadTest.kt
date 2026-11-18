@@ -58,6 +58,39 @@ class CalendarPreferenceReadTest {
     private fun settings(store: Store) = Settings(RuntimeEnvironment.getApplication(), store)
     private suspend fun Channel<CalendarPreferenceState>.next(): CalendarPreferenceState = withTimeout(10_000) { receive() }
 
+    @Test fun defaultCreationDestinationRequiresTheSameNamespaceEvenBeforeReconciliation() = runBlocking {
+        val calendar = dev.swapnilraj.calendar.core.CalendarInfo(CalendarId(9), "Calendar A", 1,
+            dev.swapnilraj.calendar.core.CalendarAccount("a@example.invalid", "com.google"), "a@example.invalid", null, 700, true, true,
+            dev.swapnilraj.calendar.core.CalendarCapabilities(createEvents = dev.swapnilraj.calendar.core.AccessDecision.ALLOWED), "calendar-a")
+        val replacement = calendar.copy(displayName = "Calendar B", account = dev.swapnilraj.calendar.core.CalendarAccount("b@example.invalid", "com.google"),
+            owner = "b@example.invalid", providerId = "calendar-b")
+        val store = Store(stored(setOf("9")))
+        val settings = settings(store)
+        val legacy = settings.calendarPreferences.filterIsInstance<CalendarPreferenceState.Ready>().first().value
+        assertNull(dev.swapnilraj.calendar.ui.verifiedCreationCalendar(legacy, listOf(calendar)))
+        assertTrue(settings.setDefaultCalendar(calendar.id, listOf(calendar)))
+        val pinned = settings.calendarPreferences.filterIsInstance<CalendarPreferenceState.Ready>().first().value
+        assertEquals(calendar.identity, pinned.defaultCalendarIdentity)
+        assertEquals(calendar, dev.swapnilraj.calendar.ui.verifiedCreationCalendar(pinned, listOf(calendar)))
+        val missingUid = calendar.copy(providerId = null)
+        assertTrue(settings.reconcileCalendars(listOf(missingUid)))
+        val unavailable = settings.calendarPreferences.filterIsInstance<CalendarPreferenceState.Ready>().first().value
+        assertEquals(calendar.identity, unavailable.defaultCalendarIdentity)
+        assertNull(dev.swapnilraj.calendar.ui.verifiedCreationCalendar(unavailable, listOf(missingUid)))
+        // A provider ID can be reused before asynchronous preference reconciliation runs.
+        assertNull(dev.swapnilraj.calendar.ui.verifiedCreationCalendar(pinned, listOf(replacement)))
+        assertEquals(calendar.copy(displayName = "Renamed", color = 2),
+            dev.swapnilraj.calendar.ui.verifiedCreationCalendar(pinned, listOf(calendar.copy(displayName = "Renamed", color = 2))))
+        assertTrue(settings.reconcileCalendars(listOf(replacement)))
+        val removed = settings.calendarPreferences.filterIsInstance<CalendarPreferenceState.Ready>().first().value
+        assertNull(removed.defaultCalendar)
+        assertNull(removed.defaultCalendarIdentity)
+        assertTrue(settings.setDefaultCalendar(replacement.id, listOf(replacement)))
+        val reselected = settings.calendarPreferences.filterIsInstance<CalendarPreferenceState.Ready>().first().value
+        assertEquals(replacement, dev.swapnilraj.calendar.ui.verifiedCreationCalendar(reselected, listOf(replacement)))
+        assertEquals(CalendarSelection.Explicit(setOf(CalendarId(9))), reselected.selection)
+    }
+
     @Test fun displaySaveIsAtomicWithFiltersAndFailureCannotPartiallyApplyOptions() = runBlocking {
         val original = stored(setOf("9")).toMutablePreferences().apply {
             this[stringPreferencesKey("reminder_private_fixture")] = "retain"

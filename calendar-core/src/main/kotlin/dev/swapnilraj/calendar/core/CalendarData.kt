@@ -4,6 +4,14 @@ import java.time.ZoneId
 
 data class CalendarAccount(val name: String, val type: String)
 
+/** A creation destination is a namespace, never a reusable provider-local number alone. */
+data class CalendarIdentity(
+    val calendarId: CalendarId,
+    val account: CalendarAccount,
+    val owner: String?,
+    val providerId: String? = null,
+)
+
 /** Provider flags are observations, not app-local preferences or proof of cloud coverage. */
 data class CalendarInfo(
     val id: CalendarId,
@@ -17,7 +25,10 @@ data class CalendarInfo(
     val syncEnabled: Boolean,
     val capabilities: CalendarCapabilities = CalendarCapabilities(),
     val providerId: String? = null,
-)
+) {
+    val identity: CalendarIdentity get() = CalendarIdentity(id, account, owner?.takeIf(String::isNotBlank),
+        providerId?.takeIf(String::isNotBlank))
+}
 
 /** One provider-expanded occurrence; rendering segments are deliberately separate. */
 data class EventOccurrence(
@@ -48,5 +59,7 @@ sealed interface CalendarReadState<out T> {
     data object Loading : CalendarReadState<Nothing>
     data class Ready<T>(val value: T) : CalendarReadState<T>
     data object PermissionRequired : CalendarReadState<Nothing>
+    /** The complete authorized result exceeds a read budget. No partial authority snapshot is valid. */
+    data object LimitExceeded : CalendarReadState<Nothing>
     data object Unavailable : CalendarReadState<Nothing>
 }

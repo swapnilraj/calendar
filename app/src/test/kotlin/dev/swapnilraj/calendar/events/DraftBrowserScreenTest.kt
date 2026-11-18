@@ -49,7 +49,7 @@ class DraftBrowserScreenTest {
             val fixture = EventEditorControllerTest(); val writer = fixture.Writer()
             val time = initial.time as EventTime.Timed
             val ref = EventRef(initial.calendarId, 42, time.start, time.end)
-            val source = EditableEvent(EventDetails(EventOccurrence(ref, initial.time, initial.title, 1), null), EditToken("original"), EditableField.entries.toSet())
+            val source = EditableEvent(EventDetails(EventOccurrence(ref, initial.time, initial.title, 1), eventTestCalendar(initial.calendarId.value)), EditToken("original"), EditableField.entries.toSet())
             prepareEditDraft(initial, source, "recover", store)
             writer.deleteResult = MutationResult.Uncertain("ignored", ref.eventId)
             EventEditorController(initial, source, "recover", writer, store, scope, requireStoredDraft = true)

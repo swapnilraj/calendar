@@ -5,8 +5,12 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import dev.swapnilraj.calendar.core.DraftRecord
-import dev.swapnilraj.calendar.core.DraftStore
+import dev.swapnilraj.calendar.core.AtomicDraftStore
+import dev.swapnilraj.calendar.core.DraftChangeResult
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,7 +20,8 @@ class CalendarLocalStore(
     context: Context,
     databaseName: String = "daylight-local.db",
     private val io: CoroutineDispatcher = Dispatchers.IO,
-) : SQLiteOpenHelper(context.applicationContext, databaseName, null, 2), DraftStore {
+    private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
+) : SQLiteOpenHelper(context.applicationContext, databaseName, null, 2), AtomicDraftStore {
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
         // ATTEMPTED must be durably committed before a separate provider transaction begins.
@@ -82,27 +87,83 @@ class CalendarLocalStore(
         Unit
     }
 
+    override suspend fun compareAndSet(id: String, expected: DraftRecord?, replacement: DraftRecord?): DraftChangeResult = withContext(io) {
+        require(expected != null || replacement != null)
+        require(expected == null || expected.id == id)
+        require(replacement == null || replacement.id == id)
+        try {
+            currentCoroutineContext().ensureActive()
+            val db = writableDatabase
+            db.beginTransaction()
+            try {
+                val current = db.query("drafts", null, "id = ?", arrayOf(id), null, null, null).use { cursor ->
+                    if (!cursor.moveToFirst()) null else {
+                        val timestamp = Instant.parse(cursor.getString(cursor.getColumnIndexOrThrow("updated_at")))
+                        check(cursor.getLong(cursor.getColumnIndexOrThrow("updated_epoch")) == timestamp.epochSecond &&
+                            cursor.getInt(cursor.getColumnIndexOrThrow("updated_nano")) == timestamp.nano)
+                        DraftRecord(cursor.getString(cursor.getColumnIndexOrThrow("id")), cursor.getInt(cursor.getColumnIndexOrThrow("version")),
+                            cursor.getString(cursor.getColumnIndexOrThrow("payload")), timestamp)
+                    }
+                }
+                val result = if (current != expected) DraftChangeResult.Changed else {
+                    if (replacement == null) check(db.delete("drafts", "id = ?", arrayOf(id)) == 1)
+                    else {
+                        val values = ContentValues().apply {
+                            put("id", replacement.id); put("version", replacement.version); put("payload", replacement.payload)
+                            put("updated_at", replacement.updatedAt.toString()); put("updated_epoch", replacement.updatedAt.epochSecond)
+                            put("updated_nano", replacement.updatedAt.nano)
+                        }
+                        if (current == null) db.insertOrThrow("drafts", null, values)
+                        else check(db.update("drafts", values, "id = ?", arrayOf(id)) == 1)
+                    }
+                    DraftChangeResult.Applied
+                }
+                currentCoroutineContext().ensureActive()
+                db.setTransactionSuccessful()
+                result
+            } finally { db.endTransaction() }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { DraftChangeResult.Unavailable }
+    }
+
     internal fun saveEdit(token: String, snapshot: String) {
+        checkStoredJson(snapshot, readBudgets.maxCanonicalBytes)
         writableDatabase.insertWithOnConflict("edit_snapshots", null, ContentValues().apply {
             put("token", token); put("snapshot", snapshot)
         }, SQLiteDatabase.CONFLICT_IGNORE)
     }
 
-    internal fun edit(token: String): String? = readableDatabase.query("edit_snapshots", arrayOf("snapshot"),
-        "token = ?", arrayOf(token), null, null, null).use { if (it.moveToFirst()) it.getString(0) else null }
+    private fun checkStoredLength(table: String, column: String, key: String, id: String, maxBytes: Int = readBudgets.maxCanonicalBytes) {
+        readableDatabase.query(table, arrayOf("length(CAST($column AS BLOB))"), "$key = ?", arrayOf(id), null, null, null).use {
+            if (it.moveToFirst() && !it.isNull(0) && it.getLong(0) > maxBytes) throw ProviderReadLimitExceeded()
+        }
+    }
+
+    internal fun edit(token: String): String? {
+        checkStoredLength("edit_snapshots", "snapshot", "token", token)
+        return readableDatabase.query("edit_snapshots", arrayOf("snapshot"), "token = ?", arrayOf(token), null, null, null).use {
+            if (!it.moveToFirst()) null else it.getString(0).also { value -> checkStoredJson(value, readBudgets.maxCanonicalBytes) }
+        }
+    }
 
     internal data class Operation(val id: String, val signature: String, val kind: String, val phase: String, val resultRef: String?)
 
-    internal fun operation(id: String): Operation? = readableDatabase.query("mutation_journal", null,
+    internal fun operation(id: String): Operation? {
+        checkStoredLength("mutation_journal", "result_ref", "id", id)
+        listOf("signature", "kind", "phase").forEach { checkStoredLength("mutation_journal", it, "id", id, readBudgets.mutation.maxCellUnits) }
+        return readableDatabase.query("mutation_journal", null,
         "id = ?", arrayOf(id), null, null, null).use { cursor ->
         if (!cursor.moveToFirst()) null else Operation(id, cursor.getString(cursor.getColumnIndexOrThrow("signature")),
             cursor.getString(cursor.getColumnIndexOrThrow("kind")), cursor.getString(cursor.getColumnIndexOrThrow("phase")),
-            cursor.getString(cursor.getColumnIndexOrThrow("result_ref")))
+            cursor.getString(cursor.getColumnIndexOrThrow("result_ref"))?.also { checkStoredJson(it, readBudgets.maxCanonicalBytes) })
+        }
     }
 
-    internal fun prepare(id: String, signature: String, kind: String) {
+    internal fun prepare(id: String, signature: String, kind: String, metadata: String? = null) {
+        metadata?.let { checkStoredJson(it, readBudgets.maxCanonicalBytes) }
         writableDatabase.insertWithOnConflict("mutation_journal", null, ContentValues().apply {
             put("id", id); put("signature", signature); put("kind", kind); put("phase", "PREPARED")
+            metadata?.let { put("result_ref", it) }
         }, SQLiteDatabase.CONFLICT_IGNORE)
     }
 
@@ -112,6 +173,7 @@ class CalendarLocalStore(
     }, "id = ? AND phase IN (?, ?)", arrayOf(id, "PREPARED", "FAILED")) == 1
 
     internal fun mark(id: String, phase: String, resultRef: String? = null) {
+        resultRef?.let { checkStoredJson(it, readBudgets.maxCanonicalBytes) }
         check(writableDatabase.update("mutation_journal", ContentValues().apply {
             put("phase", phase); if (resultRef != null) put("result_ref", resultRef)
         }, "id = ?", arrayOf(id)) == 1)

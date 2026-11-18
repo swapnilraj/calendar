@@ -27,7 +27,7 @@ class CalendarWriterTest {
         val calendar = mutableMapOf<String, String?>("_id" to "2", "account_name" to "owner@example.invalid", "account_type" to "com.google",
             "ownerAccount" to "owner@example.invalid", "calendar_displayName" to "Synthetic", "calendar_color" to "12345",
             "calendar_timezone" to "Europe/London", "calendar_access_level" to "700", "allowedReminders" to "0,1,2", "maxReminders" to "5",
-            "visible" to "1", "sync_events" to "1", "allowedAvailability" to "0,1,2")
+            "visible" to "1", "sync_events" to "1", "allowedAvailability" to "0,1,2", "_sync_id" to "calendar-A")
         val events = mutableListOf<MutableMap<String, String?>>()
         val reminders = mutableListOf<MutableMap<String, String?>>()
         val attendees = mutableListOf<MutableMap<String, String?>>()
@@ -113,19 +113,30 @@ class CalendarWriterTest {
     }
 
     private val draft = EventDraft(CalendarId(2), EventTime.Timed(Instant.parse("2026-11-17T09:00:00Z"),
-        Instant.parse("2026-11-17T10:00:00Z")), ZoneId.of("Europe/London"), "Synthetic appointment", alertMinutes = listOf(10))
-    private suspend fun fixture(block: suspend (Provider, CalendarWriter, CalendarLocalStore, MutableSet<String>) -> Unit) {
+        Instant.parse("2026-11-17T10:00:00Z")), ZoneId.of("Europe/London"), "Synthetic appointment", alertMinutes = listOf(10),
+        targetIdentity = CalendarIdentity(CalendarId(2), CalendarAccount("owner@example.invalid", "com.google"), "owner@example.invalid", "calendar-A"))
+    private suspend fun fixture(readBudgets: ProviderReadBudgets = ProviderReadBudgets(), block: suspend (Provider, CalendarWriter, CalendarLocalStore, MutableSet<String>) -> Unit) {
         val context = RuntimeEnvironment.getApplication()
         val provider = Provider()
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
         val name = "writer-test-${UUID.randomUUID()}.db"
-        val store = CalendarLocalStore(context, name)
+        val store = CalendarLocalStore(context, name, readBudgets = readBudgets)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val permissions = mutableSetOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
         val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
-        val writer = CalendarWriter(context.contentResolver, reader, store, permissions::contains)
+        val writer = CalendarWriter(context.contentResolver, reader, store, permissions::contains, readBudgets = readBudgets)
         try { block(provider, writer, store, permissions) }
         finally { scope.cancel(); scope.coroutineContext[Job]!!.join(); store.close(); context.deleteDatabase(name) }
+    }
+
+    @Test fun unsupportedAuthoredRecurrenceNeverFallsBackToOneOffOrStartsJournal() = runBlocking {
+        fixture { provider, writer, _, _ ->
+            val result = writer.create("unsupported-series", draft.copy(recurrence = RecurrenceSpec(RecurrencePattern.Daily)))
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.RECURRENCE)), result)
+            assertEquals(0, provider.batchCount)
+            assertTrue(provider.events.isEmpty())
+            assertEquals(MutationResult.Unavailable, writer.recover("unsupported-series"))
+        }
     }
 
     @Test fun createsUpdatesDeletesAndPreservesUnrepresentedMetadataAndNonAlertReminders() = runBlocking {
@@ -231,12 +242,12 @@ class CalendarWriterTest {
         }
     }
 
-    @Test fun journalRecoveryDistinguishesDefiniteFailureFromCorruptCommittedMetadata() = runBlocking {
+    @Test fun legacyUnboundJournalNeverOffersRetryOrAcknowledgesCommittedMetadata() = runBlocking {
         fixture { provider, writer, store, _ ->
             store.prepare("prepared", "test-signature", "CREATE")
-            assertEquals(MutationResult.SafeToRetry("prepared"), writer.recover("prepared"))
+            assertEquals(MutationResult.Uncertain("prepared", null), writer.recover("prepared"))
             store.mark("prepared", "FAILED")
-            assertEquals(MutationResult.SafeToRetry("prepared"), writer.recover("prepared"))
+            assertEquals(MutationResult.Uncertain("prepared", null), writer.recover("prepared"))
             store.mark("prepared", "COMMITTED", "not-json")
             assertEquals(MutationResult.Uncertain("prepared", null), writer.recover("prepared"))
             assertEquals(0, provider.batchCount)
@@ -352,18 +363,8 @@ class CalendarWriterTest {
 
     @Test fun readOnlyPermissionCanDiscoverEditEligibilityAndRecoverWithoutWriting() = runBlocking {
         fixture { provider, writer, store, permissions ->
-            // Seed an existing appointment without using the mutation adapter under test.
-            val uri = provider.insert(CalendarContract.Events.CONTENT_URI, ContentValues().apply {
-                put(CalendarContract.Events.CALENDAR_ID, 2L)
-                put(CalendarContract.Events.DTSTART, Instant.parse("2026-11-17T09:00:00Z").toEpochMilli())
-                put(CalendarContract.Events.DTEND, Instant.parse("2026-11-17T10:00:00Z").toEpochMilli())
-                put(CalendarContract.Events.EVENT_TIMEZONE, "Europe/London")
-                put(CalendarContract.Events.TITLE, "Synthetic existing appointment")
-                put(CalendarContract.Events.ALL_DAY, 0)
-            })
-            val ref = EventRef(CalendarId(2), ContentUris.parseId(uri), Instant.parse("2026-11-17T09:00:00Z"), Instant.parse("2026-11-17T10:00:00Z"))
-            store.prepare("known", "fixture-signature", "CREATE")
-            store.mark("known", "COMMITTED", "{\"calendar\":2,\"event\":${ref.eventId},\"start\":\"${ref.instanceStart}\",\"end\":\"${ref.instanceEnd}\"}")
+            val ref = (writer.create("known", draft) as MutationResult.LocalSaved).ref
+            provider.batchCount = 0
             permissions.remove(Manifest.permission.WRITE_CALENDAR)
             val editable = (writer.loadForEdit(ref) as EditReadResult.Ready).event
             assertEquals(EditableField.entries.toSet(), editable.allowedFields)
@@ -373,7 +374,7 @@ class CalendarWriterTest {
             assertEquals(MutationResult.PermissionRequired, writer.update("read-only-update", ref, editable.token, EventPatch(title = FieldChange.Set("No write"))))
             assertEquals(MutationResult.PermissionRequired, writer.delete("read-only-delete", ref, editable.token))
             assertEquals(0, provider.batchCount)
-            assertEquals("Synthetic existing appointment", provider.events.single()["title"])
+            assertEquals(draft.title, provider.events.single()["title"])
             permissions.remove(Manifest.permission.READ_CALENDAR)
             permissions += Manifest.permission.WRITE_CALENDAR
             assertEquals(EditReadResult.PermissionRequired, writer.loadForEdit(ref))
@@ -576,7 +577,7 @@ class CalendarWriterTest {
         }
     }
 
-    @Test fun omittedMetadataAndKeepRetainLegacyCommandSignatures() = runBlocking {
+    @Test fun boundCreateSignatureIncludesNamespaceWhileKeepRetainsUpdateSignature() = runBlocking {
         fixture { provider, writer, store, _ ->
             fun refPayload(ref: EventRef) = org.json.JSONObject().put("calendar", ref.calendarId.value).put("event", ref.eventId)
                 .put("start", ref.instanceStart.toString()).put("end", ref.instanceEnd.toString())
@@ -586,6 +587,8 @@ class CalendarWriterTest {
             val oldCreate = refPayload(EventRef(draft.calendarId, 0, time.start, time.end))
                 .put("allDay", false).put("zone", draft.eventZone!!.id).put("title", draft.title)
                 .put("location", draft.location).put("description", draft.description).put("alerts", org.json.JSONArray(draft.alertMinutes))
+                .put("targetIdentity", org.json.JSONObject().put("calendar", 2).put("name", "owner@example.invalid")
+                    .put("type", "com.google").put("owner", "owner@example.invalid").put("providerId", "calendar-A"))
             val ref = (writer.create("legacy-create", draft) as MutationResult.LocalSaved).ref
             assertEquals(signature("CREATE", oldCreate), store.operation("legacy-create")!!.signature)
             assertTrue(writer.create("legacy-create", draft.copy(availability = null, privacy = null)) is MutationResult.LocalSaved)
@@ -597,6 +600,151 @@ class CalendarWriterTest {
             assertEquals(signature("UPDATE", oldUpdate), store.operation("legacy-update")!!.signature)
             assertTrue(writer.update("legacy-update", ref, editable.token, EventPatch(title = FieldChange.Set("Legacy edit"), privacy = FieldChange.Set(null))) is MutationResult.Conflict)
             assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun createRejectsUnboundUnknownOrReusedCalendarNamespacesBeforeJournal() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            val invalid = MutationResult.ValidationFailed(setOf(InvalidEventField.CALENDAR))
+            val variants = listOf(draft.copy(targetIdentity = null),
+                draft.copy(targetIdentity = draft.targetIdentity!!.copy(calendarId = CalendarId(3))),
+                draft.copy(targetIdentity = draft.targetIdentity!!.copy(account = CalendarAccount("", "com.google"))),
+                draft.copy(targetIdentity = draft.targetIdentity!!.copy(account = CalendarAccount("owner@example.invalid", ""))))
+            variants.forEachIndexed { index, value ->
+                assertEquals(invalid, writer.create("invalid-$index", value))
+                assertNull(store.operation("invalid-$index"))
+            }
+            listOf("account_name", "account_type", "ownerAccount", "_sync_id").forEach { field ->
+                val old = provider.calendar[field]
+                provider.calendar[field] = "replacement"
+                assertEquals(invalid, writer.create("reused-$field", draft))
+                assertNull(store.operation("reused-$field"))
+                provider.calendar[field] = old
+            }
+            provider.calendar["_sync_id"] = null
+            assertEquals(invalid, writer.create("uid-dropped", draft))
+            assertNull(store.operation("uid-dropped"))
+            assertEquals(0, provider.batchCount)
+            assertEquals(0, provider.queryCounts["events"] ?: 0)
+        }
+    }
+
+    @Test fun nullableUidMustMatchExactlyWhileCosmeticMetadataDoesNotChangeDestination() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            provider.calendar["_sync_id"] = null
+            val unEnriched = draft.copy(targetIdentity = draft.targetIdentity!!.copy(providerId = null))
+            assertTrue(writer.create("local", unEnriched) is MutationResult.LocalSaved)
+            provider.calendar["_sync_id"] = "enriched"
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.CALENDAR)), writer.create("enrichment", unEnriched))
+            assertNull(store.operation("enrichment"))
+            provider.calendar["_sync_id"] = "calendar-A"
+            provider.calendar["calendar_displayName"] = "Renamed"
+            provider.calendar["calendar_color"] = "987"
+            provider.calendar["visible"] = "0"
+            assertTrue(writer.create("cosmetic", draft) is MutationResult.LocalSaved)
+            assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun failedFrozenCreateCannotAdoptReplacementAccountAndPreparedProofIsAtomic() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            provider.failReminder = true
+            assertEquals(MutationResult.Unavailable, writer.create("failed", draft))
+            val before = store.operation("failed")!!
+            assertTrue(before.resultRef!!.contains("targetIdentity"))
+            assertEquals(MutationResult.SafeToRetry("failed"), writer.recover("failed"))
+            provider.calendar["account_name"] = "other@example.invalid"
+            provider.failReminder = false
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.CALENDAR)), writer.create("failed", draft))
+            assertEquals(before, store.operation("failed"))
+            assertEquals(1, provider.batchCount)
+            assertTrue(provider.events.isEmpty())
+        }
+    }
+
+    @Test fun everyCommittedReceiptRefusesCalendarNamespaceReuseBeforePrivateReads() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            val ref = (writer.create("created", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            assertTrue(writer.update("updated", ref, token, EventPatch(title = FieldChange.Set("Changed"))) is MutationResult.LocalSaved)
+            val fresh = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            assertTrue(writer.delete("deleted", ref, fresh) is MutationResult.LocalDeleted)
+            val legacy = org.json.JSONObject().put("calendar", 2).put("event", ref.eventId)
+                .put("start", ref.instanceStart.toString()).put("end", ref.instanceEnd.toString())
+            store.prepare("legacy", "legacy", "DELETE")
+            store.mark("legacy", "COMMITTED", legacy.toString())
+            provider.calendar["account_name"] = "replacement@example.invalid"
+            provider.calendar["_sync_id"] = "replacement"
+            provider.resetQueryCounts()
+            listOf("created", "updated", "deleted", "legacy").forEach {
+                assertEquals(MutationResult.Uncertain(it, null), writer.recover(it))
+            }
+            assertEquals(0, provider.queryCounts["events"] ?: 0)
+            assertEquals(3, provider.batchCount)
+        }
+    }
+
+    @Test fun matchingBoundReceiptRecoversReadOnlyAfterReopenButLegacyPlainRefDoesNot() = runBlocking {
+        fixture { provider, writer, store, permissions ->
+            val ref = (writer.create("created", draft) as MutationResult.LocalSaved).ref
+            val receipt = org.json.JSONObject(store.operation("created")!!.resultRef!!)
+            store.prepare("legacy", "old-signature", "CREATE")
+            store.mark("legacy", "COMMITTED", receipt.getJSONObject("ref").toString())
+            val reopened = CalendarLocalStore(RuntimeEnvironment.getApplication(), store.databaseName)
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            try {
+                permissions.remove(Manifest.permission.WRITE_CALENDAR)
+                val resolver = RuntimeEnvironment.getApplication().contentResolver
+                val second = CalendarWriter(resolver, CalendarReader(resolver, scope, stopTimeoutMillis = 0), reopened, permissions::contains)
+                assertEquals(MutationResult.LocalSaved(ref), second.recover("created"))
+                assertEquals(MutationResult.Uncertain("legacy", null), second.recover("legacy"))
+                assertEquals(1, provider.batchCount)
+            } finally { scope.cancel(); scope.coroutineContext[Job]!!.join(); reopened.close() }
+        }
+    }
+
+    @Test fun namespaceAssertionPreventsCreateWhenAccountChangesAtDispatch() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            provider.beforeBatch = { provider.calendar["account_name"] = "replacement@example.invalid" }
+            assertEquals(MutationResult.Unavailable, writer.create("race", draft))
+            assertEquals("FAILED", store.operation("race")!!.phase)
+            assertTrue(provider.events.isEmpty())
+            assertTrue(provider.reminders.isEmpty())
+            assertEquals(1, provider.batchCount)
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.CALENDAR)), writer.create("race", draft))
+            assertEquals(1, provider.batchCount)
+        }
+    }
+
+    @Test fun foreignDeletedEventIdAndForgedReceiptNeverAcknowledgeSuccess() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            val ref = (writer.create("created", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            assertTrue(writer.delete("deleted", ref, token) is MutationResult.LocalDeleted)
+            provider.events.single()["calendar_id"] = "99"
+            assertEquals(MutationResult.Uncertain("deleted", null), writer.recover("deleted"))
+            val receipt = org.json.JSONObject(store.operation("created")!!.resultRef!!)
+            receipt.getJSONObject("identity").put("name", "replacement@example.invalid")
+            store.mark("created", "COMMITTED", receipt.toString())
+            assertEquals(MutationResult.Uncertain("created", null), writer.recover("created"))
+            receipt.getJSONObject("identity").put("name", "owner@example.invalid").remove("providerId")
+            store.mark("created", "COMMITTED", receipt.toString())
+            assertEquals(MutationResult.Uncertain("created", null), writer.recover("created"))
+            assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun oversizedMutationSourceFailsBeforeTokenOrNewJournalAndNeverClipsText() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            val ref = (writer.create("created", draft) as MutationResult.LocalSaved).ref
+            val original = "private".repeat(10_000)
+            provider.events.single()["description"] = original
+            assertEquals(EditReadResult.LimitExceeded, writer.loadForEdit(ref))
+            store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots", null).use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+            assertEquals(MutationResult.Conflict(null), writer.update("oversized", ref, EditToken("missing"), EventPatch(title = FieldChange.Set("changed"))))
+            assertNull(store.operation("oversized"))
+            assertEquals(original, provider.events.single()["description"])
+            assertEquals(1, provider.batchCount)
         }
     }
 
