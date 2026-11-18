@@ -327,6 +327,15 @@ changes. Detect conflicts and offer review/reload rather than overwriting. Journ
 never automatically resubmit an uncertain create. Reload before reporting a local save; do not claim
 server acknowledgement the app cannot observe. Offline saves use the provider's normal sync path.
 
+Preserving an imported source through a new exception or independent tail requires an admitted
+provider clone profile. A null public query projection does not expose every physical event or
+attendee column. Rejecting returned unknown fields alone cannot prove that hidden metadata will
+survive. Before production activation, new-exception THIS edit/cancel/RSVP and nonzero-ordinal
+FOLLOWING splits must default to review for an unverified provider, both when issuing capabilities
+and before dispatch/retry. In-place updates, ordinal-zero ALL-equivalent edits, read-only recovery
+and typed retirement retain their independent policies. See PROVIDER_CLONE_OBSERVABILITY_AUDIT.md
+for the concrete static finding and required evidence; the profile gate is pending implementation.
+
 Support confirmed deletion, duplicate-as-draft (guests omitted by default), and verified copy/delete
 moves for guest-free non-recurring events. Cross-account moves of meetings/series are excluded. Timed
 grid drag/resize previews snap to 15 minutes and use the same validation/save path; editor is the

@@ -1,5 +1,10 @@
 # Generated-occurrence THIS RSVP
 
+Public-projection limitation (18 November 2026): references below to rejecting unknown fields
+mean fields actually exposed by the provider. They do not establish complete physical-schema
+visibility. New clone activation also requires the provider-profile gate in SPEC.md; see
+[the observability audit](PROVIDER_CLONE_OBSERVABILITY_AUDIT.md). The gate is not yet implemented.
+
 Status: bounded next-packet design, not implemented or Google-device verified. Existing recurring
 RSVP supports materialized THIS and complete ALL self-attendee updates. Generated THIS is rejected.
 This packet adds response-exception creation through the public provider API; it does not add
