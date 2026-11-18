@@ -46,4 +46,4 @@ fixture-key tests, if recorded, validate only the signing mechanism and are neve
 Mechanism evidence: shell syntax and all eight workflow shell blocks passed parsing; six local
 ephemeral fixture-key checks passed (valid signature/certificate and16KiB alignment, wrong
 certificate, wrong password, malformed base64, missing alias, existing-output refusal). The fixture
-key and signed APKs were deleted. APK release-version embedding/build validation remains pending.
+key and signed APKs were deleted. Release assembly passed with versionCode2 / versionName0.2.0-beta.1; APK metadata confirmed the expected package and a non-debuggable release. That unsigned release variant also passed fixture-key signing/certificate and16KiB zip-alignment verification; the temporary key and signed fixture APK were deleted. Same-key device upgrade and stable owner provisioning remain pending.
