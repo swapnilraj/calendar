@@ -108,6 +108,7 @@ internal fun EventWriteWorkflow(
     requestWritePermission: (suspend () -> Boolean)? = null,
     onReplacedLaunch: ((EditorDraftLaunch) -> Unit)? = null,
     incomingEditReview: CalendarEditReviewResult.Editor? = null,
+    presentationVisible: Boolean = true,
 ) {
     var retry by remember(request) { mutableIntStateOf(0) }
     val latestPermission by rememberUpdatedState(requestWritePermission)
@@ -188,5 +189,5 @@ internal fun EventWriteWorkflow(
     PhoneEventEditor(controller, calendars, onDismiss, onSaved, onDeleted,
         use24Hour = use24Hour,
         onReplacedLaunch = if (onReplacedLaunch != null) ({ value -> latestReplacement?.invoke(value) }) else null,
-        onDiscarded = onDismiss)
+        onDiscarded = onDismiss, contentVisible = presentationVisible)
 }

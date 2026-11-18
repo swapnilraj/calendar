@@ -60,8 +60,7 @@ class CalendarEditReviewActivity : ComponentActivity() {
             ReviewTheme {
                 val displayed = result
                 val current = services
-                if (displayed is CalendarEditReviewResult.Editor && current != null &&
-                    (hasRead() && displayed.environment.calendarReadGranted || displayed.sourceFree)) {
+                if (displayed is CalendarEditReviewResult.Editor && current != null) {
                     val port = remember(current, displayed.launch.generation, displayed.originalTokenHash, displayed.originalBaselineHash) {
                         object : CalendarMutations by current.mutations {
                             override suspend fun loadForEdit(ref: EventRef): EditReadResult =
@@ -78,7 +77,9 @@ class CalendarEditReviewActivity : ComponentActivity() {
                         EventWriteWorkflow(route, port, current.drafts,
                             if (hasRead() && displayed.environment.calendarReadGranted) displayed.environment.calendars else emptyList(),
                             displayed.environment.use24Hour, onDismiss = ::finish, onSaved = { setResult(RESULT_OK); finish() }, onDeleted = { finish() },
-                            retirement = current.retirement, incomingEditReview = displayed, requestWritePermission = {
+                            retirement = current.retirement, incomingEditReview = displayed,
+                            presentationVisible = hasRead() && displayed.environment.calendarReadGranted || displayed.sourceFree,
+                            requestWritePermission = {
                                 if (!hasRead()) { readPermission.launch(Manifest.permission.READ_CALENDAR); false }
                                 else if (checkSelfPermission(Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED) true
                                 else { writePermission.launch(Manifest.permission.WRITE_CALENDAR); false }
@@ -152,7 +153,8 @@ class CalendarEditReviewActivity : ComponentActivity() {
     private suspend fun refreshMounted(current: CalendarEditReviewServices, mounted: CalendarEditReviewResult.Editor) {
         val epoch = frame; val route = native
         if (!hasRead()) {
-            // Scrub provider metadata before the app-owned frozen-status check can suspend.
+            // Mask the existing Dialog before the app-owned frozen-status check can suspend.
+            // Removing the workflow here would cancel this controller's own pending write/cleanup.
             result = mounted.copy(environment = mounted.environment.copy(calendars = emptyList(), calendarReadGranted = false))
         }
         val previous = result

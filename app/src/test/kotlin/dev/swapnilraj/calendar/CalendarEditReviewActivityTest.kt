@@ -6,6 +6,8 @@ import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import dev.swapnilraj.calendar.android.navigation.*
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.OrdinaryDraftDocument
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -136,6 +138,58 @@ class CalendarEditReviewActivityTest {
             assertEquals(1, f.writes); assertEquals(readsAtUpdate, f.infoReads)
             assertNull(f.store.rows[request.nativeId]); assertTrue(isCalendarEditHandoffReceipt(requireNotNull(f.store.rows[request.reviewId])))
         } finally { host.pause().stop().destroy() }
+    }
+
+    @Test fun readLossMasksPendingFrozenWriteWithoutCancellingItsControllerOrExactCleanup() {
+        setup()
+        val request = f.request(f.seed().copy(occurrence = CalendarOccurrenceHints(f.start.plusSeconds(3600), f.start.plusSeconds(7200), null)))
+        val proofStarted = CompletableDeferred<Unit>(); val releaseProof = CompletableDeferred<Unit>()
+        val releaseUpdate = CompletableDeferred<Unit>()
+        var updateCancelled = false
+        var frozen: DraftRecord? = null
+        var editsAtUpdate = 0; var infoAtUpdate = 0
+        f.onUpdated = {
+            editsAtUpdate = f.editReads; infoAtUpdate = f.infoReads
+            frozen = requireNotNull(f.store.rows[request.nativeId])
+            assertTrue(OrdinaryDraftDocument.decode(requireNotNull(frozen)).hasRequest)
+            shadowOf(app).denyPermissions(Manifest.permission.READ_CALENDAR)
+            f.environment = CalendarReadState.Ready((f.environment as CalendarReadState.Ready).value.copy(calendars = emptyList(), calendarReadGranted = false))
+            f.info = f.info.copy(providerUid = "learned-after-own-commit")
+            f.store.beforeLoad = { id ->
+                if (id == request.nativeId && !proofStarted.isCompleted) {
+                    proofStarted.complete(Unit); releaseProof.await()
+                }
+            }
+            f.changes.emit(Unit)
+            try { releaseUpdate.await() } finally { updateCancelled = !currentCoroutineContext().isActive }
+        }
+        val host = launch(request)
+        try {
+            shown(app.getString(R.string.incoming_edit_review_apply)); apply(); save()
+            compose.waitUntil(8_000) { proofStarted.isCompleted }
+            // The permission mask is visible before local frozen-proof I/O can finish. The same
+            // controller's provider call remains alive, with no source fields/actions or pickers.
+            compose.onNodeWithText("Proposed synthetic title").assertDoesNotExist()
+            compose.onNodeWithText("Original synthetic event").assertDoesNotExist()
+            compose.onNodeWithText(app.getString(R.string.events_editor_save)).assertDoesNotExist()
+            compose.onNodeWithContentDescription(app.getString(R.string.phone_event_title)).assertDoesNotExist()
+            assertFalse(updateCancelled)
+            assertEquals(frozen, f.store.rows[request.nativeId])
+            val before = OrdinaryDraftDocument.decode(requireNotNull(frozen))
+            releaseProof.complete(Unit); compose.waitForIdle()
+            val after = OrdinaryDraftDocument.decode(requireNotNull(f.store.rows[request.nativeId]))
+            assertEquals(before.generation, after.generation); assertEquals(before.operationId, after.operationId)
+            assertEquals(editsAtUpdate, f.editReads); assertEquals(infoAtUpdate, f.infoReads)
+            releaseUpdate.complete(Unit)
+            compose.waitUntil(8_000) { compose.onAllNodesWithText(app.getString(R.string.events_editor_save)).fetchSemanticsNodes(); host.get().isFinishing }
+            assertFalse(updateCancelled); assertEquals(1, f.writes)
+            assertNull(f.store.rows[request.nativeId]); assertTrue(isCalendarEditHandoffReceipt(requireNotNull(f.store.rows[request.reviewId])))
+        } finally { releaseProof.complete(Unit); releaseUpdate.complete(Unit); host.pause().stop().destroy() }
+        val replay = launch(request)
+        try {
+            shown(app.getString(R.string.incoming_edit_review_consumed))
+            assertEquals(1, f.writes); assertNull(f.store.rows[request.nativeId])
+        } finally { replay.pause().stop().destroy() }
     }
 
     @Test fun frozenResumeAndRecoverUseReceiptBackendProofWithoutMutableUidSourceRead() {

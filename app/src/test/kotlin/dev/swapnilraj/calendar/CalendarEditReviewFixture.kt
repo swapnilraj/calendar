@@ -16,7 +16,11 @@ internal class EditReviewStore : AtomicDraftStore {
     val rows = linkedMapOf<String, DraftRecord>()
     var unavailableAck = false; var failNative = false; var failReceipt = false; var hideReceipt = false
     var beforeChange: (suspend (String, DraftRecord?, DraftRecord?) -> Unit)? = null
-    override suspend fun load(id: String): DraftRecord? = rows[id]?.takeUnless { hideReceipt && isCalendarEditHandoffReceipt(it) }
+    var beforeLoad: (suspend (String) -> Unit)? = null
+    override suspend fun load(id: String): DraftRecord? {
+        beforeLoad?.invoke(id)
+        return rows[id]?.takeUnless { hideReceipt && isCalendarEditHandoffReceipt(it) }
+    }
     override suspend fun list() = rows.values.toList()
     override suspend fun upsert(record: DraftRecord) = error("No unconditional review upserts")
     override suspend fun delete(id: String) = error("No unconditional review deletion")

@@ -39,6 +39,7 @@ fun PhoneEventEditor(
     use24Hour: Boolean = true,
     onReplacedLaunch: ((EditorDraftLaunch) -> Unit)? = null,
     onDiscarded: (() -> Unit)? = onDismiss,
+    contentVisible: Boolean = true,
 ) {
     val scope = rememberCoroutineScope()
     val result = controller.state.result
@@ -48,8 +49,17 @@ fun PhoneEventEditor(
         else -> Unit
     } }
     fun close() { scope.launch { if (controller.prepareDismiss()) onDismiss() } }
-    Dialog(onDismissRequest = ::close, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
-        PhoneEventEditorContent(controller, writableCalendars, ::close, use24Hour,
+    Dialog(onDismissRequest = { if (contentVisible) close() },
+        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, dismissOnBackPress = contentVisible)) {
+        if (!contentVisible) {
+            // Keep the controller/scope and outcome effects mounted while hiding every field,
+            // child picker and action during a fresh authority check.
+            Surface(Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+        } else PhoneEventEditorContent(controller, writableCalendars, ::close, use24Hour,
             onReview = if (onReviewExisting != null) ({ scope.launch { controller.reloadExisting()?.let(onReviewExisting) } }) else null,
             onUpgrade = if (onReplacedLaunch != null) ({ scope.launch { controller.upgradeLegacyDraft()?.let(onReplacedLaunch) } }) else null,
             onReplace = if (onReplacedLaunch != null) ({ scope.launch { controller.replaceDraft()?.let(onReplacedLaunch) } }) else null,
