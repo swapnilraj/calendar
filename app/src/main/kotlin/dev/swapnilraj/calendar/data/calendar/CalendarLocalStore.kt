@@ -16,7 +16,7 @@ class CalendarLocalStore(
     context: Context,
     databaseName: String = "daylight-local.db",
     private val io: CoroutineDispatcher = Dispatchers.IO,
-) : SQLiteOpenHelper(context.applicationContext, databaseName, null, 1), DraftStore {
+) : SQLiteOpenHelper(context.applicationContext, databaseName, null, 2), DraftStore {
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
         // ATTEMPTED must be durably committed before a separate provider transaction begins.
@@ -29,11 +29,28 @@ class CalendarLocalStore(
         db.execSQL("CREATE TABLE drafts (id TEXT PRIMARY KEY, version INTEGER NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL, updated_epoch INTEGER NOT NULL, updated_nano INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE edit_snapshots (token TEXT PRIMARY KEY, snapshot TEXT NOT NULL)")
         db.execSQL("CREATE TABLE mutation_journal (id TEXT PRIMARY KEY, signature TEXT NOT NULL, kind TEXT NOT NULL, phase TEXT NOT NULL, result_ref TEXT)")
+        createReminderSchema(db)
+    }
+
+    private fun createReminderSchema(db: SQLiteDatabase) {
+        db.execSQL("""CREATE TABLE reminder_ledger (
+            record_key TEXT PRIMARY KEY, calendar_id INTEGER NOT NULL,
+            source_fingerprint TEXT NOT NULL, source_provider_uid TEXT,
+            payload TEXT NOT NULL, state TEXT NOT NULL,
+            effective_seconds INTEGER NOT NULL, effective_nanos INTEGER NOT NULL,
+            planned_seconds INTEGER NOT NULL, planned_nanos INTEGER NOT NULL,
+            last_posted_seconds INTEGER, notification_nonce TEXT NOT NULL UNIQUE)""")
+        db.execSQL("CREATE INDEX reminder_due ON reminder_ledger (state, effective_seconds, effective_nanos, record_key)")
+        db.execSQL("CREATE INDEX reminder_calendar ON reminder_ledger (calendar_id, source_fingerprint)")
+        db.execSQL("CREATE INDEX reminder_history ON reminder_ledger (planned_seconds, planned_nanos)")
+        // Retain consumed aliases even after a generation is replaced, so no stale action can
+        // become current again through an accidentally reused nonce.
+        db.execSQL("CREATE TABLE reminder_nonce_registry (nonce TEXT PRIMARY KEY)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // No destructive fallback: future schema versions must provide explicit migrations.
-        error("No migration from $oldVersion to $newVersion")
+        if (oldVersion == 1 && newVersion == 2) createReminderSchema(db)
+        else error("No migration from $oldVersion to $newVersion")
     }
 
     override suspend fun load(id: String): DraftRecord? = withContext(io) {

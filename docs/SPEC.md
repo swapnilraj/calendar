@@ -67,6 +67,12 @@ A draft browser can distinguish resumable edits, submitted recovery and unreadab
 source-missing submitted operations remain recovery-only. Preparing a launch first persists and
 reads back its draft. App routing to these components is a separate integration change.
 
+Reminder source/ledger components now read events independently of display filters, pin calendar
+namespace identities, and include advance notifications for events beyond the ordinary event window.
+A bounded discovery absence never proves a tracked event disappeared; tracked keys are revalidated
+separately. Private SQLite delivery history retains generation/post identity and rejects stale action
+tokens after snooze reposts. Background app delivery is not enabled by these components alone.
+
 Native editing retains known visibility and availability and distinguishes unchanged fields from an
 explicit clear. Unknown source metadata is preserved. Duplicate-draft components copy one occurrence
 without guests/recurrence, retaining explicit Private/Public/Confidential choices. Inherited Calendar
