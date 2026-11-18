@@ -78,8 +78,10 @@ class NativeGeneratedRsvpJourneyTest {
         val id = JSONObject(draft.payload).getString("operationId")
         compose.waitUntil(15_000) { journalPhase(f, id) == "COMMITTED" }
         assertOneException(f, "4")
-        compose.waitUntil(15_000) { compose.onAllNodes(hasText("Close") and hasClickAction() and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNode(hasText("Close") and hasClickAction() and isEnabled()).performScrollTo().performClick()
+        val responseClose = hasText("Close") and hasClickAction() and isEnabled() and
+            hasAnyAncestor(isRoot() and hasAnyDescendant(hasText("Respond to invitation")))
+        compose.waitUntil(15_000) { compose.onAllNodes(responseClose).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(responseClose).performScrollTo().performClick()
         assertEquals(draft.id, responseRecord(f).id)
         // Process-style UI restoration cannot borrow the old controller's editable source.
         compose.runOnUiThread { f.activity.recreate() }
