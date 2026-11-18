@@ -4,6 +4,10 @@ import android.provider.CalendarContract
 import androidx.core.text.BidiFormatter
 import androidx.core.text.TextDirectionHeuristicsCompat
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -95,13 +99,19 @@ fun EventDetailsContent(
         eventWebLinks(details.location + "\n" + details.description)
     }
     val meetingLinks = links.filter(::isMeetingLink)
-    val joinLink = meetingLinks.singleOrNull()
+    val cancelled = details.status == CalendarContract.Events.STATUS_CANCELED
+    val joinLink = if (cancelled) null else meetingLinks.singleOrNull()
+    val guestListVisible = details.isOrganizer == true || details.guestPermissions.seeGuests == AccessDecision.ALLOWED
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
         .padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(details.occurrence.title.ifBlank { stringResource(R.string.events_no_title) },
-            style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() },
-            textDecoration = if (details.occurrence.declined) TextDecoration.LineThrough else null)
-        if (details.occurrence.declined) Text(stringResource(R.string.events_declined))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+            Box(Modifier.padding(top = 9.dp).size(12.dp).background(Color(details.occurrence.color or 0xff000000.toInt()), CircleShape))
+            Text(details.occurrence.title.ifBlank { stringResource(R.string.events_no_title) },
+                style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f).semantics { heading() },
+                textDecoration = if (details.occurrence.declined || cancelled) TextDecoration.LineThrough else null)
+        }
+        if (cancelled) Text(stringResource(R.string.events_cancelled), color = MaterialTheme.colorScheme.error)
+        if (details.occurrence.declined && details.selfAttendeeStatus == null) Text(stringResource(R.string.events_declined))
         when (val time = details.occurrence.time) {
             is EventTime.AllDay -> {
                 Text(stringResource(R.string.events_all_day))
@@ -125,10 +135,28 @@ fun EventDetailsContent(
                 }
             }
         }
+        if (details.status != null || details.availability != null || details.privacy != null) {
+            DetailSection(stringResource(R.string.events_event_context)) {
+                Text(stringResource(R.string.events_context_item, stringResource(R.string.events_event_status),
+                    stringResource(eventStatus(details.status))))
+                Text(stringResource(R.string.events_context_item, stringResource(R.string.events_availability),
+                    stringResource(eventAvailability(details.availability))))
+                Text(stringResource(R.string.events_context_item, stringResource(R.string.events_visibility),
+                    stringResource(eventPrivacy(details.privacy))))
+            }
+        }
+        details.isOrganizer?.let { organizer ->
+            Text(stringResource(if (organizer) R.string.events_you_organize else R.string.events_not_organizer))
+        }
+        details.selfAttendeeStatus?.let { response ->
+            Text(stringResource(R.string.events_context_item, stringResource(R.string.events_your_response), stringResource(attendeeStatus(response))))
+        }
         details.calendar?.let { calendar ->
             DetailSection(stringResource(R.string.events_calendar)) {
                 Text(calendar.displayName)
-                Text(stringResource(R.string.events_account, calendar.account.name, calendar.account.type))
+                val accountType = stringResource(accountLabel(calendar.account.type))
+                Text(if (calendar.account.type == CalendarContract.ACCOUNT_TYPE_LOCAL || calendar.account.name.isBlank()) accountType
+                    else stringResource(R.string.events_account, calendar.account.name, accountType))
             }
         }
         if (joinLink != null) {
@@ -154,8 +182,11 @@ fun EventDetailsContent(
         details.organizer?.takeIf(String::isNotBlank)?.let { organizer ->
             DetailSection(stringResource(R.string.events_organizer)) { Text(organizer) }
         }
-        if (details.attendees.isNotEmpty()) DetailSection(stringResource(R.string.events_guests)) {
-            details.attendees.forEach { attendee ->
+        DetailSection(stringResource(R.string.events_guests)) {
+            if (!guestListVisible) Text(stringResource(if (details.guestPermissions.seeGuests == AccessDecision.DENIED)
+                R.string.events_guests_hidden else R.string.events_guests_unavailable))
+            else if (details.attendees.isEmpty()) Text(stringResource(R.string.events_no_guest_details))
+            if (guestListVisible) details.attendees.forEach { attendee ->
                 Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Text(attendee.name?.takeIf(String::isNotBlank) ?: attendee.email)
                     if (!attendee.name.isNullOrBlank() && attendee.email.isNotBlank()) Text(attendee.email)
@@ -163,6 +194,15 @@ fun EventDetailsContent(
                     if (attendee.type == CalendarContract.Attendees.TYPE_OPTIONAL) Text(stringResource(R.string.events_optional))
                 }
             }
+        }
+        if (details.guestPermissions != EventGuestPermissions()) DetailSection(stringResource(R.string.events_guest_policy)) {
+            Text(stringResource(R.string.events_context_item, stringResource(R.string.events_guests_modify),
+                stringResource(policyDecision(details.guestPermissions.modify))))
+            Text(stringResource(R.string.events_context_item, stringResource(R.string.events_guests_invite),
+                stringResource(policyDecision(details.guestPermissions.inviteOthers))))
+            Text(stringResource(R.string.events_context_item, stringResource(R.string.events_guests_see),
+                stringResource(policyDecision(details.guestPermissions.seeGuests))))
+            Text(stringResource(R.string.events_guest_policy_advisory), style = MaterialTheme.typography.bodySmall)
         }
         details.recurrenceRule?.takeIf(String::isNotBlank)?.let { rule ->
             DetailSection(stringResource(R.string.events_repeat)) { Text(stringResource(R.string.events_repeat_rule, rule)) }
@@ -189,7 +229,7 @@ fun EventDetailsContent(
                 Text(stringResource(R.string.events_reminder_item, method, timing))
             }
         }
-        if (details.canEdit == AccessDecision.ALLOWED) {
+        if (details.canEdit == AccessDecision.ALLOWED && !cancelled) {
             onEdit?.let { action -> Button(onClick = { action(details.occurrence.ref) }, modifier = Modifier.heightIn(min = 48.dp)) {
                 Text(stringResource(R.string.events_editor_edit))
             } }
@@ -215,7 +255,42 @@ private fun attendeeStatus(status: Int): Int = when (status) {
     CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED -> R.string.events_declined
     CalendarContract.Attendees.ATTENDEE_STATUS_TENTATIVE -> R.string.events_tentative
     CalendarContract.Attendees.ATTENDEE_STATUS_INVITED -> R.string.events_invited
-    else -> R.string.events_no_response
+    CalendarContract.Attendees.ATTENDEE_STATUS_NONE -> R.string.events_no_response
+    else -> R.string.events_not_provided
+}
+
+private fun eventStatus(value: Int?): Int = when (value) {
+    CalendarContract.Events.STATUS_TENTATIVE -> R.string.events_event_tentative
+    CalendarContract.Events.STATUS_CONFIRMED -> R.string.events_event_confirmed
+    CalendarContract.Events.STATUS_CANCELED -> R.string.events_cancelled
+    else -> R.string.events_not_provided
+}
+
+private fun eventAvailability(value: Int?): Int = when (value) {
+    CalendarContract.Events.AVAILABILITY_BUSY -> R.string.events_busy
+    CalendarContract.Events.AVAILABILITY_FREE -> R.string.events_free
+    CalendarContract.Events.AVAILABILITY_TENTATIVE -> R.string.events_event_tentative
+    else -> R.string.events_not_provided
+}
+
+private fun eventPrivacy(value: Int?): Int = when (value) {
+    CalendarContract.Events.ACCESS_DEFAULT -> R.string.events_calendar_default_visibility
+    CalendarContract.Events.ACCESS_CONFIDENTIAL -> R.string.events_confidential
+    CalendarContract.Events.ACCESS_PRIVATE -> R.string.events_private
+    CalendarContract.Events.ACCESS_PUBLIC -> R.string.events_public
+    else -> R.string.events_not_provided
+}
+
+private fun policyDecision(value: AccessDecision): Int = when (value) {
+    AccessDecision.ALLOWED -> R.string.events_policy_yes
+    AccessDecision.DENIED -> R.string.events_policy_no
+    AccessDecision.UNKNOWN -> R.string.events_not_provided
+}
+
+private fun accountLabel(type: String): Int = when (type) {
+    "com.google" -> R.string.events_google_account
+    CalendarContract.ACCOUNT_TYPE_LOCAL -> R.string.events_device_account
+    else -> R.string.events_calendar_account
 }
 
 internal fun allDayDateText(time: EventTime.AllDay, locale: Locale): String {
