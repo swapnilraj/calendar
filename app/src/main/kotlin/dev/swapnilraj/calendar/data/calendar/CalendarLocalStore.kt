@@ -4,9 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import dev.swapnilraj.calendar.core.DraftRecord
-import dev.swapnilraj.calendar.core.AtomicDraftStore
-import dev.swapnilraj.calendar.core.DraftChangeResult
+import dev.swapnilraj.calendar.core.*
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -149,9 +147,9 @@ class CalendarLocalStore(
     internal data class Operation(val id: String, val signature: String, val kind: String, val phase: String, val resultRef: String?)
 
     internal fun operation(id: String): Operation? {
-        checkStoredLength("mutation_journal", "result_ref", "id", id)
+        checkStoredLength("mutation_journal", "CASE WHEN phase = 'ABANDONED' THEN NULL ELSE result_ref END", "id", id)
         listOf("signature", "kind", "phase").forEach { checkStoredLength("mutation_journal", it, "id", id, readBudgets.mutation.maxCellUnits) }
-        return readableDatabase.query("mutation_journal", null,
+        return readableDatabase.query("mutation_journal", arrayOf("id", "signature", "kind", "phase", "CASE WHEN phase = 'ABANDONED' THEN NULL ELSE result_ref END AS result_ref"),
         "id = ?", arrayOf(id), null, null, null).use { cursor ->
         if (!cursor.moveToFirst()) null else Operation(id, cursor.getString(cursor.getColumnIndexOrThrow("signature")),
             cursor.getString(cursor.getColumnIndexOrThrow("kind")), cursor.getString(cursor.getColumnIndexOrThrow("phase")),
@@ -167,16 +165,75 @@ class CalendarLocalStore(
         }, SQLiteDatabase.CONFLICT_IGNORE)
     }
 
-    /** Compare-and-set means two writer instances cannot both submit the same operation. */
-    internal fun attempt(id: String): Boolean = writableDatabase.update("mutation_journal", ContentValues().apply {
-        put("phase", "ATTEMPTED")
-    }, "id = ? AND phase IN (?, ?)", arrayOf(id, "PREPARED", "FAILED")) == 1
+    internal data class OperationHeader(val id: String, val signature: String, val kind: String, val phase: String)
+    /** Retirement/fence checks never materialize or validate the opaque provider receipt. */
+    internal fun operationHeader(id: String): OperationHeader? {
+        listOf("signature", "kind", "phase").forEach { checkStoredLength("mutation_journal", it, "id", id, readBudgets.mutation.maxCellUnits) }
+        return readableDatabase.query("mutation_journal", arrayOf("signature", "kind", "phase"), "id = ?", arrayOf(id), null, null, null).use {
+            if (!it.moveToFirst()) null else OperationHeader(id, it.getString(0), it.getString(1), it.getString(2))
+        }
+    }
 
-    internal fun mark(id: String, phase: String, resultRef: String? = null) {
+    /** Exact request and prior phase are required across independent writer/helper instances. */
+    internal fun attempt(expected: Operation): Boolean {
+        if (expected.phase !in setOf("PREPARED", "FAILED")) return false
+        return writableDatabase.update("mutation_journal", ContentValues().apply { put("phase", "ATTEMPTED") },
+            "id = ? AND signature = ? AND kind = ? AND phase = ? AND result_ref IS ?",
+            arrayOf(expected.id, expected.signature, expected.kind, expected.phase, expected.resultRef)) == 1
+    }
+
+    /** ABANDONED is permanent. A stale failure/verification can never resurrect any terminal row. */
+    internal fun mark(expected: Operation, phase: String, resultRef: String? = null): Boolean {
         resultRef?.let { checkStoredJson(it, readBudgets.maxCanonicalBytes) }
-        check(writableDatabase.update("mutation_journal", ContentValues().apply {
+        val allowed = when (expected.phase) {
+            "PREPARED" -> phase == "FAILED"
+            "ATTEMPTED" -> phase == "FAILED" || phase == "COMMITTED"
+            "COMMITTED" -> phase == "VERIFIED"
+            "VERIFIED" -> phase == "VERIFIED"
+            else -> false
+        }
+        if (!allowed) return false
+        return writableDatabase.update("mutation_journal", ContentValues().apply {
             put("phase", phase); if (resultRef != null) put("result_ref", resultRef)
-        }, "id = ?", arrayOf(id)) == 1)
+        }, "id = ? AND signature = ? AND kind = ? AND phase = ? AND result_ref IS ?",
+            arrayOf(expected.id, expected.signature, expected.kind, expected.phase, expected.resultRef)) == 1
+    }
+
+    internal fun retirement(id: String, kind: String, signature: String, write: Boolean): OperationRetirementResult {
+        require(id.isNotBlank() && id.length <= readBudgets.mutation.maxCellUnits)
+        fun classify(header: OperationHeader?): OperationRetirementResult {
+            if (header == null) return OperationRetirementResult.NotRetired(id)
+            if (header.phase !in setOf("PREPARED", "FAILED", "ATTEMPTED", "COMMITTED", "VERIFIED", "ABANDONED") ||
+                header.kind.isBlank() || !header.signature.matches(Regex("[0-9a-f]{64}"))) return OperationRetirementResult.Unavailable
+            if (header.kind != kind || header.signature != signature) return OperationRetirementResult.Conflict(id)
+            return when (header.phase) {
+                "ABANDONED" -> OperationRetirementResult.Retired(id)
+                "ATTEMPTED" -> OperationRetirementResult.Blocked(id, RetirementBlockReason.MAY_HAVE_DISPATCHED)
+                "COMMITTED", "VERIFIED" -> OperationRetirementResult.Blocked(id, RetirementBlockReason.RECORDED_COMMIT)
+                else -> OperationRetirementResult.NotRetired(id)
+            }
+        }
+        if (!write) return classify(operationHeader(id))
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val initial = operationHeader(id)
+            val status = classify(initial)
+            if (status is OperationRetirementResult.NotRetired) {
+                if (initial == null) {
+                    db.insertWithOnConflict("mutation_journal", null, ContentValues().apply {
+                        put("id", id); put("kind", kind); put("signature", signature); put("phase", "ABANDONED")
+                    }, SQLiteDatabase.CONFLICT_IGNORE)
+                } else {
+                    db.update("mutation_journal", ContentValues().apply { put("phase", "ABANDONED") },
+                        "id = ? AND kind = ? AND signature = ? AND phase = ?", arrayOf(id, kind, signature, initial.phase))
+                }
+            }
+            val result = classify(operationHeader(id))
+            if (result is OperationRetirementResult.NotRetired) return OperationRetirementResult.Unavailable
+            db.setTransactionSuccessful()
+            return result
+        } finally { db.endTransaction() }
     }
 
     internal fun unresolved(): List<Operation> = readableDatabase.query("mutation_journal", arrayOf("id"),

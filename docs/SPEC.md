@@ -486,3 +486,11 @@ submission, and leaves the raw draft untouched. A retirement result for another 
 This contract packet adds no provider retirement implementation, abandonment UI, meeting writer or
 recurrence activation. Existing serialized drafts, frozen commands and writer fingerprints are
 unchanged; the backend and connected retirement actions require separate verified packets.
+
+The following ordinary backend packet provides permanent app-private retirement for shipped
+one-off create/update/delete requests. Exact journal-record comparison fences attempts and later
+phase changes; retired commands return before permission checks or provider reads. Inspection and
+retirement do not query the calendar provider, rewrite a draft or change the existing command JSON,
+hashes, receipt format or database schema. Series, meetings, meeting creation and recurring ordinary
+requests remain Unsupported by this retirement service until their own encoders ship. Connected
+discard/replacement actions and application composition remain a separate implementation packet.
