@@ -20,6 +20,7 @@ data class EditorDraftLaunch internal constructor(
     private val normalizedSeed: EventDraft?,
     val notices: List<EditorNotice> = emptyList(),
     val targetIdentity: CalendarIdentity? = null,
+    val generation: String? = null,
 ) {
     /** A seed never replaces stored raw fields. No current-date fallback is implicit. */
     fun seed(fallbackDate: LocalDate, fallbackZone: ZoneId): EventDraft = normalizedSeed ?: EventDraft(
@@ -36,11 +37,14 @@ data class DraftBrowserItem(val recordId: String, val updatedAt: Instant,
 /** Reads the feature's versioned opaque payload without normalizing or saving incomplete fields. */
 object DraftBrowserCodec {
     fun read(record: DraftRecord): DraftBrowserItem {
-        if (record.version != EventEditorController.VERSION)
+        if (record.version !in setOf(EventEditorController.LEGACY_VERSION, EventEditorController.PREVIOUS_VERSION, EventEditorController.VERSION))
             return DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNSUPPORTED_VERSION)
         return try {
             require(record.id.isNotBlank())
             val raw = JSONObject(record.payload)
+            require(record.version != EventEditorController.LEGACY_VERSION || !raw.has("recurrence"))
+            require(record.version == EventEditorController.LEGACY_VERSION || raw.has("recurrence"))
+            val generation = if (record.version == EventEditorController.VERSION) OrdinaryDraftEnvelope.generation(raw) else null
             val target = raw.getString("target")
             val kind = when {
                 target == "create" -> EditorDraftKind.CREATE
@@ -75,10 +79,10 @@ object DraftBrowserCodec {
             if (ref != null) require(raw.getString("calendarId") == ref.calendarId.value.toString())
             val seed = (frozen as? FrozenEditorSubmission.Create)?.draft ?: baseline?.let(::readSeed)
             val launch = EditorDraftLaunch(record.id, kind, ref,
-                submitted || retained != null && frozen == null,
+                submitted || retained != null || operationKind.isNotBlank() || raw.optString("operationPayload").isNotBlank(),
                 raw.optString("title"), raw.optString("startDate"),
                 fields.targetIdentity != null && fields.targetIdentity.calendarId.value.toString() == fields.calendarId &&
-                    fields.targetIdentity.account.name.isNotBlank() && fields.targetIdentity.account.type.isNotBlank(), seed, EditorNoticeCodec.read(raw), fields.targetIdentity)
+                    fields.targetIdentity.account.name.isNotBlank() && fields.targetIdentity.account.type.isNotBlank(), seed, EditorNoticeCodec.read(raw), fields.targetIdentity, generation)
             DraftBrowserItem(record.id, record.updatedAt, launch, null)
         } catch (_: Exception) { DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNREADABLE) }
     }
@@ -126,7 +130,8 @@ object DraftBrowserCodec {
             value.optString("zone").takeIf(String::isNotBlank)?.let(ZoneId::of), value.getString("title"),
             value.getString("location"), value.getString("description"), (0 until alerts.length()).map(alerts::getInt),
             if (value.has("availability") && !value.isNull("availability")) value.getInt("availability") else null,
-            if (value.has("privacy") && !value.isNull("privacy")) value.getInt("privacy") else null, CalendarIdentityJson.optional(value, "targetIdentity"))
+            if (value.has("privacy") && !value.isNull("privacy")) value.getInt("privacy") else null, CalendarIdentityJson.optional(value, "targetIdentity"),
+            if (value.has("recurrence")) AuthoredRecurrenceJson.decode(value.getJSONObject("recurrence")) else null)
     } catch (_: Exception) { null }
 }
 

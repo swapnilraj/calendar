@@ -36,7 +36,7 @@ class CreateCalendarIdentityScreenTest {
     @After fun stop() { scope.cancel() }
     @Test fun reusedIdRequiresExplicitNewAccountSelectionAndRetainsDraftFields() = runBlocking<Unit> {
         prepareNewDraft(initial, "namespace-ui", true, store)
-        val controller = EventEditorController(initial, null, "namespace-ui", writer, store, scope, requireStoredDraft = true)
+        val controller = preparedEditor(initial, null, "namespace-ui", writer, store, scope, requireStoredDraft = true)
         var available by mutableStateOf(listOf(a))
         compose.setContent { DaylightTheme { Surface(Modifier.fillMaxSize()) { EventEditorContent(controller, available, {}, {}, {}) } } }
         compose.onNodeWithText("Work · original@example.test").assertIsSelected()
@@ -57,7 +57,7 @@ class CreateCalendarIdentityScreenTest {
         raw.put("submitted", true).put("operationKind", "create").remove("targetIdentity")
         raw.put("submission", FrozenEditorSubmission.Create(raw.getString("operationId"), initial.copy(targetIdentity = null)).encode())
         store.records["namespace-ui"] = old.copy(payload = raw.toString())
-        val controller = EventEditorController(initial.copy(targetIdentity = b.identity), null, "namespace-ui", writer, store, scope,
+        val controller = preparedEditor(initial.copy(targetIdentity = b.identity), null, "namespace-ui", writer, store, scope,
             recoveryOnly = true, requireStoredDraft = true)
         compose.setContent { DaylightTheme { Surface(Modifier.fillMaxSize()) { EventEditorContent(controller, listOf(b), {}, {}, {}) } } }
         compose.onNodeWithText("The original request has no verified destination calendar binding. Its outcome can be checked, but retrying it is disabled. No current calendar account will be substituted.").assertIsDisplayed()

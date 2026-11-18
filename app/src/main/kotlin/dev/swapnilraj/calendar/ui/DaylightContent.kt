@@ -148,6 +148,12 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState)
                         mutations = mutations,
                         onOpenReminders = { remindersOpen = true },
                         drafts = app.calendarLocalStore,
+                        retirement = app.operationRetirement,
+                        requestWritePermission = {
+                            val allowed = ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
+                            if (!allowed) writeRequest.launch(Manifest.permission.WRITE_CALENDAR)
+                            allowed
+                        },
                         onLocalSaved = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localSaved) } },
                         onLocalDeleted = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localDeleted) } },
                         onDraftFailure = { scope.launch { snackbar.showSnackbar(draftUnavailable) } },

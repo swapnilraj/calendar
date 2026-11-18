@@ -6,6 +6,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.events.EventEditorControllerTest
 import dev.swapnilraj.calendar.ui.events.prepareNewDraft
+import dev.swapnilraj.calendar.ui.events.DraftPreparationResult
 import dev.swapnilraj.calendar.ui.*
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
 import java.time.*
@@ -72,13 +73,17 @@ class EventWriteWorkflowTest {
         var requests = 0
         var saved: EventRef? = null
         val guarded = PermissionAwareMutations(writer, { permission }, { requests++ })
-        val request = EventWriteRequest.create(date, ZoneOffset.UTC, null)
+        val requested = EventWriteRequest.create(date, ZoneOffset.UTC, null)
         val store = EventEditorControllerTest.Store()
-        runBlocking { prepareNewDraft(EventDraft(CalendarId(0), EventTime.AllDay(CalendarDateRange.day(date)), ZoneOffset.UTC, ""),
-            request.draftId, false, store) }
+        val launch = runBlocking { prepareNewDraft(EventDraft(CalendarId(0), EventTime.AllDay(CalendarDateRange.day(date)), ZoneOffset.UTC, ""),
+            requested.draftId, false, store) } as DraftPreparationResult.Ready
+        val request = EventWriteRequest.fromLaunch(launch.launch, date, ZoneOffset.UTC)
         compose.setContent { DaylightTheme {
             EventWriteWorkflow(request, guarded, store, listOf(calendar), true,
-                onDismiss = {}, onSaved = { saved = it }, onDeleted = {})
+                onDismiss = {}, onSaved = { saved = it }, onDeleted = {}, requestWritePermission = {
+                    if (!permission) requests++
+                    permission
+                })
         } }
         compose.waitForIdle()
         compose.onAllNodesWithText("2028-06-15").assertCountEquals(2)
@@ -101,15 +106,35 @@ class EventWriteWorkflowTest {
         assertEquals(EventTime.AllDay(CalendarDateRange.day(date)), writer.saved?.time)
     }
 
+    @Test fun staleGenerationRouteCannotMountOrModifyReplacementDraft() {
+        val writer = Writer(ref); val store = EventEditorControllerTest.Store()
+        val initial = EventDraft(calendar.id, EventTime.AllDay(CalendarDateRange.day(date)), ZoneOffset.UTC, "Retained successor", targetIdentity = calendar.identity)
+        val prepared = runBlocking { prepareNewDraft(initial, "generation-route", true, store) } as DraftPreparationResult.Ready
+        val request = EventWriteRequest.fromLaunch(prepared.launch, date, ZoneOffset.UTC)
+        val before = store.records.getValue(request.draftId)
+        val successor = before.copy(payload = org.json.JSONObject(before.payload)
+            .put("generation", java.util.UUID.randomUUID().toString()).put("revision", java.util.UUID.randomUUID().toString()).toString())
+        runBlocking { assertEquals(DraftChangeResult.Applied, store.compareAndSet(request.draftId, before, successor)) }
+        compose.setContent { DaylightTheme {
+            EventWriteWorkflow(request, writer, store, listOf(calendar), true, {}, {}, {}, requestWritePermission = { error("No permission prompt") })
+        } }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("This draft could not be opened.").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Save").assertDoesNotExist()
+        compose.onNodeWithText("Retained successor").assertDoesNotExist()
+        compose.onNodeWithText("Retry").performClick(); compose.waitForIdle()
+        assertEquals(successor, store.records[request.draftId]); assertEquals(0, writer.creates)
+    }
+
     @Test fun restoredCompletedCreateWithMissingDraftNeverSeedsAnotherOperation() {
         val writer = Writer(ref)
-        val request = EventWriteRequest.create(date, ZoneOffset.UTC, calendar.id)
+        val requested = EventWriteRequest.create(date, ZoneOffset.UTC, calendar.id)
         val store = EventEditorControllerTest.Store()
-        runBlocking { prepareNewDraft(EventDraft(calendar.id, EventTime.AllDay(CalendarDateRange.day(date)), ZoneOffset.UTC, "Fixture", targetIdentity = calendar.identity),
-            request.draftId, true, store) }
+        val launch = runBlocking { prepareNewDraft(EventDraft(calendar.id, EventTime.AllDay(CalendarDateRange.day(date)), ZoneOffset.UTC, "Fixture", targetIdentity = calendar.identity),
+            requested.draftId, true, store) } as DraftPreparationResult.Ready
+        val request = EventWriteRequest.fromLaunch(launch.launch, date, ZoneOffset.UTC)
         val restoration = androidx.compose.ui.test.junit4.StateRestorationTester(compose)
         restoration.setContent { DaylightTheme {
-            EventWriteWorkflow(request, writer, store, listOf(calendar), true, {}, {}, {})
+            EventWriteWorkflow(request, writer, store, listOf(calendar), true, {}, {}, {}, requestWritePermission = { true })
         } }
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Save").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Save").performScrollTo().performClick()

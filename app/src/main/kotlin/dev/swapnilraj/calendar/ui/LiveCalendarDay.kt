@@ -68,6 +68,8 @@ internal fun LiveCalendarDay(
     onCreateDate: ((LocalDate) -> Unit)? = null,
     mutations: CalendarMutations? = null,
     drafts: DraftStore? = null,
+    retirement: OperationRetirement? = null,
+    requestWritePermission: (suspend () -> Boolean)? = null,
     onLocalSaved: () -> Unit = {},
     onLocalDeleted: () -> Unit = {},
     onDraftFailure: () -> Unit = {},
@@ -364,6 +366,10 @@ internal fun LiveCalendarDay(
     if (mutations != null && drafts != null) writeRequestText?.let { raw ->
         val request = remember(raw) { EventWriteRequest.decode(raw) }
         EventWriteWorkflow(request, mutations, drafts, calendars, use24Hour, clock = draftClock,
+            retirement = retirement, requestWritePermission = requestWritePermission,
+            onReplacedLaunch = { replacement ->
+                writeRequestText = EventWriteRequest.fromLaunch(replacement, visibleDate, displayNow.zone).encode()
+            },
             onDismiss = { writeRequestText = null },
             onSaved = { writeRequestText = null; reader.refresh(); onLocalSaved() },
             onDeleted = { writeRequestText = null; reader.refresh(); onLocalDeleted() })
