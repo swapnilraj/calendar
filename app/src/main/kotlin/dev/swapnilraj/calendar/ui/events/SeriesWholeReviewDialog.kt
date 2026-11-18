@@ -33,7 +33,7 @@ internal fun SeriesWholeReviewDialog(review: SeriesWholeReview, title: String, c
                 RecurrencePattern.Daily -> stringResource(R.string.recurrence_editor_daily)
                 is RecurrencePattern.Weekly -> stringResource(R.string.recurrence_editor_weekly_days, pattern.days.sortedBy { it.value }.joinToString(", ", transform = ::day))
                 is RecurrencePattern.MonthlyDate -> stringResource(R.string.recurrence_editor_monthly_day, pattern.day)
-                is RecurrencePattern.MonthlyWeekday -> stringResource(R.string.series_review_monthly_weekday, pattern.ordinal, day(pattern.day))
+                is RecurrencePattern.MonthlyWeekday -> stringResource(R.string.recurrence_editor_monthly_ordinal, stringResource(seriesOrdinalLabel(pattern.ordinal)), day(pattern.day))
                 is RecurrencePattern.Yearly -> stringResource(R.string.recurrence_editor_yearly_date,
                     pattern.monthDay.format(DateTimeFormatter.ofPattern(android.text.format.DateFormat.getBestDateTimePattern(locale, "MMMMd"), locale)))
             })
@@ -56,4 +56,18 @@ internal fun SeriesWholeReviewDialog(review: SeriesWholeReview, title: String, c
         } },
         confirmButton = { TextButton(onClick = confirm) { Text(stringResource(R.string.series_confirm_whole_changes)) } },
         dismissButton = { TextButton(onClick = dismiss) { Text(stringResource(R.string.events_editor_cancel)) } })
+}
+
+private fun seriesOrdinalLabel(value: Int): Int = when (value) {
+    1 -> R.string.recurrence_editor_first
+    2 -> R.string.recurrence_editor_second
+    3 -> R.string.recurrence_editor_third
+    4 -> R.string.recurrence_editor_fourth
+    5 -> R.string.recurrence_editor_fifth
+    -1 -> R.string.recurrence_editor_last
+    -2 -> R.string.recurrence_editor_second_last
+    -3 -> R.string.recurrence_editor_third_last
+    -4 -> R.string.recurrence_editor_fourth_last
+    -5 -> R.string.recurrence_editor_fifth_last
+    else -> error("Invalid ordinal")
 }

@@ -166,4 +166,59 @@ class SeriesTemporalEditorTest {
         editor.recover(); editor.retryOriginal(); assertEquals(listOf(command), f.calls); assertEquals(record, f.store.records.getValue("series"))
         assertTrue(editor.state.recoveryRequired); assertFalse(editor.state.retryReady)
     }
+    @Test fun masterStartDoesNotSilentlyReanchorItsExistingWeekdayPattern() = runBlocking<Unit> {
+        val editor = editor(); move(editor, "2028-06-13"); editor.save()
+        assertNull(editor.state.wholeReview); assertEquals(SeriesEditorProblem.NEEDS_REVIEW, editor.state.problem)
+        assertEquals("WEEKLY", editor.state.fields.recurrence!!.values.frequency)
+        assertEquals(listOf("MONDAY"), editor.state.fields.recurrence!!.values.weekdays); assertTrue(f.calls.isEmpty())
+    }
+    @Test fun gapAndFoldInputsRequireExplicitSourceZoneOffsetWithoutGuessing() = runBlocking<Unit> {
+        val editor = editor()
+        editor.change { it.copy(temporal = it.temporal!!.copy(startDate = "2028-10-29", startTime = "01:30", zone = "Europe/London")) }
+        editor.changeRule(editor.state.fields.recurrence!!.values.copy(frequency = "DAILY")); editor.save()
+        assertEquals(SeriesEditorProblem.INVALID_INPUT, editor.state.problem); assertNull(editor.state.wholeReview)
+        editor.change { it.copy(temporal = it.temporal!!.copy(offset = "+01:00")) }; editor.save()
+        assertEquals(Instant.parse("2028-10-29T00:30:00Z"), (editor.state.wholeReview!!.after.time as EventTime.Timed).start)
+        editor.dismissWholeReview()
+        editor.change { it.copy(temporal = it.temporal!!.copy(startDate = "2028-03-26")) }; editor.save()
+        assertEquals(SeriesEditorProblem.INVALID_INPUT, editor.state.problem); assertTrue(f.calls.isEmpty())
+    }
+    @Test fun allDayMasterDurationUsesUtcDatesAndExclusiveEndNotProviderDisplayZone() = runBlocking<Unit> {
+        val selected = source.selectedDetails.occurrence.ref.copy(instanceStart = Instant.parse("2028-06-19T00:00:00Z"),
+            instanceEnd = Instant.parse("2028-06-21T00:00:00Z"), recurrence = RecurrenceRef(41, Instant.parse("2028-06-19T00:00:00Z")))
+        val value = source.copy(selectedDetails = source.selectedDetails.copy(eventZone = ZoneId.of("Asia/Tokyo"),
+            occurrence = EventOccurrence(selected, EventTime.AllDay(CalendarDateRange(LocalDate.parse("2028-06-19"), LocalDate.parse("2028-06-21"))), "Selected day", 1)),
+            snapshot = source.snapshot.copy(start = RecurrenceStart.AllDay(LocalDate.parse("2028-06-05")), durationRaw = "P2D", validatedSelection = selected))
+        val editor = editor(value); assertEquals("2028-06-05", editor.state.fields.temporal!!.startDate); assertEquals("2", editor.state.fields.temporal!!.days)
+        editor.change { it.copy(temporal = it.temporal!!.copy(durationMode = "DAYS", days = "3")) }; editor.save()
+        val review = editor.state.wholeReview!!; assertEquals(ZoneOffset.UTC, review.after.eventZone)
+        assertEquals(EventTime.AllDay(CalendarDateRange(LocalDate.parse("2028-06-05"), LocalDate.parse("2028-06-08"))), review.after.time)
+        assertEquals(RecurrenceDurationChange.AllDayDays(3), review.command.intent.duration); assertTrue(f.calls.isEmpty())
+    }
+    @Test fun monthlyOrdinalYearlyAndExplicitEndChangesRoundTripWithoutResettingOtherParts() = runBlocking<Unit> {
+        val values = listOf(RecurrenceEditorFields(frequency = "MONTHLY", monthDay = "5", endMode = "KEEP"),
+            RecurrenceEditorFields(frequency = "MONTHLY", monthlyMode = "WEEKDAY", ordinal = "1", weekday = "MONDAY", endMode = "KEEP"),
+            RecurrenceEditorFields(frequency = "YEARLY", yearMonth = "6", yearDay = "5", endMode = "KEEP"))
+        for (raw in values) {
+            f.store.records.clear(); val editor = editor(); editor.changeRule(raw); editor.save()
+            val command = editor.state.wholeReview!!.command
+            assertEquals(FieldChange.Keep, command.intent.rule.end)
+            val frozen = FrozenSeriesSubmission(editor.operationId!!, editor.launch.selected, f.identity, source.token, RecurrenceScope.ALL, SeriesEditorAction.EDIT, command)
+            assertEquals(frozen, FrozenSeriesSubmission.decode(frozen.encode()))
+        }
+        f.store.records.clear(); val editor = editor(); editor.changeRule(editor.state.fields.recurrence!!.values.copy(endMode = "COUNT", count = "1")); editor.save()
+        assertEquals(FieldChange.Set(RecurrenceEnd.Count(1)), editor.state.wholeReview!!.command.intent.rule.end)
+        assertEquals(FieldChange.Keep, editor.state.wholeReview!!.command.intent.rule.pattern); assertTrue(f.calls.isEmpty())
+    }
+
+    @Test fun providerIncompatibleOffsetZonesBlockBeforeAnyFreeze() = runBlocking<Unit> {
+        for (zone in listOf("+05:30", "GMT+05:30")) {
+            f.store.records.clear(); val editor = editor()
+            editor.change { it.copy(temporal = it.temporal!!.copy(zone = zone)) }; editor.save()
+            assertNull(editor.state.wholeReview); assertEquals(SeriesEditorProblem.INVALID_INPUT, editor.state.problem)
+            editor.confirmWholeReview(); assertTrue(f.calls.isEmpty())
+            assertFalse(JSONObject(f.store.records.getValue("series").payload).has("frozen"))
+        }
+    }
+
 }

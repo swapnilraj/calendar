@@ -41,7 +41,7 @@ fun SeriesScopeContent(source: EditableSeries, action: SeriesEditorAction, onDis
 @Composable
 fun SeriesEventEditorSheet(controller: SeriesEventEditorController, onDismiss: () -> Unit,
     onSaved: (SeriesMutationResult.LocalSaved) -> Unit, onDeleted: (SeriesMutationResult.LocalDeleted) -> Unit,
-    onReview: (SeriesReadResult) -> Unit) {
+    onReview: ((SeriesReadResult) -> Unit)? = null) {
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(confirmValueChange = { value ->
         value != SheetValue.Hidden || !controller.state.saving && !controller.state.reviewing
@@ -59,7 +59,7 @@ fun SeriesEventEditorSheet(controller: SeriesEventEditorController, onDismiss: (
 }
 
 @Composable
-fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: () -> Unit, onReview: (SeriesReadResult) -> Unit) {
+fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: () -> Unit, onReview: ((SeriesReadResult) -> Unit)? = null) {
     val state = controller.state; val fields = state.fields; val launch = controller.launch
     val boundaryText = seriesDeletionBoundaryText(controller)
     val coroutine = rememberCoroutineScope(); var discard by remember { mutableStateOf(false) }; var retryDelete by remember { mutableStateOf(false) }
@@ -79,7 +79,7 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
                 Text(stringResource(if (launch.action == SeriesEditorAction.DELETE) R.string.events_editor_retry_delete else R.string.events_editor_retry_save))
             }
         }
-        if (state.reviewRequired) TextButton(onClick = { discard = true }, enabled = controller.canReviewDraft) { Text(stringResource(R.string.series_discard_review)) }
+        if (state.reviewRequired && onReview != null) TextButton(onClick = { discard = true }, enabled = controller.canReviewDraft) { Text(stringResource(R.string.series_discard_review)) }
         if (boundaryText != null) Text(stringResource(R.string.series_delete_original_boundary, boundaryText))
         val locale = LocalLocale.current.platformLocale
         controller.masterStart?.takeIf { launch.scope == RecurrenceScope.ALL }?.let { start ->
@@ -143,7 +143,7 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
         dismissButton = { TextButton(onClick = { controller.cancelDelete(); retryDelete = false }) { Text(stringResource(R.string.events_editor_cancel)) } })
     if (discard) AlertDialog(onDismissRequest = { discard = false }, title = { Text(stringResource(R.string.series_discard_review)) },
         text = { Text(stringResource(R.string.series_discard_warning)) },
-        confirmButton = { TextButton(onClick = { discard = false; coroutine.launch { controller.discardAndReload()?.let(onReview) } }) { Text(stringResource(R.string.series_discard_button)) } },
+        confirmButton = { TextButton(enabled = onReview != null && controller.canReviewDraft, onClick = { val handler = onReview; if (handler != null) { discard = false; coroutine.launch { controller.discardAndReload()?.let(handler) } } }) { Text(stringResource(R.string.series_discard_button)) } },
         dismissButton = { TextButton(onClick = { discard = false }) { Text(stringResource(R.string.events_editor_cancel)) } })
 }
 

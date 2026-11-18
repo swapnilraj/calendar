@@ -19,7 +19,6 @@
     <string name="series_review_whole_scope">These changes apply from the master start, including dates before the selected occurrence.</string>
     <string name="series_before_master">Original master interval</string>
     <string name="series_after_master">Proposed master interval</string>
-    <string name="series_review_monthly_weekday">Monthly weekday %2$s at position %1$d</string>
     <string name="series_review_limits_preserved">An unchanged end limit is retained. This logical interval is not proof of your provider’s future occurrence expansion.</string>
     <string name="series_confirm_whole_changes">Save entire-series changes</string>
 </resources>
