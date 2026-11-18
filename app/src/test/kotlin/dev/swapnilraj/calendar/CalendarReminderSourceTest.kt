@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.CancellationSignal
 import android.provider.CalendarContract
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.data.calendar.ProviderReadBudgets
 import dev.swapnilraj.calendar.data.calendar.CalendarReminderSource
 import java.time.Instant
 import java.time.ZoneId
@@ -111,11 +112,11 @@ class CalendarReminderSourceTest {
         override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = error("Read only")
         override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = error("Read only")
     }
-    private suspend fun fixture(block: suspend (Provider, CalendarReminderSource, () -> Unit) -> Unit) {
+    private suspend fun fixture(readBudgets: ProviderReadBudgets = ProviderReadBudgets(), block: suspend (Provider, CalendarReminderSource, () -> Unit) -> Unit) {
         val provider = Provider().apply { calendars += cal() }
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
         var allowed = true
-        val source = CalendarReminderSource(RuntimeEnvironment.getApplication().contentResolver, { allowed })
+        val source = CalendarReminderSource(RuntimeEnvironment.getApplication().contentResolver, { allowed }, readBudgets = readBudgets)
         block(provider, source) { allowed = false }
     }
     private suspend fun CalendarReminderSource.load(config: ReminderConfiguration = config(), bounds: InstantBounds = window) =
@@ -123,6 +124,22 @@ class CalendarReminderSourceTest {
     private suspend fun CalendarReminderSource.resolveOne(key: ReminderKey, config: ReminderConfiguration = config()) =
         (resolve(setOf(key), config) as ReminderResolutionResult.Ready).results.getValue(key)
     private fun key(id: Long = 10, start: Instant = now.plusSeconds(600), minutes: Int = 10) = ReminderKey(calendar, id, start, minutes)
+
+    @Test fun exhaustedAuthorityBudgetNeverReportsGoneOrCompleteCoverage() = runBlocking {
+        val defaults = ProviderReadBudgets()
+        fixture(defaults.copy(range = defaults.range.copy(maxRows = 1))) { p, source, _ ->
+            p.events += event(); p.reminders += reminder()
+            val discovery = source.loadDueWindow(window, config())
+            if (discovery is ReminderSourceResult.Ready) {
+                assertTrue(discovery.snapshot.completeCalendars.isEmpty())
+                assertTrue(discovery.snapshot.removedCalendars.isEmpty())
+            } else assertEquals(ReminderSourceResult.Unavailable, discovery)
+            val resolution = source.resolve(setOf(key()), config())
+            if (resolution is ReminderResolutionResult.Ready)
+                assertTrue(resolution.results.getValue(key()) is ReminderResolution.Deferred)
+            else assertEquals(ReminderResolutionResult.Unavailable, resolution)
+        }
+    }
 
     @Test fun timedDueWindowIsHalfOpenAndDuplicateStoredAlertsCoalesce() = runBlocking {
         fixture { p, source, _ ->

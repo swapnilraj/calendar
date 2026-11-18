@@ -53,6 +53,20 @@ class ReminderLedgerTest {
         return ledger.findByAlias(record.notificationAlias)!!
     }
 
+    @Test fun oversizedLegacyLedgerPayloadDoesNotDecodeOrMutateHistory() = runBlocking {
+        fixture { store, ledger ->
+            val record = schedule(ledger)
+            store.writableDatabase.execSQL("UPDATE reminder_ledger SET payload = ?", arrayOf("x".repeat(2000)))
+            val limited = SqliteReminderLedger(store, readBudgets = ProviderReadBudgets(maxCanonicalBytes = 1000))
+            try { limited.nextScheduled(); fail("oversized ledger JSON") } catch (_: ProviderReadLimitExceeded) { }
+            store.readableDatabase.rawQuery("SELECT state,notification_nonce FROM reminder_ledger", null).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(record.state.name, it.getString(0))
+                assertEquals(record.notificationAlias.nonce, it.getString(1))
+            }
+        }
+    }
+
     @Test fun repeatedDiscoveryIsIdempotentAndNoPresentationTextIsStored() = runBlocking {
         fixture { store, ledger ->
             val original = schedule(ledger)

@@ -328,8 +328,9 @@ class CalendarSeriesWriterTest {
 
     @Test fun oversizedCompleteBatchAndPathologicalGraphStopBeforeJournalDispatch() = runBlocking {
         fixture { f ->
-            f.provider.events[0]["future_private_column"] = "x".repeat(300 * 1024)
             val editable = f.editable()
+            f.provider.events[0]["future_private_column"] = "x".repeat(300 * 1024)
+            assertTrue(f.writer.loadForEdit(selected) is SeriesReadResult.NeedsReview)
             assertTrue(f.writer.mutate("oversized", selected, editable.token, whole(editable,
                 EventPatch(title = FieldChange.Set("Too large to assert safely")))) is SeriesMutationResult.PlanningReview)
             assertEquals(0, f.provider.batchCount)

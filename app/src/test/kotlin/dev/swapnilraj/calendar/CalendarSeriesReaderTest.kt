@@ -281,7 +281,7 @@ class CalendarSeriesReaderTest {
             return result
         }
     }
-    private suspend fun fixture(budget: RecurrencePlanningBudget = RecurrencePlanningBudget(),
+    private suspend fun fixture(budget: RecurrencePlanningBudget = RecurrencePlanningBudget(), readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
         block: suspend (Provider, CalendarSeriesReader, CalendarLocalStore, MutableSet<String>) -> Unit) {
         val context = RuntimeEnvironment.getApplication()
         val provider = Provider().apply { events += master(); instances += instance() }
@@ -290,12 +290,48 @@ class CalendarSeriesReaderTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val permissions = mutableSetOf(Manifest.permission.READ_CALENDAR)
         val service = CalendarSeriesReader(context.contentResolver, CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0), store,
-            permissions::contains, budget = budget)
+            permissions::contains, budget = budget, readBudgets = readBudgets)
         try { block(provider, service, store, permissions) }
         finally { scope.cancel(); scope.coroutineContext[Job]!!.join(); store.close(); context.deleteDatabase(store.databaseName) }
     }
     private suspend fun CalendarSeriesReader.ready(ref: EventRef = selected) = (loadForEdit(ref) as SeriesReadResult.Ready).series
     private fun Provider.childReads() = calls.count { it.path == "attendees" || it.path == "reminders" }
+
+    @Test fun largeGraphAndChildRowsFailBeforeAnySnapshotIsPersisted() = runBlocking {
+        val defaults = ProviderReadBudgets()
+        fixture(readBudgets = defaults.copy(mutation = defaults.mutation.copy(maxTextUnits = 40_000))) { p, source, store, _ ->
+            repeat(200) { id -> p.events += exception((id + 20).toLong(), (id + 2).toLong()).apply { put("description", "$id".padEnd(16_384, 'x')) } }
+            assertTrue(source.loadForEdit(selected) is SeriesReadResult.NeedsReview)
+            store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots", null).use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+        }
+        fixture(readBudgets = defaults.copy(maxSeriesChildren = 2)) { p, source, store, _ ->
+            repeat(3) { p.reminders += mutableMapOf("_id" to (it + 50).toString(), "event_id" to "10", "minutes" to "10", "method" to "1") }
+            assertTrue(source.loadForEdit(selected) is SeriesReadResult.NeedsReview)
+            store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots", null).use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+        }
+    }
+
+    @Test fun beforeAfterAndCanonicalShareOneOperationBudgetBeforeSavingToken() = runBlocking {
+        fixture { _, source, store, _ ->
+            val limits = ProviderReadBudgets().mutation
+            val oneSnapshot = withReadBudget(limits) {
+                source.source(selected).canonical()
+                currentReadBudget()!!.consumedTextUnits
+            }
+            val result = withReadBudget(limits.copy(maxTextUnits = oneSnapshot + oneSnapshot / 2)) {
+                source.loadForEdit(selected)
+            }
+            assertTrue(result is SeriesReadResult.NeedsReview)
+            store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots", null).use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+        }
+    }
+
+    @Test fun canonicalByteBudgetRejectsBeforeSnapshotPersistence() = runBlocking {
+        fixture(readBudgets = ProviderReadBudgets(maxCanonicalBytes = 1000)) { _, source, store, _ ->
+            assertTrue(source.loadForEdit(selected) is SeriesReadResult.NeedsReview)
+            store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots", null).use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+        }
+    }
 
     @Test fun completeGraphIncludesCancelledMovedAndOutsideDisplayExceptionsWithReadPermissionOnly() = runBlocking {
         fixture { p, source, store, permissions ->

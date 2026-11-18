@@ -108,7 +108,7 @@ class CalendarSearchReaderTest {
         override fun delete(uri: Uri, selection: String?, args: Array<out String>?): Int = error("Search is read-only")
         override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?): Int = error("Search is read-only")
     }
-    private suspend fun fixture(total: Int = 50_000, pageRows: Int = 5_000, days: Long = 31,
+    private suspend fun fixture(total: Int = 50_000, pageRows: Int = 5_000, days: Long = 31, readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
         block: suspend (Provider, CalendarSearchReader, CalendarReader, () -> Unit) -> Unit) {
         val p = Provider().apply { calendars += calendar() }
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, p)
@@ -116,7 +116,7 @@ class CalendarSearchReaderTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val reader = CalendarReader(resolver, scope, stopTimeoutMillis = 0)
         var allowed = true
-        val source = CalendarSearchReader(resolver, reader, { allowed }, maxScannedInstances = total, maxPageRows = pageRows, pageDays = days)
+        val source = CalendarSearchReader(resolver, reader, { allowed }, maxScannedInstances = total, maxPageRows = pageRows, pageDays = days, readBudgets = readBudgets)
         try { block(p, source, reader) { allowed = false } }
         finally {
             scope.cancel(); scope.coroutineContext[Job]!!.join()
@@ -128,6 +128,16 @@ class CalendarSearchReaderTest {
         withTimeout(10_000) { observe(request).first { it != CalendarReadState.Loading } }
     private suspend fun CalendarSearchReader.ready(request: CalendarSearchRequest = request()) = (result(request) as CalendarReadState.Ready).value
     private fun Provider.privateCalls() = calls.filter { it.path == "events" && "description" in it.fields }
+
+    @Test fun textBudgetTruncatesEvenWithZeroMatchesAndDropsIncompleteChunk() = runBlocking {
+        val defaults = ProviderReadBudgets()
+        fixture(readBudgets = defaults.copy(search = defaults.search.copy(maxTextUnits = 40_000))) { p, source, _, _ ->
+            repeat(200) { id -> p.add(event((id + 1).toLong()).apply { put("description", "$id".padEnd(16_384, 'x')); put("title", "unrelated") }) }
+            val result = source.result(request().copy(query = "never matches")) as CalendarReadState.Ready
+            assertTrue(result.value.truncated)
+            assertTrue(result.value.hits.isEmpty())
+        }
+    }
 
     @Test fun literalTrimmedCaseInsensitiveTitleLocationDescriptionMatchingNeverUsesSqlWildcards() = runBlocking {
         fixture { p, source, _, _ ->

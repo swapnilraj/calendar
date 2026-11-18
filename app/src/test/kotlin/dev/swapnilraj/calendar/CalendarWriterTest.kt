@@ -115,16 +115,16 @@ class CalendarWriterTest {
     private val draft = EventDraft(CalendarId(2), EventTime.Timed(Instant.parse("2026-11-17T09:00:00Z"),
         Instant.parse("2026-11-17T10:00:00Z")), ZoneId.of("Europe/London"), "Synthetic appointment", alertMinutes = listOf(10),
         targetIdentity = CalendarIdentity(CalendarId(2), CalendarAccount("owner@example.invalid", "com.google"), "owner@example.invalid", "calendar-A"))
-    private suspend fun fixture(block: suspend (Provider, CalendarWriter, CalendarLocalStore, MutableSet<String>) -> Unit) {
+    private suspend fun fixture(readBudgets: ProviderReadBudgets = ProviderReadBudgets(), block: suspend (Provider, CalendarWriter, CalendarLocalStore, MutableSet<String>) -> Unit) {
         val context = RuntimeEnvironment.getApplication()
         val provider = Provider()
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
         val name = "writer-test-${UUID.randomUUID()}.db"
-        val store = CalendarLocalStore(context, name)
+        val store = CalendarLocalStore(context, name, readBudgets = readBudgets)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val permissions = mutableSetOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
         val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
-        val writer = CalendarWriter(context.contentResolver, reader, store, permissions::contains)
+        val writer = CalendarWriter(context.contentResolver, reader, store, permissions::contains, readBudgets = readBudgets)
         try { block(provider, writer, store, permissions) }
         finally { scope.cancel(); scope.coroutineContext[Job]!!.join(); store.close(); context.deleteDatabase(name) }
     }
@@ -721,6 +721,20 @@ class CalendarWriterTest {
             store.mark("created", "COMMITTED", receipt.toString())
             assertEquals(MutationResult.Uncertain("created", null), writer.recover("created"))
             assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun oversizedMutationSourceFailsBeforeTokenOrNewJournalAndNeverClipsText() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            val ref = (writer.create("created", draft) as MutationResult.LocalSaved).ref
+            val original = "private".repeat(10_000)
+            provider.events.single()["description"] = original
+            assertEquals(EditReadResult.LimitExceeded, writer.loadForEdit(ref))
+            store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots", null).use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+            assertEquals(MutationResult.Conflict(null), writer.update("oversized", ref, EditToken("missing"), EventPatch(title = FieldChange.Set("changed"))))
+            assertNull(store.operation("oversized"))
+            assertEquals(original, provider.events.single()["description"])
+            assertEquals(1, provider.batchCount)
         }
     }
 

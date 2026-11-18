@@ -7,6 +7,7 @@ import android.database.MatrixCursor
 import android.net.Uri
 import android.provider.CalendarContract
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.data.calendar.ProviderReadBudgets
 import dev.swapnilraj.calendar.data.calendar.CalendarReader
 import java.time.Instant
 import java.time.LocalDate
@@ -79,13 +80,13 @@ class CalendarReaderTest {
     private suspend fun <T> Flow<CalendarReadState<T>>.ready(): T = withTimeout(10_000) {
         (first { it is CalendarReadState.Ready } as CalendarReadState.Ready<T>).value
     }
-    private suspend fun fixture(block: suspend (Fixture, CalendarReader, android.content.ContentResolver) -> Unit) {
+    private suspend fun fixture(readBudgets: ProviderReadBudgets = ProviderReadBudgets(), block: suspend (Fixture, CalendarReader, android.content.ContentResolver) -> Unit) {
         val provider = Fixture().apply { calendars += calendar() }
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
         val resolver = RuntimeEnvironment.getApplication().contentResolver
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         provider.ownerScope = scope
-        try { block(provider, CalendarReader(resolver, scope, stopTimeoutMillis = 0), resolver) }
+        try { block(provider, CalendarReader(resolver, scope, stopTimeoutMillis = 0, readBudgets = readBudgets), resolver) }
         finally {
             scope.cancel()
             withTimeout(10_000) { scope.coroutineContext[Job]!!.join() }
@@ -111,6 +112,37 @@ class CalendarReaderTest {
             assertEquals(CalendarAccount("", ""), unknown.identity.account)
             assertNull(unknown.identity.owner)
             assertNull(unknown.identity.providerId)
+        }
+    }
+
+    @Test fun oversizedRangeNeverPublishesACompletePrefix() = runBlocking {
+        val defaults = ProviderReadBudgets()
+        fixture(defaults.copy(range = defaults.range.copy(maxTextUnits = 40_000))) { p, reader, _ ->
+            repeat(200) { id -> p.events += event(id.toLong(), "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") +
+                mapOf("title" to "$id".padEnd(16_384, 'x')) }
+            val result = withTimeout(10_000) { reader.observeEvents(request).first { it != CalendarReadState.Loading } }
+            assertEquals(CalendarReadState.LimitExceeded, result)
+            assertTrue(p.closed >= 2)
+        }
+    }
+
+    @Test fun rawRowLimitIsAppliedBeforeIdentityPrepassEvenWhenNoRowsIntersect() = runBlocking {
+        fixture(ProviderReadBudgets(maxRangeInstances = 2)) { p, reader, _ ->
+            repeat(3) { p.events += event(it.toLong(), "2026-11-19T10:00:00Z", "2026-11-19T11:00:00Z") }
+            val result = withTimeout(10_000) { reader.observeEvents(request).first { it != CalendarReadState.Loading } }
+            assertEquals(CalendarReadState.LimitExceeded, result)
+            assertEquals(0, p.eventQueries)
+        }
+    }
+
+    @Test fun directDetailsPermitLongDescriptionWithinTheirLargerCellBudget() = runBlocking {
+        fixture { p, reader, _ ->
+            val row = event(1, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") +
+                mapOf("calendar_id" to 2L, "_id" to 1L, "description" to "d".repeat(100_000))
+            p.events += row
+            val ref = EventRef(CalendarId(2), 1, Instant.parse("2026-11-17T10:00:00Z"), Instant.parse("2026-11-17T11:00:00Z"))
+            val result = reader.readDetails(ref) as CalendarReadState.Ready
+            assertEquals(100_000, result.value.description.length)
         }
     }
 

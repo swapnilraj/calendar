@@ -32,6 +32,7 @@ class CalendarSeriesWriter(
     private val hasPermission: (String) -> Boolean,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val budget: RecurrencePlanningBudget = RecurrencePlanningBudget(),
+    private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
 ) : CalendarSeriesMutations {
     private val mutex = Mutex()
     private class Unsupported(val reason: String) : Exception()
@@ -72,7 +73,7 @@ class CalendarSeriesWriter(
     catch (cancelled: CancellationException) { throw cancelled }
     catch (_: Exception) { SeriesReadResult.Unavailable }
 
-    override suspend fun mutate(operationId: String, selected: EventRef, token: EditToken, command: SeriesCommand): SeriesMutationResult = withContext(io) {
+    override suspend fun mutate(operationId: String, selected: EventRef, token: EditToken, command: SeriesCommand): SeriesMutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) {
         mutex.withLock {
             if (!permissions()) return@withLock common(MutationResult.PermissionRequired)
             var attempted = false
@@ -125,6 +126,9 @@ class CalendarSeriesWriter(
                 }
                 store.mark(operationId, "COMMITTED", prepared.receipt.toString())
                 recover(store.operation(operationId)!!, false)
+            } catch (_: ProviderReadLimitExceeded) {
+                if (attempted) common(MutationResult.Uncertain(operationId, null))
+                else SeriesMutationResult.PlanningReview("Complete source exceeds the read budget")
             } catch (_: SecurityException) {
                 if (attempted) common(MutationResult.Uncertain(operationId, submitted?.source?.snapshot?.identity?.masterEventId))
                 else common(MutationResult.PermissionRequired)
@@ -482,7 +486,7 @@ class CalendarSeriesWriter(
         row.forEach { (column, value) -> if (value == null) putNull(column) else put(column, value) }
     }).withExpectedCount(1).withYieldAllowed(false).build()
 
-    override suspend fun recover(operationId: String): SeriesMutationResult = withContext(io) { mutex.withLock {
+    override suspend fun recover(operationId: String): SeriesMutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
         if (!hasPermission(Manifest.permission.READ_CALENDAR)) return@withLock common(MutationResult.PermissionRequired)
         try { store.operation(operationId)?.let { operation ->
             try { recover(operation, true) }
@@ -681,7 +685,7 @@ class CalendarSeriesWriter(
                 continuation.resume(value, onCancellation = { _, resource, _ -> resource.close() })
             } catch (failure: Exception) { continuation.resumeWithException(failure) }
         }
-        return cursor.use { buildList { while (it.moveToNext()) { currentCoroutineContext().ensureActive(); add(fields.associateWith { field ->
+        return cursor.bounded(readBudgets.mutation.maxRows).use { buildList { while (it.moveToNext()) { currentCoroutineContext().ensureActive(); add(fields.associateWith { field ->
             val index = it.getColumnIndexOrThrow(field); if (it.isNull(index)) null else it.getString(index)
         }) } } }
     }
@@ -717,7 +721,9 @@ class CalendarSeriesWriter(
             is RecurrenceStart.AllDay -> JSONObject().put("date", start.date.toString())
             is RecurrenceStart.Timed -> JSONObject().put("local", start.localDateTime.toString()).put("zone", start.zone.id).put("offset", start.preferredOffset?.id ?: JSONObject.NULL)
         }
-        private fun patchJson(patch: EventPatch) = JSONObject().apply {
+        private fun patchJson(patch: EventPatch): JSONObject {
+            checkPatchInput(patch, 1024 * 1024)
+            return JSONObject().apply {
             fun <T> change(name: String, value: FieldChange<T>, encode: (T) -> Any?) { if (value is FieldChange.Set) put(name, encode(value.value) ?: JSONObject.NULL) }
             change("title", patch.title) { it }; change("location", patch.location) { it }; change("description", patch.description) { it }
             change("alerts", patch.alertMinutes) { JSONArray(it) }; change("availability", patch.availability) { it }; change("privacy", patch.privacy) { it }
@@ -725,6 +731,7 @@ class CalendarSeriesWriter(
                 is EventTime.Timed -> JSONObject().put("start", it.start.toString()).put("end", it.end.toString())
                 is EventTime.AllDay -> JSONObject().put("startDate", it.dates.start.toString()).put("endDate", it.dates.endExclusive.toString())
             } }
+        }
         }
         private fun ruleJson(rule: RecurrenceRuleChanges) = JSONObject().apply {
             (rule.pattern as? FieldChange.Set)?.let { set -> put("pattern", when (val p = set.value) {

@@ -16,6 +16,7 @@ class CalendarLocalStore(
     context: Context,
     databaseName: String = "daylight-local.db",
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
 ) : SQLiteOpenHelper(context.applicationContext, databaseName, null, 2), DraftStore {
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
@@ -83,24 +84,40 @@ class CalendarLocalStore(
     }
 
     internal fun saveEdit(token: String, snapshot: String) {
+        checkStoredJson(snapshot, readBudgets.maxCanonicalBytes)
         writableDatabase.insertWithOnConflict("edit_snapshots", null, ContentValues().apply {
             put("token", token); put("snapshot", snapshot)
         }, SQLiteDatabase.CONFLICT_IGNORE)
     }
 
-    internal fun edit(token: String): String? = readableDatabase.query("edit_snapshots", arrayOf("snapshot"),
-        "token = ?", arrayOf(token), null, null, null).use { if (it.moveToFirst()) it.getString(0) else null }
+    private fun checkStoredLength(table: String, column: String, key: String, id: String, maxBytes: Int = readBudgets.maxCanonicalBytes) {
+        readableDatabase.query(table, arrayOf("length(CAST($column AS BLOB))"), "$key = ?", arrayOf(id), null, null, null).use {
+            if (it.moveToFirst() && !it.isNull(0) && it.getLong(0) > maxBytes) throw ProviderReadLimitExceeded()
+        }
+    }
+
+    internal fun edit(token: String): String? {
+        checkStoredLength("edit_snapshots", "snapshot", "token", token)
+        return readableDatabase.query("edit_snapshots", arrayOf("snapshot"), "token = ?", arrayOf(token), null, null, null).use {
+            if (!it.moveToFirst()) null else it.getString(0).also { value -> checkStoredJson(value, readBudgets.maxCanonicalBytes) }
+        }
+    }
 
     internal data class Operation(val id: String, val signature: String, val kind: String, val phase: String, val resultRef: String?)
 
-    internal fun operation(id: String): Operation? = readableDatabase.query("mutation_journal", null,
+    internal fun operation(id: String): Operation? {
+        checkStoredLength("mutation_journal", "result_ref", "id", id)
+        listOf("signature", "kind", "phase").forEach { checkStoredLength("mutation_journal", it, "id", id, readBudgets.mutation.maxCellUnits) }
+        return readableDatabase.query("mutation_journal", null,
         "id = ?", arrayOf(id), null, null, null).use { cursor ->
         if (!cursor.moveToFirst()) null else Operation(id, cursor.getString(cursor.getColumnIndexOrThrow("signature")),
             cursor.getString(cursor.getColumnIndexOrThrow("kind")), cursor.getString(cursor.getColumnIndexOrThrow("phase")),
-            cursor.getString(cursor.getColumnIndexOrThrow("result_ref")))
+            cursor.getString(cursor.getColumnIndexOrThrow("result_ref"))?.also { checkStoredJson(it, readBudgets.maxCanonicalBytes) })
+        }
     }
 
     internal fun prepare(id: String, signature: String, kind: String, metadata: String? = null) {
+        metadata?.let { checkStoredJson(it, readBudgets.maxCanonicalBytes) }
         writableDatabase.insertWithOnConflict("mutation_journal", null, ContentValues().apply {
             put("id", id); put("signature", signature); put("kind", kind); put("phase", "PREPARED")
             metadata?.let { put("result_ref", it) }
@@ -113,6 +130,7 @@ class CalendarLocalStore(
     }, "id = ? AND phase IN (?, ?)", arrayOf(id, "PREPARED", "FAILED")) == 1
 
     internal fun mark(id: String, phase: String, resultRef: String? = null) {
+        resultRef?.let { checkStoredJson(it, readBudgets.maxCanonicalBytes) }
         check(writableDatabase.update("mutation_journal", ContentValues().apply {
             put("phase", phase); if (resultRef != null) put("result_ref", resultRef)
         }, "id = ?", arrayOf(id)) == 1)

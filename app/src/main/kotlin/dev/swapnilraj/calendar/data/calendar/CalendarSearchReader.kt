@@ -21,14 +21,15 @@ class CalendarSearchReader(
     private val maxScannedInstances: Int = 50_000,
     private val pageDays: Long = 31,
     private val maxPageRows: Int = 5_000,
+    private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
 ) : CalendarSearch {
     init { require(maxScannedInstances > 0 && pageDays in 1..366 && maxPageRows > 0) }
     private data class EventKey(val calendar: CalendarId, val event: Long)
-    private data class Text(val title: String, val location: String, val description: String, val declined: Boolean, val excluded: Boolean)
-    private data class Authority(val account: CalendarAccount, val owner: String?, val access: Int?, val visible: Boolean, val sync: Boolean)
+    private data class Text(val title: String, val location: String, val snippet: String?, val matched: Boolean, val declined: Boolean, val excluded: Boolean)
+    private data class Authority(val account: CalendarAccount, val owner: String?, val access: Int?, val visible: Boolean, val sync: Boolean, val providerId: String?)
 
     override fun observe(request: CalendarSearchRequest): Flow<CalendarReadState<CalendarSearchSnapshot>> = reader.observeProviderReads {
-        withContext(io) { search(request) }
+        withContext(io) { withFreshReadBudget(readBudgets.search) { search(request) } }
     }
 
     private suspend fun search(request: CalendarSearchRequest): CalendarSearchSnapshot {
@@ -57,10 +58,12 @@ class CalendarSearchReader(
         if (eligible.isEmpty()) return CalendarSearchSnapshot(request, calendars, emptyList(), false, coverage)
         val metadata = mutableMapOf<EventKey, Text>()
         val occurrences = linkedMapOf<EventRef, EventOccurrence>()
+        val needle = request.query.trim()
+        var retained = 0L
         var scanned = 0
         var truncated = false
         var date = request.calendar.range.start
-        while (date < request.calendar.range.endExclusive) {
+        try { while (date < request.calendar.range.endExclusive) {
             currentCoroutineContext().ensureActive()
             if (scanned >= maxScannedInstances) { truncated = true; break }
             verifyCalendars()
@@ -97,28 +100,42 @@ class CalendarSearchReader(
                         val status = cursor.text(CalendarContract.Events.STATUS)?.let { it.toIntOrNull() ?: error("Invalid event status") }
                         val self = cursor.requiredLong(CalendarContract.Events.SELF_ATTENDEE_STATUS).toInt()
                         check(deleted == 0L || deleted == 1L)
-                        val text = Text(cursor.text(CalendarContract.Events.TITLE).orEmpty(), cursor.text(CalendarContract.Events.EVENT_LOCATION).orEmpty(),
-                            cursor.text(CalendarContract.Events.DESCRIPTION).orEmpty(), self == CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED,
-                            deleted == 1L || status == CalendarContract.Events.STATUS_CANCELED)
+                        val title = cursor.text(CalendarContract.Events.TITLE).orEmpty()
+                        val location = cursor.text(CalendarContract.Events.EVENT_LOCATION).orEmpty()
+                        val description = cursor.text(CalendarContract.Events.DESCRIPTION).orEmpty()
+                        val excluded = deleted == 1L || status == CalendarContract.Events.STATUS_CANCELED
+                        val declined = self == CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED
+                        val matched = !excluded && (request.includeDeclined || !declined) &&
+                            (title.contains(needle, true) || location.contains(needle, true) || description.contains(needle, true))
+                        // Do not retain private nonmatching strings or full descriptions in the scan cache.
+                        val text = Text(if (matched) title else "", if (matched) location else "",
+                            if (matched) snippet(description, needle) else null, matched, declined, excluded)
                         check(rows.put(key, text) == null) { "Ambiguous event metadata" }
                     }
                 }
                 verifyCalendars()
                 check(rows.keys == chunk.toSet()) { "Event metadata changed during search" }
+                val cost = rows.values.sumOf { 64L + it.title.length + it.location.length + (it.snippet?.length ?: 0) }
+                if (cost > readBudgets.maxSearchRetainedUnits - retained) throw ProviderReadLimitExceeded()
+                retained += cost
                 metadata.putAll(rows)
             }
+            val newRefs = pageOccurrences.map { it.ref }.distinct().count { it !in occurrences }
+            val cost = newRefs.toLong() * 128
+            if (cost > readBudgets.maxSearchRetainedUnits - retained) throw ProviderReadLimitExceeded()
+            retained += cost
             pageOccurrences.forEach { occurrences.putIfAbsent(it.ref, it) }
             if (truncated) break
             date = end
         }
+        } catch (_: ProviderReadLimitExceeded) { truncated = true }
         verifyCalendars()
-        val needle = request.query.trim()
         val hits = occurrences.values.mapNotNull { occurrence ->
             val text = metadata.getValue(EventKey(occurrence.ref.calendarId, occurrence.ref.eventId))
             if (text.excluded || (!request.includeDeclined && text.declined)) return@mapNotNull null
-            if (!listOf(text.title, text.location, text.description).any { it.contains(needle, ignoreCase = true) }) return@mapNotNull null
+            if (!text.matched) return@mapNotNull null
             CalendarSearchHit(occurrence.copy(title = text.title, declined = text.declined), text.location.takeIf { it.isNotEmpty() },
-                snippet(text.description, needle))
+                text.snippet)
         }.sortedWith(compareBy<CalendarSearchHit> { it.occurrence.ref.instanceStart }.thenBy { it.occurrence.ref.instanceEnd }
             .thenBy { it.occurrence.ref.calendarId.value }.thenBy { it.occurrence.ref.eventId }
             .thenBy { it.occurrence.ref.recurrence?.masterEventId ?: -1 }.thenBy { it.occurrence.ref.recurrence?.originalStart ?: Instant.MIN })
@@ -129,26 +146,26 @@ class CalendarSearchReader(
         CalendarSelection.ProviderVisible -> calendars.filter { it.providerVisible }.map { it.id }.toSet()
         is CalendarSelection.Explicit -> selection.ids
     }
-    private fun authority(calendar: CalendarInfo) = Authority(calendar.account, calendar.owner, calendar.accessLevel, calendar.providerVisible, calendar.syncEnabled)
+    private fun authority(calendar: CalendarInfo) = Authority(calendar.account, calendar.owner, calendar.accessLevel, calendar.providerVisible, calendar.syncEnabled, calendar.providerId)
     private fun ensureRead() { if (!hasPermission(Manifest.permission.READ_CALENDAR)) throw SecurityException() }
     private suspend fun query(uri: Uri, selection: String, args: Array<String>): Cursor = suspendCancellableCoroutine { continuation ->
         val signal = CancellationSignal()
         continuation.invokeOnCancellation { signal.cancel() }
         try {
             ensureRead()
-            val cursor = resolver.query(uri, fields, selection, args, "_id ASC", signal) ?: error("Provider unavailable")
+            val cursor = (resolver.query(uri, fields, selection, args, "_id ASC", signal) ?: error("Provider unavailable")).bounded()
             try { ensureRead() } catch (failure: Exception) { cursor.close(); throw failure }
             continuation.resume(cursor, onCancellation = { _, resource, _ -> resource.close() })
         } catch (failure: Exception) { continuation.resumeWithException(failure) }
     }
     private fun snippet(raw: String, needle: String): String? {
         if (raw.isEmpty()) return null
-        val text = buildString(raw.length) { raw.forEach { append(if (it.isISOControl()) ' ' else it) } }
+        val text = raw
         val match = text.indexOf(needle, ignoreCase = true).coerceAtLeast(0)
         val offset = maxOf(0, text.codePointCount(0, match) - 40)
         val begin = text.offsetByCodePoints(0, offset)
         val end = text.offsetByCodePoints(begin, minOf(160, text.codePointCount(begin, text.length)))
-        return text.substring(begin, end)
+        return text.substring(begin, end).map { if (it.isISOControl()) ' ' else it }.joinToString("")
     }
     private fun Cursor.text(field: String): String? = getColumnIndexOrThrow(field).let { if (isNull(it)) null else getString(it) }
     private fun Cursor.requiredLong(field: String) = text(field)?.toLongOrNull() ?: error("Missing provider field")

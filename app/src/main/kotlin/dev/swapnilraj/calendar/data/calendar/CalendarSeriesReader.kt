@@ -25,17 +25,20 @@ class CalendarSeriesReader(
     private val hasPermission: (String) -> Boolean,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val budget: RecurrencePlanningBudget = RecurrencePlanningBudget(),
+    private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
 ) : CalendarSeriesReadPort {
-    override suspend fun loadForEdit(selected: EventRef): SeriesReadResult = withContext(io) {
+    override suspend fun loadForEdit(selected: EventRef): SeriesReadResult = withContext(io + readBudgetContext(readBudgets.mutation)) {
         try {
             val before = source(selected)
-            if (before.canonical() != source(selected).canonical()) return@withContext SeriesReadResult.Unavailable
+            val canonical = before.canonical()
+            if (canonical != source(selected).canonical()) return@withContext SeriesReadResult.Unavailable
             ensureRead()
-            val token = EditToken(MessageDigest.getInstance("SHA-256").digest(("SERIES_EDIT_V1" + before.canonical())
+            val token = EditToken(MessageDigest.getInstance("SHA-256").digest(("SERIES_EDIT_V1" + canonical)
                 .toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) })
-            store.saveEdit(token.value, before.canonical())
+            store.saveEdit(token.value, canonical)
             SeriesReadResult.Ready(EditableSeries(before.selectedDetails, before.masterFields, before.snapshot, token, before.allowedFields))
-        } catch (_: SecurityException) { SeriesReadResult.PermissionRequired }
+        } catch (_: ProviderReadLimitExceeded) { SeriesReadResult.NeedsReview("Complete source exceeds the read budget") }
+        catch (_: SecurityException) { SeriesReadResult.PermissionRequired }
         catch (denied: SeriesSourceDenied) { SeriesReadResult.Denied(denied.reason) }
         catch (review: SeriesSourceReview) { SeriesReadResult.NeedsReview(review.reason) }
         catch (cancelled: CancellationException) { throw cancelled }
@@ -43,7 +46,7 @@ class CalendarSeriesReader(
     }
 
     /** A12 must compare the exact selected-bound source, recompute its plan, then assert these rows. */
-    internal suspend fun checkedSource(selected: EventRef, token: EditToken): CalendarSeriesSource = withContext(io) {
+    internal suspend fun checkedSource(selected: EventRef, token: EditToken): CalendarSeriesSource = withContext(io + readBudgetContext(readBudgets.mutation)) {
         ensureRead()
         val expected = store.edit(token.value) ?: throw SeriesSourceConflict()
         source(selected).also { if (it.canonical() != expected) throw SeriesSourceConflict() }
@@ -53,6 +56,7 @@ class CalendarSeriesReader(
 
     /** Rebuild planning inputs from an already verified private token snapshot; never reads/writes provider. */
     internal fun frozenSnapshot(encoded: String): RecurrenceSeriesSnapshot {
+        checkStoredJson(encoded, readBudgets.maxCanonicalBytes)
         val json = JSONObject(encoded)
         require(json.getInt("version") == 1)
         fun row(value: JSONObject) = value.keys().asSequence().associateWith { if (value.isNull(it)) null else value.getString(it) }
@@ -84,16 +88,17 @@ class CalendarSeriesReader(
             if (validProperty) decoded?.keys.orEmpty() else emptySet(), validProperty && decoded != null, exceptions, SeriesCoverage.COMPLETE, selected)
     }
 
-    internal suspend fun selectedReference(ref: EventRef): EventRef? = withContext(io) {
+    internal suspend fun selectedReference(ref: EventRef): EventRef? = withContext(io + readBudgetContext(readBudgets.mutation)) {
         ensureRead()
         when (val result = reader.readDetails(ref)) {
             is CalendarReadState.Ready -> result.value.occurrence.ref.takeIf { it == ref }
+            CalendarReadState.LimitExceeded -> throw ProviderReadLimitExceeded()
             CalendarReadState.PermissionRequired -> throw SecurityException()
             else -> null
         }.also { ensureRead() }
     }
 
-    internal suspend fun source(selected: EventRef): CalendarSeriesSource = withContext(io) {
+    internal suspend fun source(selected: EventRef): CalendarSeriesSource = withContext(io + readBudgetContext(readBudgets.mutation)) {
         ensureRead()
         val recurrence = selected.recurrence ?: throw SeriesSourceDenied(MutationDenial.RECURRENCE)
         val identity = SeriesIdentity(selected.calendarId, recurrence.masterEventId)
@@ -189,6 +194,7 @@ class CalendarSeriesReader(
         ensureRead()
         val details = when (val read = reader.readDetails(selected)) {
             is CalendarReadState.Ready -> read.value
+            CalendarReadState.LimitExceeded -> throw ProviderReadLimitExceeded()
             CalendarReadState.PermissionRequired -> throw SecurityException()
             else -> {
                 val selectedRow = live.singleOrNull { it.long("_id") == selected.eventId }
@@ -222,7 +228,7 @@ class CalendarSeriesReader(
         val allowed = EditableField.entries.toSet().let {
             if (calendar[CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE] == "1" && !masterAllDay) it else it - EditableField.ZONE
         }.let { if (knownAvailability(calendar)) it else it - EditableField.AVAILABILITY }
-        CalendarSeriesSource(calendar, master, exceptions, reminders, attendees, details, masterFields, snapshot, allowed, extendedProperties)
+        CalendarSeriesSource(calendar, master, exceptions, reminders, attendees, details, masterFields, snapshot, allowed, extendedProperties, readBudgets.maxCanonicalBytes)
     }
 
     private fun writable(calendar: Map<String, String?>) {
@@ -267,8 +273,11 @@ class CalendarSeriesReader(
 
     private suspend fun children(uri: Uri, ids: Set<Long>): Map<Long, List<Map<String, String?>>> {
         val result = ids.associateWith { mutableListOf<Map<String, String?>>() }
+        var count = 0
         for (chunk in ids.toList().chunked(200)) {
             val children = rows(uri, "event_id IN (${chunk.joinToString(",") { "?" }})", chunk.map { it.toString() }.toTypedArray())
+            count += children.size
+            if (count > readBudgets.maxSeriesChildren) throw ProviderReadLimitExceeded()
             children.forEach { row ->
                 val parent = row.long("event_id") ?: throw SeriesSourceReview("Missing child parent identity")
                 if (parent !in chunk || row.long("_id") == null) throw SeriesSourceReview("Invalid child identity")
@@ -283,7 +292,7 @@ class CalendarSeriesReader(
     private suspend fun rows(uri: Uri, selection: String? = null, args: Array<String>? = null, maxRows: Int? = null,
         fields: Array<String>? = null): List<Map<String, String?>> {
         ensureRead()
-        return query(uri, selection, args, fields).use { cursor ->
+        return query(uri, selection, args, fields).bounded(maxRows ?: readBudgets.maxSeriesChildren).use { cursor ->
             buildList {
                 while (cursor.moveToNext()) {
                     currentCoroutineContext().ensureActive()
@@ -332,8 +341,14 @@ internal data class CalendarSeriesSource(
     val snapshot: RecurrenceSeriesSnapshot,
     val allowedFields: Set<EditableField>,
     val extendedProperties: Map<Long, List<Map<String, String?>>> = emptyMap(),
+    val maxCanonicalBytes: Int = 1024 * 1024,
 ) {
+    private var encoded: String? = null
     fun canonical(): String {
+        encoded?.let { return it }
+        val fields = listOf(calendar, master, exceptions, reminders, attendees, extendedProperties)
+        // Extra space covers JSON child wrappers and the selected-occurrence envelope.
+        checkCanonical(fields, maxCanonicalBytes, 8192L + 128L * (reminders.size + attendees.size + extendedProperties.size))
         fun row(values: Map<String, String?>) = JSONObject().apply { values.toSortedMap().forEach { (key, value) -> put(key, value ?: JSONObject.NULL) } }
         fun children(values: Map<Long, List<Map<String, String?>>>) = JSONArray(values.toSortedMap().map { (id, rows) ->
             JSONObject().put("parent", id).put("rows", JSONArray(rows.sortedBy { it["_id"]?.toLongOrNull() }.map(::row)))
@@ -346,6 +361,6 @@ internal data class CalendarSeriesSource(
             .put("extendedProperties", children(extendedProperties))
             .put("selection", JSONObject().put("calendar", ref.calendarId.value).put("event", ref.eventId)
                 .put("start", ref.instanceStart.toString()).put("end", ref.instanceEnd.toString())
-                .put("master", recurrence.masterEventId).put("original", recurrence.originalStart.toString())).toString()
+                .put("master", recurrence.masterEventId).put("original", recurrence.originalStart.toString())).toString().also { encoded = it }
     }
 }

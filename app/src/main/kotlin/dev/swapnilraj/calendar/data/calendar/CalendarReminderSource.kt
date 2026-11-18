@@ -20,6 +20,7 @@ class CalendarReminderSource(
     private val resolver: ContentResolver,
     private val hasPermission: (String) -> Boolean,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
 ) : ReminderSource {
     private data class Calendar(val info: CalendarInfo, val identity: ReminderCalendarIdentity?)
     private data class Event(val id: Long, val calendar: CalendarId, val allDay: Boolean?, val start: Instant?,
@@ -33,7 +34,7 @@ class CalendarReminderSource(
         val invalidKeys: Set<ReminderKey>)
 
     override suspend fun loadDueWindow(window: InstantBounds, configuration: ReminderConfiguration): ReminderSourceResult = try {
-        withContext(io) {
+        withContext(io + readBudgetContext(readBudgets.range)) {
             require(window.endExclusive > window.start)
             if (!configuration.enabled || configuration.enabledCalendars.isEmpty()) return@withContext ReminderSourceResult.Ready(
                 ReminderSourceSnapshot(window, emptyList(), emptySet(), emptyMap()))
@@ -75,7 +76,7 @@ class CalendarReminderSource(
     catch (_: Exception) { ReminderSourceResult.Unavailable }
 
     override suspend fun resolve(keys: Set<ReminderKey>, configuration: ReminderConfiguration): ReminderResolutionResult = try {
-        withContext(io) {
+        withContext(io + readBudgetContext(readBudgets.range)) {
             if (keys.isEmpty()) return@withContext ReminderResolutionResult.Ready(emptyMap())
             if (!configuration.enabled) return@withContext ReminderResolutionResult.Ready(keys.associateWith { ReminderResolution.GoneOrIneligible })
             ensureRead()
@@ -305,7 +306,7 @@ class CalendarReminderSource(
             val signal = CancellationSignal()
             continuation.invokeOnCancellation { signal.cancel() }
             try {
-                val cursor = resolver.query(uri, fields, selection, args, null, signal) ?: error("Provider unavailable")
+                val cursor = (resolver.query(uri, fields, selection, args, null, signal) ?: error("Provider unavailable")).bounded()
                 try { ensureRead() } catch (failure: Exception) { cursor.close(); throw failure }
                 continuation.resume(cursor, onCancellation = { _, resource, _ -> resource.close() })
             } catch (failure: Exception) { continuation.resumeWithException(failure) }
