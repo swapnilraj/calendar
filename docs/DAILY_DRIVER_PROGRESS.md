@@ -4,7 +4,14 @@ Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
-At `5bd64d4`, the complete required gate passed: **1,340 tests** (core189, app1,134,
+At `bf2ef3f`, the complete required gate passed: **1,490 tests** (core221, app1,252,
+weather17), debug APK assembly and lint; no failures, errors or skipped tests. This includes the
+bounded owned one-off meeting creation backend, namespace-checked incoming-link metadata reads,
+and five actual app whole-series temporal/rule journeys through the SQLite/native-provider fixture.
+Guest-creation UI and public incoming-link activation remain pending; local writes do not prove
+invitation delivery. Log: `/tmp/daylight-meeting-integrated-full.log` (3m26s).
+
+Earlier, at `5bd64d4`, the complete required gate passed: **1,340 tests** (core189, app1,134,
 weather17), debug APK assembly and lint; no failures, errors or skipped tests. This includes real
 app journeys for widget setup/click/permission/draft isolation, recurring creation/recovery and
 Day/three-day/week timed editor gestures. Screens for cross-column and larger-text RTL previews
@@ -16,12 +23,15 @@ checks, whole-series temporal/rule editing with explicit review, namespace/gener
 editors, and permanent journal retirement of exact frozen requests. The whole-series review screenshot
 was recorded and visually inspected. These packets are separate from the `5bd64d4` full checkpoint.
 
-The next full-gate attempt at `bdc3f1c` failed two of 1,218 app tests: existing native recurring journey
+An intermediate full-gate attempt at `bdc3f1c` failed two of 1,218 app tests: existing native recurring journey
 fixtures omitted the newly required explicit permission preflight. Commit `60502c4` supplies the
-authorized fixture callback and both journeys pass focused checks; the complete gate must be rerun.
-Do not describe the newer aggregate as fully verified until that succeeds. Guest/organizer workflows,
+authorized fixture callback. A subsequent new journey needed fresh field lookup after scrolling;
+that test synchronization was fixed in `58070dd`. Both fixes are included in the green `bf2ef3f` gate.
+Guest/organizer workflows,
 remaining recurrence scopes, incoming public intents, device/account/beta and signed-release gates
-remain. PR #48 (bounded provider/authority foundation) passed CI and is merged into integration.
+remain. PRs #48 (provider/authority foundation) and #49 (durable reminder settings/private opens)
+passed full CI and are merged into integration. Ordinary authored-timezone validation still needs
+the portable provider-zone guard already used for recurrence and new meeting creation.
 
 Earlier local checkpoints:
 
