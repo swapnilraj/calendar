@@ -168,15 +168,19 @@ class NativeCalendarProviderProbe : Instrumentation() {
             preflightAbsent = true
             step("create-local-calendar")
             creationAttempted = true
-            val uri = resolver.insert(localCalendarUri(), ContentValues().apply {
+            val requestedCalendarUri = localCalendarUri()
+            val uri = resolver.insert(requestedCalendarUri, ContentValues().apply {
                 put(C.ACCOUNT_NAME, account); put(C.ACCOUNT_TYPE, CalendarContract.ACCOUNT_TYPE_LOCAL)
                 put(C.NAME, account); put(C.OWNER_ACCOUNT, owner)
                 put(C.CALENDAR_DISPLAY_NAME, "Daylight native LOCAL probe")
                 put(C.CALENDAR_COLOR, 0xff567087.toInt()); put(C.CALENDAR_ACCESS_LEVEL, C.CAL_ACCESS_OWNER)
                 put(C.CALENDAR_TIME_ZONE, "UTC"); put(C.SYNC_EVENTS, 1); put(C.VISIBLE, 0)
             }) ?: throw Failure("CALENDAR_INSERT_ACK_MISSING")
-            // Preserve any known acknowledged ID before subsequent reads can fail.
-            calendarId = idFrom(uri, "calendars")
+            // Record only query-key names and comparison facts, never the account values/URI.
+            report.put("calendarInsertAcknowledgment", calendarAckFacts(uri, requestedCalendarUri))
+            // CalendarProvider appends the ID to the request URI, retaining its exact local-account
+            // query. Preserve the validated parent ID before subsequent provider reads can fail.
+            calendarId = idFrom(uri, "calendars", requestedCalendarUri.encodedQuery)
             guardCalendar()
             val seeds = listOf(
                 Seed("new-york-spring", LocalDate.of(2028, 3, 10), ZoneId.of("America/New_York"), false),
@@ -479,8 +483,24 @@ class NativeCalendarProviderProbe : Instrumentation() {
                 E.ORIGINAL_SYNC_ID, E.ORIGINAL_INSTANCE_TIME, E.ORIGINAL_ALL_DAY)
             private fun requireCondition(valid: Boolean, code: String) { if (!valid) throw Failure(code) }
             private fun ContentValues.putNullable(key: String, value: String?) { if (value == null) putNull(key) else put(key, value) }
-            private fun idFrom(uri: Uri, table: String): Long {
-                requireCondition(uri.scheme == "content" && uri.authority == CalendarContract.AUTHORITY && uri.query == null &&
+            private fun calendarAckFacts(uri: Uri, requested: Uri): JSONObject {
+                val knownKeys = setOf(CalendarContract.CALLER_IS_SYNCADAPTER, C.ACCOUNT_NAME, C.ACCOUNT_TYPE)
+                val facts = JSONObject().put("matchesRequestedQuery", uri.encodedQuery == requested.encodedQuery)
+                    .put("queryAbsent", uri.encodedQuery == null)
+                try {
+                    val keys = uri.queryParameterNames
+                    facts.put("queryKeys", JSONArray(keys.map { if (it in knownKeys) it else "<unexpected-key>" }.sorted()))
+                        .put("unexpectedQueryKeyCount", keys.count { it !in knownKeys })
+                } catch (_: RuntimeException) { facts.put("queryKeysReadable", false) }
+                return facts
+            }
+            private fun idFrom(uri: Uri, table: String, requestedCalendarEncodedQuery: String? = null): Long {
+                // Keep query-less ACKs valid. Calendar-only ACKs may additionally echo exactly the
+                // known requested encoded query; changed/extra/reordered query data is rejected.
+                // Every event insertion still requires no query, with no compatibility exemption.
+                val queryAllowed = uri.encodedQuery == null || table == "calendars" && requestedCalendarEncodedQuery != null &&
+                    uri.encodedQuery == requestedCalendarEncodedQuery
+                requireCondition(uri.scheme == "content" && uri.authority == CalendarContract.AUTHORITY && queryAllowed &&
                     uri.fragment == null && uri.encodedPath == "/$table/${uri.lastPathSegment}", "INSERT_ACK_URI")
                 val id = uri.lastPathSegment?.toLongOrNull()?.takeIf { it > 0 } ?: throw Failure("INSERT_ACK_ID")
                 requireCondition(uri.lastPathSegment == id.toString(), "INSERT_ACK_ID_NONCANONICAL")
