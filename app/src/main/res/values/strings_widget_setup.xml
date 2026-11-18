@@ -1,0 +1,30 @@
+<resources>
+    <string name="widget_setup_title">Set up agenda widget</string>
+    <string name="widget_setup_save">Save widget</string>
+    <string name="widget_setup_saving">Saving…</string>
+    <string name="widget_setup_cancel">Cancel</string>
+    <string name="widget_setup_follow_app">Follow app calendars</string>
+    <string name="widget_setup_follow_app_note">The widget follows future changes to the calendars shown in the app.</string>
+    <string name="widget_setup_independent">Choose calendars for this widget</string>
+    <string name="widget_setup_independent_note">These choices are independent of the app’s calendar filters, other widgets, and reminders.</string>
+    <string name="widget_setup_app_preview">App calendars — read-only preview</string>
+    <string name="widget_setup_app_none">The app currently selects no calendars.</string>
+    <string name="widget_setup_saved_calendar">Saved calendar %1$d</string>
+    <string name="widget_setup_missing_calendar">Unavailable calendar %1$d</string>
+    <string name="widget_setup_missing_note">This saved choice is kept. Remove it only if you no longer want it included.</string>
+    <string name="widget_setup_unchecked_note">Its availability could not be checked. The saved choice is kept.</string>
+    <string name="widget_setup_unknown_note">Access must be confirmed before adding this calendar. An existing selection can be removed.</string>
+    <string name="widget_setup_availability_note">Availability only: the widget shows Busy and dates/times, even when event titles are enabled.</string>
+    <string name="widget_setup_no_selection">No calendars selected. This widget will show no events.</string>
+    <string name="widget_setup_all_available">Select all available</string>
+    <string name="widget_setup_privacy">Home-screen privacy</string>
+    <string name="widget_setup_busy">Busy only</string>
+    <string name="widget_setup_busy_note">Only Busy and event dates/times are shown. Event titles, locations, descriptions, and calendar colors stay hidden.</string>
+    <string name="widget_setup_titles">Event titles and calendar colors</string>
+    <string name="widget_setup_titles_note">Event titles and calendar colors are visible on your home screen. Anyone who can see the widget can read them.</string>
+    <string name="widget_setup_loading">Loading calendars…</string>
+    <string name="widget_setup_permission">Calendar access is needed to check the available calendars.</string>
+    <string name="widget_setup_allow">Allow calendar access</string>
+    <string name="widget_setup_unavailable">Calendars are unavailable. Your widget choices are kept.</string>
+    <string name="widget_setup_retry">Retry</string>
+</resources>
