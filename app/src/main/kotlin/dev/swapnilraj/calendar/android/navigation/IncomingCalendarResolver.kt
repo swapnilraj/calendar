@@ -48,7 +48,7 @@ class IncomingCalendarResolver(private val source: IncomingCalendarSource, priva
     catch (_: SecurityException) { CalendarEntryResolution.PermissionRequired }
     catch (_: Exception) { CalendarEntryResolution.Unavailable }
 
-    private suspend fun event(session: CalendarEntrySession, id: Long, hints: CalendarOccurrenceHints,
+    private suspend fun event(session: CalendarEntrySession, id: Long, suppliedHints: CalendarOccurrenceHints,
         zone: ZoneId, proposedEdit: CalendarDraftSeed?): CalendarEntryResolution {
         val read = source.readEventInfo(id)
         val info = when (read) {
@@ -58,6 +58,10 @@ class IncomingCalendarResolver(private val source: IncomingCalendarSource, priva
             else -> return CalendarEntryResolution.Unavailable
         }
         if (info.eventId != id || !session.bind(info)) return CalendarEntryResolution.Stale
+        // EDIT extras are suggested new values, not authority for the existing one-off target.
+        // A recurring/detached EDIT needs a separate occurrence-aware edit workflow.
+        if (proposedEdit != null && info.recurringOrDetached) return CalendarEntryResolution.Unsupported
+        val hints = if (proposedEdit == null) suppliedHints else CalendarOccurrenceHints(null, null, null)
         // Pin immediately, before any occurrence query that may suspend or be cancelled.
         if (info.recurringOrDetached && hints.begin == null) return CalendarEntryResolution.NeedsOccurrence(id)
         if (hints.allDay != null && hints.allDay != info.allDay) return CalendarEntryResolution.Stale
