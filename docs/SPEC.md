@@ -389,6 +389,18 @@ row, required/optional invited guests and reminders are inserted and asserted at
 implicit self-row and organizer flags, journals exact requests, and verifies native rows/occurrence
 before local success. Recurring or delegated meeting creation remains review-only. The guest-creation
 interface is not yet connected, and invitation delivery still requires controlled account verification.
+
+Owned one-off organizer edits, guest add/type/remove and cancellation also have a bounded provider
+executor behind the meeting port. It issues THIS-only rights after exact owner/account/organizer and
+ACL proof, applies sparse asserted deltas, preserves other responses and unrepresented columns,
+and cancels by event status rather than attendee decline or deletion. New guest IDs and linked
+reminders are journaled before readback; known-commit recovery is read-only. This backend does not
+yet provide an organizer-edit screen. Recurring/delegated organizer changes remain unsupported.
+
+The dedicated version6 meeting-creation draft/controller retains raw guest and event inputs with
+exact generation/CAS ownership. Frozen typed requests include a stable raw fingerprint and recover
+without reparsing mutable input using a newer validator. It is not yet connected to a guest-entry
+screen, incoming guest requests or the draft browser. Source/controller tests are not delivery proof.
 New meeting editors require atomic complete-record draft comparison for creation, replacement and
 deletion. A storage/acknowledgement failure requires readback before dispatch; a mismatch retains inputs
 for review. A sequence of separate load/upsert calls is not atomic. Series/response editors use atomic

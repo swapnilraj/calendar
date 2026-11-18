@@ -8,8 +8,8 @@ At `bf2ef3f`, the complete required gate passed: **1,490 tests** (core221, app1,
 weather17), debug APK assembly and lint; no failures, errors or skipped tests. This includes the
 bounded owned one-off meeting creation backend, namespace-checked incoming-link metadata reads,
 and five actual app whole-series temporal/rule journeys through the SQLite/native-provider fixture.
-Guest-creation UI and public incoming-link activation remain pending; local writes do not prove
-invitation delivery. Log: `/tmp/daylight-meeting-integrated-full.log` (3m26s).
+At that checkpoint, guest-creation UI and public incoming-link activation were pending; local
+writes do not prove invitation delivery. Log: `/tmp/daylight-meeting-integrated-full.log` (3m26s).
 
 Later integrated packets have focused evidence; **the complete gate has not yet been rerun on
 current HEAD**:
@@ -24,17 +24,24 @@ current HEAD**:
   cover COUNT/UNTIL splits and committed recovery. Controller result guards additionally passed90
   focused series/meeting checks: new tail and generated RSVP IDs must match the frozen occurrence
   context. Imported-row clone preservation has a newly identified public-projection limitation;
-  the required default-review provider-profile gate is being implemented.
+  the default-review provider-profile gate is integrated and passed168 focused checks. No production
+  clone profile is admitted; synthetic fixtures are explicitly marked.
 - Portable authored-timezone and alert-only validation are integrated. Six actual writer/SQLite
   regressions verify that a draft for a null-zone imported source preserves its original baseline
   after travel. Explicitly authoring a source zone for such an import remains a separate edge case.
 
-Incoming public VIEW/date/INSERT activation and durable completion receipts are staged in
-`codex/dd-calendar-entry-integration` for actual-app verification. Full-height phone editor/details
-activation is staged in `codex/dd-phone-editor-integration`; large-text picker and private-open
-journeys are under verification. Neither staged host is included in the green checkpoint above.
-Generated-occurrence THIS RSVP backend activation awaits native-journey and provider-profile gates.
-Guest-creation UI, organizer changes and recurring meeting creation remain unfinished.
+Full-height phone editor/details and public VIEW/date/INSERT review are now integrated. The
+combined host passed all7 incoming journeys together, all58 private-open/seed/retirement checks
+with screenshot verification, and3 multi-day move/resize/namespace journeys. Existing fixtures now
+use the real pickers, fixed toolbar actions and scoped icons. Three updated host images were
+recorded and inspected; standalone day rendering was unchanged. The complete gate is next and
+has not yet passed on this newer integration.
+
+Generated THIS RSVP has3 actual-app synthetic-provider journeys, including READ-loss/recreation
+and source-free SQL recovery with one batch. Clone admission still defaults to review in production.
+The separate guest-creation controller/codecs passed25 checks; frozen requests do not reparse raw
+input. Owned one-off organizer editing/guest deltas/cancellation passed104 backend-focused checks.
+Those two meeting interfaces, recurring meeting creation and public EDIT review remain unfinished.
 
 The current Google Calendar2026.44 APK has installed and rendered notification/calendar-access
 onboarding in an isolated API35 software emulator. This is initial runtime evidence, not main-flow
