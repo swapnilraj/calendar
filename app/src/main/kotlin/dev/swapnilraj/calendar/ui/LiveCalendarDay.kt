@@ -336,11 +336,11 @@ internal fun LiveCalendarDay(
     }
     // A context is an observation fence, never edit authority. Refreshing either data stream,
     // changing a namespace/filter/range, or opening another flow cancels the held gesture/review.
-    val observedGridContext = GridEditorContext(listOf(reader, mutations, drafts), request,
+    val observedGridContext = GridEditorContext(listOf(reader, mutations, drafts, widgetNavigation?.id, dayNavigationRevision), request,
         (snapshot as? CalendarReadState.Ready)?.value, (metadata as? CalendarReadState.Ready)?.value,
         preferences, view.name, visibleDate,
         openedEvent != null || writeRequestText != null || seriesScopeText != null || seriesWriteText != null ||
-            meetingWriteText != null || showDrafts || showSearch || showSettings || showDefaultCalendar || drawer.isOpen)
+            meetingWriteText != null || showDrafts || showSearch || showSettings || showDefaultCalendar || drawer.isOpen || monthDayText != null)
     val gridRevision = remember(observedGridContext) { Any() }
     val gridContext = observedGridContext.copy(owners = observedGridContext.owners + gridRevision)
     val latestGridContext by rememberUpdatedState(gridContext)
@@ -371,7 +371,8 @@ internal fun LiveCalendarDay(
     fun gridEditorAlternative(ref: EventRef) {
         val occurrence = gridContext.occurrence(ref) ?: return
         val time = occurrence.time as? EventTime.Timed ?: return
-        val segment = DayGeometry(visibleDate, displayNow.zone).segments(ref).firstOrNull()?.key ?: return
+        val segmentDate = maxOf(request.range.start, time.start.atZone(displayNow.zone).toLocalDate())
+        val segment = DayGeometry(segmentDate, displayNow.zone).segments(ref).firstOrNull()?.key ?: return
         val target = time.start.atZone(displayNow.zone).let { GridTarget(it.toLocalDate(), gridMinute(it.toLocalTime()), displayNow.zone) }
         val source = TimedGridSource(ref, time)
         launchGridEditor(gridContext, GridEditorIntent.Edit(TimedGridEditProposal(gridContext, TimedGridEditKind.MOVE,
@@ -471,7 +472,8 @@ internal fun LiveCalendarDay(
                         summary = summary, background = background,
                         onVisibleDateChanged = { selectedDateState.value = it.toString() }, onRetry = reader::refresh,
                         onScrollMinuteChanged = { scrollMinute = it },
-                        onChooseCalendars = if (settings != null) ({ scope.launch { drawer.open() }; Unit }) else null, interactions = gridInteractions) }
+                        onChooseCalendars = if (settings != null) ({ scope.launch { drawer.open() }; Unit }) else null, interactions = gridInteractions,
+                        onCancelPendingEdit = { gridOperationEpoch++; gridReview = null }) }
                 } else Column(Modifier.fillMaxSize()) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         openCalendars(); controls()
@@ -492,7 +494,8 @@ internal fun LiveCalendarDay(
                                         planningMultiDayRange(currentDate(), 7, firstWeekday) else next
                                     multiDayRangeText = "${aligned.start}/${aligned.endExclusive}"
                                 }, initialScrollMinute = scrollMinute.takeIf { it >= 0 }, onScrollMinuteChanged = { scrollMinute = it },
-                                summary = summary, background = background, modifier = Modifier.weight(1f), showWeekends = options.showWeekends) }
+                                summary = summary, background = background, modifier = Modifier.weight(1f), showWeekends = options.showWeekends,
+                                interactions = gridInteractions, onCancelPendingEdit = { gridOperationEpoch++; gridReview = null }) }
                         } else MonthView(month, visibleDate, firstWeekday, state.value.occurrences, displayNow.zone,
                             onSelectDate = { selectedDateState.value = it.toString() }, onOpenEvent = ::openEvent,
                             onCreateDate = { createDateAction?.invoke(it) },
