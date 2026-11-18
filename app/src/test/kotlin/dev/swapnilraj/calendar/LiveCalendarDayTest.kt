@@ -8,6 +8,9 @@ import android.net.Uri
 import android.provider.CalendarContract
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalRippleConfiguration
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -122,6 +125,7 @@ class LiveCalendarDayTest {
         compose.onNodeWithText("All day 1").assertIsDisplayed()
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
     @Test fun calendarDrawerPersistsFiltersAndMonthUsesOneLiveRange() {
         val provider = FixtureProvider()
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
@@ -138,8 +142,11 @@ class LiveCalendarDayTest {
             compose.setContent {
                 val selected = settings.calendarSelection.collectAsState(initial = CalendarSelection.ProviderVisible)
                 DaylightTheme {
-                    LiveCalendarDay(reader, selected.value, ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"),
-                        true, 64f, {}, {}, settings = settings)
+                    // Static captures exclude platform ripple timing; click semantics stay active.
+                    CompositionLocalProvider(LocalRippleConfiguration provides null) {
+                        LiveCalendarDay(reader, selected.value, ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"),
+                            true, 64f, {}, {}, settings = settings)
+                    }
                 }
             }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
