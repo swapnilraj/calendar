@@ -43,6 +43,83 @@ class AndroidReminderDeliveryTest {
     private fun candidate() = ReminderCandidate(key, identity,
         EventOccurrence(ref, EventTime.Timed(ref.instanceStart, ref.instanceEnd), "Synthetic title", 0xff112233.toInt()), now.minusSeconds(600))
 
+    @Test fun activeScopeCleanupRetainsOnlyConfiguredNamespacesAndLeavesUnrelatedNotice() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val targets = ReminderIntentTargets(ComponentName(context.packageName, "MainActivity"), receiver)
+        val notifications = AndroidReminderNotifications(context, targets, { ZoneOffset.UTC }, { ready })
+        val one = post(ReminderNotificationAlias(ref, now, "one"))
+        val otherRef = ref.copy(calendarId = CalendarId(3), eventId = 8)
+        val otherIdentity = ReminderCalendarIdentity("other", "other-uid")
+        val otherCandidate = candidate().copy(key = ReminderKey.of(otherRef, 10), sourceCalendarIdentity = otherIdentity,
+            occurrence = candidate().occurrence.copy(ref = otherRef))
+        val other = post(ReminderNotificationAlias(otherRef, now, "other"))
+        notifications.post(candidate(), one); notifications.post(otherCandidate, other)
+        val manager = context.getSystemService(NotificationManager::class.java)
+        assertEquals(ReminderTestNotificationResult.ACCEPTED, ReminderTestNotification(context).post())
+        notifications.cancelIneligibleScopes(mapOf(CalendarId(3) to otherIdentity), emptyMap(), emptySet())
+        assertFalse(notifications.isActive(one)); assertTrue(notifications.isActive(other))
+        assertEquals(2, manager.activeNotifications.size) // Independent test notice survives.
+        notifications.cancelIneligibleScopes(mapOf(CalendarId(3) to otherIdentity),
+            mapOf(CalendarId(3) to ReminderCalendarIdentity("replacement")), emptySet())
+        assertFalse(notifications.isActive(other)); assertEquals(1, manager.activeNotifications.size)
+    }
+
+    @Test fun onlyKnownNamespaceChangesOrRemovalCancelUidEnrichmentAndMissingUidPreserve() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val notifications = AndroidReminderNotifications(context,
+            ReminderIntentTargets(ComponentName(context.packageName, "MainActivity"), receiver), { ZoneOffset.UTC }, { ready })
+        val post = post(ReminderNotificationAlias(ref, now, "uid-cases"))
+        val weak = identity.copy(providerUidFingerprint = null)
+        notifications.post(candidate().copy(sourceCalendarIdentity = weak), post)
+        notifications.cancelIneligibleScopes(mapOf(ref.calendarId to identity), emptyMap(), emptySet())
+        assertTrue(notifications.isActive(post)) // Known UID enrichment is not replacement proof.
+        notifications.post(candidate(), post)
+        notifications.cancelIneligibleScopes(mapOf(ref.calendarId to identity), mapOf(ref.calendarId to weak), emptySet())
+        assertTrue(notifications.isActive(post))
+        notifications.cancelIneligibleScopes(mapOf(ref.calendarId to identity),
+            mapOf(ref.calendarId to identity.copy(providerUidFingerprint = "changed")), emptySet())
+        assertFalse(notifications.isActive(post))
+        notifications.post(candidate(), post)
+        notifications.cancelIneligibleScopes(mapOf(ref.calendarId to identity), emptyMap(), setOf(ref.calendarId))
+        assertFalse(notifications.isActive(post))
+    }
+
+    @Test fun malformedLegacyAndCalendarTagMismatchScopeClearWithoutReposting() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val targets = ReminderIntentTargets(ComponentName(context.packageName, "MainActivity"), receiver)
+        val notifications = AndroidReminderNotifications(context, targets, { ZoneOffset.UTC }, { ready })
+        val manager = context.getSystemService(NotificationManager::class.java)
+        for (mode in 0..4) {
+            val post = post(ReminderNotificationAlias(ref, now, "invalid-$mode"))
+            notifications.post(candidate(), post)
+            val active = manager.activeNotifications.single()
+            when (mode) {
+                0 -> active.notification.extras.remove(AndroidReminderNotifications.SCOPE_VERSION)
+                1 -> active.notification.extras.putString(AndroidReminderNotifications.SCOPE_VERSION, "1")
+                2 -> active.notification.extras.putLong(AndroidReminderNotifications.SCOPE_CALENDAR, 99L)
+                3 -> active.notification.extras.putString(AndroidReminderNotifications.SCOPE_FINGERPRINT, "")
+                else -> active.notification.extras.putInt(AndroidReminderNotifications.SCOPE_UID, 1)
+            }
+            manager.notify(active.tag, active.id, active.notification)
+            notifications.cancelIneligibleScopes(mapOf(ref.calendarId to identity), emptyMap(), emptySet())
+            assertTrue(manager.activeNotifications.isEmpty())
+        }
+    }
+
+    @Test @Config(shadows = [AuditedNotificationManager::class])
+    fun activeScopeCancellationFailureIsExposedInsteadOfPretendingSuccess() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val notifications = AndroidReminderNotifications(context,
+            ReminderIntentTargets(ComponentName(context.packageName, "MainActivity"), receiver), { ZoneOffset.UTC }, { ready })
+        notifications.post(candidate(), post(ReminderNotificationAlias(ref, now, "cancel-failure")))
+        AuditedNotificationManager.failNextCancel = true
+        try { notifications.cancelIneligibleScopes(emptyMap(), emptyMap(), emptySet()); fail("Unavailable cleanup must propagate") }
+        catch (_: IllegalStateException) { }
+        AuditedNotificationManager.failNextEnumeration = true
+        try { notifications.cancelIneligibleScopes(emptyMap(), emptyMap(), emptySet()); fail("Unavailable enumeration must propagate") }
+        catch (_: IllegalStateException) { }
+    }
+
     @Test fun exactAlarmReplacesOneImmutablePendingIntentAndRoundTripsVersion() {
         ShadowAlarmManager.setCanScheduleExactAlarms(true)
         val alarms = AndroidReminderAlarms(context, receiver)
@@ -248,6 +325,12 @@ class AuditedNotificationManager : ShadowNotificationManager() {
     data class Operation(val kind: String, val previousToken: String?)
 
     @Implementation
+    override fun getActiveNotifications(): Array<android.service.notification.StatusBarNotification> {
+        if (failNextEnumeration) { failNextEnumeration = false; throw IllegalStateException("Synthetic enumeration failure") }
+        return super.getActiveNotifications()
+    }
+
+    @Implementation
     override fun notify(tag: String?, id: Int, notification: Notification) {
         operations.add(Operation("notify", getNotification(tag, id)?.extras?.getString(ReminderNotificationFactory.EXTRA_POST_TOKEN)))
         if (failNextNotify) { failNextNotify = false; throw IllegalStateException("Synthetic post failure") }
@@ -256,6 +339,7 @@ class AuditedNotificationManager : ShadowNotificationManager() {
 
     @Implementation
     override fun cancel(tag: String?, id: Int) {
+        if (failNextCancel) { failNextCancel = false; throw IllegalStateException("Synthetic cancellation failure") }
         operations.add(Operation("cancel", getNotification(tag, id)?.extras?.getString(ReminderNotificationFactory.EXTRA_POST_TOKEN)))
         super.cancel(tag, id)
     }
@@ -263,6 +347,8 @@ class AuditedNotificationManager : ShadowNotificationManager() {
     companion object {
         val operations = mutableListOf<Operation>()
         var failNextNotify = false
-        fun resetAudit() { operations.clear(); failNextNotify = false; ShadowNotificationManager.reset() }
+        var failNextCancel = false
+        var failNextEnumeration = false
+        fun resetAudit() { operations.clear(); failNextNotify = false; failNextCancel = false; failNextEnumeration = false; ShadowNotificationManager.reset() }
     }
 }

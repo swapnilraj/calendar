@@ -64,6 +64,8 @@ class ReminderCoordinator(
             return ReminderCycleResult(if (suppression.accepted) ReminderCycleStatus.DISABLED else ReminderCycleStatus.UNAVAILABLE, suppression.alarm)
         }
         if (!canDeliver()) return permissionRequired()
+        val allowedScopes = config.expectedCalendarIdentities.filterKeys { it in config.enabledCalendars }
+        notifications.cancelIneligibleScopes(allowedScopes, emptyMap(), emptySet())
         val tracked = ledger.trackedForRevalidation(window).filter { it.key.calendarId in config.enabledCalendars }
         val resolved = resolve(tracked.map { it.key }.toSet(), config)
         if (resolved.permissionRequired) return permissionRequired()
@@ -73,6 +75,8 @@ class ReminderCoordinator(
         if (loaded == ReminderSourceResult.PermissionRequired) return permissionRequired()
         val snapshot = (loaded as? ReminderSourceResult.Ready)?.snapshot?.takeIf { it.window == window }
             ?.let { safeSnapshot(it, config) }
+        if (snapshot != null) notifications.cancelIneligibleScopes(allowedScopes,
+            snapshot.observedCalendarIdentities, snapshot.removedCalendars)
         val counts = Counts()
         // Discovery failure cannot erase plans, but confirmed configuration and per-key resolution
         // still apply. In particular, a disabled calendar must not keep its old alarm/active alert.

@@ -139,6 +139,29 @@ class ReminderPipelineTest {
         }
     }
 
+    @Test fun unpinClearsActualPostedAlertWhileSqlHistorySurvivesReopenAndReenable() = runBlocking {
+        val pipe = Pipeline(Provider(origin.plusSeconds(600), origin.plusSeconds(4200), false, 10), Time(origin))
+        try {
+            assertEquals(1, pipe.coordinator.reconcile().posted)
+            val original = pipe.postIdentity(pipe.manager.activeNotifications.single().notification)
+            val posted = pipe.ledger.findByAlias(original.alias)!!
+            val enabled = pipe.configuration
+            pipe.configuration = enabled.copy(enabledCalendars = emptySet(), expectedCalendarIdentities = emptyMap())
+            assertEquals(0, pipe.coordinator.reconcile().posted)
+            assertTrue(pipe.manager.activeNotifications.isEmpty())
+            assertEquals(ReminderDeliveryState.POSTED, pipe.ledger.findByAlias(original.alias)!!.state)
+            pipe.reopen()
+            assertEquals(posted, pipe.ledger.findByAlias(original.alias))
+            pipe.configuration = enabled
+            assertEquals(0, pipe.coordinator.reconcile().posted)
+            assertTrue(pipe.manager.activeNotifications.isEmpty())
+            val retained = pipe.ledger.findByAlias(original.alias)!!
+            assertEquals(ReminderDeliveryState.POSTED, retained.state)
+            assertEquals(original, retained.postIdentity)
+            assertEquals(posted.generation, retained.generation)
+        } finally { pipe.close() }
+    }
+
     @Test fun alarmFreshReadRestartAndSnoozeReplayUseOneDurablePipeline() = runBlocking {
         val due = origin.plusSeconds(600)
         val provider = Provider(due.plusSeconds(600), due.plusSeconds(4200), false, 10)
