@@ -88,8 +88,17 @@ class RecurringProviderJourneyTest {
     private fun open(title: String, action: String, scope: String) {
         compose.waitUntil(15_000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(title).performClick()
-        compose.waitUntil(15_000) { compose.onAllNodesWithText(action).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText(action).performScrollTo().performClick()
+        if (action == "Edit event") {
+            val edit = hasContentDescription(action) and hasClickAction() and isEnabled()
+            compose.waitUntil(15_000) { compose.onAllNodes(edit).fetchSemanticsNodes().size == 1 }
+            compose.onNode(edit).performClick()
+        } else {
+            val more = hasContentDescription("More event actions") and hasClickAction() and isEnabled()
+            compose.waitUntil(15_000) { compose.onAllNodes(more).fetchSemanticsNodes().size == 1 }
+            compose.onNode(more).performClick()
+            compose.waitUntil(15_000) { compose.onAllNodesWithText(action).fetchSemanticsNodes().size == 1 }
+            compose.onNodeWithText(action).performClick()
+        }
         compose.waitUntil(15_000) { compose.onAllNodesWithText(scope).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(scope).performClick()
         compose.waitUntil(15_000) { compose.onAllNodesWithText(if (action == "Edit event") "Edit recurring event" else "Delete recurring event").fetchSemanticsNodes().isNotEmpty() }

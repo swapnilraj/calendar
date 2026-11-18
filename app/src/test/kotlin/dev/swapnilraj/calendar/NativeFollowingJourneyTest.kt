@@ -86,7 +86,9 @@ class NativeFollowingJourneyTest {
     @Test fun frozenWeeklyCountFollowingCommitRecreatesAndRecoversKnownTailAfterSqlReopenWithoutReplayOrWritePermission() = fixture { f ->
         openFollowing()
         compose.onNodeWithText("Weekly").performScrollTo().performClick()
+        compose.waitUntil(15_000) { compose.onAllNodes(hasText("Weekly") and isSelected()).fetchSemanticsNodes().size == 1 }
         compose.onNodeWithText("After a number of occurrences").performScrollTo().performClick()
+        compose.waitUntil(15_000) { compose.onAllNodes(hasText("After a number of occurrences") and isSelected()).fetchSemanticsNodes().size == 1 }
         replace("Occurrences (1–10000)", "3")
         review(f)
         f.provider.failReadsAfterCommit = true
@@ -138,7 +140,15 @@ class NativeFollowingJourneyTest {
     private fun replace(label: String, value: String) {
         val field = hasSetTextAction() and hasText(label)
         compose.waitUntil(15_000) { compose.onAllNodes(field and isEnabled()).fetchSemanticsNodes().size == 1 }
-        compose.onNode(field).performScrollTo(); compose.waitForIdle(); compose.onNode(field).performTextReplacement(value)
+        compose.onNode(field).performScrollTo()
+        compose.waitForIdle()
+        // Focus can bring a conditional COUNT field into view and replace its semantics node.
+        // Complete that real focus transition before resolving it again for keyboard input.
+        compose.onNode(field).performClick()
+        compose.waitUntil(15_000) { compose.onAllNodes(field and isFocused()).fetchSemanticsNodes().size == 1 }
+        compose.waitForIdle()
+        compose.onNode(field and isFocused()).performTextReplacement(value)
+        compose.waitUntil(15_000) { compose.onAllNodes(field and hasText(value)).fetchSemanticsNodes().size == 1 }
     }
     private fun review(f: Fixture) {
         compose.onNodeWithText("Save").performScrollTo().performClick()

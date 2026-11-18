@@ -59,7 +59,9 @@ class NativeSeriesTemporalJourneyTest {
     @Test fun explicitWeeklyAndCountChangeCanRemoveTheSelectedOrdinalWithoutReturningItsOldRef() = fixture { f ->
         openAll()
         compose.onNodeWithText("Weekly").performScrollTo().performClick()
+        compose.waitUntil(15_000) { compose.onAllNodes(hasText("Weekly") and isSelected()).fetchSemanticsNodes().size == 1 }
         compose.onNodeWithText("After a number of occurrences").performScrollTo().performClick()
+        compose.waitUntil(15_000) { compose.onAllNodes(hasText("After a number of occurrences") and isSelected()).fetchSemanticsNodes().size == 1 }
         replace("Occurrences (1–10000)", "1")
         review(f); confirm()
         val result = saved(f)
@@ -154,8 +156,13 @@ class NativeSeriesTemporalJourneyTest {
         compose.waitUntil(15_000) { compose.onAllNodes(field and isEnabled()).fetchSemanticsNodes().size == 1 }
         compose.onNode(field).performScrollTo()
         compose.waitForIdle()
-        // Conditional repeat fields can be recomposed during bring-into-view. Resolve them again.
-        compose.onNode(field).performTextReplacement(value)
+        // Focus can bring a conditional COUNT field into view and replace its semantics node.
+        // Complete that real focus transition before resolving it again for keyboard input.
+        compose.onNode(field).performClick()
+        compose.waitUntil(15_000) { compose.onAllNodes(field and isFocused()).fetchSemanticsNodes().size == 1 }
+        compose.waitForIdle()
+        compose.onNode(field and isFocused()).performTextReplacement(value)
+        compose.waitUntil(15_000) { compose.onAllNodes(field and hasText(value)).fetchSemanticsNodes().size == 1 }
     }
     private fun review(f: Fixture) {
         compose.onNodeWithText("Save").performScrollTo().performClick(); shown("Review entire-series changes")
