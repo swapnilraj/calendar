@@ -116,7 +116,8 @@ class SqliteReminderLedger(
         read(db, "state IN (?, ?) AND (effective_seconds < ? OR (effective_seconds = ? AND effective_nanos <= ?))",
             arrayOf(ReminderDeliveryState.SCHEDULED.name, ReminderDeliveryState.SNOOZED.name,
                 now.epochSecond.toString(), now.epochSecond.toString(), now.nano.toString()), limit).map { old ->
-            val record = old.copy(state = ReminderDeliveryState.POSTING, claimToken = UUID.randomUUID().toString(), revision = next(old.revision))
+            val token = UUID.randomUUID().toString()
+            val record = old.copy(state = ReminderDeliveryState.POSTING, claimToken = token, postToken = token, revision = next(old.revision))
             write(db, record)
             ReminderClaim(record)
         }
@@ -145,18 +146,18 @@ class SqliteReminderLedger(
         read(store.readableDatabase, "notification_nonce = ?", arrayOf(alias.nonce)).singleOrNull()?.takeIf { it.notificationAlias == alias }
     }
 
-    override suspend fun snooze(expected: ReminderVersion, minutes: Int, now: Instant): ReminderRecord? = transaction { db ->
+    override suspend fun snooze(expected: ReminderVersion, postToken: String, minutes: Int, now: Instant): ReminderRecord? = transaction { db ->
         require(minutes in listOf(5, 10, 30))
         val old = find(db, expected.key) ?: return@transaction null
-        if (old.version != expected || old.state != ReminderDeliveryState.POSTED) return@transaction null
+        if (old.version != expected || old.state != ReminderDeliveryState.POSTED || old.postToken != postToken || postToken.isBlank()) return@transaction null
         val until = now.plusSeconds(minutes * 60L)
         old.copy(state = ReminderDeliveryState.SNOOZED, effectiveDue = until, snoozedUntil = until,
             revision = next(old.revision)).also { write(db, it) }
     }
 
-    override suspend fun dismiss(expected: ReminderVersion): Boolean = transaction { db ->
+    override suspend fun dismiss(expected: ReminderVersion, postToken: String): Boolean = transaction { db ->
         val old = find(db, expected.key) ?: return@transaction false
-        if (old.version != expected || old.state != ReminderDeliveryState.POSTED) return@transaction false
+        if (old.version != expected || old.state != ReminderDeliveryState.POSTED || old.postToken != postToken || postToken.isBlank()) return@transaction false
         write(db, old.copy(state = ReminderDeliveryState.DISMISSED, revision = next(old.revision), snoozedUntil = null))
         true
     }
@@ -250,6 +251,7 @@ class SqliteReminderLedger(
             .put("generation", record.generation).put("revision", record.revision)
             .put("posted", record.lastPostedAt?.toString() ?: JSONObject.NULL)
             .put("snoozed", record.snoozedUntil?.toString() ?: JSONObject.NULL).put("claim", record.claimToken ?: JSONObject.NULL)
+            .put("postToken", record.postToken ?: JSONObject.NULL)
         private fun decode(json: JSONObject): ReminderRecord {
             val key = JSONArray(json.getString("key"))
             check(key.getString(0) == "v1") { "Unsupported reminder encoding" }
@@ -258,7 +260,7 @@ class SqliteReminderLedger(
                 Instant.parse(json.getString("planned")), Instant.parse(json.getString("effective")),
                 ReminderNotificationAlias(ref(json.getJSONObject("aliasRef")), Instant.parse(json.getString("aliasDue")), json.getString("nonce")),
                 ReminderDeliveryState.valueOf(json.getString("state")), json.getLong("generation"), json.getLong("revision"),
-                json.optional("posted")?.let(Instant::parse), json.optional("snoozed")?.let(Instant::parse), json.optional("claim"), json.optional("eventUid"))
+                json.optional("posted")?.let(Instant::parse), json.optional("snoozed")?.let(Instant::parse), json.optional("claim"), json.optional("eventUid"), json.optional("postToken"))
         }
     }
 }

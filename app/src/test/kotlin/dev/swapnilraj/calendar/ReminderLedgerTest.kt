@@ -118,7 +118,7 @@ class ReminderLedgerTest {
             val allDayRef = ref(start = Instant.parse("2026-11-18T00:00:00Z"), end = Instant.parse("2026-11-19T00:00:00Z"))
             val initial = candidate(allDayRef, minutes = 900, due = now, allDay = true)
             val posted = post(ledger, initial)
-            assertTrue(ledger.dismiss(posted.version))
+            assertTrue(ledger.dismiss(posted.version, posted.postToken!!))
             val dismissed = ledger.findByAlias(posted.notificationAlias)!!
             val narrow = InstantBounds(now.minusSeconds(60), now.plusSeconds(60))
             assertEquals(listOf(dismissed), ledger.trackedForRevalidation(narrow))
@@ -195,7 +195,7 @@ class ReminderLedgerTest {
             val changes = ledger.reconcile(snapshot(identity = replacement, complete = false), setOf(calendar), emptyMap(), now)
             assertEquals(setOf(posted.notificationAlias), changes.cancelNotifications)
             assertEquals(ReminderDeliveryState.RETIRED, ledger.findByAlias(posted.notificationAlias)!!.state)
-            assertFalse(ledger.dismiss(posted.version))
+            assertFalse(ledger.dismiss(posted.version, posted.postToken!!))
             val newCandidate = candidate(identity = replacement)
             ledger.reconcile(snapshot(listOf(newCandidate), replacement), setOf(calendar), emptyMap(), now)
             val current = ledger.nextScheduled()!!
@@ -244,7 +244,7 @@ class ReminderLedgerTest {
     @Test fun explicitGoneThenRescheduleBackGetsFreshNonceWithoutInheritingDismissal() = runBlocking {
         fixture { _, ledger ->
             val posted = post(ledger)
-            assertTrue(ledger.dismiss(posted.version))
+            assertTrue(ledger.dismiss(posted.version, posted.postToken!!))
             ledger.reconcile(snapshot(), setOf(calendar), mapOf(posted.key to ReminderResolution.GoneOrIneligible), now)
             assertEquals(ReminderDeliveryState.RETIRED, ledger.findByAlias(posted.notificationAlias)!!.state)
             ledger.reconcile(snapshot(listOf(candidate())), setOf(calendar), emptyMap(), now)
@@ -276,8 +276,8 @@ class ReminderLedgerTest {
             val allDayRef = ref(start = Instant.parse("2026-11-18T00:00:00Z"), end = Instant.parse("2026-11-19T00:00:00Z"))
             val originalCandidate = candidate(allDayRef, minutes = 900, due = now, allDay = true)
             val original = post(ledger, originalCandidate)
-            val snoozed = ledger.snooze(original.version, 5, now)!!
-            assertNull(ledger.snooze(original.version, 5, now))
+            val snoozed = ledger.snooze(original.version, original.postToken!!, 5, now)!!
+            assertNull(ledger.snooze(original.version, original.postToken!!, 5, now))
             val zoneChanged = originalCandidate.copy(due = now.plusSeconds(18_000))
             ledger.reconcile(snapshot(listOf(zoneChanged)), setOf(calendar), emptyMap(), now)
             val retained = ledger.nextScheduled()!!
@@ -298,10 +298,58 @@ class ReminderLedgerTest {
         }
     }
 
+    @Test fun stalePostActionsCannotAffectSnoozeRepostEvenWithFreshVersion() = runBlocking {
+        fixture { store, ledger ->
+            val original = post(ledger)
+            assertNull(original.claimToken)
+            assertNotNull(original.postIdentity)
+            val snoozed = ledger.snooze(original.version, original.postToken!!, 5, now)!!
+            val claim = ledger.claimDue(snoozed.effectiveDue, 1).single()
+            assertEquals(claim.record.claimToken, claim.record.postToken)
+            assertNotEquals(original.postToken, claim.record.postToken)
+            // The durable token exists before notification posting, including process recovery.
+            store.close()
+            val reopened = CalendarLocalStore(RuntimeEnvironment.getApplication(), store.databaseName)
+            try {
+                val recovered = SqliteReminderLedger(reopened)
+                val interrupted = recovered.interruptedDeliveries().single()
+                assertEquals(claim.record.postIdentity, interrupted.record.postIdentity)
+                assertTrue(recovered.acknowledge(interrupted, ReminderDeliveryOutcome.Posted(snoozed.effectiveDue)))
+                val current = recovered.findByAlias(original.notificationAlias)!!
+                assertEquals(original.notificationAlias, current.notificationAlias)
+                assertFalse(recovered.dismiss(current.version, original.postToken!!))
+                assertNull(recovered.snooze(current.version, original.postToken!!, 5, now))
+                val changed = candidate(ref = ref(end = ref().instanceEnd.plusSeconds(600)))
+                recovered.reconcile(snapshot(listOf(changed)), setOf(calendar), emptyMap(), now)
+                val edited = recovered.findByAlias(original.notificationAlias)!!
+                assertEquals(current.postIdentity, edited.postIdentity)
+                assertTrue(recovered.dismiss(edited.version, current.postToken!!))
+            } finally { reopened.close() }
+        }
+    }
+
+    @Test fun legacyPostedPayloadWithoutTokenRetainsHistoryButAuthorizesNoAction() = runBlocking {
+        fixture { store, ledger ->
+            val posted = post(ledger)
+            store.writableDatabase.rawQuery("SELECT payload FROM reminder_ledger", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                val payload = org.json.JSONObject(cursor.getString(0)).apply { remove("postToken") }
+                store.writableDatabase.execSQL("UPDATE reminder_ledger SET payload = ?", arrayOf(payload.toString()))
+            }
+            val legacy = ledger.findByAlias(posted.notificationAlias)!!
+            assertNull(legacy.postIdentity)
+            assertEquals(posted.lastPostedAt, legacy.lastPostedAt)
+            assertFalse(ledger.dismiss(legacy.version, posted.postToken!!))
+            assertFalse(ledger.dismiss(legacy.version, ""))
+            assertNull(ledger.snooze(legacy.version, posted.postToken!!, 5, now))
+            assertNull(ledger.nextScheduled())
+        }
+    }
+
     @Test fun disablingCalendarCancelsPendingSnoozeButDoesNotResurrectDeliveredHistory() = runBlocking {
         fixture { _, ledger ->
             val posted = post(ledger)
-            val snoozed = ledger.snooze(posted.version, 5, now)!!
+            val snoozed = ledger.snooze(posted.version, posted.postToken!!, 5, now)!!
             ledger.reconcile(snapshot(), emptySet(), mapOf(posted.key to ReminderResolution.GoneOrIneligible), now)
             val cancelled = ledger.findByAlias(posted.notificationAlias)!!
             assertEquals(ReminderDeliveryState.CANCELLED, cancelled.state)
