@@ -48,7 +48,7 @@ internal object PhoneEventEditorText {
     /** A minute picker cannot silently erase source precision when its selection is unchanged. */
     fun acceptedMinuteTime(raw: String, hour: Int, minute: Int): String {
         val before = runCatching { LocalTime.parse(raw) }.getOrNull()
-        return if (before?.hour == hour && before.minute == minute) raw else LocalTime.of(hour, minute).toString()
+        return if (before != null && before.hour == hour && before.minute == minute) raw else LocalTime.of(hour, minute).toString()
     }
     fun zone(raw: String): String? = runCatching {
         val zone = ZoneId.of(raw)

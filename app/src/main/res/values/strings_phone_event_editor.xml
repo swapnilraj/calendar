@@ -43,8 +43,8 @@
     <string name="phone_event_discard">Discard draft</string>
     <string name="phone_event_replace">Start a new draft</string>
     <string name="phone_event_discard_body">Discard these saved fields from this device? No event will be changed or selected automatically.</string>
-    <string name="phone_event_stop_discard_body">First stop the original save from being sent, then discard this draft. If the save may already have been sent, or an event was saved, this draft will be kept so you can check its result.</string>
-    <string name="phone_event_replace_body">Stop any pending original save before starting a separate draft. The new draft needs another explicit Save. Choose a calendar again for a new event; an edit stays with its original calendar.</string>
+    <string name="phone_event_stop_discard_body">First stop the original change from being sent, then discard this draft. If the change may already have been sent or finished on this device, this draft will be kept so you can check its result.</string>
+    <string name="phone_event_replace_body">Stop any pending original change, then keep these fields in a new draft. Choose a calendar again and review its visibility before tapping Save.</string>
     <string name="phone_event_continue">Continue saved draft</string>
     <string name="phone_event_finish_close">Finish closing saved draft</string>
     <string name="phone_event_pending">The original save is kept unchanged. Check its result before making another save.</string>
@@ -54,19 +54,19 @@
     <string name="phone_event_permission">Allow calendar access, then tap Save again.</string>
     <string name="phone_event_denied">This event cannot be changed here.</string>
     <string name="phone_event_unverified">This draft cannot be verified against the current event. Review the latest event before applying it.</string>
-    <string name="phone_event_uncertain">We could not confirm whether this was saved. Check the save result before trying again.</string>
+    <string name="phone_event_uncertain">We could not confirm the result of this change. Check its result before trying again.</string>
     <string name="phone_event_unavailable">Calendar is unavailable. Your draft is kept.</string>
     <string name="phone_event_storage">Your draft could not be saved on this device. Keep this screen open and try again.</string>
-    <string name="phone_event_stopped">The original save has been stopped. It will not be sent again.</string>
-    <string name="phone_event_safe_retry">The original save was not sent. You can retry that same save.</string>
-    <string name="phone_event_no_retry">The original save cannot be retried safely here. Check its result.</string>
+    <string name="phone_event_stopped">The original change has been stopped. It will not be sent again.</string>
+    <string name="phone_event_safe_retry">The original change was not sent. You can retry that same change.</string>
+    <string name="phone_event_no_retry">The original change cannot be retried safely here. Check its result.</string>
     <string name="phone_event_upgrade">Continue this saved draft before changing its fields.</string>
     <string name="phone_event_newer_version">This saved draft needs a newer version of Daylight.</string>
     <string name="phone_event_discard_unconfirmed">Discard could not be confirmed. Your original draft is kept. Check its result before trying again.</string>
-    <string name="phone_event_may_have_saved">The original save may already have been sent. Check its result; keep the draft until its outcome is known.</string>
-    <string name="phone_event_already_saved">This event was saved on this device. Discarding a draft cannot undo that save or create another event.</string>
-    <string name="phone_event_discard_conflict">The original save could not be identified safely. Your draft is kept for review.</string>
-    <string name="phone_event_cannot_discard">This older save cannot be discarded safely here. Your draft is kept.</string>
+    <string name="phone_event_may_have_saved">The original change may already have been sent. Check its result; keep the draft until its outcome is known.</string>
+    <string name="phone_event_already_saved">A change to this event finished on this device. Discarding a draft cannot undo that change or create another event.</string>
+    <string name="phone_event_discard_conflict">The original change could not be identified safely. Your draft is kept for review.</string>
+    <string name="phone_event_cannot_discard">This older change cannot be discarded safely here. Your draft is kept.</string>
     <string name="phone_event_local_save">Saving updates this device. Your calendar account handles sync.</string>
     <string name="phone_event_confirm">Confirm</string>
     <plurals name="phone_event_notification_count"><item quantity="one">%d notification</item><item quantity="other">%d notifications</item></plurals>
@@ -83,4 +83,7 @@
     <string name="phone_event_local_deleted">This event was deleted on this device. Finish closing its draft; it will not be deleted again.</string>
     <string name="phone_event_remove">Remove</string>
     <string name="phone_event_region_zone">Choose a supported region time zone, such as Europe/London, before saving this time. Your calendar cannot safely use the current zone.</string>
+    <string name="phone_event_replace_edit_body">Discard your unsaved edits and load the latest event from its original calendar? Any pending original change must be stopped first. Changes will not be saved until you tap Save again.</string>
+    <string name="phone_event_check_delete">Check deletion result</string>
+    <string name="phone_event_pending_permission">Allow calendar access, then check the original result. Your pending change is kept unchanged.</string>
 </resources>

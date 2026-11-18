@@ -128,10 +128,17 @@ private fun PhoneEditorTimePicker(raw: String, title: String, use24Hour: Boolean
     var manual by remember { mutableStateOf(false) }
     val time = runCatching { LocalTime.parse(raw) }.getOrNull()
     val picker = key(raw) { rememberTimePickerState(initialHour = time?.hour ?: 0, initialMinute = time?.minute ?: 0, is24Hour = use24Hour) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { Column {
-        TextButton(onClick = { manual = !manual }) { Text(stringResource(if (manual) R.string.phone_event_use_picker else R.string.phone_event_enter_text)) }
-        if (manual) OutlinedTextField(raw, onChange, enabled = enabled, label = { Text(stringResource(R.string.phone_event_time_input)) }) else TimePicker(picker)
-    } }, confirmButton = { TextButton(enabled = enabled, onClick = { if (!manual) onChange(PhoneEventEditorText.acceptedMinuteTime(raw, picker.hour, picker.minute)); onDismiss() }) { Text(stringResource(R.string.phone_event_done)) } },
+    if (manual) PhoneEditorPanelFrame(title, onDismiss) {
+        Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            TextButton(onClick = { manual = false }) { Text(stringResource(R.string.phone_event_use_picker)) }
+            val label = stringResource(R.string.phone_event_time_input)
+            Text(label, style = MaterialTheme.typography.labelLarge)
+            OutlinedTextField(raw, onChange, enabled = enabled, singleLine = true, modifier = Modifier.fillMaxWidth().semantics { contentDescription = label })
+        }
+    } else AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { Column {
+        TextButton(onClick = { manual = true }) { Text(stringResource(R.string.phone_event_enter_text)) }
+        TimePicker(picker)
+    } }, confirmButton = { TextButton(enabled = enabled, onClick = { onChange(PhoneEventEditorText.acceptedMinuteTime(raw, picker.hour, picker.minute)); onDismiss() }) { Text(stringResource(R.string.phone_event_done)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.events_editor_cancel)) } })
 }
 

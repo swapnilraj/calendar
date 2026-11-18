@@ -74,10 +74,13 @@ class PhoneEventDetailsTest {
     @Test fun readyPayloadAndEveryActionDisappearOnPermissionLoadingUnavailableOrLimitState() {
         show(); for (replacement in listOf(CalendarReadState.PermissionRequired, CalendarReadState.Loading, CalendarReadState.Unavailable, CalendarReadState.LimitExceeded)) {
             state = CalendarReadState.Ready(details); compose.waitForIdle(); compose.onNodeWithText("Weekly planning").assertExists()
+            compose.onNodeWithContentDescription("More event actions").performClick()
             state = replacement; compose.waitForIdle()
             compose.onNodeWithText("Weekly planning").assertDoesNotExist(); compose.onNodeWithText("Join meeting").assertDoesNotExist()
             compose.onNodeWithContentDescription("Edit event").assertDoesNotExist(); compose.onNodeWithContentDescription("More event actions").assertDoesNotExist()
             compose.onNodeWithText("organizer@example.test", substring = true).assertDoesNotExist()
+            compose.onNodeWithText("Garden room").assertDoesNotExist(); compose.onNodeWithText("Personal").assertDoesNotExist()
+            compose.onNodeWithText("Respond to invitation").assertDoesNotExist(); compose.onNodeWithText("Duplicate as draft").assertDoesNotExist()
         }
     }
     @Test fun hiddenGuestsStayUnavailableAndNeverLeakProviderRowsOrRawEnums() {

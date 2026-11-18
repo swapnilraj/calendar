@@ -79,7 +79,7 @@ internal fun PhoneEventEditorContent(
             Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min = 64.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 val closeLabel = stringResource(R.string.phone_event_close)
                 IconButton(onClick = onClose, enabled = !state.saving, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = closeLabel }) { PhoneEventIcon(PhoneEventGlyph.CLOSE) }
-                Text(stringResource(if (controller.recoveryOnly) R.string.phone_event_check_save else if (controller.isEditing) R.string.events_editor_edit else R.string.events_editor_create),
+                Text(stringResource(if (controller.recoveryOnly) (if (controller.pendingOperationKind == "delete") R.string.phone_event_check_delete else R.string.phone_event_check_save) else if (controller.isEditing) R.string.events_editor_edit else R.string.events_editor_create),
                     style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(horizontal = 8.dp).semantics { heading() })
                 TextButton(onClick = controller::save, enabled = view.canSave, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.events_editor_save)) }
             }
@@ -135,7 +135,7 @@ internal fun PhoneEventEditorContent(
         confirmButton = { TextButton(onClick = controller::confirmDelete) { Text(stringResource(R.string.events_editor_delete)) } }, dismissButton = { TextButton(onClick = controller::cancelDelete) { Text(stringResource(R.string.events_editor_cancel)) } })
     confirm?.let { action -> AlertDialog(onDismissRequest = { confirm = null },
         title = { Text(stringResource(when (action) { "replace" -> R.string.phone_event_replace; "retryDelete" -> R.string.phone_event_retry_delete; else -> R.string.phone_event_discard })) },
-        text = { Text(stringResource(when { action == "replace" -> R.string.phone_event_replace_body; action == "retryDelete" -> R.string.events_editor_delete_description; controller.hasFrozenSubmission -> R.string.phone_event_stop_discard_body; else -> R.string.phone_event_discard_body })) },
+        text = { Text(stringResource(when { action == "replace" -> if (controller.isEditing) R.string.phone_event_replace_edit_body else R.string.phone_event_replace_body; action == "retryDelete" -> R.string.events_editor_delete_description; controller.hasFrozenSubmission -> R.string.phone_event_stop_discard_body; else -> R.string.phone_event_discard_body })) },
         confirmButton = { TextButton(enabled = !state.saving, onClick = { confirm = null; when (action) { "replace" -> onReplace?.invoke(); "retryDelete" -> controller.retryOriginal(); else -> onDiscard?.invoke() } }) { Text(stringResource(R.string.phone_event_confirm)) } },
         dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.events_editor_cancel)) } }) }
 }
@@ -156,11 +156,11 @@ private fun PhoneEditorStatus(controller: EventEditorController, onReview: (() -
     val state = controller.state; val scope = rememberCoroutineScope()
     val attention = state.legacy || state.reviewRequired || state.recoveryRequired || controller.hasFrozenSubmission || state.draftReadFailed || state.localOutcome != null
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        state.problem?.let { Text(stringResource(phoneEditorProblem(it)), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }
+        state.problem?.let { Text(stringResource(if (it == EditorProblem.PERMISSION && controller.hasFrozenSubmission) R.string.phone_event_pending_permission else phoneEditorProblem(it)), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }
         state.localOutcome?.let { Text(stringResource(if (it is MutationResult.LocalDeleted) R.string.phone_event_local_deleted else R.string.phone_event_local_saved), style = MaterialTheme.typography.bodyMedium) }
         state.reviewLatest?.let { PhoneLatestEventReview(it, use24Hour) }
         state.notices.forEach { Text(stringResource(phoneEditorNotice(it)), style = MaterialTheme.typography.bodyMedium) }
-        if (state.recoveryRequired && !state.draftReadFailed) TextButton(onClick = controller::recover, enabled = !state.saving) { Text(stringResource(R.string.phone_event_check_save)) }
+        if (state.recoveryRequired && !state.draftReadFailed) TextButton(onClick = controller::recover, enabled = !state.saving) { Text(stringResource(if (controller.pendingOperationKind == "delete") R.string.phone_event_check_delete else R.string.phone_event_check_save)) }
         if (state.retryReady) TextButton(onClick = { if (controller.pendingOperationKind == "delete") onRetryDelete() else controller.retryOriginal() }, enabled = !state.saving) { Text(stringResource(if (controller.pendingOperationKind == "delete") R.string.phone_event_retry_delete else R.string.phone_event_retry_save)) }
         if (state.reviewRequired && controller.canReviewLatest && onReview != null) TextButton(onClick = onReview) { Text(stringResource(R.string.events_editor_review)) }
         if (controller.canUpgrade && onUpgrade != null) TextButton(onClick = onUpgrade) { Text(stringResource(R.string.phone_event_continue)) }

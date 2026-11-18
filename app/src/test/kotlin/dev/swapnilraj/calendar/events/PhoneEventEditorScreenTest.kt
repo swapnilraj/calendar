@@ -105,6 +105,14 @@ class PhoneEventEditorScreenTest {
         assertEquals(precise.time, EventEditorController.normalizedDraft(controller.state.fields).time)
         assertEquals(0, writer.creates)
     }
+    @Test fun largeTextTimePickerKeepsTextFallbackAndDoneReachable() {
+        val controller = editor(); show(controller, largeRtl = true)
+        compose.onNodeWithContentDescription("Starts: 09:00").performScrollTo().performClick()
+        compose.onNodeWithText("Enter as text").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Time (HH:MM)").assertIsDisplayed()
+        compose.onNodeWithText("Done").assertIsDisplayed().performClick()
+        assertEquals("09:00", controller.state.fields.startTime); assertEquals(0, writer.creates)
+    }
     @Test fun notificationRowsUseHumanLabelsAndAddingOneDoesNotSaveAnEvent() {
         val controller = editor(); show(controller)
         compose.onNodeWithText("10 minutes before").performScrollTo().performClick()
@@ -129,6 +137,8 @@ class PhoneEventEditorScreenTest {
         writer.next = MutationResult.PermissionRequired; val controller = editor(); controller.save(); show(controller)
         compose.onNodeWithText("Check save result").assertIsDisplayed()
         compose.onNodeWithText("Save").assertIsNotEnabled()
+        compose.onNodeWithText("Allow calendar access, then check the original result. Your pending change is kept unchanged.").assertIsDisplayed()
+        compose.onNodeWithText("Allow calendar access, then tap Save again.").assertDoesNotExist()
         compose.onAllNodesWithText("journal", substring = true, ignoreCase = true).assertCountEquals(0)
         compose.onAllNodesWithText("Retire", substring = true, ignoreCase = true).assertCountEquals(0)
         compose.onAllNodesWithText("Add people").assertCountEquals(0)
