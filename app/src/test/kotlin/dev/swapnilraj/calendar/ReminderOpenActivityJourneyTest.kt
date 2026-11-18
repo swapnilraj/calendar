@@ -7,7 +7,9 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import androidx.compose.ui.test.*
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import com.github.takahirom.roborazzi.captureRoboImage
 import dev.swapnilraj.calendar.android.reminders.*
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.data.CalendarPreferenceState
@@ -57,6 +59,9 @@ class ReminderOpenActivityJourneyTest {
         f.provider.setEvent("description", "Fresh synthetic meeting: $currentLink")
         f.open(intent)
         shown(title)
+        // Capture only the stable title region of the real Activity; dates use its actual clock.
+        compose.onNodeWithText(title).captureToImage().asAndroidBitmap()
+            .captureRoboImage("src/test/screenshots/integration_reminder_notification_open.png")
         compose.onNodeWithText("Join meeting").performScrollTo().performClick()
         val opened = shadowOf(f.activity!!.get()).nextStartedActivity
         assertEquals(Intent.ACTION_VIEW, opened.action)
