@@ -155,10 +155,16 @@ class ReminderSettingsJourneyTest {
         val identity = runBlocking {
             app.settings.saveReminderSettings(app.settings.readReminderSettings(), SavedReminderSettings())
             app.reminderRuntime.onResume().join()
-            app.settings.setCalendarSelection(CalendarSelection.Explicit(emptySet()))
             assertTrue(app.settings.setDisplaySettings(CalendarSettingsOptions(weatherVisible = false)))
             val metadata = app.calendarReader.observeCalendars().first { it is CalendarReadState.Ready } as CalendarReadState.Ready
-            requireNotNull(CalendarReminderSource.calendarIdentity(metadata.value.single()))
+            val info = metadata.value.single()
+            // Seed a foreign prior known snapshot so this remains isolated in a combined suite.
+            // Select None records current metadata once before launch, never after UI actions.
+            val prior = info.copy(id = CalendarId(999), account = CalendarAccount("prior-fixture@example.invalid", "com.synthetic.prior"),
+                owner = "prior-fixture@example.invalid", providerId = "prior-calendar-uid")
+            assertTrue(app.settings.setCalendarSelection(CalendarSelection.Explicit(setOf(prior.id)), listOf(prior)))
+            assertTrue(app.settings.setCalendarSelection(CalendarSelection.Explicit(emptySet()), metadata.value))
+            requireNotNull(CalendarReminderSource.calendarIdentity(info))
         }
         lateinit var activity: ActivityController<MainActivity>
         compose.runOnUiThread { activity = Robolectric.buildActivity(MainActivity::class.java).setup().visible() }

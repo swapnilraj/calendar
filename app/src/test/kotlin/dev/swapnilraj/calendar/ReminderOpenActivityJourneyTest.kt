@@ -151,8 +151,14 @@ class ReminderOpenActivityJourneyTest {
         val original = runBlocking { app.settings.readReminderSettings() }
         runBlocking {
             app.reminderRuntime.onResume().join()
-            app.settings.setCalendarSelection(CalendarSelection.Explicit(emptySet()))
-            val info = (app.calendarReader.observeCalendars().first { it is CalendarReadState.Ready } as CalendarReadState.Ready).value.single()
+            val calendars = (app.calendarReader.observeCalendars().first { it is CalendarReadState.Ready } as CalendarReadState.Ready).value
+            val info = calendars.single()
+            // Deliberately carry another fixture's known namespace, then model the user's current
+            // Select None action with its metadata snapshot before any Activity can reconcile it.
+            val prior = info.copy(id = CalendarId(999), account = CalendarAccount("prior-fixture@example.invalid", "com.synthetic.prior"),
+                owner = "prior-fixture@example.invalid", providerId = "prior-calendar-uid")
+            assertTrue(app.settings.setCalendarSelection(CalendarSelection.Explicit(setOf(prior.id)), listOf(prior)))
+            assertTrue(app.settings.setCalendarSelection(CalendarSelection.Explicit(emptySet()), calendars))
             val pin = requireNotNull(CalendarReminderSource.calendarIdentity(info))
             assertTrue(app.settings.saveReminderSettings(original, SavedReminderSettings(true, mapOf(info.id to pin))) is ReminderPreferenceSave.Saved)
         }
