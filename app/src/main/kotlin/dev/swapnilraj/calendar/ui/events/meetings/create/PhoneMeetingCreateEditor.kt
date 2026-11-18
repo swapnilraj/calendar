@@ -43,30 +43,60 @@ fun PhoneMeetingCreateEditor(controller: MeetingCreationController, calendars: L
 
 internal class PhoneMeetingCreateActions(val controller: MeetingCreationController, private val scope: CoroutineScope) {
     private val serial = Mutex()
-    fun submit(action: suspend () -> Unit) { scope.launch(start=CoroutineStart.UNDISPATCHED) { serial.withLock { action() } } }
-    fun event(change: (EventEditorFields) -> EventEditorFields) = submit {
-        controller.state.fields?.event?.let { controller.changeFields(change(it)) }
+    private var blocking by mutableStateOf(0)
+    private var projected by mutableStateOf<MeetingCreationFields?>(null)
+    private var rawPending = 0
+    val inputLocked get() = blocking > 0
+    val fields get() = projected ?: controller.state.fields
+    /** Lock at enqueue time: no keystroke can enter behind a queued Close or Save. */
+    fun submit(action: suspend () -> Unit) {
+        if(inputLocked) return
+        blocking++
+        scope.launch(start=CoroutineStart.UNDISPATCHED) {
+            try { serial.withLock { action() } } finally { blocking-- }
+        }
     }
-    fun guests(change: (List<MeetingCreationGuestFields>) -> List<MeetingCreationGuestFields>) = submit {
-        controller.state.fields?.guests?.let { controller.changeGuests(change(it)) }
+    /** Projection keeps fast input visible while ordered raw CAS calls are suspended.
+     * It is never authority or a normalized command; the controller still owns every persisted value.
+     */
+    fun event(change: (EventEditorFields) -> EventEditorFields) {
+        if(inputLocked || !controller.canEditRaw) return
+        val base=fields ?: return
+        val next=change(base.event)
+        projected=base.copy(event=next)
+        raw { controller.changeFields(next) }
+    }
+    fun guests(change: (List<MeetingCreationGuestFields>) -> List<MeetingCreationGuestFields>) {
+        if(inputLocked || !controller.canEditRaw) return
+        val base=fields ?: return
+        val next=change(base.guests)
+        projected=base.copy(guests=next)
+        raw { controller.changeGuests(next) }
+    }
+    private fun raw(action: suspend () -> Unit) {
+        rawPending++
+        scope.launch(start=CoroutineStart.UNDISPATCHED) {
+            try { serial.withLock { action() } } finally { rawPending--; if(rawPending==0) projected=null }
+        }
     }
 }
 
 @Composable
 private fun PhoneMeetingCreateContent(c: MeetingCreationController, calendars: List<CalendarInfo>,
     actions: PhoneMeetingCreateActions, onClose: () -> Unit, use24Hour: Boolean) {
-    val state=c.state; val fields=state.fields; val raw=fields?.event
+    val state=c.state; val fields=actions.fields; val raw=fields?.event
     var panel by remember(c) { mutableStateOf<PhoneEditorPanel?>(null) }
     val scroll=rememberScrollState()
     LaunchedEffect(state.problem) { if(state.problem!=null) scroll.animateScrollTo(0) }
-    val editable=c.canEditRaw
+    LaunchedEffect(state.localSaved,state.recoveryRequired) { if(state.localSaved!=null || state.recoveryRequired) scroll.animateScrollTo(0) }
+    val editable=c.canEditRaw && !actions.inputLocked
     val selected=calendars.firstOrNull { it.identity==raw?.targetIdentity }
-    val canSave=c.canSave && state.policyAccepted && fields?.guests?.isNotEmpty()==true && raw?.recurrence?.frequency=="NONE" && selected!=null
+    val canSave=!actions.inputLocked && c.canSave && state.policyAccepted && fields?.guests?.isNotEmpty()==true && raw?.recurrence?.frequency=="NONE" && selected!=null
     Surface(Modifier.fillMaxSize()) {
         Scaffold(topBar={ Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min=64.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
             val closeLabel=stringResource(R.string.phone_meeting_create_close)
-            IconButton(onClick=onClose,enabled=!state.busy,modifier=Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).semantics { contentDescription=closeLabel }) { PhoneEventIcon(PhoneEventGlyph.CLOSE) }
-            Text(stringResource(if(c.frozen) R.string.phone_meeting_create_recovery else R.string.phone_meeting_create_title),style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f).padding(horizontal=8.dp).semantics { heading() })
+            IconButton(onClick=onClose,enabled=!actions.inputLocked,modifier=Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).semantics { contentDescription=closeLabel }) { PhoneEventIcon(PhoneEventGlyph.CLOSE) }
+            Text(stringResource(when {state.localSaved!=null -> R.string.phone_meeting_create_complete; c.frozen -> R.string.phone_meeting_create_recovery; else -> R.string.phone_meeting_create_title}),style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f).padding(horizontal=8.dp).semantics { heading() })
             TextButton(onClick={ actions.submit { c.save() } },enabled=canSave,modifier=Modifier.heightIn(min=48.dp)) { Text(stringResource(R.string.events_editor_save)) }
         } }) { padding ->
             Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(scroll).padding(bottom=32.dp)) {
@@ -79,7 +109,7 @@ private fun PhoneMeetingCreateContent(c: MeetingCreationController, calendars: L
                         modifier=Modifier.fillMaxWidth().padding(start=48.dp,end=12.dp).heightIn(min=88.dp).semantics { contentDescription=titleLabel },
                         colors=TextFieldDefaults.colors(focusedContainerColor=Color.Transparent,unfocusedContainerColor=Color.Transparent,disabledContainerColor=Color.Transparent,focusedIndicatorColor=Color.Transparent,unfocusedIndicatorColor=Color.Transparent,disabledIndicatorColor=Color.Transparent))
                     PhoneEditorRow(PhoneEventGlyph.CALENDAR,selected?.displayName ?: stringResource(R.string.phone_event_choose_calendar),
-                        selected?.account?.name ?: raw.targetIdentity?.account?.name,enabled=c.canChange,onClick={panel=PhoneEditorPanel.CALENDAR},swatch=selected?.color?.let { Color(it or 0xff000000.toInt()) })
+                        selected?.account?.name ?: raw.targetIdentity?.account?.name,enabled=c.canChange && !actions.inputLocked,onClick={panel=PhoneEditorPanel.CALENDAR},swatch=selected?.color?.let { Color(it or 0xff000000.toInt()) })
                     HorizontalDivider(Modifier.padding(start=64.dp))
                     Row(Modifier.fillMaxWidth().toggleable(raw.allDay,enabled=editable,role=Role.Switch,onValueChange={ value -> actions.event { it.copy(allDay=value) } }).padding(start=64.dp,end=24.dp).heightIn(min=64.dp),verticalAlignment=Alignment.CenterVertically) {
                         Text(stringResource(R.string.events_all_day),Modifier.weight(1f)); Switch(raw.allDay,onCheckedChange=null,enabled=editable)
@@ -99,10 +129,10 @@ private fun PhoneMeetingCreateContent(c: MeetingCreationController, calendars: L
                     PhoneEditorRow(PhoneEventGlyph.PLACE,raw.location.ifBlank { stringResource(R.string.phone_event_add_location) },enabled=editable,onClick={panel=PhoneEditorPanel.LOCATION})
                     PhoneEditorRow(PhoneEventGlyph.ALERT,phoneAlertsSummary(raw.alerts),enabled=editable,onClick={panel=PhoneEditorPanel.ALERTS})
                     PhoneEditorRow(PhoneEventGlyph.NOTES,raw.description.ifBlank { stringResource(R.string.phone_event_add_notes) },enabled=editable,onClick={panel=PhoneEditorPanel.DESCRIPTION})
-                    PhoneEditorRow(PhoneEventGlyph.AVAILABILITY,phoneMetadataLabel(raw.availability,false),enabled=editable,onClick={panel=PhoneEditorPanel.AVAILABILITY})
-                    PhoneEditorRow(PhoneEventGlyph.VISIBILITY,phoneMetadataLabel(raw.privacy,true),enabled=editable,onClick={panel=PhoneEditorPanel.PRIVACY})
+                    PhoneEditorRow(PhoneEventGlyph.AVAILABILITY,stringResource(R.string.events_availability),phoneMetadataLabel(raw.availability,false),enabled=editable,onClick={panel=PhoneEditorPanel.AVAILABILITY})
+                    PhoneEditorRow(PhoneEventGlyph.VISIBILITY,stringResource(R.string.events_visibility),phoneMetadataLabel(raw.privacy,true),enabled=editable,onClick={panel=PhoneEditorPanel.PRIVACY})
                     Text(stringResource(R.string.phone_meeting_create_delivery),style=MaterialTheme.typography.bodySmall,modifier=Modifier.padding(horizontal=24.dp,vertical=16.dp))
-                    if(c.canDiscard) TextButton(onClick=c::requestDiscard,modifier=Modifier.padding(horizontal=16.dp)) { Text(stringResource(R.string.phone_meeting_create_discard)) }
+                    if(c.canDiscard) TextButton(onClick={if(!actions.inputLocked)c.requestDiscard()},enabled=!actions.inputLocked,modifier=Modifier.padding(horizontal=16.dp)) { Text(stringResource(R.string.phone_meeting_create_discard)) }
                 }
             }
         }

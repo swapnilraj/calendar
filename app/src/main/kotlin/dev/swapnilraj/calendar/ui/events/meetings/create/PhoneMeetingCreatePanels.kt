@@ -18,7 +18,7 @@ import dev.swapnilraj.calendar.ui.events.*
 @Composable
 internal fun PhoneMeetingCreatePanel(panel:PhoneEditorPanel,c:MeetingCreationController,calendars:List<CalendarInfo>,
     enabled:Boolean,actions:PhoneMeetingCreateActions,use24Hour:Boolean,onDismiss:()->Unit) {
-    val raw=c.state.fields?.event ?: return
+    val raw=actions.fields?.event ?: return
     when(panel) {
         PhoneEditorPanel.START_DATE,PhoneEditorPanel.END_DATE -> {
             val start=panel==PhoneEditorPanel.START_DATE

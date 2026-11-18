@@ -43,7 +43,7 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
     val hasPendingRawInput: Boolean get() = pendingRaw != null
     val frozen: Boolean get() = document?.frozen != null
     val canChange: Boolean get() = !state.busy && canChangeIgnoringBusy()
-    val canEditRaw: Boolean get() = !state.busy && canAcceptRaw()
+    val canEditRaw: Boolean get() = canAcceptRaw()
     val canSave: Boolean get() = canChange && verified && document?.authority != null && state.problem !in setOf(MeetingCreationProblem.STALE_DRAFT, MeetingCreationProblem.DRAFT_UNAVAILABLE)
     val canDiscard: Boolean get() = !stopped && !state.loading && !state.busy && document != null && state.localSaved == null && (!frozen || retirement != null)
     /** Fixed backend policy; presentation must disclose this before asking for acceptance. */

@@ -47,6 +47,7 @@ internal fun PhoneMeetingCreatePeople(guests: List<MeetingCreationGuestFields>, 
                 } }
             }
         } }
+        if(guests.isEmpty()) Text(stringResource(R.string.phone_meeting_create_guests_required),style=MaterialTheme.typography.bodySmall)
         TextButton(enabled=enabled,onClick={actions.guests { it+MeetingCreationGuestFields() }}) {Text(stringResource(R.string.phone_meeting_create_add_person))}
     }
 }

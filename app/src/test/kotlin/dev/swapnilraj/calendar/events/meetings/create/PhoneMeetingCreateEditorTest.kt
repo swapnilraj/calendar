@@ -3,6 +3,8 @@ package dev.swapnilraj.calendar.events.meetings.create
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.LayoutDirection
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -11,6 +13,7 @@ import dev.swapnilraj.calendar.ui.events.*
 import dev.swapnilraj.calendar.ui.events.meetings.create.*
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Rule
@@ -44,7 +47,7 @@ class PhoneMeetingCreateEditorTest {
     }
     @Test fun calendarChoiceReadsBackendOnlyAndNeverSubmitsMeeting() {
         val c=runBlocking {f.open()}; show(c)
-        compose.onNodeWithText("Work").performClick(); compose.onNode(hasText("Work") and hasClickAction()).performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Work").performClick(); compose.onNode(hasText("Work") and SemanticsMatcher.expectValue(SemanticsProperties.Role,Role.RadioButton)).performClick(); compose.waitForIdle()
         assertEquals(1,f.reads); assertEquals(f.calendar.identity,c.state.fields!!.event.targetIdentity)
         assertTrue(f.calls.isEmpty()); assertEquals(0,f.permissions)
     }
@@ -65,7 +68,7 @@ class PhoneMeetingCreateEditorTest {
         f.next=MeetingMutationResult.LocalSaved(f.ref,RecurrenceScope.THIS); show(c,onSaved={saved=it})
         compose.onNodeWithText("Save").assertIsNotEnabled()
         compose.onNodeWithText("Guests can see the other guests. They cannot change this meeting or invite other people.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Use these guest permissions").performClick(); compose.onNodeWithText("Save").assertIsEnabled().performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Use these guest permissions").performScrollTo().performClick(); compose.waitUntil(5_000) { c.state.policyAccepted }; compose.onNodeWithText("Save").assertIsEnabled().performClick(); compose.waitForIdle()
         assertEquals(1,f.calls.size); assertNull(saved); assertTrue(f.store.rows.isNotEmpty())
         compose.onNodeWithText("Saved on this device").assertIsDisplayed()
         compose.onNodeWithText("Your calendar service handles invitation delivery. Daylight cannot confirm that guests received an invitation.").assertIsDisplayed()
@@ -89,6 +92,19 @@ class PhoneMeetingCreateEditorTest {
         f.store.unknownBefore=false; compose.onNodeWithText("Try saving draft").performClick(); compose.waitForIdle()
         compose.onNodeWithContentDescription("Close meeting editor").performClick(); compose.waitForIdle(); assertTrue(closed)
         assertEquals("Unfinished typed title",MeetingCreationDraftCodec.decode(f.record()).fields.event.title); assertTrue(f.calls.isEmpty())
+    }
+    @Test fun pendingRawCasKeepsTypingFocusedVisibleAndCloseDrainsLatestBeforeDismiss() {
+        val c=runBlocking {f.ready()}; var closed=false; show(c,onDismiss={closed=true})
+        val gate=CompletableDeferred<Unit>(); f.store.beforeCas={ _, replacement -> if(replacement!=null) gate.await() }
+        val title=compose.onNodeWithContentDescription("Title")
+        title.performTextReplacement("P"); compose.waitForIdle(); title.assertIsEnabled().assertIsFocused()
+        title.performTextReplacement("Planning latest typed text"); compose.waitForIdle()
+        title.assertIsEnabled().assertIsFocused().assertTextContains("Planning latest typed text")
+        compose.onNodeWithContentDescription("Close meeting editor").performClick(); compose.waitForIdle()
+        assertFalse(closed); title.assertIsNotEnabled()
+        gate.complete(Unit); compose.waitUntil(5_000) {closed}
+        assertEquals("Planning latest typed text",MeetingCreationDraftCodec.decode(f.record()).fields.event.title)
+        assertTrue(f.calls.isEmpty()); assertEquals(0,f.permissions)
     }
     @Test fun discardRequiresConfirmationAndDoesNotCreateOrCancelProviderEvent() {
         val c=runBlocking {f.ready()}; var discarded=false; show(c,onDiscarded={discarded=true})
@@ -118,11 +134,11 @@ class PhoneMeetingCreateEditorTest {
         assertEquals("2028-",c.state.fields!!.event.startDate); assertEquals("2028-",MeetingCreationDraftCodec.decode(f.record()).fields.event.startDate)
         compose.onNodeWithText("Save").performClick(); assertTrue(f.calls.isEmpty())
     }
-    @Test fun phoneMeetingCreateLight() {val c=runBlocking {f.ready()};show(c);compose.onNodeWithText("Person 1").performScrollTo();compose.onRoot().captureRoboImage("src/test/screenshots/phone_meeting_create_light.png")}
-    @Test fun phoneMeetingCreateDark() {val c=runBlocking {f.ready()};show(c,dark=true);compose.onRoot().captureRoboImage("src/test/screenshots/phone_meeting_create_dark.png")}
+    @Test fun phoneMeetingCreateLight() {val c=runBlocking {f.ready()};show(c);compose.onNodeWithText("Person 1").performScrollTo();compose.onNode(isDialog()).captureRoboImage("src/test/screenshots/phone_meeting_create_light.png")}
+    @Test fun phoneMeetingCreateDark() {val c=runBlocking {f.ready()};show(c,dark=true);compose.onNode(isDialog()).captureRoboImage("src/test/screenshots/phone_meeting_create_dark.png")}
     @Test fun phoneMeetingCreateLargeRtl() {
         val c=runBlocking {f.ready()};show(c,rtlLarge=true);compose.onNodeWithText("Person 1").performScrollTo()
         compose.onNodeWithContentDescription("Close meeting editor").assertIsDisplayed();compose.onNodeWithText("Save").assertIsDisplayed()
-        compose.onRoot().captureRoboImage("src/test/screenshots/phone_meeting_create_rtl_large.png")
+        compose.onNode(isDialog()).captureRoboImage("src/test/screenshots/phone_meeting_create_rtl_large.png")
     }
 }

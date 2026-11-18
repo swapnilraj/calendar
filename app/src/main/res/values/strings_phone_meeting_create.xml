@@ -17,6 +17,7 @@
     <string name="phone_meeting_create_policy">Guests can see the other guests. They cannot change this meeting or invite other people.</string>
     <string name="phone_meeting_create_policy_ack">Use these guest permissions</string>
     <string name="phone_meeting_create_delivery">Saving adds the meeting on this device. Your calendar service handles invitations and delivery.</string>
+    <string name="phone_meeting_create_complete">Meeting saved</string>
     <string name="phone_meeting_create_saved">Saved on this device</string>
     <string name="phone_meeting_create_saved_help">Your calendar service handles invitation delivery. Daylight cannot confirm that guests received an invitation.</string>
     <string name="phone_meeting_create_recovery">Check save result</string>
