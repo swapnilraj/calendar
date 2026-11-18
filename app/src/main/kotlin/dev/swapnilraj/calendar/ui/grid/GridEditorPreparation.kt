@@ -30,7 +30,9 @@ internal data class GridEditorContext(
         val observed = snapshot?.calendars?.singleOrNull { it.id == ref.calendarId } ?: return null
         return calendars?.singleOrNull { it.identity == observed.identity && it.account.name.isNotBlank() && it.account.type.isNotBlank() }
     }
-    val available: Boolean get() = !blocked && view == "DAY" && snapshot?.request == request && calendars != null
+    fun visibleGridDate(date: LocalDate): Boolean = date in request.range &&
+        !(view == "WEEK" && !preferences.options.showWeekends && date.dayOfWeek in setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY))
+    val available: Boolean get() = !blocked && view in setOf("DAY", "THREE_DAY", "WEEK") && snapshot?.request == request && calendars != null
 }
 internal sealed interface GridEditorIntent {
     data class Create(val proposal: TimedGridCreateProposal) : GridEditorIntent
@@ -41,6 +43,15 @@ internal sealed interface GridEditorPreparation {
     data class Review(val intent: GridEditorIntent, val preview: GridPreviewResult.NeedsReview) : GridEditorPreparation
     data object Stale : GridEditorPreparation
     data object Unavailable : GridEditorPreparation
+}
+
+/** Validate column proof and segment membership; core still owns the resulting time plan. */
+internal fun validGridPointerPath(context: GridEditorContext, proposal: TimedGridEditProposal): Boolean {
+    val path = proposal.pointerPath ?: return false
+    fun point(target: GridTarget) = context.visibleGridDate(target.date) && target.zone == context.request.displayZone &&
+        target.minute.isFinite() && target.minute in 0.0..1440.0 && target.offsetChoice == GridOffsetChoice.Unspecified && target.boundary == null
+    return point(path.origin) && point(path.hover) &&
+        DayGeometry(path.origin.date, context.request.displayZone).segments(proposal.source.ref).any { it.key == proposal.selectedSegment }
 }
 
 /** Rechecks the current snapshot AND the repository-issued source after suspension. */
@@ -83,15 +94,27 @@ internal suspend fun prepareGridEditor(
             val proposal = intent.proposal
             if (proposal.contextKey != context || proposal.source.ref.recurrence != null || context.occurrence(proposal.source.ref)?.time != proposal.source.time)
                 return GridEditorPreparation.Stale
+            val path = proposal.pointerPath
+            val logical = if (context.view != "DAY" && proposal.kind == TimedGridEditKind.MOVE && !editorAlternative) {
+                if (path == null || !validGridPointerPath(context, proposal)) return GridEditorPreparation.Unavailable
+                translatedGridTarget(proposal.source, proposal.selectedSegment, proposal.kind,
+                    (path.hover.minute - path.origin.minute) + java.time.temporal.ChronoUnit.DAYS.between(path.origin.date, path.hover.date) * 1440.0, zone)
+            } else proposal.target
             val read = mutations.loadForEdit(proposal.source.ref)
             if (!valid()) return GridEditorPreparation.Stale
             if (read !is EditReadResult.Ready || !gridSourceMatches(current(), proposal.source.ref, read.event, requireKnownZone = !editorAlternative)) return GridEditorPreparation.Unavailable
             source = read.event
-            target = proposal.target.copy(offsetChoice = offset?.let(GridOffsetChoice::Explicit) ?: GridOffsetChoice.Unspecified)
+            target = logical.copy(offsetChoice = offset?.let(GridOffsetChoice::Explicit) ?: GridOffsetChoice.Unspecified)
             plan = planGridEdit(proposal.source, proposal.selectedSegment, proposal.kind, target)
         }
     }
     if (target.zone != zone || target.date.year !in 1..9999) return GridEditorPreparation.Unavailable
+    val plannedTarget = snappedGridTarget(plan, target)
+    val resize = intent is GridEditorIntent.Edit && intent.proposal.kind == TimedGridEditKind.RESIZE_END
+    val move = intent is GridEditorIntent.Edit && intent.proposal.kind == TimedGridEditKind.MOVE
+    if (!editorAlternative && context.view != "DAY" && !move &&
+        !(context.visibleGridDate(plannedTarget.date) || resize && plannedTarget.date == context.request.range.endExclusive && plannedTarget.minute == 0.0))
+        return GridEditorPreparation.Unavailable
     if (!editorAlternative && plan is GridPreviewResult.NeedsReview) return GridEditorPreparation.Review(intent, plan)
     if (!editorAlternative && plan !is GridPreviewResult.Ready) return GridEditorPreparation.Unavailable
     val calendar = verifiedCreationCalendar(context.preferences, context.calendars.orEmpty())

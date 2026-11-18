@@ -54,11 +54,20 @@ internal fun TimedGridFeedback(date: LocalDate, zone: ZoneId, use24Hour: Boolean
     fun compactTime(value: Instant): String = value.atZone(zone).let {
         if (it.toLocalDate() == date) it.format(clock) else "${it.toLocalDate().format(DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT).withLocale(locale))} ${it.format(clock)}"
     }
+    fun compactRange(value: EventTime.Timed): String {
+        val start = value.start.atZone(zone)
+        val end = value.end.atZone(zone)
+        // A shared multi-day strip names a same-date target once, leaving room for the actual time
+        // and duration at large fonts. Complete dates/offsets remain in the accessibility message.
+        return if (start.toLocalDate() == end.toLocalDate() && start.toLocalDate() != date)
+            "${start.toLocalDate().format(DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT).withLocale(locale))} ${start.format(clock)} – ${end.format(clock)}"
+        else "${compactTime(value.start)} – ${compactTime(value.end)}"
+    }
     val visualMessage = when (result) {
         is GridPreviewResult.Ready -> {
             val elapsed = gridElapsedAmount(result.time.duration, locale)
             stringResource(if (elapsed.seconds) R.string.timed_grid_ready_compact_seconds else R.string.timed_grid_ready_compact,
-                "\u202a${compactTime(result.time.start)} – ${compactTime(result.time.end)}\u202c", elapsed.value)
+                "\u202a${compactRange(result.time)}\u202c", elapsed.value)
         }
         is GridPreviewResult.NeedsReview -> {
             val target = result.snappedTarget

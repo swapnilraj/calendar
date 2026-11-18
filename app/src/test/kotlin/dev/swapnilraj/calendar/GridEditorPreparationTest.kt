@@ -209,6 +209,92 @@ class GridEditorPreparationTest {
         assertEquals(GridElapsedAmount("0.000000001", true), gridElapsedAmount(Duration.ofNanos(1), java.util.Locale.US))
         assertEquals(GridElapsedAmount("60", false), gridElapsedAmount(Duration.ofHours(1), java.util.Locale.US))
     }
+    private fun multiContext(event: EventOccurrence = occurrence(), window: CalendarDateRange = CalendarDateRange(date, date.plusDays(3)),
+        week: Boolean = false, weekends: Boolean = true): GridEditorContext {
+        val old = context(event)
+        val request = old.request.copy(range = window)
+        val view = if (week) "WEEK" else "THREE_DAY"
+        return old.copy(request = request, snapshot = old.snapshot!!.copy(request = request), date = window.start, view = view,
+            preferences = old.preferences.copy(view = view, options = old.preferences.options.copy(showWeekends = weekends)))
+    }
+    private fun pointerEdit(context: GridEditorContext, hover: GridTarget): GridEditorIntent.Edit {
+        val original = edit(context).proposal
+        val path = TimedGridPointerPath(GridTarget(context.date, 570.0, zone), hover)
+        return GridEditorIntent.Edit(original.copy(pointerPath = path))
+    }
+    @Test fun multiDayMoveRecomputesContinuedFullStartFromColumnPathAndIgnoresCallerTarget() = runBlocking {
+        val event = occurrence(date.minusDays(2), 540, 84 * 60)
+        val context = multiContext(event); val port = Port(source(event)); val store = Store()
+        val intent = pointerEdit(context, GridTarget(date.plusDays(1), 570.0, zone)).let {
+            GridEditorIntent.Edit(it.proposal.copy(target = GridTarget(date.plusDays(99), 1000.0, zone)))
+        }
+        val result = prepareGridEditor(context, intent, port, store, now, { context }, clock) as GridEditorPreparation.Ready
+        val fields = EventEditorController.readRawFields(JSONObject(store.load(result.launch.draftId)!!.payload))
+        val time = EventEditorController.normalizedDraft(fields).time as EventTime.Timed
+        assertEquals(event.ref.instanceStart.plus(Duration.ofDays(1)), time.start)
+        assertEquals(Duration.ofHours(84), time.duration)
+        assertTrue(time.start.atZone(zone).toLocalDate() < context.request.range.start)
+        assertEquals(0, port.writes)
+    }
+    @Test fun multiDayMissingOrForgedPointerPathsFailClosedBeforeReadingSource() = runBlocking {
+        val context = multiContext(); val original = pointerEdit(context, GridTarget(date.plusDays(1), 570.0, zone)).proposal
+        val path = original.pointerPath!!
+        val bad = listOf(original.copy(pointerPath = null),
+            original.copy(pointerPath = path.copy(origin = path.origin.copy(date = date.minusDays(1)))),
+            original.copy(pointerPath = path.copy(hover = path.hover.copy(date = date.plusDays(3)))),
+            original.copy(pointerPath = path.copy(hover = path.hover.copy(minute = Double.NaN))),
+            original.copy(pointerPath = path.copy(hover = path.hover.copy(zone = ZoneId.of("America/New_York")))),
+            original.copy(pointerPath = path.copy(origin = path.origin.copy(offsetChoice = GridOffsetChoice.Explicit(ZoneOffset.UTC)))),
+            original.copy(selectedSegment = original.selectedSegment.copy(start = original.selectedSegment.start.plusSeconds(1))))
+        for (proposal in bad) {
+            val port = Port(source()); val store = Store()
+            assertEquals(GridEditorPreparation.Unavailable, prepareGridEditor(context, GridEditorIntent.Edit(proposal), port, store, now, { context }, clock))
+            assertEquals(0, port.reads); assertEquals(0, port.writes); assertTrue(store.records.isEmpty())
+        }
+    }
+    @Test fun hiddenWeekendsCannotBeClaimedAsPhysicalMoveColumnsOrCreationTargets() = runBlocking {
+        val context = multiContext(window = CalendarDateRange(date, date.plusDays(7)), week = true, weekends = false)
+        val saturday = date.with(java.time.temporal.TemporalAdjusters.next(DayOfWeek.SATURDAY))
+        val port = Port(source()); val store = Store()
+        assertEquals(GridEditorPreparation.Unavailable, prepareGridEditor(context, pointerEdit(context, GridTarget(saturday, 570.0, zone)), port, store, now, { context }, clock))
+        val target = GridTarget(saturday, 540.0, zone)
+        val create = GridEditorIntent.Create(TimedGridCreateProposal(context, target, TimedGridPlanning.create(target, Duration.ofHours(1))))
+        assertEquals(GridEditorPreparation.Unavailable, prepareGridEditor(context, create, port, store, now, { context }, clock))
+        assertEquals(0, port.reads); assertEquals(0, port.writes); assertTrue(store.records.isEmpty())
+    }
+    @Test fun multiDayCoreNormalizedMidnightOutsideRangeIsCreationDeniedButExactResizeBoundaryAllowed() = runBlocking {
+        val context = multiContext(); val port = Port(source()); val store = Store()
+        val last = context.request.range.endExclusive.minusDays(1)
+        val target = GridTarget(last, 1439.0, zone)
+        val create = GridEditorIntent.Create(TimedGridCreateProposal(context, target, TimedGridPlanning.create(target, Duration.ofHours(1))))
+        assertEquals(GridEditorPreparation.Unavailable, prepareGridEditor(context, create, port, store, now, { context }, clock))
+        val resize = edit(context, TimedGridEditKind.RESIZE_END).proposal.copy(target = GridTarget(last, 1440.0, zone))
+        val result = prepareGridEditor(context, GridEditorIntent.Edit(resize), port, store, now, { context }, clock) as GridEditorPreparation.Ready
+        val fields = EventEditorController.readRawFields(JSONObject(store.load(result.launch.draftId)!!.payload))
+        assertEquals(context.request.range.endExclusive.atStartOfDay(zone).toInstant(), (EventEditorController.normalizedDraft(fields).time as EventTime.Timed).end)
+        val beyond = resize.copy(target = GridTarget(context.request.range.endExclusive, 15.0, zone))
+        assertEquals(GridEditorPreparation.Unavailable, prepareGridEditor(context, GridEditorIntent.Edit(beyond), port, store, now, { context }, clock))
+        assertEquals(0, port.writes)
+    }
+    @Test fun multiDayPointerOverlapRequiresExplicitOffsetAndRetainsItInDurableFields() = runBlocking {
+        val first = LocalDate.of(2026, 10, 24)
+        val event = occurrence(first, 60)
+        val context = multiContext(event, CalendarDateRange(first, first.plusDays(3)))
+        val port = Port(source(event)); val store = Store()
+        val proposal = edit(context, minute = 60.0).proposal.copy(pointerPath = TimedGridPointerPath(
+            GridTarget(first, 90.0, zone), GridTarget(first.plusDays(1), 90.0, zone)))
+        val intent = GridEditorIntent.Edit(proposal)
+        val review = prepareGridEditor(context, intent, port, store, now, { context }, clock) as GridEditorPreparation.Review
+        assertEquals(GridReviewReason.CLOCK_OVERLAP, review.preview.reason)
+        assertTrue(store.records.isEmpty())
+        val result = prepareGridEditor(context, intent, port, store, now, { context }, clock, offset = ZoneOffset.UTC) as GridEditorPreparation.Ready
+        val fields = EventEditorController.readRawFields(JSONObject(store.load(result.launch.draftId)!!.payload))
+        val time = EventEditorController.normalizedDraft(fields).time as EventTime.Timed
+        assertEquals(Instant.parse("2026-10-25T01:00:00Z"), time.start)
+        assertEquals(Duration.ofHours(1), time.duration)
+        assertEquals("Z", fields.startOffset)
+        assertEquals(0, port.writes)
+    }
     @Test fun unacknowledgedStorageNeverOpensAnEditor() = runBlocking {
         val context = context(); val port = Port(source()); val store = Store().also { it.failWrites = true }
         assertEquals(GridEditorPreparation.Unavailable, prepareGridEditor(context, edit(context), port, store, now, { context }, clock))

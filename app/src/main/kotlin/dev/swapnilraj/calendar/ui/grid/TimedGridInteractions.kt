@@ -1,6 +1,7 @@
 package dev.swapnilraj.calendar.ui.grid
 
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.data.CalEvent
 import java.time.*
@@ -25,11 +26,24 @@ data class TimedGridInteractions(
 }
 enum class TimedGridEditKind { MOVE, RESIZE_END }
 data class TimedGridCreateProposal(val contextKey: Any, val target: GridTarget, val preview: GridPreviewResult)
+/** Raw logical pointer positions only; neither point selects a UTC offset or implies an instant. */
+data class TimedGridPointerPath(val origin: GridTarget, val hover: GridTarget)
 data class TimedGridEditProposal(val contextKey: Any, val kind: TimedGridEditKind, val source: TimedGridSource,
-    val selectedSegment: TimedSegmentKey, val target: GridTarget, val preview: GridPreviewResult)
+    val selectedSegment: TimedSegmentKey, val target: GridTarget, val preview: GridPreviewResult,
+    val pointerPath: TimedGridPointerPath? = null)
 
-/** Pixel viewport only. Scroll offset is read live, so a stationary edge drag follows auto-scrolling. */
-data class TimedGridViewport(val boundsInRoot: Rect, val scrollOffset: () -> Int, val scrollBy: suspend (Float) -> Float)
+/** Viewport observations only. Live scroll offset keeps a stationary edge drag aligned while scrolling. */
+data class TimedGridViewport(
+    val boundsInRoot: Rect,
+    val scrollOffset: () -> Int,
+    val scrollBy: suspend (Float) -> Float,
+    /** Pure hit test against observed, viewport-clipped date columns; null keeps the single day. */
+    val dateAtRoot: ((Offset) -> LocalDate?)? = null,
+    /** Change when column/range/horizontal geometry changes; vertical scrolling remains live. */
+    val layoutKey: Any? = null,
+    /** Optional presentation boundary, checked against the CORE-normalized target. */
+    val targetRange: CalendarDateRange? = null,
+)
 enum class TimedGridGesturePhase { CHECKING, ORIGINAL, PREVIEW, REJECTED }
 data class TimedGridPreview(val contextKey: Any, val phase: TimedGridGesturePhase, val source: TimedGridSource? = null,
     val kind: TimedGridEditKind? = null, val result: GridPreviewResult? = null)
@@ -70,3 +84,6 @@ internal fun planGridEdit(source: TimedGridSource, segment: TimedSegmentKey, kin
     val retained = TimedGridPlanning.resizeEnd(source, snapped.copy(offsetChoice = GridOffsetChoice.Explicit(segment.offset)), segment)
     return if (retained is GridPreviewResult.Ready && retained.time == source.time) retained else result
 }
+
+internal fun gridTargetWithinRange(range: CalendarDateRange, target: GridTarget, resizeEnd: Boolean): Boolean =
+    target.date in range || resizeEnd && target.date == range.endExclusive && target.minute == 0.0

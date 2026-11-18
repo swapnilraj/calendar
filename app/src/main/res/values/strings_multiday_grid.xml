@@ -1,0 +1,4 @@
+<resources>
+    <string name="multiday_grid_column">%1$s time grid</string>
+    <string name="multiday_grid_create_action">Create an event on %1$s in the editor</string>
+</resources>

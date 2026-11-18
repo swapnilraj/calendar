@@ -45,7 +45,8 @@ fun DayGrid(date: LocalDate, events: List<CalEvent>, hourHeight: Float, now: Zon
     interactions: TimedGridInteractions? = null,
     viewport: TimedGridViewport? = null,
     onPreviewChanged: (TimedGridPreview?) -> Unit = {},
-    cancelSignal: Long = 0) {
+    cancelSignal: Long = 0,
+    externalPreview: TimedGridPreview? = null) {
     val gutterWidth = if (showTimeGutter) calendarGutter(date, use24Hour) else 0.dp
     val minimumHeight = minimumEventHeight().value
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
@@ -77,7 +78,9 @@ fun DayGrid(date: LocalDate, events: List<CalEvent>, hourHeight: Float, now: Zon
         val controller = rememberTimedGridController(GridGestureRuntime(date, zone, events, hourHeight, density.density, fontScale, rtl,
             with(density) { gutterWidth.toPx() }, interactions, viewport, gridCoordinates, occupied) { visiblePreview = it; onPreviewChanged(it) })
         LaunchedEffect(controller, cancelSignal) { controller.cancel() }
-        val createLabel = stringResource(R.string.timed_grid_create_action)
+        val createLabel = if (viewport?.dateAtRoot != null)
+            stringResource(R.string.multiday_grid_create_action, date.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.FULL).withLocale(LocalLocale.current.platformLocale)))
+            else stringResource(R.string.timed_grid_create_action)
         Box(Modifier.matchParentSize().clipToBounds().background(surface).onGloballyPositioned { gridCoordinates = it }
             .timedGridTapGuard(controller).timedGridGestureInput(controller).then(if (interactions?.creationEnabled == true) Modifier.semantics {
                 customActions = listOf(CustomAccessibilityAction(createLabel) { interactions.onCreateInEditor?.invoke(date); true })
@@ -137,7 +140,8 @@ fun DayGrid(date: LocalDate, events: List<CalEvent>, hourHeight: Float, now: Zon
                 drawCircle(primary, 4.dp.toPx(), Offset(edge, lineY))
             }
         }
-        val preview = visiblePreview?.takeIf { it.contextKey == interactions?.contextKey && controller.active?.events == events }?.result
+        val preview = (externalPreview ?: visiblePreview)?.takeIf { it.contextKey == interactions?.contextKey &&
+            (externalPreview != null || controller.active?.events == events) }?.result
         val previewPlacements = (preview as? dev.swapnilraj.calendar.core.GridPreviewResult.Ready)?.time?.let { time ->
             // Synthetic geometry only: this object is never a proposal source, callback or authority.
             layoutEvents(timedEvents(listOf(CalEvent(0, time.start, time.end, "", 0)), date, zone), minimumHeight.toDouble() * 60 / hourHeight)

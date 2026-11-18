@@ -26,7 +26,8 @@ fun DayPage(date: LocalDate, events: List<CalEvent>, now: ZonedDateTime, zone: Z
     onEventClick: (CalEvent) -> Unit,
     summary: @Composable RowScope.() -> Unit = {},
     background: @Composable BoxScope.() -> Unit = {},
-    interactions: TimedGridInteractions? = null) {
+    interactions: TimedGridInteractions? = null,
+    onCancelPendingEdit: (() -> Unit)? = null) {
     val scroll = rememberScrollState(maxOf(0, sharedScroll))
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
@@ -39,7 +40,8 @@ fun DayPage(date: LocalDate, events: List<CalEvent>, now: ZonedDateTime, zone: Z
     var viewportBounds by remember { mutableStateOf(Rect.Zero) }
     var preview by remember { mutableStateOf<TimedGridPreview?>(null) }
     var cancelSignal by remember { mutableLongStateOf(0) }
-    val effective = interactions?.takeIf { active }?.let { config ->
+    fun cancelGesture() { cancelSignal++; preview = null; onCancelPendingEdit?.invoke() }
+    val enabledInteractions = interactions?.takeIf { active }?.let { config ->
         val editable = events.any { config.eligible(it) }
         when {
             !editable && !config.creationEnabled -> null
@@ -47,14 +49,19 @@ fun DayPage(date: LocalDate, events: List<CalEvent>, now: ZonedDateTime, zone: Z
             else -> config
         }
     }
+    val effective = enabledInteractions?.copy(
+        onOpenEditor = enabledInteractions.onOpenEditor?.let { open -> { ref -> cancelGesture(); open(ref) } },
+        onCreateInEditor = enabledInteractions.onCreateInEditor?.let { create -> { date -> cancelGesture(); create(date) } },
+    )
     LaunchedEffect(effective?.contextKey, events, active) { preview = null }
     LaunchedEffect(scroll) {
         snapshotFlow { scroll.value }.distinctUntilChanged().collect { if (latestActive && positioned) latestOnScroll(it) }
     }
     Column(Modifier.fillMaxSize()) {
-        DayHeader(date, now.withZoneSameInstant(zone).toLocalDate(), events.filter { it.allDay }, zone, use24Hour, onEventClick, summary, dayEvents = events)
+        DayHeader(date, now.withZoneSameInstant(zone).toLocalDate(), events.filter { it.allDay }, zone, use24Hour,
+            { event -> cancelGesture(); onEventClick(event) }, summary, dayEvents = events, onBeforeShowEvents = { cancelGesture() })
         HorizontalDivider(thickness = 0.5.dp)
-        if (effective != null) TimedGridFeedback(date, zone, use24Hour, effective, preview) { cancelSignal++; preview = null }
+        if (effective != null) TimedGridFeedback(date, zone, use24Hour, effective, preview) { cancelGesture() }
         BoxWithConstraints(Modifier.weight(1f)) {
             val viewport = with(density) { maxHeight.toPx() }
             LaunchedEffect(active, sharedScroll < 0, density.density) {
@@ -102,7 +109,8 @@ fun DayPage(date: LocalDate, events: List<CalEvent>, now: ZonedDateTime, zone: Z
                         if (zoomed) latestOnFinish(gestureHeight)
                     }
                 }.verticalScroll(scroll)) {
-                DayGrid(date, events, hourHeight, now, zone, use24Hour, onEventClick, background = background,
+                DayGrid(date, events, hourHeight, now, zone, use24Hour,
+                    { event -> cancelGesture(); onEventClick(event) }, background = background,
                     interactions = effective, viewport = if (effective != null) TimedGridViewport(viewportBounds, { scroll.value }, { scroll.scrollBy(it) }) else null,
                     onPreviewChanged = { preview = it }, cancelSignal = cancelSignal)
             }

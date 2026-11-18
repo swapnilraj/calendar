@@ -25,7 +25,7 @@ internal data class GridGestureRuntime(val date: LocalDate, val zone: ZoneId, va
     val viewport: TimedGridViewport?, val coordinates: LayoutCoordinates?, val occupiedBounds: List<Rect>, val onPreview: (TimedGridPreview?) -> Unit)
 internal class GridDragSession(val contextKey: Any, val events: List<CalEvent>, val runtimeKey: List<Any?>,
     val source: TimedGridSource?, val segment: TimedSegmentKey?, val kind: TimedGridEditKind?, val initialMinute: Double,
-    val initialRoot: Offset, val touchSlop: Float) {
+    val initialRoot: Offset, val touchSlop: Float, val initialDate: LocalDate) {
     var rootPoint = initialRoot
     var alive = true
     var authorized = source == null
@@ -33,6 +33,7 @@ internal class GridDragSession(val contextKey: Any, val events: List<CalEvent>, 
     var physicallyMoved = false
     var result: GridPreviewResult? = null
     var target: GridTarget? = null
+    var pointerPath: TimedGridPointerPath? = null
     var job: Job? = null
 }
 internal class TimedGridGestureController {
@@ -42,7 +43,7 @@ internal class TimedGridGestureController {
     var suppressTap by mutableStateOf(false)
         private set
     private fun key(rt: GridGestureRuntime): List<Any?> = listOf(rt.date, rt.zone, rt.hourHeight, rt.density, rt.fontScale, rt.rtl,
-        rt.gutterPx, rt.viewport?.boundsInRoot, rt.coordinates?.size)
+        rt.gutterPx, rt.viewport?.boundsInRoot, rt.coordinates?.size, rt.viewport?.layoutKey, rt.viewport?.targetRange)
     private fun current(session: GridDragSession): Boolean {
         val rt = runtime ?: return false
         return session.alive && active === session && rt.interactions?.contextKey == session.contextKey && key(rt) == session.runtimeKey &&
@@ -52,6 +53,7 @@ internal class TimedGridGestureController {
     private fun contentPoint(point: Offset, rt: GridGestureRuntime): Offset? {
         val visible = bounds(rt) ?: return null
         if (!visible.contains(point)) return null
+        if (rt.viewport?.dateAtRoot?.let { it(point) == null } == true) return null
         if ((!rt.rtl && point.x < visible.left + rt.gutterPx) || (rt.rtl && point.x > visible.right - rt.gutterPx)) return null
         return rt.viewport?.let { Offset(point.x - visible.left, point.y - visible.top + it.scrollOffset()) }
             ?: rt.coordinates?.let { point - it.localToRoot(Offset.Zero) }
@@ -65,9 +67,12 @@ internal class TimedGridGestureController {
         if (source == null && !config.creationEnabled) return null
         if (source != null && (!config.editingEnabled || !config.canEdit(source.ref) || segment == null)) return null
         val initial = minute(point, rt) ?: return null
-        if (source == null && contentPoint(point, rt)?.let { p -> rt.occupiedBounds.any { it.contains(p) } } == true) return null
+        val initialDate = rt.viewport?.dateAtRoot?.invoke(point) ?: rt.date
+        // Occupancy is in this grid's local coordinates even when the shared viewport spans days.
+        val local = rt.coordinates?.takeIf { it.isAttached }?.let { point - it.localToRoot(Offset.Zero) }
+        if (source == null && local?.let { p -> rt.occupiedBounds.any { it.contains(p) } } == true) return null
         cancel()
-        return GridDragSession(config.contextKey, rt.events.toList(), key(rt), source, segment, kind, initial, point, touchSlop).also {
+        return GridDragSession(config.contextKey, rt.events.toList(), key(rt), source, segment, kind, initial, point, touchSlop, initialDate).also {
             active = it; suppressTap = true
             rt.onPreview(TimedGridPreview(config.contextKey, if (source == null) TimedGridGesturePhase.PREVIEW else TimedGridGesturePhase.CHECKING, source, kind))
         }
@@ -88,17 +93,26 @@ internal class TimedGridGestureController {
         }
         val position = minute(session.rootPoint, rt)
         if (position == null) { session.result = null; rt.onPreview(TimedGridPreview(session.contextKey, TimedGridGesturePhase.REJECTED, session.source, session.kind)); return }
-        if (session.source != null && abs((position - session.initialMinute) / 60 * rt.hourHeight * rt.density) <= session.touchSlop) {
+        val date = rt.viewport?.dateAtRoot?.invoke(session.rootPoint) ?: rt.date
+        val dayDelta = java.time.temporal.ChronoUnit.DAYS.between(session.initialDate, date)
+        if (session.source != null && dayDelta == 0L && abs((position - session.initialMinute) / 60 * rt.hourHeight * rt.density) <= session.touchSlop) {
             session.result = null
             rt.onPreview(TimedGridPreview(session.contextKey, TimedGridGesturePhase.ORIGINAL, session.source, session.kind)); return
         }
-        val target = if (session.source == null) GridTarget(rt.date, position, rt.zone)
-            else translatedGridTarget(session.source, requireNotNull(session.segment), requireNotNull(session.kind), position - session.initialMinute, rt.zone)
-        val result = when {
+        val target = if (session.source == null) GridTarget(date, position, rt.zone)
+            else translatedGridTarget(session.source, requireNotNull(session.segment), requireNotNull(session.kind), position - session.initialMinute + dayDelta * 1440.0, rt.zone)
+        val planned = when {
             session.source == null -> TimedGridPlanning.create(target, requireNotNull(rt.interactions).defaultCreateDuration)
             else -> planGridEdit(session.source, requireNotNull(session.segment), requireNotNull(session.kind), target)
         }
-        session.result = result; session.target = snappedGridTarget(result, target)
+        val snapped = snappedGridTarget(planned, target)
+        val result = if (rt.viewport?.targetRange?.let { range ->
+                if (session.kind == TimedGridEditKind.MOVE) session.initialDate !in range || date !in range
+                else !gridTargetWithinRange(range, snapped, session.kind == TimedGridEditKind.RESIZE_END)
+            } == true)
+            GridPreviewResult.Invalid(GridInvalidReason.DATE_RANGE) else planned
+        session.result = result; session.target = snapped
+        session.pointerPath = TimedGridPointerPath(GridTarget(session.initialDate, session.initialMinute, rt.zone), GridTarget(date, position, rt.zone))
         rt.onPreview(TimedGridPreview(session.contextKey, TimedGridGesturePhase.PREVIEW, session.source, session.kind, result))
     }
     suspend fun autoScroll(session: GridDragSession, seconds: Float) {
@@ -128,7 +142,7 @@ internal class TimedGridGestureController {
         val unchanged = result is GridPreviewResult.Ready && session.source?.time == result.time
         if (target != null && !unchanged && (result is GridPreviewResult.Ready || result is GridPreviewResult.NeedsReview)) {
             if (session.source == null) config?.onCreate?.invoke(TimedGridCreateProposal(session.contextKey, target, result))
-            else config?.onEdit?.invoke(TimedGridEditProposal(session.contextKey, requireNotNull(session.kind), session.source, requireNotNull(session.segment), target, result))
+            else config?.onEdit?.invoke(TimedGridEditProposal(session.contextKey, requireNotNull(session.kind), session.source, requireNotNull(session.segment), target, result, session.pointerPath))
         }
         cancel(session)
     }
@@ -144,7 +158,7 @@ internal class TimedGridGestureController {
 internal fun rememberTimedGridController(runtime: GridGestureRuntime): TimedGridGestureController {
     val controller = remember(runtime.date, runtime.zone) { TimedGridGestureController() }
     controller.runtime = runtime
-    DisposableEffect(controller, runtime.interactions?.contextKey, runtime.events, runtime.hourHeight, runtime.density, runtime.fontScale, runtime.rtl, runtime.viewport?.boundsInRoot) {
+    DisposableEffect(controller, runtime.interactions?.contextKey, runtime.events, runtime.hourHeight, runtime.density, runtime.fontScale, runtime.rtl, runtime.viewport?.boundsInRoot, runtime.viewport?.layoutKey, runtime.viewport?.targetRange) {
         onDispose { controller.cancel() }
     }
     BackHandler(enabled = controller.active != null) { controller.cancel() }
@@ -164,7 +178,7 @@ internal fun Modifier.timedGridGestureInput(controller: TimedGridGestureControll
     val direction = LocalLayoutDirection.current
     return onGloballyPositioned { coordinates = it }.onPreviewKeyEvent {
         if (it.key == Key.Escape && it.type == KeyEventType.KeyDown && controller.active != null) { controller.cancel(); true } else false
-    }.pointerInput(controller, config.contextKey, source, segment, rt.events, rt.hourHeight, density.density, density.fontScale, direction, rt.viewport?.boundsInRoot) {
+    }.pointerInput(controller, config.contextKey, source, segment, rt.events, rt.hourHeight, density.density, density.fontScale, direction, rt.viewport?.boundsInRoot, rt.viewport?.layoutKey, rt.viewport?.targetRange) {
         coroutineScope {
             val gestureScope = this
             awaitEachGesture {
