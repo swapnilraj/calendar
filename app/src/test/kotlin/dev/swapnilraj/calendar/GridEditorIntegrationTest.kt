@@ -100,10 +100,20 @@ class GridEditorIntegrationTest {
         val choose = hasText("Choose a calendar") and hasClickAction() and isEnabled()
         compose.waitUntil(10_000) { compose.onAllNodes(choose).fetchSemanticsNodes().size == 1 }
         compose.onNode(choose).performScrollTo().performClick()
+        repeat(2) { compose.mainClock.advanceTimeByFrame() }
+        compose.waitForIdle()
         val row = hasText(calendar.displayName) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
-        compose.waitUntil(10_000) { compose.onAllNodes(row and isEnabled()).fetchSemanticsNodes().size == 1 }
-        compose.onNode(row).performClick()
-        compose.waitUntil(10_000) { compose.onAllNodes(row).fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(10_000) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.onAllNodes(row and isEnabled()).fetchSemanticsNodes().size == 1
+        }
+        compose.onNode(row and isEnabled()).performClick()
+        repeat(2) { compose.mainClock.advanceTimeByFrame() }
+        compose.waitForIdle()
+        compose.waitUntil(10_000) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.onAllNodes(row).fetchSemanticsNodes().isEmpty()
+        }
     }
     @Test fun nativeEmptySlotCreatesDurableTimedDraftAndWaitsForExplicitSave() {
         show()

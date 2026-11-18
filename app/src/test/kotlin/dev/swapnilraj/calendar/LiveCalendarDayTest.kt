@@ -39,7 +39,7 @@ class LiveCalendarDayTest {
     @get:Rule val compose = createComposeRule()
 
     private fun phoneEditorRoot() = isRoot() and hasAnyDescendant(hasContentDescription("Close event editor"))
-    private fun phoneDetailsRoot() = isRoot() and hasAnyDescendant(hasText("Join meeting"))
+    private fun phoneDetailsRoot() = isDialog() and hasAnyDescendant(hasContentDescription("Close"))
 
     private fun assertPhoneDraftDates(record: DraftRecord, dateText: String) {
         val date = java.time.LocalDate.parse(dateText).format(java.time.format.DateTimeFormatter
@@ -159,6 +159,7 @@ class LiveCalendarDayTest {
             compose.onNodeWithText("Select all").performClick()
             compose.onNodeWithText("Close").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
+            compose.mainClock.advanceTimeBy(1_000)
             compose.waitForIdle()
             compose.onRoot().captureRoboImage("src/test/screenshots/integration_live_month.png")
             assertEquals(2, provider.rangeQueries) // One day window, then one whole-month window.
