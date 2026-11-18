@@ -73,6 +73,7 @@ internal fun LiveCalendarDay(
     onDraftFailure: () -> Unit = {},
     draftClock: Clock = Clock.systemUTC(),
     preferenceOverride: CalendarPreferenceState? = null,
+    onOpenReminders: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val selectedDateState = rememberSaveable { mutableStateOf<String?>(null) }
@@ -213,6 +214,9 @@ internal fun LiveCalendarDay(
             modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
         if (settings != null) TextButton(onClick = { scope.launch { drawer.close(); showSettings = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Text(stringResource(R.string.settings_title))
+        }
+        if (onOpenReminders != null) TextButton(onClick = { scope.launch { drawer.close(); onOpenReminders() } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+            Text(stringResource(R.string.reminders_setup_title))
         }
         if (writable) {
             HorizontalDivider()
