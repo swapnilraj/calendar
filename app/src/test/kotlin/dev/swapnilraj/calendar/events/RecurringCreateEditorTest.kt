@@ -44,7 +44,7 @@ class RecurringCreateEditorTest {
         val record = store.records.getValue("recurring"); assertEquals(4, record.version)
         val launch = DraftBrowserCodec.read(record).launch!!
         val restored = editor(); assertEquals(raw, restored.state.fields.recurrence); assertEquals("recurring", launch.draftId)
-        restored.save(); assertEquals(EditorProblem.INVALID_INPUT, restored.state.problem); assertTrue(calls.isEmpty())
+        restored.save(); assertEquals(EditorProblem.RECURRENCE_INVALID, restored.state.problem); assertTrue(calls.isEmpty())
     }
     @Test fun legacyOneoffStillLoadsAndFrozenBytesOmitNewField() = runBlocking {
         val first = editor(); first.flushDraft()

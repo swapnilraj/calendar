@@ -5,6 +5,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import com.github.takahirom.roborazzi.captureRoboImage
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.*
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
@@ -57,6 +58,18 @@ class RecurringCreateEditorScreenTest {
         assertEquals(1, writer.creates); assertEquals(RecurrenceSpec(RecurrencePattern.Daily), writer.createdDrafts.single().recurrence)
         compose.onNodeWithText("Review recurring event").assertDoesNotExist()
     }
+    @Test fun recurringReviewShowsAuthoredRuleAndExpectedPrefix() {
+        val controller = editor(true)
+        controller.change { it.copy(title = "Weekly planning", recurrence = RecurrenceEditorFields(frequency = "WEEKLY",
+            weekdays = listOf("THURSDAY"), endMode = "COUNT", count = "3")) }
+        controller.save(); show(controller)
+        compose.onNodeWithText("Review recurring event").assertIsDisplayed()
+        compose.onNodeWithText("Weekly on Thursday").assertIsDisplayed()
+        compose.onNodeWithText("After 3 occurrences").assertIsDisplayed()
+        compose.onNode(isDialog()).captureRoboImage("src/test/screenshots/events_create_recurrence_review_light.png")
+        assertEquals(0, writer.creates)
+    }
+
     @Test fun restoredPartialRepeatInputsRemainVisibleAndCannotSubmit() = runBlocking<Unit> {
         val first = editor(true); first.change { it.copy(recurrence = RecurrenceEditorFields(frequency = "WEEKLY", interval = "", weekdays = emptyList())) }; first.flushDraft()
         val restored = editor(true); show(restored)

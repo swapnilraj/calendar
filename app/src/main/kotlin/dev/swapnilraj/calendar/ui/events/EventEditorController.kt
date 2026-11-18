@@ -550,9 +550,11 @@ class EventEditorController(
             val alerts = preserveAlerts ?: if (fields.alerts.isBlank()) emptyList() else fields.alerts.split(',').map { it.trim().toInt().also { value ->
                 if (value == CalendarContract.Reminders.MINUTES_DEFAULT) throw InvalidInput(EditorProblem.INVALID_INPUT)
             } }.distinct()
+            val recurrence = try { fields.recurrence.normalized() }
+                catch (_: Exception) { throw InvalidInput(EditorProblem.RECURRENCE_INVALID) }
             EventDraft(CalendarId(fields.calendarId.toLong()), time, if (fields.allDay) ZoneOffset.UTC else zone,
                 fields.title, fields.location, fields.description, alerts,
-                fields.availability.takeIf(String::isNotBlank)?.toInt(), fields.privacy.takeIf(String::isNotBlank)?.toInt(), fields.targetIdentity, fields.recurrence.normalized())
+                fields.availability.takeIf(String::isNotBlank)?.toInt(), fields.privacy.takeIf(String::isNotBlank)?.toInt(), fields.targetIdentity, recurrence)
         } catch (invalid: InvalidInput) { throw invalid }
         catch (_: Exception) { throw InvalidInput(EditorProblem.INVALID_INPUT) }
 

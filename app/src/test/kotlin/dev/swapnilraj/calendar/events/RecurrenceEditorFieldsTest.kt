@@ -28,6 +28,7 @@ class RecurrenceEditorFieldsTest {
         for (pattern in patterns) for (end in ends) {
             val spec = RecurrenceSpec(pattern, 2, end, DayOfWeek.SUNDAY)
             assertEquals(spec, RecurrenceEditorFields.from(spec).normalized())
+            assertEquals(spec, AuthoredRecurrenceJson.decode(AuthoredRecurrenceJson.encode(spec)))
         }
     }
     @Test fun unknownSchemaAndNonStringRawInputsAreRejectedWithoutFallback() {
@@ -37,6 +38,19 @@ class RecurrenceEditorFieldsTest {
         assertTrue(runCatching { RecurrenceEditorFieldsJson.decode(JSONObject(raw.toString()).put("unknown", "future")) }.isFailure)
         assertTrue(runCatching { RecurrenceEditorFields(frequency = "FUTURE").normalized() }.isFailure)
     }
+    @Test fun typedFrozenRecurrenceRejectsUnknownFieldsCoercionAndAuthorBounds() {
+        val encoded = AuthoredRecurrenceJson.encode(RecurrenceSpec(RecurrencePattern.Daily))
+        for (bad in listOf(JSONObject(encoded.toString()).put("schema", 99),
+            JSONObject(encoded.toString()).put("interval", "1"),
+            JSONObject(encoded.toString()).put("interval", 1.5),
+            JSONObject(encoded.toString()).put("interval", RecurrenceCreation.MAX_INTERVAL + 1),
+            JSONObject(encoded.toString()).put("unknown", "future"))) {
+            assertTrue(runCatching { AuthoredRecurrenceJson.decode(bad) }.isFailure)
+        }
+        val imported = RecurrenceSpec(RecurrencePattern.Daily, end = RecurrenceEnd.ExactUntil(java.time.Instant.parse("2030-01-01T12:00:00Z")))
+        assertTrue(runCatching { AuthoredRecurrenceJson.encode(imported) }.isFailure)
+    }
+
     @Test fun onlyExplicitPatternChoiceUsesProvidedStartDateAndPreservesOtherRawInputs() {
         val raw = RecurrenceEditorFields(count = "", throughDate = "partial")
         assertEquals(emptyList<String>(), raw.weekdays)
