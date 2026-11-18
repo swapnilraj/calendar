@@ -1,0 +1,26 @@
+<resources>
+    <string name="incoming_edit_review_title">Review proposed edits</string>
+    <string name="incoming_edit_review_help">Check these suggestions against the current event. Applying them opens an unsaved editor; only Save changes the event.</string>
+    <string name="incoming_edit_review_current">Current event</string>
+    <string name="incoming_edit_review_proposed">Suggested changes</string>
+    <string name="incoming_edit_review_time">Dates and times</string>
+    <string name="incoming_edit_review_timed">Timed event</string>
+    <string name="incoming_edit_review_incomplete">Some proposed dates or times are incomplete. Choose them in the editor before saving.</string>
+    <string name="incoming_edit_review_guest_list">Proposed guests</string>
+    <string name="incoming_edit_review_guests">Guest changes need a meeting editor. The proposed guest list is retained; no changes will be applied here.</string>
+    <string name="incoming_edit_review_recurrence">Repeat changes need a series editor. The original proposed rule is retained; this review cannot apply it as a one-off edit.</string>
+    <string name="incoming_edit_review_field">One or more proposed fields cannot be changed for this event. Your suggestions are retained.</string>
+    <string name="incoming_edit_review_ineligible">This event cannot be edited here as an owned, guest-free one-off. Your suggestions are retained.</string>
+    <string name="incoming_edit_review_zone_authoring">The stored time zone could not be verified. This suggestion needs a separate time-zone authoring review; your inputs are retained.</string>
+    <string name="incoming_edit_review_permission">Calendar access is needed to verify the original event.</string>
+    <string name="incoming_edit_review_allow">Allow calendar access</string>
+    <string name="incoming_edit_review_stale">The original event or saved review changed. The retained draft has not been replaced. Open a fresh review of the current event.</string>
+    <string name="incoming_edit_review_consumed">This edit review has already been handled. Its original suggestions will not be applied again.</string>
+    <string name="incoming_edit_review_unavailable">The saved review could not be verified. No new changes have been applied.</string>
+    <string name="incoming_edit_review_retry">Retry</string>
+    <string name="incoming_edit_review_apply">Apply suggestions in editor</string>
+    <string name="incoming_edit_review_close">Close</string>
+    <string name="incoming_edit_review_empty">Empty</string>
+    <string name="incoming_edit_review_utc_dates">All-day dates use UTC.</string>
+    <string name="incoming_edit_review_unstored_zone">Stored time zone unavailable; displaying in %1$s.</string>
+</resources>
