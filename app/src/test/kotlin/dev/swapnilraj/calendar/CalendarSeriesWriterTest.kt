@@ -733,6 +733,67 @@ class CalendarSeriesWriterTest {
         }
     }
 
+    @Test fun legitimateNullStatusOwnedSeriesSupportsAllFieldEditWithoutInventingStatus() = runBlocking {
+        fixture { f ->
+            f.provider.events[0]["eventStatus"] = null
+            f.provider.events[1]["eventStatus"] = null
+            val editable = f.editable()
+            assertNull(editable.selectedDetails.status)
+            assertTrue(f.writer.mutate("null-all", selected, editable.token, whole(editable, EventPatch(title = FieldChange.Set("Still unspecified")))) is SeriesMutationResult.LocalSaved)
+            assertNull(f.provider.events[0]["eventStatus"])
+            assertNull(f.provider.events[1]["eventStatus"])
+            assertEquals("2", f.provider.events[2]["eventStatus"])
+        }
+    }
+
+    @Test fun nativeNewThisExplicitlyPreservesNullStatusAndReadOnlyRecovery() = runBlocking {
+        fixture { f ->
+            f.nativeCloneReady(); f.provider.events[0]["eventStatus"] = null
+            val editable = f.editable()
+            assertEquals(AccessDecision.ALLOWED, editable.scopes.getValue(RecurrenceScope.THIS).edit)
+            val saved = f.writer.mutate("null-new", selected, editable.token, SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Null is not tentative")))) as SeriesMutationResult.LocalSaved
+            val created = f.provider.events.single { it["_id"] == saved.selected!!.eventId.toString() }
+            assertTrue(created.containsKey("eventStatus")); assertNull(created["eventStatus"])
+            assertNull(f.provider.events[0]["eventStatus"])
+            f.permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            assertEquals(saved, f.writer.recover("null-new"))
+            assertEquals(1, f.provider.batchCount)
+        }
+    }
+
+    @Test fun nullableParentCanCancelNewThisWithoutChangingMasterStatus() = runBlocking {
+        fixture { f ->
+            f.nativeCloneReady(); f.provider.events[0]["eventStatus"] = null
+            val editable = f.editable()
+            assertEquals(SeriesMutationResult.LocalDeleted(SeriesIdentity(CalendarId(2), 10), RecurrenceScope.THIS, selected),
+                f.writer.mutate("null-cancel", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.THIS)))
+            assertNull(f.provider.events[0]["eventStatus"])
+            assertEquals("2", f.provider.events.single { it["_id"] in f.provider.insertedExceptions }["eventStatus"])
+        }
+    }
+
+    @Test fun nullableStatusFollowingDeleteRetainsUnspecifiedMasterAndExactPrefix() = runBlocking {
+        fixture { f ->
+            f.provider.events[0]["eventStatus"] = null
+            val editable = f.editable()
+            assertEquals(AccessDecision.ALLOWED, editable.scopes.getValue(RecurrenceScope.FOLLOWING).delete)
+            assertTrue(f.writer.mutate("null-following", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.FOLLOWING)) is SeriesMutationResult.LocalDeleted)
+            assertNull(f.provider.events[0]["eventStatus"])
+            assertEquals("FREQ=DAILY;COUNT=1", f.provider.events[0]["rrule"])
+        }
+    }
+
+    @Test fun explicitCancelledOrUnknownNonNormalMasterStatusStillRefusesEveryMutation() = runBlocking {
+        for (status in listOf("2", "99", "invalid")) fixture { f ->
+            val token = f.editable().token
+            f.provider.events[0]["eventStatus"] = status
+            assertEquals(SeriesReadResult.Denied(MutationDenial.UNSUPPORTED_EVENT), f.writer.loadForEdit(selected))
+            assertEquals(common(MutationResult.Denied(MutationDenial.UNSUPPORTED_EVENT)),
+                f.writer.mutate("bad-status", selected, token, SeriesCommand.Delete(RecurrenceScope.ALL)))
+            assertEquals(0, f.provider.batchCount)
+        }
+    }
+
     @Test fun replacementCalendarOrKnownEventUidChangeCannotRecoverOldAccountCommit() = runBlocking {
         fixture { f ->
             val editable = f.editable()

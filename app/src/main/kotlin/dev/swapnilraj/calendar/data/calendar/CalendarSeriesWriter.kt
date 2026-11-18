@@ -344,7 +344,10 @@ class CalendarSeriesWriter(
             put("originalInstanceTime", recurrence.originalStart.toEpochMilli())
             put("dtstart", template.ref.instanceStart.toEpochMilli()); put("duration", template.duration)
             put("eventTimezone", template.zone); put("allDay", if (template.allDay) 1 else 0)
-            put("eventStatus", if (cancelled) CalendarContract.Events.STATUS_CANCELED else source.master["eventStatus"]!!.toInt())
+            // Pinned provider handleInsertException defaults only when the key is absent, not
+            // when it carries NULL. Preserve legitimate unspecified status without inventing one.
+            if (cancelled) put("eventStatus", CalendarContract.Events.STATUS_CANCELED)
+            else source.master["eventStatus"]?.let { put("eventStatus", it.toInt()) } ?: putNull("eventStatus")
         }
         val index = operations.size
         operations += ContentProviderOperation.newInsert(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_EXCEPTION_URI,
@@ -645,8 +648,10 @@ class CalendarSeriesWriter(
         if (event["allDay"] != if (allDay) "1" else "0") return uncertain()
         if (event["dtstart"]?.toLongOrNull() != ref.instanceStart.toEpochMilli() || event["dtend"]?.toLongOrNull() != ref.instanceEnd.toEpochMilli() ||
             event["eventTimezone"] != zone) return uncertain()
-        val expectedStatus = if (deleted) CalendarContract.Events.STATUS_CANCELED else master.nullable("eventStatus")?.toIntOrNull() ?: return uncertain()
-        if (event["eventStatus"]?.toIntOrNull() != expectedStatus || parent["eventStatus"]?.toIntOrNull() !in setOf(0, 1)) return uncertain()
+        val expectedStatus = if (deleted) CalendarContract.Events.STATUS_CANCELED else master.nullable("eventStatus")?.toIntOrNull()
+        val status = event["eventStatus"]?.toIntOrNull()
+        val parentStatus = parent["eventStatus"]?.toIntOrNull()
+        if ((event["eventStatus"] != null && status == null) || (parent["eventStatus"] != null && parentStatus !in setOf(0, 1)) || status != expectedStatus) return uncertain()
         if (changed(receipt.nullable("createdSync"), event["_sync_id"]) || changed(receipt.nullable("createdUid"), event["uid2445"]?.takeIf(String::isNotBlank)?.let(::hash))) return uncertain()
         val current = if (deleted) null else (sourceReader.selectedReference(ref) ?: return uncertain())
         ensureRead()

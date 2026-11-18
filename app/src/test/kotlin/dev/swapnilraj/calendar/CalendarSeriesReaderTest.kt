@@ -191,6 +191,7 @@ class CalendarSeriesReaderTest {
             val row = master.toMutableMap()
             listOf("_sync_id", *(1..10).map { "sync_data$it" }.toTypedArray()).forEach { row.remove(it) }
             supplied.keySet().forEach { row[it] = supplied.get(it)?.toString() }
+            if (!row.containsKey("eventStatus")) row["eventStatus"] = "0" // Native default is absence-only, not NULL.
             row["_id"] = id.toString(); row["original_id"] = master["_id"]; row["original_sync_id"] = master["_sync_id"]; row["originalAllDay"] = master["allDay"]
             val duration = row["duration"]!!
             val seconds = when {

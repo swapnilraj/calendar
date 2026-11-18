@@ -241,7 +241,8 @@ class CalendarSeriesReader(
             event[CalendarContract.Events.HAS_ATTENDEE_DATA] == "1" && event[CalendarContract.Events.GUESTS_CAN_SEE_GUESTS] != "1")
             throw SeriesSourceDenied(MutationDenial.UNSUPPORTED_EVENT)
         val status = event[CalendarContract.Events.STATUS]?.toIntOrNull()
-        if (status !in setOf(CalendarContract.Events.STATUS_TENTATIVE, CalendarContract.Events.STATUS_CONFIRMED, CalendarContract.Events.STATUS_CANCELED) ||
+        // STATUS is nullable in the provider schema. Unspecified status is not a missing ACL grant.
+        if ((event[CalendarContract.Events.STATUS] != null && status !in setOf(CalendarContract.Events.STATUS_TENTATIVE, CalendarContract.Events.STATUS_CONFIRMED, CalendarContract.Events.STATUS_CANCELED)) ||
             (!exception && status == CalendarContract.Events.STATUS_CANCELED) || !event[CalendarContract.Events.CUSTOM_APP_PACKAGE].isNullOrBlank())
             throw SeriesSourceDenied(MutationDenial.UNSUPPORTED_EVENT)
         val zone = event[CalendarContract.Events.EVENT_TIMEZONE]
