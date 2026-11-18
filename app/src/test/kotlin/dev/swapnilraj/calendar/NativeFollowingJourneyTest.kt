@@ -3,6 +3,7 @@ package dev.swapnilraj.calendar
 import android.Manifest
 import android.provider.CalendarContract
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.data.calendar.CalendarLocalStore
@@ -136,18 +137,27 @@ class NativeFollowingJourneyTest {
         shown("This and following occurrences")
         compose.onNodeWithText("This and following occurrences").assertIsEnabled().performClick()
         shown("Edit recurring event"); shown("Selected and following event times")
+        // Expand the real sheet before keyboard navigation; a partially expanded window clips
+        // duration rows even when their scroll container reports them as brought into view.
+        compose.onNode(isRoot() and hasAnyDescendant(hasText("Edit recurring event")))
+            .performTouchInput { swipeUp(startY = height - 48f, endY = 48f) }
+        compose.waitForIdle()
     }
     private fun replace(label: String, value: String) {
         val field = hasSetTextAction() and hasText(label)
         compose.waitUntil(15_000) { compose.onAllNodes(field and isEnabled()).fetchSemanticsNodes().size == 1 }
-        compose.onNode(field).performScrollTo()
-        compose.waitForIdle()
-        // Focus can bring a conditional COUNT field into view and replace its semantics node.
-        // Complete that real focus transition before resolving it again for keyboard input.
-        compose.onNode(field).performClick()
+        // Request focus before scrolling. ScrollTo could retain the old conditional COUNT node while
+        // that transition replaces its layout, before a keyboard action can even request focus.
+        compose.onNode(field).performSemanticsAction(SemanticsActions.RequestFocus) { it() }
         compose.waitUntil(15_000) { compose.onAllNodes(field and isFocused()).fetchSemanticsNodes().size == 1 }
         compose.waitForIdle()
-        compose.onNode(field and isFocused()).performTextReplacement(value)
+        // Duration rows do not always scroll automatically. Focus has already settled, so any
+        // required scroll targets a newly resolved focused node rather than the old COUNT node.
+        if (!compose.onNode(field and isFocused()).isDisplayed()) {
+            compose.onNode(field and isFocused()).performScrollTo()
+            compose.waitForIdle()
+        }
+        compose.onNode(field and isFocused()).assertIsDisplayed().performTextReplacement(value)
         compose.waitUntil(15_000) { compose.onAllNodes(field and hasText(value)).fetchSemanticsNodes().size == 1 }
     }
     private fun review(f: Fixture) {
