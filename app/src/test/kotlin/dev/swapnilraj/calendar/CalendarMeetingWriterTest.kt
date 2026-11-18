@@ -37,6 +37,8 @@ class CalendarMeetingWriterTest {
         var guardHiddenGuests = false
         var rejectOwnPredicate = false
         var afterQuery: ((String, String?) -> Unit)? = null
+        data class Mutation(val uri: Uri, val selection: String?, val args: List<String>)
+        val mutations = mutableListOf<Mutation>()
         init {
             table("calendars", mapOf("_id" to 2L, "account_name" to "actor@example.invalid", "account_type" to "com.google", "ownerAccount" to "actor@example.invalid",
                 "_sync_id" to "calendar-A", "calendar_access_level" to 300L, "visible" to 1L, "sync_events" to 1L,
@@ -76,7 +78,8 @@ class CalendarMeetingWriterTest {
             if (failAfterCommit && committed) error("Synthetic postcommit unavailability")
             val path = uri.pathSegments.first()
             queries += path
-            val rowId = uri.lastPathSegment?.toLongOrNull()
+            val itemId = uri.lastPathSegment?.toLongOrNull()
+            val rowId = itemId ?: if (selection?.startsWith("_id = ?") == true) args?.firstOrNull()?.toLongOrNull() else null
             reads += Read(path, rowId, projection?.toList(), selection)
             if (path == "attendees" && rowId == null) {
                 if (selection?.contains("TRIM(attendeeEmail") == true) {
@@ -103,9 +106,13 @@ class CalendarMeetingWriterTest {
             if (failUpdate) throw OperationApplicationException("Synthetic batch rollback")
             check(uri.pathSegments.first() == "attendees") { "Self response must use Attendees.STATUS" }
             check(values!!.keySet() == setOf(CalendarContract.Attendees.ATTENDEE_STATUS))
-            val id = ContentUris.parseId(uri)
-            val where = "_id = ?" + (selection?.let { " AND ($it)" } ?: "")
-            val count = db.update("attendees", values, where, arrayOf(id.toString(), *args.orEmpty()))
+            val itemId = uri.lastPathSegment?.toLongOrNull()
+            if (itemId != null && !selection.isNullOrEmpty()) throw IllegalArgumentException("Selection is not permitted for an attendee item mutation")
+            mutations += Mutation(uri, selection, args?.toList().orEmpty())
+            val id = itemId ?: args?.firstOrNull()?.toLongOrNull() ?: error("Exact attendee ID guard required")
+            val where = if (itemId == null) selection else "_id = ?"
+            val bind = if (itemId == null) args else arrayOf(id.toString())
+            val count = db.update("attendees", values, where, bind)
             if (count == 1 && value("attendees", "attendeeEmail", id) == value("calendars", "ownerAccount", 2))
                 db.update("events", ContentValues().apply { put("selfAttendeeStatus", values.getAsInteger("attendeeStatus")) }, "_id = 10", null)
             return count
@@ -459,6 +466,26 @@ class CalendarMeetingWriterTest {
             f.provider.reads.clear()
             assertTrue((f.writer.recover("all-source") as MeetingMutationResult.Common).outcome is MutationResult.Uncertain)
             assertTrue(f.provider.reads.none { it.path == "attendees" })
+        }
+    }
+
+    @Test fun nativeAttendeeItemMutationSelectionIsRejectedAndWriterUsesTableIdentityGuards() = runBlocking {
+        fixture { f ->
+            try {
+                f.provider.update(ContentUris.withAppendedId(CalendarContract.Attendees.CONTENT_URI, 20),
+                    ContentValues().apply { put(CalendarContract.Attendees.ATTENDEE_STATUS, 1) }, "event_id = ?", arrayOf("10"))
+                fail("AOSP attendee item URI must reject a supplied mutation selection")
+            } catch (_: IllegalArgumentException) { }
+            assertEquals("3", f.provider.value("attendees", "attendeeStatus"))
+            f.provider.set("events", "guestsCanSeeGuests", "0"); f.provider.guardHiddenGuests = true
+            val editable = f.editable()
+            assertEquals(MeetingMutationResult.LocalSaved(selected, RecurrenceScope.THIS), f.writer.mutate("table-guarded", selected, editable.token, respond()))
+            val write = f.provider.mutations.single()
+            assertEquals(CalendarContract.Attendees.CONTENT_URI, write.uri)
+            assertEquals("_id = ? AND event_id = ? AND attendeeEmail = ? AND attendeeStatus = ?", write.selection)
+            assertEquals(listOf("20", "10", "actor@example.invalid", "3"), write.args)
+            assertTrue(f.provider.reads.any { it.path == "attendees" && it.fields == null && it.selection == "_id = ? AND event_id = ? AND attendeeEmail = ?" })
+            assertEquals("1", f.provider.value("attendees", "attendeeStatus"))
         }
     }
 

@@ -101,8 +101,11 @@ class CalendarMeetingWriter(
             if (current.canonical(readBudgets.maxCanonicalBytes) != raw) throw Conflict()
             val status = responseStatus(command.response)
             val operations = assertions(current)
-            operations += ContentProviderOperation.newUpdate(ContentUris.withAppendedId(CalendarContract.Attendees.CONTENT_URI, current.self.long("_id")!!))
-                .withSelection("event_id = ? AND attendeeEmail = ? AND attendeeStatus = ?", arrayOf(selected.eventId.toString(),
+            // AOSP CalendarProvider2 77bed8f978646fc416a7d90f9e97485421961641:
+            // verifyTransactionAllowed/updateEventRelatedTable reject item URI + selection.
+            // The table URI retains every exact identity/status guard in a legal public update.
+            operations += ContentProviderOperation.newUpdate(CalendarContract.Attendees.CONTENT_URI)
+                .withSelection("_id = ? AND event_id = ? AND attendeeEmail = ? AND attendeeStatus = ?", arrayOf(current.self.getValue("_id")!!, selected.eventId.toString(),
                     current.self.getValue(CalendarContract.Attendees.ATTENDEE_EMAIL)!!, current.self.getValue(CalendarContract.Attendees.ATTENDEE_STATUS)!!))
                 .withValue(CalendarContract.Attendees.ATTENDEE_STATUS, status).withExpectedCount(1).withYieldAllowed(false).build()
             val post = current.copy(event = current.event + (CalendarContract.Events.SELF_ATTENDEE_STATUS to status.toString()),
@@ -237,8 +240,8 @@ class CalendarMeetingWriter(
                 candidates.single().long("event_id") != selected.eventId || candidates.single().long("_id") == null)
                 throw Review("A unique exact calendar-owner attendee is required")
             val id = candidates.single().long("_id")!!
-            rows(ContentUris.withAppendedId(CalendarContract.Attendees.CONTENT_URI, id), "event_id = ? AND attendeeEmail = ?",
-                arrayOf(selected.eventId.toString(), owner), 1)
+            rows(CalendarContract.Attendees.CONTENT_URI, "_id = ? AND event_id = ? AND attendeeEmail = ?",
+                arrayOf(id.toString(), selected.eventId.toString(), owner), 1)
         } else rows(CalendarContract.Attendees.CONTENT_URI, "event_id = ?", arrayOf(selected.eventId.toString()), readBudgets.maxDetailChildren)
         if (attendees.any { it.long("event_id") != selected.eventId || it.long("_id") == null } || attendees.map { it["_id"] }.toSet().size != attendees.size) throw Review("Ambiguous attendee identities")
         val matching = attendees.filter { it[CalendarContract.Attendees.ATTENDEE_EMAIL]?.trim()?.equals(owner.trim(), ignoreCase = true) == true }
