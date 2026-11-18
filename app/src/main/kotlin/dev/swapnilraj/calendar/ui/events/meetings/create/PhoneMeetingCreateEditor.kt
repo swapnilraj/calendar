@@ -91,7 +91,8 @@ private fun PhoneMeetingCreateContent(c: MeetingCreationController, calendars: L
     LaunchedEffect(state.localSaved,state.recoveryRequired) { if(state.localSaved!=null || state.recoveryRequired) scroll.animateScrollTo(0) }
     val editable=c.canEditRaw && !actions.inputLocked
     val selected=calendars.firstOrNull { it.identity==raw?.targetIdentity }
-    val canSave=!actions.inputLocked && c.canSave && state.policyAccepted && fields?.guests?.isNotEmpty()==true && raw?.recurrence?.frequency=="NONE" && selected!=null
+    val canSave=!actions.inputLocked && c.canSave && state.policyAccepted && fields?.guests?.isNotEmpty()==true &&
+        (raw?.recurrence?.frequency=="NONE" || c.canEditRepeat) && selected!=null
     Surface(Modifier.fillMaxSize()) {
         Scaffold(topBar={ Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min=64.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
             val closeLabel=stringResource(R.string.phone_meeting_create_close)
@@ -121,7 +122,9 @@ private fun PhoneMeetingCreateContent(c: MeetingCreationController, calendars: L
                         PhoneEditorOffsetChoices(raw.startDate,raw.startTime,raw.zone,raw.startOffset,editable,stringResource(R.string.phone_event_start_time)) { value -> actions.event { it.copy(startOffset=value) } }
                         PhoneEditorOffsetChoices(raw.endDate,raw.endTime,raw.zone,raw.endOffset,editable,stringResource(R.string.phone_event_end_time)) { value -> actions.event { it.copy(endOffset=value) } }
                     }
-                    if(raw.recurrence.frequency!="NONE") PhoneEditorRow(PhoneEventGlyph.REPEAT,stringResource(R.string.phone_meeting_create_recurrence))
+                    if(c.hasFrozenRecurrence) PhoneEditorRow(PhoneEventGlyph.REPEAT,stringResource(R.string.phone_meeting_create_repeating))
+                    else if(c.canEditRepeat) PhoneEditorRow(PhoneEventGlyph.REPEAT,phoneRepeatSummary(raw.recurrence),enabled=editable,onClick={panel=PhoneEditorPanel.REPEAT})
+                    else if(raw.recurrence.frequency!="NONE") PhoneEditorRow(PhoneEventGlyph.REPEAT,stringResource(R.string.phone_meeting_create_recurrence))
                     HorizontalDivider(Modifier.padding(start=64.dp))
                     PhoneMeetingCreatePeople(fields.guests,state.allowedGuestTypes,editable,actions)
                     PhoneMeetingCreatePolicy(state.policyAccepted,editable) { value -> actions.submit { c.acceptFixedGuestPolicy(value) } }
@@ -138,6 +141,8 @@ private fun PhoneMeetingCreateContent(c: MeetingCreationController, calendars: L
         }
     }
     if(panel!=null && raw!=null) PhoneMeetingCreatePanel(panel!!,c,calendars,editable,actions,use24Hour) {panel=null}
+    state.recurrenceReview?.let { review -> RecurrenceCreationReview(review.plan,review.spec,review.title,
+        onConfirm={actions.submit {c.confirmRecurringCreate()}},onDismiss=c::dismissRecurrenceReview) }
     if(state.confirmDiscard) AlertDialog(onDismissRequest=c::cancelDiscard,title={Text(stringResource(R.string.phone_meeting_create_discard_title))},
         text={Text(stringResource(if(c.frozen) R.string.phone_meeting_create_discard_frozen else R.string.phone_meeting_create_discard_raw))},
         confirmButton={TextButton(onClick={actions.submit {c.confirmDiscard()}},enabled=!state.busy){Text(stringResource(R.string.phone_meeting_create_discard))}},

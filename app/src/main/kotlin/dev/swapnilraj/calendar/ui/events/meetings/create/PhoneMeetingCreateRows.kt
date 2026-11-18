@@ -99,6 +99,8 @@ internal fun phoneMeetingCreateProblem(p:MeetingCreationProblem)=when(p) {
     MeetingCreationProblem.GUESTS_REQUIRED -> R.string.phone_meeting_create_guests_required
     MeetingCreationProblem.POLICY_REQUIRED -> R.string.phone_meeting_create_policy_required
     MeetingCreationProblem.RECURRENCE_UNSUPPORTED -> R.string.phone_meeting_create_recurrence
+    MeetingCreationProblem.RECURRENCE_INVALID -> R.string.phone_meeting_create_recurrence_invalid
+    MeetingCreationProblem.RECURRENCE_REVIEW -> R.string.phone_meeting_create_recurrence_review
     MeetingCreationProblem.UNCERTAIN -> R.string.phone_meeting_create_uncertain
     MeetingCreationProblem.SAFE_TO_RETRY -> R.string.phone_meeting_create_safe_retry
     MeetingCreationProblem.RETIRED -> R.string.phone_meeting_create_retired

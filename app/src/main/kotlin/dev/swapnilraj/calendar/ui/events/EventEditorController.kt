@@ -113,8 +113,7 @@ class EventEditorController(
                 currentCoroutineContext().ensureActive()
                 if (!meetingPromotionEligible()) return@withLock MeetingDraftPromotion.Rejected
                 val expected = expectedRecord ?: return@withLock MeetingDraftPromotion.Rejected
-                val next = MeetingCreationDocument(draftId, UUID.randomUUID().toString(), UUID.randomUUID().toString(),
-                    MeetingCreationFields(state.fields), UUID.randomUUID().toString())
+                val next = newMeetingCreationDocument(state.fields, draftId)
                 val replacement = MeetingCreationDraftCodec.record(next, clock.instant())
                 withContext(NonCancellable) {
                     closed = true; dispatchStopped = true

@@ -24,7 +24,7 @@ sealed interface MeetingCreationPreparation {
 suspend fun prepareMeetingCreationDraft(initial: EventEditorFields, draftId: String, store: AtomicDraftStore,
     clock: Clock = Clock.systemUTC()): MeetingCreationPreparation {
     if (draftId.isBlank()) return MeetingCreationPreparation.Unavailable
-    val doc = MeetingCreationDocument(draftId, uuid(), uuid(), MeetingCreationFields(initial), uuid())
+    val doc = newMeetingCreationDocument(initial, draftId)
     val record = MeetingCreationDraftCodec.record(doc, clock.instant())
     val changed = try { store.compareAndSet(draftId, null, record) }
         catch (e: CancellationException) { throw e } catch (_: Exception) { DraftChangeResult.Unavailable }
@@ -34,16 +34,18 @@ suspend fun prepareMeetingCreationDraft(initial: EventEditorFields, draftId: Str
     return if (actual == record) MeetingCreationPreparation.Ready(doc.launch(), record) else MeetingCreationPreparation.Unavailable
 }
 internal fun uuid() = UUID.randomUUID().toString()
+internal fun newMeetingCreationDocument(initial: EventEditorFields, id: String) =
+    MeetingCreationDocument(id, uuid(), uuid(), MeetingCreationFields(initial), uuid(), schema = 2)
 internal fun validIdentity(value: CalendarIdentity) = value.account.name.isNotBlank() && value.account.type.isNotBlank()
 internal data class MeetingCreationAuthority(val identity: CalendarIdentity, val token: EditToken,
-    val allowedTypes: Set<MeetingGuestType>)
+    val allowedTypes: Set<MeetingGuestType>, val recurringCreation: AccessDecision = AccessDecision.UNKNOWN)
 internal data class FrozenMeetingCreation(val operationId: String, val token: EditToken,
     val draft: EventDraft, val guests: List<MeetingGuestInput>, val rawFingerprint: String) {
     fun retirement() = RetirableOperation.MeetingCreate(operationId, token, draft, guests)
 }
 internal data class MeetingCreationDocument(val id: String, val generation: String, val revision: String,
     val fields: MeetingCreationFields, val operationId: String, val authority: MeetingCreationAuthority? = null,
-    val policyAccepted: Boolean = false, val frozen: FrozenMeetingCreation? = null) {
+    val policyAccepted: Boolean = false, val frozen: FrozenMeetingCreation? = null, val schema: Int = 1) {
     fun launch() = MeetingCreationLaunch(id, generation, frozen != null)
 }
 
@@ -52,22 +54,27 @@ object MeetingCreationDraftCodec {
     const val VERSION = 6
     fun describe(record: DraftRecord): MeetingCreationLaunch? = try { decode(record).launch() } catch (_: Exception) { null }
     internal fun record(d: MeetingCreationDocument, at: Instant) = DraftRecord(d.id, VERSION, JSONObject().apply {
-        put("feature", "meeting-create"); put("schema", 1); put("generation", d.generation); put("revision", d.revision)
+        require(d.schema in 1..2)
+        require(d.schema != 1 || d.authority?.recurringCreation?.let { it == AccessDecision.UNKNOWN } != false && d.frozen?.draft?.recurrence == null)
+        put("feature", "meeting-create"); put("schema", d.schema); put("generation", d.generation); put("revision", d.revision)
         put("operationId", d.operationId); put("event", raw(d.fields.event))
         put("guests", JSONArray(d.fields.guests.map { JSONObject().put("id", it.rowId).put("email", it.email).put("name", it.name).put("type", it.type) }))
         put("policyAccepted", d.policyAccepted)
         put("authority", d.authority?.let { JSONObject().put("identity", CalendarIdentityJson.encode(it.identity)).put("token", it.token.value)
-            .put("allowedTypes", JSONArray(it.allowedTypes.map { type -> type.name }.sorted())) } ?: JSONObject.NULL)
-        put("frozen", d.frozen?.let { JSONObject().put("schema", 1).put("operationId", it.operationId).put("token", it.token.value)
+            .put("allowedTypes", JSONArray(it.allowedTypes.map { type -> type.name }.sorted())).apply {
+                if(d.schema == 2) put("recurringCreation",it.recurringCreation.name)
+            } } ?: JSONObject.NULL)
+        put("frozen", d.frozen?.let { JSONObject().put("schema", d.schema).put("operationId", it.operationId).put("token", it.token.value)
             .put("fingerprintSchema", 1).put("rawFingerprint", it.rawFingerprint)
-            .put("draft", draft(it.draft)).put("guests", JSONArray(it.guests.map { guest -> JSONObject().put("email", guest.email)
+            .put("draft", draft(it.draft).apply { if(d.schema == 2) put("recurrence",it.draft.recurrence?.let(AuthoredRecurrenceJson::encode) ?: JSONObject.NULL) }).put("guests", JSONArray(it.guests.map { guest -> JSONObject().put("email", guest.email)
                 .put("name", guest.name ?: JSONObject.NULL).put("type", guest.type.name) })) } ?: JSONObject.NULL)
     }.toString(), at)
     internal fun decode(record: DraftRecord): MeetingCreationDocument {
         require(record.version == VERSION && record.id.isNotBlank())
         val p = JSONObject(record.payload)
         keys(p, "feature", "schema", "generation", "revision", "operationId", "event", "guests", "policyAccepted", "authority", "frozen")
-        require(text(p,"feature") == "meeting-create" && p.get("schema") == 1)
+        val schema = p.get("schema").also { require(it == 1 || it == 2) } as Int
+        require(text(p,"feature") == "meeting-create")
         val generation = text(p,"generation").also { require(UUID.fromString(it).toString() == it) }; val revision = text(p,"revision").also { require(UUID.fromString(it).toString() == it) }
         val operationId = text(p,"operationId").also { require(UUID.fromString(it).toString() == it) }
         val rawGuests = p.getJSONArray("guests").objects().map { keys(it,"id","email","name","type")
@@ -75,15 +82,16 @@ object MeetingCreationDraftCodec {
         require(rawGuests.map { it.rowId }.distinct().size == rawGuests.size)
         val fields = MeetingCreationFields(raw(p.getJSONObject("event")), rawGuests)
         val authority = if (p.isNull("authority")) null else p.getJSONObject("authority").let {
-            keys(it,"identity","token","allowedTypes")
+            keys(it,*(if(schema == 1) arrayOf("identity","token","allowedTypes") else arrayOf("identity","token","allowedTypes","recurringCreation")))
             val identity = CalendarIdentityJson.optional(it,"identity")!!.also { pin -> require(validIdentity(pin)) }
             val types = it.getJSONArray("allowedTypes").let { array -> (0 until array.length()).map { i -> MeetingGuestType.valueOf(array.getString(i)) } }
             require(types.isNotEmpty() && types.distinct().size == types.size)
-            MeetingCreationAuthority(identity, EditToken(text(it,"token").also { token -> require(token.isNotBlank()) }), types.toSet())
+            MeetingCreationAuthority(identity, EditToken(text(it,"token").also { token -> require(token.isNotBlank()) }), types.toSet(),
+                if(schema == 1) AccessDecision.UNKNOWN else AccessDecision.valueOf(text(it,"recurringCreation")))
         }
         val frozen = if (p.isNull("frozen")) null else p.getJSONObject("frozen").let {
-            keys(it,"schema","operationId","token","draft","guests","fingerprintSchema","rawFingerprint"); require(it.get("schema") == 1 && it.get("fingerprintSchema") == 1)
-            FrozenMeetingCreation(text(it,"operationId"), EditToken(text(it,"token")), draft(it.getJSONObject("draft")),
+            keys(it,"schema","operationId","token","draft","guests","fingerprintSchema","rawFingerprint"); require(it.get("schema") == schema && it.get("fingerprintSchema") == 1)
+            FrozenMeetingCreation(text(it,"operationId"), EditToken(text(it,"token")), draft(it.getJSONObject("draft"),schema),
                 it.getJSONArray("guests").objects().map { guest -> keys(guest,"email","name","type")
                     MeetingGuestInput(text(guest,"email"), MeetingGuestType.valueOf(text(guest,"type")), if (guest.isNull("name")) null else text(guest,"name")) }, text(it,"rawFingerprint"))
         }
@@ -91,13 +99,14 @@ object MeetingCreationDraftCodec {
         val accepted = p.getBoolean("policyAccepted")
         frozen?.let {
             require(authority != null && accepted && it.operationId == operationId && it.token == authority.token && it.draft.targetIdentity == authority.identity)
-            require(it.draft.calendarId == authority.identity.calendarId && it.draft.recurrence == null && it.guests.isNotEmpty())
+            require(it.draft.calendarId == authority.identity.calendarId && it.guests.isNotEmpty())
+            require(it.draft.recurrence == null || schema == 2 && authority.recurringCreation == AccessDecision.ALLOWED)
             require(it.guests.all { guest -> guest.type in authority.allowedTypes })
             require(it.draft.time.let { time -> time !is EventTime.Timed || time.end > time.start })
             // Mutable form parsers and current policy never reconstruct an already authorized request.
             require(it.rawFingerprint.matches(Regex("[0-9a-f]{64}")) && it.rawFingerprint == fingerprint(fields))
         }
-        return MeetingCreationDocument(record.id, generation, revision, fields, operationId, authority, accepted, frozen)
+        return MeetingCreationDocument(record.id, generation, revision, fields, operationId, authority, accepted, frozen,schema)
     }
     /** Schema 1: sorted object keys, ordered arrays, typed length-delimited values, UTF-16 string code-unit hex, then UTF-8 SHA-256.
      * This is raw-data integrity, not a replacement for backend-issued authority or a journal signature.
@@ -136,9 +145,11 @@ object MeetingCreationDraftCodec {
         .put("zone",d.eventZone?.id ?: JSONObject.NULL).put("title",d.title).put("location",d.location).put("description",d.description)
         .put("alerts",JSONArray(d.alertMinutes)).put("availability",d.availability ?: JSONObject.NULL).put("privacy",d.privacy ?: JSONObject.NULL)
         .put("targetIdentity",d.targetIdentity?.let(CalendarIdentityJson::encode) ?: JSONObject.NULL)
-    private fun draft(p: JSONObject): EventDraft {
-        keys(p,"calendar","time","zone","title","location","description","alerts","availability","privacy","targetIdentity")
-        return EventDraft(CalendarId(p.getLong("calendar")),time(p.getJSONObject("time")),if(p.isNull("zone")) null else ZoneId.of(text(p,"zone")),text(p,"title"),text(p,"location"),text(p,"description"),p.getJSONArray("alerts").let { a -> (0 until a.length()).map { a.getInt(it) } },if(p.isNull("availability")) null else p.getInt("availability"),if(p.isNull("privacy")) null else p.getInt("privacy"),CalendarIdentityJson.optional(p,"targetIdentity"))
+    private fun draft(p: JSONObject,schema: Int): EventDraft {
+        val fields=arrayOf("calendar","time","zone","title","location","description","alerts","availability","privacy","targetIdentity")
+        keys(p,*(if(schema == 1) fields else fields+"recurrence"))
+        return EventDraft(CalendarId(p.getLong("calendar")),time(p.getJSONObject("time")),if(p.isNull("zone")) null else ZoneId.of(text(p,"zone")),text(p,"title"),text(p,"location"),text(p,"description"),p.getJSONArray("alerts").let { a -> (0 until a.length()).map { a.getInt(it) } },if(p.isNull("availability")) null else p.getInt("availability"),if(p.isNull("privacy")) null else p.getInt("privacy"),CalendarIdentityJson.optional(p,"targetIdentity"),
+            if(schema == 1 || p.isNull("recurrence")) null else AuthoredRecurrenceJson.decode(p.getJSONObject("recurrence")))
     }
     private fun time(t: EventTime) = JSONObject().apply { when(t) {
         is EventTime.Timed -> { put("kind","timed"); put("start",t.start.toString()); put("end",t.end.toString()) }

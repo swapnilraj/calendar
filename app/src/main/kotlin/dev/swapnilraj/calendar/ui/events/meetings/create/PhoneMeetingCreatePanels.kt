@@ -61,6 +61,10 @@ internal fun PhoneMeetingCreatePanel(panel:PhoneEditorPanel,c:MeetingCreationCon
                 }
             }
         }
-        PhoneEditorPanel.REPEAT -> Unit // No authored repeat control: raw recurrence remains retained and unsupported.
+        PhoneEditorPanel.REPEAT -> if(c.canEditRepeat) PhoneEditorPanelFrame(stringResource(R.string.recurrence_editor_repeat),onDismiss) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
+                RecurrenceEditorControls(raw.recurrence,raw.startDate,enabled && c.canEditRepeat) { value -> actions.event {it.copy(recurrence=value)} }
+            }
+        }
     }
 }
