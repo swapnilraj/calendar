@@ -244,7 +244,7 @@ class PublicCalendarEditJourneyTest {
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
         runBlocking {
             app.settings.saveReminderSettings(app.settings.readReminderSettings(), SavedReminderSettings()); app.reminderRuntime.onResume().join()
-            app.settings.setDisplaySettings(CalendarSettingsOptions(weatherVisible = false, theme = SettingsTheme.LIGHT, displayZone = DisplayZoneOption.Fixed(ZoneOffset.UTC)))
+            app.settings.setDisplaySettings(CalendarSettingsOptions(weatherVisible = false, theme = SettingsTheme.LIGHT, displayZone = DisplayZoneOption.Fixed(ZoneId.of("UTC"))))
             val calendars = app.calendarReader.readCalendars() as CalendarReadState.Ready
             assertTrue(app.settings.setDefaultCalendar(null, calendars.value)); assertTrue(app.settings.setCalendarSelection(none, calendars.value))
         }
