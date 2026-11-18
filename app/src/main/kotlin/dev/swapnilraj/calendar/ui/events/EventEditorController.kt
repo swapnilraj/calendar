@@ -23,7 +23,7 @@ data class EventEditorFields(
 )
 
 enum class EditorProblem { INVALID_INPUT, AMBIGUOUS_TIME, NONEXISTENT_TIME, PERMISSION,
-    DENIED, CONFLICT, UNCERTAIN, UNAVAILABLE, DRAFT_UNAVAILABLE, UNSUPPORTED, DRAFT_VERSION, SAFE_TO_RETRY, RETRY_UNAVAILABLE, VISIBILITY_REQUIRED, CALENDAR_REQUIRED, RECURRENCE_UNSUPPORTED, RECURRENCE_INVALID, RECURRENCE_REVIEW }
+    DENIED, CONFLICT, UNCERTAIN, UNAVAILABLE, DRAFT_UNAVAILABLE, DRAFT_RETIRED, UNSUPPORTED, DRAFT_VERSION, SAFE_TO_RETRY, RETRY_UNAVAILABLE, VISIBILITY_REQUIRED, CALENDAR_REQUIRED, RECURRENCE_UNSUPPORTED, RECURRENCE_INVALID, RECURRENCE_REVIEW }
 
 data class EventEditorState(
     val fields: EventEditorFields, val loading: Boolean = true, val saving: Boolean = false,
@@ -385,10 +385,18 @@ class EventEditorController(
     }
 
     private suspend fun finish(received: MutationResult, recovery: Boolean = false) {
+        if (received is MutationResult.Retired && received.operationId == operationId) {
+            // Another holder closed this exact request. Do not resurrect or delete its draft here.
+            completed = true
+            persistence?.cancel()
+            state = state.copy(saving = false, confirmDelete = false, recoveryRequired = false,
+                retryReady = false, reviewRequired = false, result = received, problem = EditorProblem.DRAFT_RETIRED)
+            return
+        }
         val matchingProof = received is MutationResult.SafeToRetry && received.operationId == operationId
         val validCommand = !legacyDefaultVisibilityUnsafe && !legacyTargetUnsafe && !state.draftReadFailed && state.problem != EditorProblem.DRAFT_VERSION &&
             frozenSubmission?.let { it.operationId == operationId && it.kind == operationKind } == true
-        val result = if (received is MutationResult.SafeToRetry && !matchingProof)
+        val result = if (received is MutationResult.SafeToRetry && !matchingProof || received is MutationResult.Retired)
             MutationResult.Uncertain(operationId, existing?.details?.occurrence?.ref?.eventId) else received
         val success = result is MutationResult.LocalSaved || result is MutationResult.LocalDeleted
         val proofWithoutCommand = matchingProof && !validCommand
@@ -417,6 +425,7 @@ class EventEditorController(
                     is MutationResult.Uncertain -> EditorProblem.UNCERTAIN
                     MutationResult.Unavailable -> EditorProblem.UNAVAILABLE
                     is MutationResult.SafeToRetry -> EditorProblem.SAFE_TO_RETRY
+                    is MutationResult.Retired -> EditorProblem.DRAFT_RETIRED
                 }
             })
     }

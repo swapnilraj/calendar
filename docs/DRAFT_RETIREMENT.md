@@ -73,3 +73,12 @@ between journal fence and exact draft deletion. Preserve replacements and immuta
 Verify all supported command families use their existing encoders, including Keep/null semantics,
 calendar namespace and recurrence scope. Old launches cannot recreate missing drafts or execute an
 ABANDONED ID. COMMITTED/VERIFIED remain blocked despite subsequent source mismatch.
+
+## Contract checkpoint
+
+The shared port is now `OperationRetirement.retire/inspect(RetirableOperation)` with exact typed
+backend arguments. Only `Retired(operationId)` confirms a permanent fence; inspect-only `NotRetired`
+is not no-dispatch or retry proof. Blocked results distinguish possible dispatch from a recorded
+commit. A matching late `MutationResult.Retired` stops an ordinary editor without rewriting or
+deleting its raw record; mismatched IDs remain uncertain. Backend/store fencing and user-facing
+retirement workflows are still implementation work, not established by the port alone.
