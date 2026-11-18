@@ -11,13 +11,32 @@ and five actual app whole-series temporal/rule journeys through the SQLite/nativ
 At that checkpoint, guest-creation UI and public incoming-link activation were pending; local
 writes do not prove invitation delivery. Log: `/tmp/daylight-meeting-integrated-full.log` (3m26s).
 
-At `c7a743b`, all **1,824 tests** passed (core232, app1,575, weather17) and the debug
-APK assembled. That run failed lint on indentation in the recurrence review dialog, corrected in
-`e1877a4`. The required full-gate rerun then exposed an intermittent cold-database concurrency
-fixture failure: one absent-create writer applied, while the other returned storage unavailable
-instead of Changed. Investigation is active; **the complete current gate is not green**. Logs:
-`/tmp/daylight-phone-draft-adoption-full.log` and
-`/tmp/daylight-phone-draft-adoption-gate.log`. Do not treat the assembled debug APK as a signed release.
+At `23403b7`, the complete required gate **passed: 1,844 tests** (core232, app1,595,
+weather17), debug APK assembly and lint, with zero failures, errors or skipped tests. Command:
+`./gradlew test :app:assembleDebug :app:lintDebug`; log:
+`/tmp/daylight-meeting-phone-integrated-full.log` (4m03s). Debug APK SHA-256:
+`a82bb983b8a5e90116210e45dd058261a956f62f0355c2bb6652bcd9ecc3a9eb`.
+This is a debug-signed local checkpoint, not an upgradeable production release.
+
+The separate full-height meeting creation component now has44 focused checks, including exact
+cleanup acknowledgements, continued typing during local CAS, and a cancellation fence preventing
+provider dispatch after a cancelled durable freeze. Light, dark and large-text RTL screenshots
+were recorded, inspected and verified. **Create entry, draft-browser routing and the ordinary
+editor's Add people transfer remain unwired.** No invitation-delivery claim follows from this UI.
+
+The preceding `c7a743b` run passed1,824 tests and built the APK but failed indentation lint,
+fixed in `e1877a4`. Its rerun exposed independent cold SQLite helper initialization contention
+before any CAS transaction. The healthy-CAS race now initializes both helpers first; a separate
+failure/readback/explicit-retry test preserves storage-failure coverage. All strict single-winner
+assertions remain. Production storage is unchanged and still conservatively returns Unavailable
+for failed initialization; the app uses one lazy store. This race is not assumed Robolectric-only.
+
+Incoming EDIT version8 review passed58 focused checks with two inspected screenshots in its
+isolated branch. Independent review found READ loss could unmount a pending frozen editor; a
+presentation-mask fix and regression are staged but **not yet compiled or run**. Lead App/manifest,
+private-open and draft-browser activation are staged in `codex/dd-incoming-edit-integration`,
+also unverified and outside the green checkpoint. Recurring meeting creation and advanced
+FOLLOWING metadata helpers remain separate source/test packets.
 
 Later integrated packets include:
 
@@ -48,7 +67,7 @@ Generated THIS RSVP has3 actual-app synthetic-provider journeys, including READ-
 and source-free SQL recovery with one batch. Clone admission still defaults to review in production.
 The separate guest-creation controller/codecs passed25 checks; frozen requests do not reparse raw
 input. Owned one-off organizer editing/guest deltas/cancellation passed104 backend-focused checks.
-Those two meeting interfaces, recurring meeting creation and public EDIT review remain unfinished.
+Their application entry/organizer interfaces, recurring meeting creation and public EDIT activation remain unfinished.
 
 The current Google Calendar2026.44 APK has installed and rendered notification/calendar-access
 onboarding in an isolated API35 software emulator. This is initial runtime evidence, not main-flow
