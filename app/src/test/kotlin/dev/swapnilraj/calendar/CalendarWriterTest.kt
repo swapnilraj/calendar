@@ -38,6 +38,8 @@ class CalendarWriterTest {
         var failReadsAfterCommit = false
         var committed = false
         var beforeBatch: (() -> Unit)? = null
+        val queryCounts = mutableMapOf<String, Int>()
+        fun resetQueryCounts() = queryCounts.clear()
         override fun onCreate() = true
         override fun getType(uri: Uri): String? = null
         private fun table(uri: Uri): MutableList<MutableMap<String, String?>> = when (uri.pathSegments.first()) {
@@ -54,6 +56,8 @@ class CalendarWriterTest {
         }
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor {
             if (failReadsAfterCommit && committed) error("Synthetic post-commit provider unavailable")
+            val tableName = uri.pathSegments.first()
+            queryCounts[tableName] = (queryCounts[tableName] ?: 0) + 1
             val rows: List<Map<String, String?>> = when (uri.pathSegments.first()) {
                 "calendars" -> listOf(calendar).filter { selected(it, uri, selection, args) }
                 "instances" -> events.filter { it["deleted"] != "1" }.map { event -> event + mapOf(
@@ -402,6 +406,68 @@ class CalendarWriterTest {
             provider.events.single()["hasAttendeeData"] = "1"
             provider.events.single()["guestsCanSeeGuests"] = "0"
             assertEquals(EditReadResult.Denied(MutationDenial.UNSUPPORTED_EVENT), writer.loadForEdit(ref))
+            assertEquals(1, provider.batchCount)
+        }
+    }
+
+    @Test fun freeBusyEligibilityStopsBeforeAnyPrivateEventOrChildQuery() = runBlocking {
+        fixture { provider, writer, _, permissions ->
+            val ref = (writer.create("seed-free-busy", draft) as MutationResult.LocalSaved).ref
+            permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            provider.calendar["calendar_access_level"] = CalendarContract.Calendars.CAL_ACCESS_FREEBUSY.toString()
+            provider.resetQueryCounts()
+            assertEquals(EditReadResult.Denied(MutationDenial.CALENDAR_READ_ONLY), writer.loadForEdit(ref))
+            assertEquals(1, provider.queryCounts["calendars"])
+            assertEquals(0, provider.queryCounts["events"] ?: 0)
+            assertEquals(0, provider.queryCounts["reminders"] ?: 0)
+            assertEquals(0, provider.queryCounts["attendees"] ?: 0)
+            assertEquals(1, provider.batchCount)
+        }
+    }
+
+    @Test fun unknownGuestVisibilityDoesNotTrustEmailOrNoAttendeeFlag() = runBlocking {
+        for (flag in listOf<String?>(null, "0", "2")) fixture { provider, writer, _, permissions ->
+            val ref = (writer.create("seed-unknown", draft) as MutationResult.LocalSaved).ref
+            permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            provider.events.single()["isOrganizer"] = flag
+            provider.events.single()["guestsCanSeeGuests"] = flag
+            provider.events.single()["hasAttendeeData"] = "0"
+            // An inconsistent provider can still contain a guest; do not use the zero flag as proof.
+            provider.attendees += mutableMapOf("_id" to "90", "event_id" to ref.eventId.toString(),
+                "attendeeEmail" to "hidden@example.invalid", "attendeeRelationship" to "1")
+            provider.resetQueryCounts()
+            assertTrue(writer.loadForEdit(ref) is EditReadResult.Denied)
+            assertEquals(0, provider.queryCounts["reminders"] ?: 0)
+            assertEquals(0, provider.queryCounts["attendees"] ?: 0)
+            assertEquals(1, provider.batchCount)
+        }
+    }
+
+    @Test fun explicitOrganizerOrVisibleGuestsPermitAuthoritativeChildChecks() = runBlocking {
+        for ((organizerFlag, visibilityFlag) in listOf("1" to "0", null to "1")) fixture { provider, writer, _, permissions ->
+            val ref = (writer.create("seed-proven", draft) as MutationResult.LocalSaved).ref
+            permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            provider.events.single()["isOrganizer"] = organizerFlag
+            provider.events.single()["guestsCanSeeGuests"] = visibilityFlag
+            provider.resetQueryCounts()
+            assertTrue(writer.loadForEdit(ref) is EditReadResult.Ready)
+            assertTrue((provider.queryCounts["attendees"] ?: 0) > 0)
+            assertTrue((provider.queryCounts["reminders"] ?: 0) > 0)
+            assertEquals(1, provider.batchCount)
+        }
+    }
+
+    @Test fun staleTokenAfterCalendarDowngradeDoesNotTriggerPrivateSourceQueries() = runBlocking {
+        fixture { provider, writer, _, _ ->
+            val ref = (writer.create("seed-downgrade", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            provider.calendar["calendar_access_level"] = CalendarContract.Calendars.CAL_ACCESS_FREEBUSY.toString()
+            provider.resetQueryCounts()
+            assertEquals(MutationResult.Denied(MutationDenial.CALENDAR_READ_ONLY), writer.update("blocked-update", ref, token,
+                EventPatch(title = FieldChange.Set("Must not write"))))
+            assertEquals(0, provider.queryCounts["events"] ?: 0)
+            assertEquals(0, provider.queryCounts["reminders"] ?: 0)
+            assertEquals(0, provider.queryCounts["attendees"] ?: 0)
             assertEquals(1, provider.batchCount)
         }
     }
