@@ -10,4 +10,8 @@
     <string name="navigation_preferences_load_failed">Your calendar choices couldn’t be loaded. Retry to show your calendars.</string>
     <string name="navigation_no_link_handler">No app is available to open this link</string>
     <string name="navigation_link_unavailable">This link couldn’t be opened</string>
+    <string name="navigation_create_event">Create event</string>
+    <string name="navigation_edit_unavailable">This event can’t be edited here yet.</string>
+    <string name="navigation_local_saved">Saved on this device. Account synchronization is handled by your calendar service.</string>
+    <string name="navigation_local_deleted">Deleted on this device. Account synchronization is handled by your calendar service.</string>
 </resources>

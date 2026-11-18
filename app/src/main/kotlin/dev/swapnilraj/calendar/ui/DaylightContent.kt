@@ -42,12 +42,21 @@ fun DaylightContent(app: CalendarApp) {
     val noLinkHandler = stringResource(dev.swapnilraj.calendar.R.string.navigation_no_link_handler)
     val linkUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_link_unavailable)
     val preferencesUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_preferences_unavailable)
+    val localSaved = stringResource(dev.swapnilraj.calendar.R.string.navigation_local_saved)
+    val localDeleted = stringResource(dev.swapnilraj.calendar.R.string.navigation_local_deleted)
     val scope = rememberCoroutineScope()
     var now by remember { mutableStateOf(ZonedDateTime.now()) }
     LaunchedEffect(Unit) {
         while (true) { now = ZonedDateTime.now(); delay(60_000 - System.currentTimeMillis() % 60_000) }
     }
     val snackbar = remember { SnackbarHostState() }
+    val writeRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        // Permission grants never retry an event mutation automatically.
+        app.calendarReader.refresh()
+    }
+    val mutations = remember(app, context, writeRequest) { PermissionAwareMutations(app.calendarWriter,
+        { ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED },
+        { writeRequest.launch(Manifest.permission.WRITE_CALENDAR) }) }
     val weather by app.weather.state.collectAsStateWithLifecycle()
     var locationAllowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) }
     var lastWeatherPermission by remember { mutableStateOf<Boolean?>(null) }
@@ -102,6 +111,10 @@ fun DaylightContent(app: CalendarApp) {
                             summary?.let { WeatherSummary(it, weather.stale) }
                         },
                         settings = app.settings,
+                        mutations = mutations,
+                        drafts = app.calendarLocalStore,
+                        onLocalSaved = { scope.launch { snackbar.showSnackbar(localSaved) } },
+                        onLocalDeleted = { scope.launch { snackbar.showSnackbar(localDeleted) } },
                         onPreferenceFailure = { scope.launch { snackbar.showSnackbar(preferencesUnavailable) } },
                         background = { date ->
                             val hours = remember(weather.forecast, date, now.zone) { hoursForDay(weather.forecast, date, now.zone) }
