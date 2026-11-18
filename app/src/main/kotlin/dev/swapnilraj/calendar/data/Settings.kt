@@ -1,6 +1,8 @@
 package dev.swapnilraj.calendar.data
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -13,40 +15,54 @@ import dev.swapnilraj.calendar.core.CalendarInfo
 import dev.swapnilraj.calendar.core.AccessDecision
 import java.util.Base64
 import java.io.IOException
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.map
-import androidx.datastore.preferences.core.emptyPreferences
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.*
 
 private val Context.daylightSettings by preferencesDataStore("daylight")
 
-class Settings(context: Context) {
-    private val store = context.applicationContext.daylightSettings
+@OptIn(ExperimentalCoroutinesApi::class)
+class Settings(context: Context, dataStore: DataStore<Preferences>? = null) {
+    private val store = dataStore ?: context.applicationContext.daylightSettings
     private val key = floatPreferencesKey("hour_height")
     private val selectedCalendarsKey = stringSetPreferencesKey("selected_calendar_ids")
     private val defaultCalendarKey = longPreferencesKey("default_calendar_id")
     private val knownCalendarsKey = stringSetPreferencesKey("known_calendar_accounts")
     private val viewKey = stringPreferencesKey("calendar_view")
     private val views = setOf("DAY", "MONTH", "THREE_DAY", "WEEK", "AGENDA")
-    private val preferences = store.data.catch { error ->
-        if (error is IOException) emit(emptyPreferences()) else throw error
-    }
-    val hourHeight = preferences.map { (it[key] ?: 64f).takeIf(Float::isFinite)?.coerceIn(32f, 160f) ?: 64f }
+    private val refresh = MutableStateFlow(0L)
 
-    /** An absent preference retains the provider default; a stored empty set means no calendars. */
-    val calendarSelection = preferences.map { values ->
-        values[selectedCalendarsKey]?.let { ids ->
+    /** An IO failure never becomes a successful provider-default filter. No owned jobs/scopes. */
+    val calendarPreferences: Flow<CalendarPreferenceState> = refresh.flatMapLatest {
+        flow<CalendarPreferenceState> {
+            emit(CalendarPreferenceState.Loading)
+            emitAll(store.data.map { values -> CalendarPreferenceState.Ready(snapshot(values)) })
+        }.catch { failure ->
+            if (failure is IOException) emit(CalendarPreferenceState.Unavailable) else throw failure
+        }
+    }.distinctUntilChanged()
+
+    fun refreshPreferences() { refresh.update { it + 1 } }
+
+    // Legacy collectors keep their last successful value during read failure. New critical UI
+    // must consume calendarPreferences atomically and render/query only in the Ready state.
+    private val successfulPreferences = calendarPreferences.filterIsInstance<CalendarPreferenceState.Ready>()
+        .map { it.value }
+    val hourHeight = successfulPreferences.map { it.hourHeight }.distinctUntilChanged()
+    val calendarSelection = successfulPreferences.map { it.selection }.distinctUntilChanged()
+    val defaultCalendar = successfulPreferences.map { it.defaultCalendar }.distinctUntilChanged()
+    val calendarView = successfulPreferences.map { it.view }.distinctUntilChanged()
+
+    private fun snapshot(values: Preferences): CalendarPreferences {
+        val selection = values[selectedCalendarsKey]?.let { ids ->
             CalendarSelection.Explicit(ids.mapNotNull { raw ->
                 raw.toLongOrNull()?.takeIf { it >= 0 }?.let(::CalendarId)
             }.toSet())
         } ?: CalendarSelection.ProviderVisible
+        return CalendarPreferences(selection,
+            values[defaultCalendarKey]?.takeIf { it >= 0 }?.let(::CalendarId),
+            values[viewKey]?.takeIf { it in views } ?: "DAY",
+            (values[key] ?: 64f).takeIf(Float::isFinite)?.coerceIn(32f, 160f) ?: 64f)
     }
-
-    /** Eligibility is rechecked against fresh metadata before creating an event. */
-    val defaultCalendar = preferences.map { values ->
-        values[defaultCalendarKey]?.takeIf { it >= 0 }?.let(::CalendarId)
-    }
-
-    val calendarView = preferences.map { values -> values[viewKey]?.takeIf { it in views } ?: "DAY" }
 
     suspend fun setCalendarView(view: String): Boolean {
         if (view !in views) return false
