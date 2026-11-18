@@ -1,0 +1,27 @@
+<resources>
+    <string name="month_previous">Previous month</string>
+    <string name="month_next">Next month</string>
+    <string name="month_choose_date">Choose date</string>
+    <string name="month_go_to_date">Go to date</string>
+    <string name="month_today">Today</string>
+    <string name="month_cancel">Cancel</string>
+    <string name="month_close">Close</string>
+    <string name="month_create_on_date">Create all-day event on %1$s</string>
+    <string name="month_events_on_date">Events for %1$s</string>
+    <string name="month_open_event">Open event</string>
+    <string name="month_no_events">No events</string>
+    <string name="month_no_title">No title</string>
+    <string name="month_all_day">All day</string>
+    <string name="month_declined">Declined</string>
+    <string name="month_continues_before">Continues from an earlier day</string>
+    <string name="month_continues_after">Continues on a later day</string>
+    <string name="month_overflow">+%1$d</string>
+    <plurals name="month_event_count">
+        <item quantity="one">%d event</item>
+        <item quantity="other">%d events</item>
+    </plurals>
+    <plurals name="month_show_more">
+        <item quantity="one">Show %d more event</item>
+        <item quantity="other">Show %d more events</item>
+    </plurals>
+</resources>
