@@ -26,7 +26,11 @@ import dev.swapnilraj.calendar.android.reminders.ReminderRuntimeOwner
 import dev.swapnilraj.calendar.android.reminders.ReminderRuntime
 import dev.swapnilraj.calendar.android.widgets.*
 
-class CalendarApp : Application(), ReminderRuntimeOwner, AgendaWidgetApplicationOwner {
+open class CalendarApp : Application(), ReminderRuntimeOwner, AgendaWidgetApplicationOwner {
+    /** Imported-row cloning requires independently verified provider implementation evidence. */
+    protected open val providerClonePolicy: dev.swapnilraj.calendar.data.calendar.ProviderClonePolicy
+        get() = dev.swapnilraj.calendar.data.calendar.ProviderClonePolicy.Unverified
+
     private val calendarScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     private val reminderScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
     override val reminderRuntime: ReminderRuntime by lazy { createReminderRuntime(reminderScope) }
@@ -53,9 +57,11 @@ class CalendarApp : Application(), ReminderRuntimeOwner, AgendaWidgetApplication
     val calendarSeriesReader by lazy { CalendarSeriesReader(contentResolver, calendarReader, calendarLocalStore,
         { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
     val calendarSeriesWriter by lazy { CalendarSeriesWriter(contentResolver, calendarSeriesReader, calendarLocalStore,
-        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED },
+        providerClonePolicy = providerClonePolicy) }
     val calendarMeetings by lazy { CalendarMeetingWriter(contentResolver, calendarReader, calendarLocalStore,
-        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED },
+        providerClonePolicy = providerClonePolicy) }
     val calendarSearch by lazy { CalendarSearchReader(contentResolver, calendarReader,
         { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
     val settings by lazy { Settings(this) }
