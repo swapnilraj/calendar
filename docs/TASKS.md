@@ -47,6 +47,10 @@ tests, wiring requests and handoff commit/PR. Reports identify remaining fakes a
 
 ## Wave 2 — planning and ordinary writes
 
+- [ ] Complete the [frozen-command retirement packet](DRAFT_RETIREMENT.md), then migrate ordinary and
+  series draft writes/discards to atomic storage. The new SQLite CAS capability alone does not fence
+  a backend worker that already read a frozen command.
+
 - [ ] A: batched one-off writes, conflict/journal recovery and persistent drafts.
 - [ ] B: recurrence plans and timed/all-day reminder calculations.
 - [ ] C: persisted filters and complete month/week/three-day/agenda date state.
