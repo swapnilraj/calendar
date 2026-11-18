@@ -27,7 +27,7 @@ class CalendarWriterTest {
         val calendar = mutableMapOf<String, String?>("_id" to "2", "account_name" to "owner@example.invalid", "account_type" to "com.google",
             "ownerAccount" to "owner@example.invalid", "calendar_displayName" to "Synthetic", "calendar_color" to "12345",
             "calendar_timezone" to "Europe/London", "calendar_access_level" to "700", "allowedReminders" to "0,1,2", "maxReminders" to "5",
-            "visible" to "1", "sync_events" to "1")
+            "visible" to "1", "sync_events" to "1", "allowedAvailability" to "0,1,2")
         val events = mutableListOf<MutableMap<String, String?>>()
         val reminders = mutableListOf<MutableMap<String, String?>>()
         val attendees = mutableListOf<MutableMap<String, String?>>()
@@ -469,6 +469,134 @@ class CalendarWriterTest {
             assertEquals(0, provider.queryCounts["reminders"] ?: 0)
             assertEquals(0, provider.queryCounts["attendees"] ?: 0)
             assertEquals(1, provider.batchCount)
+        }
+    }
+
+    @Test fun availabilityAndPrivacyRoundTripAndExplicitNullResetToProviderDefaults() = runBlocking {
+        fixture { provider, writer, _, _ ->
+            val ref = (writer.create("metadata-create", draft.copy(availability = 2, privacy = 2)) as MutationResult.LocalSaved).ref
+            var editable = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            assertEquals(2, editable.details.availability)
+            assertEquals(2, editable.details.privacy)
+            assertTrue(EditableField.AVAILABILITY in editable.allowedFields)
+            assertTrue(EditableField.PRIVACY in editable.allowedFields)
+            assertTrue(writer.update("metadata-update", ref, editable.token, EventPatch(
+                availability = FieldChange.Set(1), privacy = FieldChange.Set(3))) is MutationResult.LocalSaved)
+            editable = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            assertEquals(1, editable.details.availability)
+            assertEquals(3, editable.details.privacy)
+            assertTrue(writer.update("metadata-reset", ref, editable.token, EventPatch(
+                availability = FieldChange.Set(null), privacy = FieldChange.Set(null))) is MutationResult.LocalSaved)
+            assertEquals("0", provider.events.single()["availability"])
+            assertEquals("0", provider.events.single()["accessLevel"])
+        }
+    }
+
+    @Test fun unknownMetadataKeepSurvivesOtherEditsAndExplicitUnknownWritesAreRejected() = runBlocking {
+        fixture { provider, writer, _, _ ->
+            val ref = (writer.create("metadata-seed", draft) as MutationResult.LocalSaved).ref
+            val event = provider.events.single()
+            assertFalse(event.containsKey("availability"))
+            assertFalse(event.containsKey("accessLevel"))
+            event["availability"] = "77"; event["accessLevel"] = "88"
+            val editable = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            assertEquals(77, editable.details.availability)
+            assertEquals(88, editable.details.privacy)
+            assertTrue(writer.update("keep-unknown", ref, editable.token, EventPatch(
+                title = FieldChange.Set("Still unknown"), alertMinutes = FieldChange.Set(listOf(15)))) is MutationResult.LocalSaved)
+            assertEquals("77", event["availability"])
+            assertEquals("88", event["accessLevel"])
+            val fresh = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            val batches = provider.batchCount
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.AVAILABILITY, InvalidEventField.PRIVACY)),
+                writer.update("reject-unknown", ref, fresh.token, EventPatch(availability = FieldChange.Set(77), privacy = FieldChange.Set(88))))
+            assertEquals(batches, provider.batchCount)
+        }
+    }
+
+    @Test fun explicitAvailabilityRequiresKnownCalendarPolicyWhilePrivacyUsesWritableRights() = runBlocking {
+        for (raw in listOf<String?>(null, "", "0,broken", "0,99")) fixture { provider, writer, _, _ ->
+            provider.calendar["allowedAvailability"] = raw
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.AVAILABILITY)),
+                writer.create("unknown-policy-create", draft.copy(availability = 0)))
+            assertEquals(0, provider.batchCount)
+            val ref = (writer.create("privacy-create", draft.copy(privacy = 2)) as MutationResult.LocalSaved).ref
+            val editable = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            assertFalse(EditableField.AVAILABILITY in editable.allowedFields)
+            assertTrue(EditableField.PRIVACY in editable.allowedFields)
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.AVAILABILITY)),
+                writer.update("unknown-policy-update", ref, editable.token, EventPatch(availability = FieldChange.Set(null))))
+            assertEquals(1, provider.batchCount)
+            assertTrue(writer.update("privacy-only", ref, editable.token, EventPatch(privacy = FieldChange.Set(3))) is MutationResult.LocalSaved)
+            assertEquals("3", provider.events.single()["accessLevel"])
+        }
+        fixture { provider, writer, _, _ ->
+            provider.calendar["allowedAvailability"] = "1"
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.AVAILABILITY)), writer.create("not-allowed", draft.copy(availability = 0)))
+            assertTrue(writer.create("allowed", draft.copy(availability = 1)) is MutationResult.LocalSaved)
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.PRIVACY)), writer.create("bad-privacy", draft.copy(privacy = -1)))
+            assertEquals(1, provider.batchCount)
+        }
+    }
+
+    @Test fun metadataAndCalendarAvailabilityChangesInvalidateTokensAndAtomicAssertions() = runBlocking {
+        fixture { provider, writer, _, _ ->
+            val ref = (writer.create("conflict-seed", draft.copy(availability = 0, privacy = 2)) as MutationResult.LocalSaved).ref
+            var editable = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            provider.events.single()["accessLevel"] = "3"
+            assertTrue(writer.update("changed-privacy", ref, editable.token, EventPatch(title = FieldChange.Set("Blocked"))) is MutationResult.Conflict)
+            assertEquals(1, provider.batchCount)
+            editable = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            provider.calendar["allowedAvailability"] = "0,1"
+            assertTrue(writer.update("changed-policy", ref, editable.token, EventPatch(availability = FieldChange.Set(1))) is MutationResult.Conflict)
+            assertEquals(1, provider.batchCount)
+            editable = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            provider.beforeBatch = { provider.calendar["allowedAvailability"] = "0" }
+            assertTrue(writer.update("policy-race", ref, editable.token, EventPatch(availability = FieldChange.Set(1))) is MutationResult.Conflict)
+            assertEquals("0", provider.events.single()["availability"])
+            assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun metadataChangesStillRequireRuntimeWriteAndCalendarWriteRights() = runBlocking {
+        fixture { provider, writer, _, permissions ->
+            val ref = (writer.create("rights-seed", draft.copy(privacy = 2)) as MutationResult.LocalSaved).ref
+            permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            val editable = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            assertTrue(EditableField.PRIVACY in editable.allowedFields)
+            assertTrue(EditableField.AVAILABILITY in editable.allowedFields)
+            assertEquals(MutationResult.PermissionRequired, writer.update("no-write", ref, editable.token,
+                EventPatch(availability = FieldChange.Set(1), privacy = FieldChange.Set(3))))
+            permissions += Manifest.permission.WRITE_CALENDAR
+            provider.calendar["calendar_access_level"] = "200"
+            assertEquals(MutationResult.Denied(MutationDenial.CALENDAR_READ_ONLY), writer.update("read-calendar", ref, editable.token,
+                EventPatch(privacy = FieldChange.Set(3))))
+            assertEquals(1, provider.batchCount)
+            assertEquals("2", provider.events.single()["accessLevel"])
+        }
+    }
+
+    @Test fun omittedMetadataAndKeepRetainLegacyCommandSignatures() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            fun refPayload(ref: EventRef) = org.json.JSONObject().put("calendar", ref.calendarId.value).put("event", ref.eventId)
+                .put("start", ref.instanceStart.toString()).put("end", ref.instanceEnd.toString())
+            fun signature(kind: String, payload: org.json.JSONObject) = java.security.MessageDigest.getInstance("SHA-256")
+                .digest((kind + payload.toString()).toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+            val time = draft.time as EventTime.Timed
+            val oldCreate = refPayload(EventRef(draft.calendarId, 0, time.start, time.end))
+                .put("allDay", false).put("zone", draft.eventZone!!.id).put("title", draft.title)
+                .put("location", draft.location).put("description", draft.description).put("alerts", org.json.JSONArray(draft.alertMinutes))
+            val ref = (writer.create("legacy-create", draft) as MutationResult.LocalSaved).ref
+            assertEquals(signature("CREATE", oldCreate), store.operation("legacy-create")!!.signature)
+            assertTrue(writer.create("legacy-create", draft.copy(availability = null, privacy = null)) is MutationResult.LocalSaved)
+            assertEquals(1, provider.batchCount)
+            assertTrue(writer.create("legacy-create", draft.copy(privacy = 0)) is MutationResult.Conflict)
+            val editable = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            val oldUpdate = refPayload(ref).put("token", editable.token.value).put("title", "Legacy edit")
+            assertTrue(writer.update("legacy-update", ref, editable.token, EventPatch(title = FieldChange.Set("Legacy edit"))) is MutationResult.LocalSaved)
+            assertEquals(signature("UPDATE", oldUpdate), store.operation("legacy-update")!!.signature)
+            assertTrue(writer.update("legacy-update", ref, editable.token, EventPatch(title = FieldChange.Set("Legacy edit"), privacy = FieldChange.Set(null))) is MutationResult.Conflict)
+            assertEquals(2, provider.batchCount)
         }
     }
 
