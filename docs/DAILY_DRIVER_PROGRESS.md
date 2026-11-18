@@ -13,6 +13,25 @@ Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 - Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed, including
   12 new core contract tests and existing app/weather checks. No device/cloud/beta result is claimed.
 
+## Active implementation packets
+
+Foundation commit: `7ebdfd9`; draft integration PR: https://github.com/swapnilraj/calendar/pull/3.
+Local tests, APK assembly and lint passed after the bootstrap; GitHub integration CI is running.
+
+Six workers have isolated worktrees under `/workspace/daylight-workers/`, based on the foundation:
+
+| Packet | Owner/worktree | Current deliverable |
+|---|---|---|
+| A1 | Provider | Live metadata, range and detail reader with synthetic-provider tests |
+| B1 | Temporal | Pure transition-aware day geometry and boundary tests |
+| C1 | Calendar | All-day overflow/semantics, font sizing and RTL fixes |
+| D1 | Events | Native details component with safe link actions and UI tests |
+| E1 | Android | Reminder health/setup and notification components |
+| F1 | Verification | Read-only device readiness and controlled M0 evidence matrix |
+
+These packets are **in progress**, not integrated user-facing features. The lead owns application
+wiring and integration; workers do not overwrite shared contracts or each other's files.
+
 ## Milestone acceptance ledger
 
 | Milestone | Status | Required acceptance evidence |
