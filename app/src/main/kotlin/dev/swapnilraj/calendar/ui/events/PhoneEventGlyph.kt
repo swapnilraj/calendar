@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 
 /** Original simple Daylight line drawings; decorative row icons, never external brand assets. */
-internal enum class PhoneEventGlyph { CLOSE, CALENDAR, CLOCK, ZONE, PLACE, NOTES, ALERT, REPEAT, VISIBILITY, AVAILABILITY, MORE }
+internal enum class PhoneEventGlyph { CLOSE, CALENDAR, CLOCK, ZONE, PLACE, NOTES, ALERT, REPEAT, VISIBILITY, AVAILABILITY, MORE, EDIT, PEOPLE, LINK }
 @Composable
 internal fun PhoneEventIcon(kind: PhoneEventGlyph, modifier: Modifier = Modifier) {
     val ink = LocalContentColor.current
@@ -32,6 +32,9 @@ internal fun PhoneEventIcon(kind: PhoneEventGlyph, modifier: Modifier = Modifier
             PhoneEventGlyph.REPEAT -> { line(5f,7f,19f,7f); line(19f,7f,16f,4f); line(19f,7f,16f,10f); line(19f,17f,5f,17f); line(5f,17f,8f,14f); line(5f,17f,8f,20f) }
             PhoneEventGlyph.VISIBILITY -> { drawRoundRect(ink,p(6f,10f),Size(12*unit,11*unit),style=Stroke(1.6f*unit)); drawArc(ink,180f,180f,false,p(8f,3f),Size(8*unit,12*unit),style=Stroke(1.6f*unit)) }
             PhoneEventGlyph.AVAILABILITY -> { circle(12f,12f,8f); line(8f,12f,11f,15f); line(11f,15f,17f,9f) }
+            PhoneEventGlyph.EDIT -> { val path=Path().apply { moveTo(4*unit,20*unit); lineTo(5*unit,15*unit); lineTo(16*unit,4*unit); lineTo(20*unit,8*unit); lineTo(9*unit,19*unit); close() }; drawPath(path,ink,style=Stroke(1.6f*unit)); line(14f,6f,18f,10f) }
+            PhoneEventGlyph.PEOPLE -> { circle(9f,8f,3f); circle(18f,9f,2f); drawArc(ink,180f,180f,false,p(3f,13f),Size(12*unit,12*unit),style=Stroke(1.6f*unit)); drawArc(ink,190f,160f,false,p(14f,14f),Size(8*unit,9*unit),style=Stroke(1.6f*unit)) }
+            PhoneEventGlyph.LINK -> { circle(8f,14f,5f); circle(16f,10f,5f); line(8f,14f,16f,10f) }
             PhoneEventGlyph.MORE -> { for (y in listOf(5f,12f,19f)) drawCircle(ink,1.5f*unit,p(12f,y)) }
         }
     }
