@@ -55,9 +55,7 @@ class AndroidReminderDeliveryTest {
         val other = post(ReminderNotificationAlias(otherRef, now, "other"))
         notifications.post(candidate(), one); notifications.post(otherCandidate, other)
         val manager = context.getSystemService(NotificationManager::class.java)
-        // An unrelated notice is independent of the delivery components in this packet.
-        manager.notify("fixture-independent-notice", 9, android.app.Notification.Builder(context,
-            ReminderNotificationFactory.CHANNEL_ID).setSmallIcon(android.R.drawable.ic_popup_reminder).build())
+        assertEquals(ReminderTestNotificationResult.ACCEPTED, ReminderTestNotification(context).post())
         notifications.cancelIneligibleScopes(mapOf(CalendarId(3) to otherIdentity), emptyMap(), emptySet())
         assertFalse(notifications.isActive(one)); assertTrue(notifications.isActive(other))
         assertEquals(2, manager.activeNotifications.size) // Independent test notice survives.

@@ -5,6 +5,11 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+One application-owned reminder runtime serializes framework work and settings commits. Private
+receivers and bounded jobs recover after content, boot, clock, timezone and permission changes.
+Permission-loss cleanup can cancel app-owned delivery even when configuration reads fail, without
+substituting a successful disabled configuration or changing retained event/post history.
+
 Reminder delivery claims are coordinated with durable post identities, nonce-bound alarms and
 fresh permission/configuration checks. Unknown posting outcomes are retained without automatic
 repost. Unpinning a calendar clears its active app-owned alert while preserving posted history,
