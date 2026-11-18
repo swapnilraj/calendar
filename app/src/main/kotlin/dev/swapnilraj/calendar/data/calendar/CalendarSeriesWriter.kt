@@ -40,6 +40,8 @@ class CalendarSeriesWriter(
     private data class Prepared(val operations: ArrayList<ContentProviderOperation>, val receipt: JSONObject, val source: CalendarSeriesSource,
         val insertedAt: Int? = null)
     private data class ExceptionTemplate(val ref: EventRef, val allDay: Boolean, val zone: String, val duration: String)
+    private data class TemporalMaster(val start: RecurrenceStart, val template: RecurrenceMasterTemplate, val rule: String,
+        val ordinal: Int, val occurrence: RecurrenceOccurrence?)
     private data class FollowingDelete(val whole: Boolean, val prefixRule: String?, val future: List<SeriesException>)
 
     override suspend fun loadForEdit(selected: EventRef): SeriesReadResult = try {
@@ -64,7 +66,15 @@ class CalendarSeriesWriter(
                 is RecurrencePlanningResult.Unsupported -> unsupported
                 else -> unsupported.copy(limitation = SeriesActionLimitation.REVIEW_REQUIRED)
             }
-            series.copy(allowedFields = fields, scopes = mapOf(RecurrenceScope.ALL to supported,
+            val temporal = try {
+                if (source.master["dtend"] != null) throw SeriesSourceReview("A recurring master with DTEND requires review")
+                val intent = RecurrenceEditIntent.WholeSeriesEdit(series.snapshot.start)
+                val template = temporalMaster(series.snapshot, intent, RecurrencePlanAction.UpdateMaster())
+                temporalValues(source.master, source.calendar, template)
+                supported.copy(fields = series.allowedFields, recurrence = AccessDecision.ALLOWED)
+            } catch (_: Unsupported) { supported }
+            catch (_: SeriesSourceReview) { supported }
+            series.copy(allowedFields = temporal.fields, scopes = mapOf(RecurrenceScope.ALL to temporal,
                 RecurrenceScope.THIS to thisCapabilities, RecurrenceScope.FOLLOWING to following))
         }
     } catch (_: SecurityException) { SeriesReadResult.PermissionRequired }
@@ -116,6 +126,11 @@ class CalendarSeriesWriter(
                 if (!store.attempt(operationId)) return@withLock recover(store.operation(operationId)!!, false)
                 attempted = true
                 submitted = prepared
+                if (!permissions()) {
+                    store.mark(operationId, "FAILED")
+                    return@withLock common(MutationResult.PermissionRequired)
+                }
+                currentCoroutineContext().ensureActive()
                 val results = resolver.applyBatch(CalendarContract.AUTHORITY, prepared.operations)
                 prepared.insertedAt?.let { index ->
                     val id = results.getOrNull(index)?.uri?.let(ContentUris::parseId) ?: error("Created row was not identified")
@@ -153,6 +168,10 @@ class CalendarSeriesWriter(
         check(plan.series == source.snapshot.identity)
         if (command == SeriesCommand.Delete(RecurrenceScope.FOLLOWING)) return prepareFollowing(source, token, command, plan)
         if (plan.actions.size != 1) throw Unsupported("This executor requires a single preserving series action")
+        if (command is SeriesCommand.WholeEdit && (command.intent.newMasterStart != FieldChange.Keep ||
+            command.intent.duration != RecurrenceDurationChange.KeepRaw || command.intent.rule != RecurrenceRuleChanges()))
+            return prepareTemporal(source, token, command, plan.actions.single() as? RecurrencePlanAction.UpdateMaster
+                ?: throw Unsupported("Whole-series changes require one master action"))
         val operations = assertions(source)
         var deleted = false
         var insertedAt: Int? = null
@@ -207,6 +226,95 @@ class CalendarSeriesWriter(
             .put("eventUids", JSONObject().apply { targets.forEach { put(it.toString(), rows.getValue(it)[CalendarContract.Events.UID_2445]?.takeIf(String::isNotBlank)?.let(::hash) ?: JSONObject.NULL) } })
         template?.let { receipt.put("createdAllDay", it.allDay).put("createdZone", it.zone) }
         return Prepared(operations, receipt, source, insertedAt)
+    }
+
+    private fun temporalMaster(snapshot: RecurrenceSeriesSnapshot, intent: RecurrenceEditIntent.WholeSeriesEdit,
+        action: RecurrencePlanAction.UpdateMaster): TemporalMaster {
+        if (snapshot.exceptions.isNotEmpty() || !snapshot.exDatesRaw.isNullOrBlank() || !snapshot.rDatesRaw.isNullOrBlank() || !snapshot.exRuleRaw.isNullOrBlank())
+            throw Unsupported("Temporal and repeat edits currently require a series without overrides or date sets")
+        if (snapshot.ruleRaw.isNullOrBlank() || action.exclusions.let { it is FieldChange.Set && it.value.isNotEmpty() })
+            throw Unsupported("A single preserving RRULE is required")
+        nonTemporal(action.patch)
+        if (RecurrenceMasterTemplates.resolve(snapshot) !is RecurrenceMasterTemplateResult.Ready)
+            throw SeriesSourceReview("The existing master interval requires review before a temporal change")
+        val start = (action.anchor as? FieldChange.Set)?.value ?: snapshot.start
+        if ((start is RecurrenceStart.AllDay) != (snapshot.start is RecurrenceStart.AllDay))
+            throw SeriesSourceReview("Timed and all-day conversion requires a separately verified transformation")
+        val rawDuration = when (val change = action.duration) {
+            RecurrenceDurationChange.KeepRaw -> snapshot.durationRaw
+            is RecurrenceDurationChange.TimedElapsed -> "PT${change.duration.seconds}S"
+            is RecurrenceDurationChange.AllDayDays -> "P${change.days}D"
+        }
+        val template = (RecurrenceMasterTemplates.resolve(start, rawDuration) as? RecurrenceMasterTemplateResult.Ready)?.template
+            ?: throw SeriesSourceReview("The master interval is not compatible with native recurrence storage")
+        val rule = (RecurrenceMasterTemplates.effectiveRule(snapshot, intent, action) as? RecurrenceMasterRuleResult.Ready)?.ruleRaw
+            ?: throw SeriesSourceReview("The repeat rule cannot be preserved with this master change")
+        val selected = requireNotNull(snapshot.validatedSelection)
+        val original = requireNotNull(selected.recurrence).originalStart
+        val key = if (snapshot.start is RecurrenceStart.AllDay) RecurrenceKey.Date(original.atOffset(ZoneOffset.UTC).toLocalDate()) else RecurrenceKey.Timed(original)
+        val mapped = RecurrenceOrdinalMapping.map(requireNotNull(snapshot.ruleRaw), snapshot.start, key, rule, start,
+            minOf(budget.maxInstances, 10_000)) as? RecurrenceOrdinalResult.Ready
+            ?: throw SeriesSourceReview("The selected ordinal cannot be proven within the recurrence budget")
+        return TemporalMaster(start, template, rule, mapped.ordinal, mapped.occurrence)
+    }
+
+    private fun temporalValues(master: Map<String, String?>, calendar: Map<String, String?>, temporal: TemporalMaster): ContentValues {
+        val oldZone = master["eventTimezone"]
+        val zone = if (temporal.start is RecurrenceStart.AllDay) "UTC" else temporal.template.eventZone.id
+        if (oldZone != zone && calendar[CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE] != "1")
+            throw SeriesSourceReview("This calendar does not prove permission to change the event time zone")
+        val start = when (val time = temporal.template.time) {
+            is EventTime.Timed -> time.start
+            is EventTime.AllDay -> time.dates.start.atStartOfDay(ZoneOffset.UTC).toInstant()
+        }
+        return ContentValues().apply {
+            put("dtstart", start.toEpochMilli()); putNull("dtend"); put("duration", temporal.template.durationRaw)
+            put("allDay", if (temporal.start is RecurrenceStart.AllDay) 1 else 0); put("eventTimezone", zone)
+            if (oldZone != zone) put("eventEndTimezone", zone)
+            put("rrule", temporal.rule)
+        }
+    }
+
+    private fun prepareTemporal(source: CalendarSeriesSource, token: EditToken, command: SeriesCommand.WholeEdit,
+        action: RecurrencePlanAction.UpdateMaster): Prepared {
+        if (source.master["dtend"] != null) throw SeriesSourceReview("A recurring master with DTEND requires review")
+        val temporal = temporalMaster(source.snapshot, command.intent, action)
+        val values = changes(source, source.master, action.patch).apply { putAll(temporalValues(source.master, source.calendar, temporal)) }
+        val id = source.snapshot.identity.masterEventId
+        val operations = assertions(source)
+        operations += ContentProviderOperation.newUpdate(eventUri(id)).withValues(values).withExpectedCount(1).withYieldAllowed(false).build()
+        editAlerts(operations, id, (action.patch.alertMinutes as? FieldChange.Set)?.value)
+        val expected = expectedTemporalRow(source.master, values)
+        operations += assertRow(eventUri(id), expected)
+        assertTemporalChildren(operations, source, (action.patch.alertMinutes as? FieldChange.Set)?.value)
+        val receipt = JSONObject().put("version", 1).put("temporal", true).put("token", token.value).put("command", commandJson(command))
+            .put("calendar", source.snapshot.identity.calendarId.value).put("master", id).put("selected", refJson(requireNotNull(source.snapshot.validatedSelection)))
+            .put("scope", RecurrenceScope.ALL.name).put("deleted", false).put("created", false).put("namespace", namespace(source.calendar))
+            .put("targets", JSONArray(listOf(id))).put("syncIds", JSONObject().put(id.toString(), source.master["_sync_id"] ?: JSONObject.NULL))
+            .put("eventUids", JSONObject().put(id.toString(), source.master["uid2445"]?.takeIf(String::isNotBlank)?.let(::hash) ?: JSONObject.NULL))
+            .put("calendarProof", temporalCalendarProof(source.calendar)).put("template", temporalJson(temporal))
+        checkStoredJson(receipt.toString(), readBudgets.maxCanonicalBytes)
+        return Prepared(operations, receipt, source)
+    }
+
+    private fun expectedTemporalRow(master: Map<String, String?>, values: ContentValues) = master.filterKeys {
+        it !in setOf("dirty", "mutators", "lastDate", "lastSynced")
+    }.toMutableMap().apply { values.keySet().forEach { put(it, values.get(it)?.toString()) } }
+
+    private fun assertTemporalChildren(operations: ArrayList<ContentProviderOperation>, source: CalendarSeriesSource, alerts: List<Int>?) {
+        val id = source.snapshot.identity.masterEventId
+        listOf(CalendarContract.Reminders.CONTENT_URI to source.reminders, CalendarContract.Attendees.CONTENT_URI to source.attendees,
+            CalendarContract.ExtendedProperties.CONTENT_URI to source.extendedProperties).forEach { (uri, grouped) ->
+            val rows = grouped[id].orEmpty()
+            val retained = if (uri == CalendarContract.Reminders.CONTENT_URI && alerts != null) rows.filter { it["method"] != "1" } else rows
+            operations += ContentProviderOperation.newAssertQuery(uri).withSelection("event_id = ?", arrayOf(id.toString())).withValue("event_id", id)
+                .withExpectedCount(retained.size + if (uri == CalendarContract.Reminders.CONTENT_URI) alerts?.size ?: 0 else 0).withYieldAllowed(false).build()
+            retained.forEach { operations += assertRow(ContentUris.withAppendedId(uri, it["_id"]!!.toLong()), it) }
+            if (uri == CalendarContract.Reminders.CONTENT_URI && alerts != null) alerts.forEach { minutes ->
+                operations += ContentProviderOperation.newAssertQuery(uri).withSelection("event_id = ? AND method = ? AND minutes = ?", arrayOf(id.toString(), "1", minutes.toString()))
+                    .withValue("event_id", id).withValue("method", 1).withValue("minutes", minutes).withExpectedCount(1).withYieldAllowed(false).build()
+            }
+        }
     }
 
     private fun followingDelete(snapshot: RecurrenceSeriesSnapshot, plan: RecurrencePlanningResult.Ready): FollowingDelete {
@@ -417,7 +525,9 @@ class CalendarSeriesWriter(
         if (patch.time != FieldChange.Keep || patch.eventZone != FieldChange.Keep)
             throw Unsupported("Time and zone changes require a separately verified series executor")
     }
-    private fun changes(source: CalendarSeriesSource, row: Map<String, String?>, patch: EventPatch): ContentValues {
+    private fun changes(source: CalendarSeriesSource, row: Map<String, String?>, patch: EventPatch): ContentValues =
+        changes(source.calendar, source.reminders, row, patch)
+    private fun changes(calendar: Map<String, String?>, reminders: Map<Long, List<Map<String, String?>>>, row: Map<String, String?>, patch: EventPatch): ContentValues {
         val id = row["_id"]!!.toLong()
         val changes = ContentValues()
         (patch.title as? FieldChange.Set)?.let { changes.put(CalendarContract.Events.TITLE, it.value) }
@@ -426,7 +536,7 @@ class CalendarSeriesWriter(
         val invalid = mutableSetOf<InvalidEventField>()
         (patch.availability as? FieldChange.Set)?.let {
             val value = it.value ?: 0
-            val allowed = source.calendar[CalendarContract.Calendars.ALLOWED_AVAILABILITY]?.takeIf(String::isNotBlank)?.split(',')?.map { raw -> raw.trim().toIntOrNull() }
+            val allowed = calendar[CalendarContract.Calendars.ALLOWED_AVAILABILITY]?.takeIf(String::isNotBlank)?.split(',')?.map { raw -> raw.trim().toIntOrNull() }
             if (value !in 0..2 || allowed == null || allowed.any { raw -> raw == null || raw !in 0..2 } || value !in allowed) invalid += InvalidEventField.AVAILABILITY
             else changes.put(CalendarContract.Events.AVAILABILITY, value)
         }
@@ -436,9 +546,9 @@ class CalendarSeriesWriter(
         }
         val alerts = (patch.alertMinutes as? FieldChange.Set)?.value
         if (alerts != null) {
-            val preserved = source.reminders[id].orEmpty().count { it["method"] != CalendarContract.Reminders.METHOD_ALERT.toString() }
-            val allowed = source.calendar[CalendarContract.Calendars.ALLOWED_REMINDERS]?.split(',')?.mapNotNull { it.trim().toIntOrNull() }
-            val maximum = source.calendar[CalendarContract.Calendars.MAX_REMINDERS]?.toIntOrNull()
+            val preserved = reminders[id].orEmpty().count { it["method"] != CalendarContract.Reminders.METHOD_ALERT.toString() }
+            val allowed = calendar[CalendarContract.Calendars.ALLOWED_REMINDERS]?.split(',')?.mapNotNull { it.trim().toIntOrNull() }
+            val maximum = calendar[CalendarContract.Calendars.MAX_REMINDERS]?.toIntOrNull()
             if (alerts.any { it == CalendarContract.Reminders.MINUTES_DEFAULT } || alerts.distinct().size != alerts.size ||
                 (alerts.isNotEmpty() && (CalendarContract.Reminders.METHOD_ALERT !in allowed.orEmpty() || maximum == null || maximum < alerts.size + preserved)))
                 invalid += InvalidEventField.ALERTS
@@ -453,6 +563,9 @@ class CalendarSeriesWriter(
         val alerts = (patch.alertMinutes as? FieldChange.Set)?.value
         if (changes.size() == 0) throw Unsupported("No supported fields were changed")
         operations += ContentProviderOperation.newUpdate(eventUri(id)).withValues(changes).withExpectedCount(1).withYieldAllowed(false).build()
+        editAlerts(operations, id, alerts)
+    }
+    private fun editAlerts(operations: ArrayList<ContentProviderOperation>, id: Long, alerts: List<Int>?) {
         if (alerts != null) {
             operations += ContentProviderOperation.newDelete(CalendarContract.Reminders.CONTENT_URI).withSelection("event_id = ? AND method = ?",
                 arrayOf(id.toString(), CalendarContract.Reminders.METHOD_ALERT.toString())).withYieldAllowed(false).build()
@@ -540,6 +653,7 @@ class CalendarSeriesWriter(
         val originalExceptions = bound.getJSONArray("exceptions").let { array -> List(array.length()) { array.getJSONObject(it).getString("_id").toLong() } }
         val boundRows = (listOf(bound.getJSONObject("master")) + bound.getJSONArray("exceptions").let { array -> List(array.length()) { array.getJSONObject(it) } })
             .associateBy { it.getString("_id").toLong() }
+        if (receipt.optBoolean("temporal", false)) return recoverTemporal(operation, receipt, identity, selected, bound, targets)
         if (scope == RecurrenceScope.FOLLOWING) return recoverFollowing(operation, receipt, identity, selected, bound, boundRows, targets)
         if (receipt.optBoolean("created", false)) return recoverCreated(operation, receipt, identity, selected, scope, deleted, bound, boundRows, targets)
         val expectedTargets = when {
@@ -579,6 +693,99 @@ class CalendarSeriesWriter(
         store.mark(operation.id, "VERIFIED")
         sourceReader.refresh()
         return if (deleted) SeriesMutationResult.LocalDeleted(identity, scope, selected) else SeriesMutationResult.LocalSaved(identity, currentSelected)
+    }
+
+    private suspend fun recoverTemporal(operation: CalendarLocalStore.Operation, receipt: JSONObject, identity: SeriesIdentity,
+        selected: EventRef, bound: JSONObject, targets: List<Long>): SeriesMutationResult {
+        fun uncertain() = common(MutationResult.Uncertain(operation.id, identity.masterEventId))
+        if (receipt.getString("scope") != RecurrenceScope.ALL.name || receipt.getBoolean("deleted") || receipt.optBoolean("created", false) ||
+            targets != listOf(identity.masterEventId)) return uncertain()
+        val frozen = store.edit(receipt.getString("token")) ?: return uncertain()
+        val snapshot = sourceReader.frozenSnapshot(frozen)
+        if (snapshot.identity != identity || snapshot.validatedSelection != selected) return uncertain()
+        val command = parseWholeCommand(receipt.getJSONObject("command"))
+        val plan = RecurrenceEditing.plan(snapshot, selected, command.intent, budget) as? RecurrencePlanningResult.Ready ?: return uncertain()
+        val action = plan.actions.singleOrNull() as? RecurrencePlanAction.UpdateMaster ?: return uncertain()
+        val temporal = temporalMaster(snapshot, command.intent, action)
+        if (receipt.getJSONObject("template").toString() != temporalJson(temporal).toString()) return uncertain()
+        fun decode(json: JSONObject) = json.keys().asSequence().associateWith { json.nullable(it) }
+        val calendarBound = decode(bound.getJSONObject("calendar"))
+        if (temporalCalendarProof(calendarBound).toString() != receipt.getJSONObject("calendarProof").toString()) return uncertain()
+        suspend fun currentCalendar(): Map<String, String?>? {
+            val fields = (calendarProof.toList() + "_sync_id").distinct().toTypedArray()
+            val uri = ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI, identity.calendarId.value)
+            return try { rows(uri, fields).singleOrNull() }
+                catch (_: IllegalArgumentException) { rows(uri, calendarProof).singleOrNull() }
+        }
+        fun matchesCalendar(current: Map<String, String?>?) = current != null && temporalCalendarProof(current).toString() == receipt.getJSONObject("calendarProof").toString() &&
+            (current[CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL]?.toIntOrNull() ?: -1) >= CalendarContract.Calendars.CAL_ACCESS_READ
+        if (!matchesCalendar(currentCalendar())) return uncertain()
+        val master = decode(bound.getJSONObject("master"))
+        if (master["dtend"] != null) return uncertain()
+        fun children(key: String): Map<Long, List<Map<String, String?>>> = bound.getJSONArray(key).let { groups ->
+            List(groups.length()) { index -> groups.getJSONObject(index).let { group ->
+                val values = group.getJSONArray("rows")
+                group.getLong("parent") to List(values.length()) { row -> decode(values.getJSONObject(row)) }
+            } }.toMap()
+        }
+        val reminders = children("reminders")
+        val values = changes(calendarBound, reminders, master, action.patch).apply { putAll(temporalValues(master, calendarBound, temporal)) }
+        val expected = expectedTemporalRow(master, values)
+        val actual = rows(eventUri(identity.masterEventId), expected.keys.toTypedArray()).singleOrNull() ?: return uncertain()
+        if (actual != expected) return uncertain()
+        // Query only identity columns for phantom membership; never join foreign private payload.
+        val sync = master["_sync_id"]?.takeIf(String::isNotBlank)
+        val membership = "deleted = 0 AND (_id = ? OR original_id = ?" + if (sync == null) ")" else " OR (calendar_id = ? AND original_sync_id = ?))"
+        val args = listOf(identity.masterEventId.toString(), identity.masterEventId.toString()) + if (sync == null) emptyList() else listOf(identity.calendarId.value.toString(), sync)
+        val members = rows(CalendarContract.Events.CONTENT_URI, arrayOf("_id", "calendar_id"), membership, args.toTypedArray())
+        if (members.size != 1 || members.single()["_id"] != identity.masterEventId.toString() || members.single()["calendar_id"] != identity.calendarId.value.toString()) return uncertain()
+        if (sync == null && rows(CalendarContract.Events.CONTENT_URI, arrayOf("_id"),
+                "calendar_id = ? AND original_id IS NULL AND original_sync_id IS NOT NULL AND deleted = 0", arrayOf(identity.calendarId.value.toString())).isNotEmpty()) return uncertain()
+        val alerts = (action.patch.alertMinutes as? FieldChange.Set)?.value
+        for ((uri, original) in listOf(CalendarContract.Reminders.CONTENT_URI to reminders,
+                CalendarContract.Attendees.CONTENT_URI to children("attendees"), CalendarContract.ExtendedProperties.CONTENT_URI to children("extendedProperties"))) {
+            val before = original[identity.masterEventId].orEmpty()
+            val changedAlerts = uri == CalendarContract.Reminders.CONTENT_URI && alerts != null
+            val retained = if (changedAlerts) before.filter { it["method"] != "1" } else before
+            val fields = (before.flatMap { it.keys } + listOf("_id", "event_id") + if (uri == CalendarContract.Reminders.CONTENT_URI) listOf("method", "minutes") else emptyList()).distinct().toTypedArray()
+            val after = rows(uri, fields, "event_id = ?", arrayOf(identity.masterEventId.toString()))
+            if (after.size != retained.size + if (changedAlerts) requireNotNull(alerts).size else 0) return uncertain()
+            val retainedIds = retained.map { it.getValue("_id") }.toSet()
+            for (row in retained) if (after.singleOrNull { it["_id"] == row["_id"] }?.let { current -> row.all { (key, value) -> current[key] == value } } != true) return uncertain()
+            if (changedAlerts) {
+                val authored = after.filter { it["_id"] !in retainedIds }
+                if (authored.any { it["event_id"] != identity.masterEventId.toString() || it["method"] != "1" } ||
+                    authored.map { it["minutes"]?.toIntOrNull() }.sortedBy { it } != requireNotNull(alerts).sorted()) return uncertain()
+            }
+        }
+        val candidate = temporal.occurrence ?: RecurrenceRules.preview(temporal.rule, temporal.start, 1).singleOrNull() ?: return uncertain()
+        val candidateStart: RecurrenceStart = when (candidate) {
+            is RecurrenceOccurrence.AllDay -> RecurrenceStart.AllDay(candidate.date)
+            is RecurrenceOccurrence.Timed -> RecurrenceStart.Timed(candidate.localDateTime, temporal.template.eventZone, candidate.instant.atZone(temporal.template.eventZone).offset)
+        }
+        val interval = (RecurrenceMasterTemplates.resolve(candidateStart, temporal.template.durationRaw) as? RecurrenceMasterTemplateResult.Ready)?.template ?: return uncertain()
+        val times = when (val time = interval.time) {
+            is EventTime.Timed -> time.start to time.end
+            is EventTime.AllDay -> time.dates.start.atStartOfDay(ZoneOffset.UTC).toInstant() to time.dates.endExclusive.atStartOfDay(ZoneOffset.UTC).toInstant()
+        }
+        val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().apply {
+            ContentUris.appendId(this, times.first.toEpochMilli()); ContentUris.appendId(this, Math.addExact(times.first.toEpochMilli(), 1))
+        }.build()
+        val instances = rows(uri, arrayOf("event_id", "calendar_id", "begin", "end", "allDay", "original_id", "original_sync_id", "originalInstanceTime"),
+            "event_id = ? AND calendar_id = ? AND begin = ?", arrayOf(identity.masterEventId.toString(), identity.calendarId.value.toString(), times.first.toEpochMilli().toString()))
+        val occurrence = instances.singleOrNull() ?: return uncertain()
+        if (occurrence["event_id"] != identity.masterEventId.toString() || occurrence["calendar_id"] != identity.calendarId.value.toString() ||
+            occurrence["begin"]?.toLongOrNull() != times.first.toEpochMilli() || occurrence["end"]?.toLongOrNull() != times.second.toEpochMilli() ||
+            occurrence["allDay"] != if (candidate is RecurrenceOccurrence.AllDay) "1" else "0") return uncertain()
+        if (listOf("original_id", "original_sync_id", "originalInstanceTime").any { !occurrence[it].isNullOrBlank() }) return uncertain()
+        if (!matchesCalendar(currentCalendar())) return uncertain()
+        ensureRead()
+        store.mark(operation.id, "VERIFIED")
+        sourceReader.refresh()
+        val result = if (temporal.occurrence == null) null else EventRef(identity.calendarId, identity.masterEventId,
+            Instant.ofEpochMilli(occurrence.getValue("begin")!!.toLong()), Instant.ofEpochMilli(occurrence.getValue("end")!!.toLong()),
+            RecurrenceRef(identity.masterEventId, Instant.ofEpochMilli(occurrence.getValue("begin")!!.toLong())))
+        return SeriesMutationResult.LocalSaved(identity, result)
     }
 
     private suspend fun recoverFollowing(operation: CalendarLocalStore.Operation, receipt: JSONObject, identity: SeriesIdentity, selected: EventRef,
@@ -727,9 +934,61 @@ class CalendarSeriesWriter(
         }
         private fun parseRef(json: JSONObject) = EventRef(CalendarId(json.getLong("calendar")), json.getLong("event"), Instant.parse(json.getString("start")), Instant.parse(json.getString("end")),
             RecurrenceRef(json.getLong("master"), Instant.parse(json.getString("original"))))
+        private fun temporalCalendarProof(calendar: Map<String, String?>) = JSONObject().apply {
+            listOf("_id", "account_name", "account_type", "ownerAccount", "_sync_id").forEach { put(it, calendar[it] ?: JSONObject.NULL) }
+        }
+        private fun temporalJson(value: TemporalMaster) = JSONObject().put("start", startJson(value.start)).put("duration", value.template.durationRaw)
+            .put("rule", value.rule).put("ordinal", value.ordinal).put("occurrence", value.occurrence?.let {
+                when (it) {
+                    is RecurrenceOccurrence.AllDay -> JSONObject().put("date", it.date.toString())
+                    is RecurrenceOccurrence.Timed -> JSONObject().put("instant", it.instant.toString()).put("local", it.localDateTime.toString())
+                }
+            } ?: JSONObject.NULL)
         private fun startJson(start: RecurrenceStart): JSONObject = when (start) {
             is RecurrenceStart.AllDay -> JSONObject().put("date", start.date.toString())
             is RecurrenceStart.Timed -> JSONObject().put("local", start.localDateTime.toString()).put("zone", start.zone.id).put("offset", start.preferredOffset?.id ?: JSONObject.NULL)
+        }
+        /** Decode only the exact frozen whole command we issue; reject extra/legacy guessed intent. */
+        private fun parseWholeCommand(json: JSONObject): SeriesCommand.WholeEdit {
+            require(json.getString("type") == "whole")
+            fun start(value: JSONObject): RecurrenceStart = if (value.has("date")) RecurrenceStart.AllDay(java.time.LocalDate.parse(value.getString("date")))
+                else RecurrenceStart.Timed(java.time.LocalDateTime.parse(value.getString("local")), ZoneId.of(value.getString("zone")),
+                    if (value.isNull("offset")) null else ZoneOffset.of(value.getString("offset")))
+            val patch = json.getJSONObject("patch")
+            fun text(key: String): FieldChange<String> = if (patch.has(key)) FieldChange.Set(patch.getString(key)) else FieldChange.Keep
+            fun optionalInt(key: String): FieldChange<Int?> = if (patch.has(key)) FieldChange.Set(if (patch.isNull(key)) null else patch.getInt(key)) else FieldChange.Keep
+            val fields = EventPatch(title = text("title"), location = text("location"), description = text("description"),
+                alertMinutes = if (patch.has("alerts")) patch.getJSONArray("alerts").let { values -> FieldChange.Set(List(values.length()) { values.getInt(it) }) } else FieldChange.Keep,
+                availability = optionalInt("availability"), privacy = optionalInt("privacy"))
+            val rawDuration = json.get("duration")
+            val duration = if (rawDuration is String) { require(rawDuration == "keep"); RecurrenceDurationChange.KeepRaw }
+                else (rawDuration as JSONObject).let { if (it.has("seconds")) RecurrenceDurationChange.TimedElapsed(java.time.Duration.ofSeconds(it.getLong("seconds")))
+                    else RecurrenceDurationChange.AllDayDays(it.getLong("days")) }
+            val rule = json.getJSONObject("rule")
+            val pattern: FieldChange<RecurrencePattern> = if (!rule.has("pattern")) FieldChange.Keep else FieldChange.Set(rule.getJSONObject("pattern").let {
+                when (it.getString("type")) {
+                    "daily" -> RecurrencePattern.Daily
+                    "weekly" -> { val days = it.getJSONArray("days"); require(days.length() in 1..7); RecurrencePattern.Weekly(List(days.length()) { index -> java.time.DayOfWeek.valueOf(days.getString(index)) }.toSet()) }
+                    "monthlyDate" -> RecurrencePattern.MonthlyDate(it.getInt("day"))
+                    "monthlyWeekday" -> RecurrencePattern.MonthlyWeekday(it.getInt("ordinal"), java.time.DayOfWeek.valueOf(it.getString("day")))
+                    "yearly" -> RecurrencePattern.Yearly(java.time.MonthDay.parse(it.getString("date")))
+                    else -> error("Unknown pattern")
+                }
+            })
+            val end: FieldChange<RecurrenceEnd> = if (!rule.has("end")) FieldChange.Keep else FieldChange.Set(rule.getJSONObject("end").let {
+                when {
+                    it.has("type") -> { require(it.getString("type") == "never"); RecurrenceEnd.Never }
+                    it.has("count") -> RecurrenceEnd.Count(it.getInt("count"))
+                    it.has("date") -> RecurrenceEnd.ThroughDate(java.time.LocalDate.parse(it.getString("date")))
+                    else -> RecurrenceEnd.ExactUntil(Instant.parse(it.getString("instant")))
+                }
+            })
+            val result = SeriesCommand.WholeEdit(RecurrenceEditIntent.WholeSeriesEdit(start(json.getJSONObject("expected")), fields,
+                if (json.has("start")) FieldChange.Set(start(json.getJSONObject("start"))) else FieldChange.Keep, duration,
+                RecurrenceRuleChanges(pattern, if (rule.has("interval")) FieldChange.Set(rule.getInt("interval")) else FieldChange.Keep,
+                    if (rule.has("weekStart")) FieldChange.Set(java.time.DayOfWeek.valueOf(rule.getString("weekStart"))) else FieldChange.Keep, end)))
+            require(commandJson(result).toString() == json.toString())
+            return result
         }
         private fun patchJson(patch: EventPatch): JSONObject {
             checkPatchInput(patch, 1024 * 1024)

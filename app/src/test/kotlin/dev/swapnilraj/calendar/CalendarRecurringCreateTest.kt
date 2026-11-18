@@ -29,7 +29,10 @@ class CalendarRecurringCreateTest {
         recurrence = RecurrenceSpec(RecurrencePattern.Daily, end = RecurrenceEnd.Count(4)))
     /** SQLite enforces the native recurring master shape. First-instance bounds use AOSP's
      * fixed elapsed Duration arithmetic; this fixture does not claim cloud or full-rule expansion. */
-    private class Provider : ContentProvider() {
+    internal class Provider : ContentProvider() {
+        var allowUpdates = false
+        var expandInstances = false
+        var afterCommit: (() -> Unit)? = null
         val db = SQLiteDatabase.create(null)
         data class Query(val path: String, val fields: List<String>?, val selection: String?)
         val queries = mutableListOf<Query>()
@@ -69,12 +72,15 @@ class CalendarRecurringCreateTest {
             if (failReadsAfterCommit && committed) error("Synthetic post-commit read failure")
             val path = uri.pathSegments.first(); queries += Query(path, fields?.toList(), selection)
             if (path == "instances" && delayedInstances) return MatrixCursor(fields!!)
+            if (path == "instances" && expandInstances) return expanded(uri, fields!!, selection, args)
             val where = mutableListOf<String>(); val bind = mutableListOf<String>()
             if (path != "instances") uri.lastPathSegment?.toLongOrNull()?.let { where += "_id = ?"; bind += it.toString() }
             if (selection != null) { where += "($selection)"; bind += args.orEmpty() }
             val projected = if (path == "instances") fields?.map { when (it) {
                 "begin" -> "(begin+$beginDelta) AS begin"; "end" -> "(end+$endDelta) AS end"; else -> it
-            } }?.toTypedArray() else fields
+            } }?.toTypedArray() else fields ?: if (path == "events") db.rawQuery("PRAGMA table_info(events)", null).use { cursor -> buildList {
+                while (cursor.moveToNext()) cursor.getString(1).takeIf { it != "native_duration_ms" }?.let(::add)
+            }.toTypedArray() } else null
             if (path == "instances") { where += "(begin+$beginDelta) < CAST(? AS INTEGER) AND (end+$endDelta) > CAST(? AS INTEGER)"; bind += uri.pathSegments[3]; bind += uri.pathSegments[2] }
             return db.query(if (path == "instances") "instance_view" else path, projected, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
         }
@@ -95,12 +101,71 @@ class CalendarRecurringCreateTest {
             val id = db.insertOrThrow(path, null, inserted)
             return ContentUris.withAppendedId(uri, id)
         }
-        override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?): Int = error("Create/recover must not update")
-        override fun delete(uri: Uri, selection: String?, args: Array<out String>?): Int = error("Create/recover must not delete")
+        override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?): Int {
+            check(allowUpdates && uri.pathSegments.first() == "events")
+            val authored = ContentValues(values)
+            authored.getAsString("duration")?.let { raw ->
+                val match = Regex("^PT([0-9]+)S$").matchEntire(raw)
+                val hours = Regex("^PT([0-9]+)H$").matchEntire(raw)
+                val days = Regex("^P([0-9]+)D$").matchEntire(raw)
+                val seconds = match?.groupValues?.get(1)?.toLong() ?: hours?.groupValues?.get(1)?.toLong()?.times(3600)
+                    ?: days?.groupValues?.get(1)?.toLong()?.times(86400) ?: error("Unsupported synthetic native duration")
+                require(seconds in 1..Int.MAX_VALUE.toLong()); authored.put("native_duration_ms", seconds * 1000)
+            }
+            val id = requireNotNull(uri.lastPathSegment?.toLongOrNull())
+            return db.update("events", authored, "_id = ?" + if (selection == null) "" else " AND ($selection)", arrayOf(id.toString(), *args.orEmpty()))
+        }
+        private fun expanded(uri: Uri, fields: Array<out String>, selection: String?, args: Array<out String>?): Cursor {
+            val result = MatrixCursor(fields)
+            val low = uri.pathSegments[2].toLong(); val high = uri.pathSegments[3].toLong()
+            db.rawQuery("SELECT * FROM events WHERE deleted=0", null).use { cursor -> while (cursor.moveToNext()) {
+                val row = cursor.columnNames.indices.associate { column -> cursor.columnNames[column] to if (cursor.isNull(column)) null else cursor.getString(column) }
+                if (selection != null && args != null && (args[0] != row["_id"] || args.getOrNull(1)?.let { it != row["calendar_id"] } == true)) continue
+                val raw = row["rrule"] ?: continue
+                val rule = raw.split(';').associate { it.substringBefore('=') to it.substringAfter('=') }
+                val count = rule["COUNT"]?.toInt() ?: 10000
+                val interval = rule["INTERVAL"]?.toLong() ?: 1
+                val zone = ZoneId.of(row["eventTimezone"])
+                val seed = Instant.ofEpochMilli(row.getValue("dtstart")!!.toLong()).atZone(zone)
+                var emitted = 0
+                for (day in 0L..70000L) {
+                    val local = seed.plusDays(day)
+                    val matches = when (rule["FREQ"]) {
+                        "DAILY" -> day % interval == 0L
+                        "WEEKLY" -> {
+                            val startWeek = seed.toLocalDate().with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                            val weeks = java.time.temporal.ChronoUnit.WEEKS.between(startWeek, local.toLocalDate().with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)))
+                            weeks % interval == 0L && local.dayOfWeek.name.take(2) in (rule["BYDAY"]?.split(',') ?: listOf(seed.dayOfWeek.name.take(2)))
+                        }
+                        else -> error("Synthetic expanded oracle only models DAILY/WEEKLY")
+                    }
+                    if (!matches) continue
+                    val begin = local.toInstant().toEpochMilli() + beginDelta
+                    val until = rule["UNTIL"]
+                    if (until != null) {
+                        val endpoint = if (until.length == 8) LocalDate.parse(until, java.time.format.DateTimeFormatter.BASIC_ISO_DATE).plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1
+                            else Instant.from(java.time.format.DateTimeFormatter.ofPattern("uuuuMMdd'T'HHmmssX").parse(until)).toEpochMilli()
+                        if (begin > endpoint) break
+                    }
+                    if (++emitted > count) break
+                    val end = begin + row.getValue("native_duration_ms")!!.toLong() + endDelta
+                    if (begin >= high) break
+                    if (end <= low) continue
+                    if (args?.getOrNull(2)?.toLongOrNull()?.let { it != begin } == true) continue
+                    result.addRow(fields.map<String, Any?> { field -> when (field) { "event_id" -> row["_id"]; "begin" -> begin; "end" -> end; else -> row[field] } }.toTypedArray())
+                }
+            } }
+            return result
+        }
+        override fun delete(uri: Uri, selection: String?, args: Array<out String>?): Int {
+            check(allowUpdates && uri.pathSegments.first() == "reminders")
+            return db.delete("reminders", selection, args)
+        }
         override fun applyBatch(operations: ArrayList<ContentProviderOperation>): Array<ContentProviderResult> {
             batchCount++; beforeBatch?.also { beforeBatch = null }?.invoke(); db.beginTransaction()
             val results = try { super.applyBatch(operations).also { db.setTransactionSuccessful() } } finally { db.endTransaction() }
             committed = true
+            afterCommit?.invoke()
             if (lostAck) error("Synthetic lost acknowledgement")
             if (malformedAck) results[1] = ContentProviderResult(Uri.parse("content://${CalendarContract.AUTHORITY}/events/not-an-id"))
             return results

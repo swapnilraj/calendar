@@ -908,4 +908,25 @@ class CalendarSeriesWriterTest {
             assertEquals(1, f.provider.batchCount)
         }
     }
+    @Test fun wholeTemporalRuleChangeUsesNormalizedNativeJoinedChildrenAndPreservesOpaquePayload() = runBlocking {
+        fixture { f ->
+            f.provider.events.removeAll { it["_id"] != "10" }
+            f.provider.reminders.removeAll { it["event_id"] != "10" }
+            f.provider.instances.removeAll { it["event_id"] != "10" }
+            f.provider.instances += instance(EventRef(CalendarId(2), 10, start, start.plusSeconds(3600), RecurrenceRef(10, start)), f.provider.events.single())
+            f.addSelfAttendee(mapOf("future_oem" to "Retain opaque child"))
+            f.provider.recalculateDailyLastDate = true
+            f.provider.events.single()["lastDate"] = start.plusSeconds(4 * 86400).toEpochMilli().toString()
+            val edit = f.editable()
+            assertEquals(AccessDecision.ALLOWED, edit.scopes.getValue(RecurrenceScope.ALL).recurrence)
+            val result = f.writer.mutate("native-rule", selected, edit.token, SeriesCommand.WholeEdit(RecurrenceEditIntent.WholeSeriesEdit(
+                edit.snapshot.start, rule = RecurrenceRuleChanges(end = FieldChange.Set(RecurrenceEnd.Count(1)))))) as SeriesMutationResult.LocalSaved
+            assertNull(result.selected)
+            assertTrue(f.provider.events.single()["rrule"]!!.contains("COUNT=1"))
+            assertEquals("Retain opaque child", f.provider.attendees.single()["future_oem"])
+            assertEquals("Never rewrite this", f.provider.events.single()["future_private_column"])
+            assertTrue(f.provider.calls.filter { it.inBatch && it.path == "attendees" }.all { it.fields != null && "rrule" !in it.fields })
+        }
+    }
+
 }
