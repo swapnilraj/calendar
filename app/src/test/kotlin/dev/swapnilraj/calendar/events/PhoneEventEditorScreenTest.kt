@@ -95,6 +95,16 @@ class PhoneEventEditorScreenTest {
         assertEquals("+01:00", controller.state.fields.startOffset); assertEquals("01:30", controller.state.fields.startTime)
         assertEquals(0, writer.creates)
     }
+    @Test fun unchangedMinutePickerPreservesVisibleSourceSecondsAndMilliseconds() {
+        val precise = draft.copy(time = EventTime.Timed(Instant.parse("2028-06-15T09:00:30.123Z"), Instant.parse("2028-06-15T10:00:30.456Z")))
+        val controller = preparedEditor(precise, null, "precise", writer, store, scope)
+        show(controller)
+        compose.onNodeWithContentDescription("Starts: 09:00:30.123").performScrollTo().performClick()
+        compose.onNodeWithText("Done").performClick(); compose.waitForIdle()
+        assertEquals("09:00:30.123", controller.state.fields.startTime)
+        assertEquals(precise.time, EventEditorController.normalizedDraft(controller.state.fields).time)
+        assertEquals(0, writer.creates)
+    }
     @Test fun notificationRowsUseHumanLabelsAndAddingOneDoesNotSaveAnEvent() {
         val controller = editor(); show(controller)
         compose.onNodeWithText("10 minutes before").performScrollTo().performClick()

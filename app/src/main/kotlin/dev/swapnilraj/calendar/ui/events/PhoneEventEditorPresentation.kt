@@ -35,9 +35,21 @@ internal object PhoneEventEditorText {
         LocalDate.parse(raw).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale))
     }.getOrNull()
     fun time(raw: String, use24Hour: Boolean, locale: Locale): String? = runCatching {
-        val pattern = android.text.format.DateFormat.getBestDateTimePattern(locale, if (use24Hour) "Hm" else "hm")
-        LocalTime.parse(raw).format(DateTimeFormatter.ofPattern(pattern, locale))
+        val value = LocalTime.parse(raw)
+        val precise = value.second != 0 || value.nano != 0
+        val skeleton = if (use24Hour) (if (precise) "Hms" else "Hm") else (if (precise) "hms" else "hm")
+        var pattern = android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton)
+        if (value.nano != 0) {
+            val digits = value.nano.toString().padStart(9, '0').trimEnd('0').length
+            pattern = Regex("s+").replace(pattern) { it.value + "." + "S".repeat(digits) }
+        }
+        value.format(DateTimeFormatter.ofPattern(pattern, locale))
     }.getOrNull()
+    /** A minute picker cannot silently erase source precision when its selection is unchanged. */
+    fun acceptedMinuteTime(raw: String, hour: Int, minute: Int): String {
+        val before = runCatching { LocalTime.parse(raw) }.getOrNull()
+        return if (before?.hour == hour && before.minute == minute) raw else LocalTime.of(hour, minute).toString()
+    }
     fun zone(raw: String): String? = runCatching {
         val zone = ZoneId.of(raw)
         when { zone == ZoneOffset.UTC || zone.id in setOf("UTC", "Etc/UTC", "GMT") -> "UTC"

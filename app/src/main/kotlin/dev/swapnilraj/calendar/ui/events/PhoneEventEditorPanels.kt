@@ -131,7 +131,7 @@ private fun PhoneEditorTimePicker(raw: String, title: String, use24Hour: Boolean
     AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { Column {
         TextButton(onClick = { manual = !manual }) { Text(stringResource(if (manual) R.string.phone_event_use_picker else R.string.phone_event_enter_text)) }
         if (manual) OutlinedTextField(raw, onChange, enabled = enabled, label = { Text(stringResource(R.string.phone_event_time_input)) }) else TimePicker(picker)
-    } }, confirmButton = { TextButton(enabled = enabled, onClick = { if (!manual) onChange(LocalTime.of(picker.hour, picker.minute).toString()); onDismiss() }) { Text(stringResource(R.string.phone_event_done)) } },
+    } }, confirmButton = { TextButton(enabled = enabled, onClick = { if (!manual) onChange(PhoneEventEditorText.acceptedMinuteTime(raw, picker.hour, picker.minute)); onDismiss() }) { Text(stringResource(R.string.phone_event_done)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.events_editor_cancel)) } })
 }
 
