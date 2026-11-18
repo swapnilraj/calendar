@@ -706,3 +706,19 @@ with the APK and checksum after the complete automated gate. It must never gener
 key or publish automatically. Draft candidates remain pending until account/device/upgrade and
 seven-day beta acceptance is recorded. See [RELEASE_SIGNING.md](RELEASE_SIGNING.md) for provisioning
 and the one-time debug-to-stable certificate transition.
+
+## Optional local guest suggestions (implementation target)
+
+A shared Add people picker may search the current Android user's local DEFAULT contact email
+directory only after an explicit opt-in for that picker session. Opening it or typing alone never
+requests contacts access. Decline, denial or revocation leaves manual email entry available. No
+cloud directory lookup, contacts write, account enumeration, contact history or managed-profile
+aggregation is introduced. Permission prompts remain host-owned.
+
+Suggestions carry only raw email/name strings and no contact identity or calendar authority. Only
+byte-identical suggestion tuples may be deduplicated; differing names/addresses remain explicit
+choices. Selection appends a fresh raw row through each feature's existing serialized draft path;
+it does not normalize existing rows, select a new role, merge opaque guests or submit an event.
+Create/owned-edit advisory and authoritative validation keep their existing rules. The picker
+closes only after its existing raw persistence acknowledges Done; lost acknowledgments, stale
+callbacks and foreign generations preserve the current draft/recovery guarantees.
