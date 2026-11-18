@@ -15,6 +15,7 @@ import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.data.CalendarPreferenceState
 import dev.swapnilraj.calendar.data.calendar.*
 import dev.swapnilraj.calendar.data.reminders.*
+import dev.swapnilraj.calendar.ui.settings.SettingsTheme
 import java.time.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -174,6 +175,9 @@ class ReminderOpenActivityJourneyTest {
         ShadowContentResolver.registerProviderInternal(android.provider.CalendarContract.AUTHORITY, provider)
         val original = runBlocking { app.settings.readReminderSettings() }
         runBlocking {
+            // This baseline is explicitly light; another journey may leave a fixed dark setting.
+            val display = (app.settings.calendarPreferences.first { it is CalendarPreferenceState.Ready } as CalendarPreferenceState.Ready).value.options
+            assertTrue(app.settings.setDisplaySettings(display.copy(theme = SettingsTheme.LIGHT)))
             app.reminderRuntime.onResume().join()
             val calendars = (app.calendarReader.observeCalendars().first { it is CalendarReadState.Ready } as CalendarReadState.Ready).value
             val info = calendars.single()
