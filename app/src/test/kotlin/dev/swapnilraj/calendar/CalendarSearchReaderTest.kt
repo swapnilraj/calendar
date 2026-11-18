@@ -163,6 +163,17 @@ class CalendarSearchReaderTest {
         }
     }
 
+    @Test fun legitimateNullableStatusRemainsSearchableWithoutBecomingCancelledOrDefaulted() = runBlocking {
+        fixture { p, source, _, _ ->
+            p.add(event(10).apply { put("eventStatus", null) })
+            p.add(event(11, start.plusSeconds(60)).apply { put("eventStatus", 2) })
+            val result = source.ready()
+            assertEquals(listOf(10L), result.hits.map { it.occurrence.ref.eventId })
+            assertFalse(result.truncated)
+            assertNull(p.events[0]["eventStatus"])
+        }
+    }
+
     @Test fun explicitEmptyMissingAndProviderVisibleSelectionNeverFailOpen() = runBlocking {
         fixture { p, source, _, _ ->
             p.add(event()); p.calendars[0]["visible"] = 0

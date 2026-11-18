@@ -91,7 +91,10 @@ class CalendarSearchReader(
                         val key = EventKey(CalendarId(cursor.requiredLong("calendar_id")), cursor.requiredLong("_id"))
                         check(key in chunk) { "Event calendar changed" }
                         val deleted = cursor.requiredLong(CalendarContract.Events.DELETED)
-                        val status = cursor.requiredLong(CalendarContract.Events.STATUS).toInt()
+                        // Android16 CalendarDatabaseHelper77bed8f9: STATUS INTEGER is nullable;
+                        // DELETED and SELF_ATTENDEE_STATUS are NOT NULL DEFAULT0. Preserve unknown
+                        // status and exclude only explicit cancellation, without inventing a default.
+                        val status = cursor.text(CalendarContract.Events.STATUS)?.let { it.toIntOrNull() ?: error("Invalid event status") }
                         val self = cursor.requiredLong(CalendarContract.Events.SELF_ATTENDEE_STATUS).toInt()
                         check(deleted == 0L || deleted == 1L)
                         val text = Text(cursor.text(CalendarContract.Events.TITLE).orEmpty(), cursor.text(CalendarContract.Events.EVENT_LOCATION).orEmpty(),
