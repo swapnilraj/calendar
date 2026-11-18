@@ -57,7 +57,9 @@ duplicate routes are published only after their draft record is saved. Restored 
 record; a missing completed-create draft cannot silently seed another event. Submitted operations
 open recovery without requiring a still-present source event. Duplicating copies only the displayed
 occurrence into a new draft, without guests or recurrence; no provider mutation occurs before Save.
-Explicit known privacy/availability are retained; unresolved metadata is shown for review.
+Explicit known privacy/availability are retained; unresolved metadata is shown for review. A copied
+inherited Calendar default visibility must be approved for its target calendar; changing calendars
+invalidates that inherited approval. Frozen legacy commands lacking proof remain recovery-only.
 
 1. **Events always win.** Weather is painted under the hour lines and events. Nothing covers an event
    or its text, and event colours are never tinted.
@@ -70,6 +72,10 @@ Explicit known privacy/availability are retained; unresolved metadata is shown f
 5. **Familiar first.** The day view should feel like the mainstream calendar apps people already use,
    without copying anyone's branding, icons or fonts.
 6. **No accounts.** Calendar data comes from Android's calendar store. No sign-in, and no server of our own.
+
+Reminder framework components declare notification and persisted-job boot permissions. Their presence
+is a prerequisite for runtime wiring; app-owned background delivery is not yet enabled or device-verified.
+Notification permission must still be requested through explicit setup before posting.
 
 ## Approved daily-driver target (18 November 2026)
 
