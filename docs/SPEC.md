@@ -257,6 +257,8 @@ Support confirmed deletion, duplicate-as-draft (guests omitted by default), and 
 moves for guest-free non-recurring events. Cross-account moves of meetings/series are excluded. Timed
 grid drag/resize previews snap to 15 minutes and use the same validation/save path; editor is the
 accessible alternative.
+Pure gap/overlap previews retain their snapped logical wall target without implying an instant or
+choosing an offset. The UI must carry that target into explicit review instead of rounding it again.
 
 ### M6 — Recurrence
 

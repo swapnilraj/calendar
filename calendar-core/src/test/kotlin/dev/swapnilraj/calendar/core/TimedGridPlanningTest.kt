@@ -50,7 +50,7 @@ class TimedGridPlanningTest {
 
     @Test fun londonGapRequiresReviewEvenWithAnOffsetHint() {
         for (offset in listOf(null, ZoneOffset.UTC, ZoneOffset.ofHours(1))) {
-            assertEquals(GridPreviewResult.NeedsReview(GridReviewReason.CLOCK_GAP, emptyList<ZoneOffset>()),
+            assertEquals(GridPreviewResult.NeedsReview(GridReviewReason.CLOCK_GAP, emptyList<ZoneOffset>(), target("2026-03-29", 90.0, offset = offset)),
                 create(target("2026-03-29", 90.0, offset = offset)))
         }
     }
@@ -68,7 +68,8 @@ class TimedGridPlanningTest {
     }
 
     @Test fun snapResolvesTheSnappedLocalTimeRatherThanUnsnappedPointer() {
-        assertTrue(create(target("2026-03-29", 112.49)) is GridPreviewResult.NeedsReview)
+        val review = create(target("2026-03-29", 112.49)) as GridPreviewResult.NeedsReview
+        assertEquals(target("2026-03-29", 105.0), review.snappedTarget)
         assertEquals(Instant.parse("2026-03-29T01:00:00Z"), ready(create(target("2026-03-29", 112.5))).time.start)
     }
 
