@@ -6,4 +6,3 @@ import dev.swapnilraj.calendar.core.AlarmSchedulingResult
 data class ReminderSuppressionResult(val notificationCancellationAccepted: Boolean, val alarm: AlarmSchedulingResult) {
     val accepted: Boolean get() = notificationCancellationAccepted && alarm == AlarmSchedulingResult.CANCELLED
 }
-
