@@ -2,6 +2,17 @@
 
 Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS.md](TASKS.md).
 
+## Latest local integration checkpoint
+
+At `945c6b5`, the full test/debug APK/lint gate passed with 1,171 tests. This is local
+synthetic evidence; device/account/beta and signed-release gates remain pending.
+
+At `e075f48`, native invitation details now connect backend-issued response rights to durable
+response drafts, the response workflow and draft-browser recovery. The app compiles and 94 focused
+meeting/details/navigation tests pass. The full gate for this newer integration is running;
+this does not establish Google invitation delivery. Reminder setup is already wired through the
+live app; the latest active-alert cleanup also preserves posted history when a calendar is unpinned.
+
 ## Verified starting point
 
 - Audited baseline: `23808c1` on `codex/calendar-feature-audit`; existing app is a read-only day view
@@ -46,9 +57,9 @@ wiring and integration; workers do not overwrite shared contracts or each other'
 | M4 native details | Partial: live native context and guest-visibility rules verified locally | Complete readable event context, correct occurrence identity and meeting links |
 | M5 native ordinary writes | Partial: native one-off create/edit/delete/duplicate, durable drafts and metadata verified locally | Batched create/edit/delete/duplicate, conflict/draft/uncertain-create and offline recovery |
 | M6 recurrence | Partial: live scoped route, ALL non-temporal edits/delete, THIS exception edits/cancel and FOLLOWING delete tested; temporal/pattern/following edits pending | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
-| M7 meetings | Planned | Invitation/RSVP/reschedule/recurrence-change/cancellation observed in second account |
+| M7 meetings | Partial: native response workflow connected; full recurring response, guests/organizer flows and external verification pending | Invitation/RSVP/reschedule/recurrence-change/cancellation observed in second account |
 | M8 search/Android entry points | Partial: live settings and filtered search routed; widget components tested; widget/intent/background wiring pending | Filtered ranged search, settings, agenda widget and safe occurrence-preserving intents |
-| M9 reminders | Partial: application runtime/private recovery components wired and tested; setup/navigation/device acceptance pending | App-owned alerts/snooze and permission/background/Doze/reboot/timezone/upgrade recovery |
+| M9 reminders | Partial: application runtime, setup/navigation and private recovery wired and tested; device acceptance pending | App-owned alerts/snooze and permission/background/Doze/reboot/timezone/upgrade recovery |
 | Seven-day beta | Not started | Work/personal week including weekend/offline/remote edits/recurrence/reminders/upgrade |
 | Durable APK release | Not started | Stable signed upgradeable APK, checksum, release notes and durable download |
 
