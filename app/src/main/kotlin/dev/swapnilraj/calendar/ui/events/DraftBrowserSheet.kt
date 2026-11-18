@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -36,7 +37,9 @@ sealed interface DraftBrowserState {
 fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorDraftLaunch) -> Unit,
     displayZone: ZoneId = ZoneId.systemDefault(), onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null,
     onOpenMeeting: ((MeetingResponseLaunch) -> Unit)? = null,
-    onOpenSeedReview: ((DraftRecord) -> Unit)? = null) {
+    onOpenSeedReview: ((DraftRecord) -> Unit)? = null,
+    onOpenEditReview: ((DraftRecord, DraftRecord?) -> Unit)? = null) {
+    val context = LocalContext.current
     var revision by remember { mutableIntStateOf(0) }
     val state by produceState<DraftBrowserState>(DraftBrowserState.Loading, store, revision) {
         value = DraftBrowserState.Loading
@@ -45,7 +48,18 @@ fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorD
                 val records = store.list()
                 val byId = records.associateBy { it.id }
                 records.sortedWith(compareByDescending<DraftRecord> { it.updatedAt }.thenBy { it.id }).mapNotNull { record ->
-                    if (isCalendarSeedHandoffReceipt(record)) null
+                    if (isCalendarEditHandoffReceipt(record)) null
+                    else if (record.id.startsWith("incoming-edit:")) {
+                        val companion = byId["incoming-edit-review:${record.id.removePrefix("incoming-edit:")}"]
+                        val item = DraftBrowserCodec.read(record)
+                        if (item.launch != null && CalendarEditReviewActivity.intentForNative(context, record, companion) != null)
+                            item.copy(launch = null, editRecord = record, editCompanion = companion, editLaunch = item.launch)
+                        else DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNREADABLE)
+                    } else if (record.id.startsWith("incoming-edit-review:") && calendarEditReviewPreview(record) != null &&
+                        byId["incoming-edit:${record.id.removePrefix("incoming-edit-review:")}"]?.let {
+                            CalendarEditReviewActivity.intentForNative(context, it, record) != null
+                        } == true) null
+                    else if (isCalendarSeedHandoffReceipt(record)) null
                     else if (record.id.startsWith("incoming:")) {
                         val companion = byId["incoming-review:${record.id.removePrefix("incoming:")}"]
                         if (isCalendarSeedNativeHandoffVerified(record, companion)) DraftBrowserCodec.read(record)
@@ -60,7 +74,7 @@ fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorD
         catch (_: Exception) { value = DraftBrowserState.Unavailable }
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone, onOpenSeries, onOpenMeeting, onOpenSeedReview)
+        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone, onOpenSeries, onOpenMeeting, onOpenSeedReview, onOpenEditReview)
     }
 }
 
@@ -68,7 +82,8 @@ fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorD
 fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen: (EditorDraftLaunch) -> Unit,
     onRefresh: () -> Unit, displayZone: ZoneId = ZoneId.systemDefault(), onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null,
     onOpenMeeting: ((MeetingResponseLaunch) -> Unit)? = null,
-    onOpenSeedReview: ((DraftRecord) -> Unit)? = null) {
+    onOpenSeedReview: ((DraftRecord) -> Unit)? = null,
+    onOpenEditReview: ((DraftRecord, DraftRecord?) -> Unit)? = null) {
     val locale = LocalLocale.current.platformLocale
     val formatter = remember(locale, displayZone) { DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
         .withLocale(locale).withZone(displayZone) }
@@ -91,7 +106,16 @@ fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen:
                             val series = item.seriesLaunch
                             val meeting = item.meetingPreview
                             val seed = item.seedReview
-                            if (seed != null && item.seedRecord != null) {
+                            val edit = item.editReview
+                            val editLaunch = item.editLaunch
+                            if (item.editRecord != null && (edit != null || editLaunch != null)) {
+                                Text((edit?.title ?: editLaunch?.title).orEmpty().ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.incoming_edit_review_title))
+                                if (editLaunch?.needsRecovery == true) Text(stringResource(R.string.events_drafts_needs_recovery))
+                                if (onOpenEditReview != null) TextButton(onClick = { onOpenEditReview(item.editRecord, item.editCompanion) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                                    Text(stringResource(if (editLaunch?.needsRecovery == true) R.string.events_drafts_recover else R.string.events_drafts_open))
+                                }
+                            } else if (seed != null && item.seedRecord != null) {
                                 Text(seed.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
                                 Text(stringResource(R.string.incoming_draft_review))
                                 Text(if (seed.rawDate.isBlank()) stringResource(R.string.events_drafts_date_unfinished)

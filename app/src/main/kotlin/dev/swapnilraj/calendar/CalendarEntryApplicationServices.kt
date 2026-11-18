@@ -4,9 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.text.format.DateFormat
 import androidx.compose.runtime.*
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.Text
-import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.swapnilraj.calendar.android.navigation.*
 import dev.swapnilraj.calendar.core.*
@@ -59,14 +56,33 @@ internal fun CalendarApp.createCalendarSeedReviewServices() = CalendarSeedReview
     }, changes = entryChanges(),
 )
 
+internal fun CalendarApp.createCalendarEditReviewServices() = CalendarEditReviewServices(
+    calendarLocalStore, calendarWriter, operationRetirement, ReaderIncomingCalendarSource(calendarReader),
+    readEnvironment = {
+        try {
+            val prefs = entryPreferences()
+            if (prefs == null) CalendarReadState.Unavailable else {
+                fun environment(calendars: List<CalendarInfo>, granted: Boolean) = CalendarReadState.Ready(
+                    CalendarEditReviewEnvironment(calendars, prefs.entryZone(), DateFormat.is24HourFormat(this), granted))
+                if (checkSelfPermission(Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED)
+                    environment(emptyList(), false)
+                else when (val state = calendarReader.readCalendars()) {
+                    is CalendarReadState.Ready -> environment(state.value, true)
+                    CalendarReadState.PermissionRequired -> environment(emptyList(), false)
+                    CalendarReadState.LimitExceeded -> CalendarReadState.LimitExceeded
+                    else -> CalendarReadState.Unavailable
+                }
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { CalendarReadState.Unavailable }
+    }, changes = entryChanges(),
+)
+
 internal fun CalendarApp.calendarEntryRenderer() = CalendarEntryContent { state, actions ->
     val prefs by settings.calendarPreferences.collectAsStateWithLifecycle(initialValue = CalendarPreferenceState.Loading)
     CalendarPreferenceTheme(prefs) {
         if (prefs is CalendarPreferenceState.Ready) {
-            if (state is CalendarEntryState.Details && state.resolved.proposedEdit != null) Column {
-                Text(stringResource(R.string.incoming_edit_pending))
-                BasicCalendarEntryScreen(state, actions.copy(review = null))
-            } else BasicCalendarEntryScreen(state, actions)
+            BasicCalendarEntryScreen(state, actions)
         } else BasicCalendarEntryScreen(CalendarEntryState.Loading, actions.copy(review = null))
     }
 }
@@ -85,6 +101,11 @@ internal fun CalendarApp.calendarEntryReviewer() = CalendarEntryReviewHandler { 
         is CalendarEntryResolution.CreateSeed -> {
             activity.startActivity(CalendarSeedReviewActivity.intent(activity, command.sessionId, resolution.seed, command.displayZone)); true
         }
-        else -> false // Proposed EDIT overrides require their own source-bound review packet.
+        is CalendarEntryResolution.Event -> resolution.proposedEdit?.let { seed ->
+            activity.startActivity(CalendarEditReviewActivity.intent(activity, CalendarEditReviewRequest(
+                command.sessionId, resolution.ref, resolution.binding, seed, command.displayZone)))
+            true
+        } ?: false
+        else -> false
     }
 }

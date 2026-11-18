@@ -78,7 +78,7 @@ class CalendarEditReviewActivity : ComponentActivity() {
                         EventWriteWorkflow(route, port, current.drafts,
                             if (hasRead() && displayed.environment.calendarReadGranted) displayed.environment.calendars else emptyList(),
                             displayed.environment.use24Hour, onDismiss = ::finish, onSaved = { setResult(RESULT_OK); finish() }, onDeleted = { finish() },
-                            retirement = current.retirement, requestWritePermission = {
+                            retirement = current.retirement, incomingEditReview = displayed, requestWritePermission = {
                                 if (!hasRead()) { readPermission.launch(Manifest.permission.READ_CALENDAR); false }
                                 else if (checkSelfPermission(Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED) true
                                 else { writePermission.launch(Manifest.permission.WRITE_CALENDAR); false }
