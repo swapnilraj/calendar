@@ -214,6 +214,10 @@ class CalendarWriter(
     private fun permissions() = hasPermission(Manifest.permission.READ_CALENDAR) && hasPermission(Manifest.permission.WRITE_CALENDAR)
 
     private fun source(ref: EventRef): Source {
+        // Eligibility discovery is READ-only, but it must not inspect private event/child fields
+        // on calendars that cannot support this mutation path (including free/busy access).
+        val calendar = calendar(ref.calendarId)
+        writable(calendar)
         val event = rows(eventUri(ref.eventId), eventFields).singleOrNull() ?: throw Stale()
         if (event[CalendarContract.Events.CALENDAR_ID]?.toLongOrNull() != ref.calendarId.value) throw Stale()
         val recurring = listOf(CalendarContract.Events.RRULE, CalendarContract.Events.RDATE, CalendarContract.Events.EXRULE,
@@ -221,7 +225,12 @@ class CalendarWriter(
             CalendarContract.Events.ORIGINAL_SYNC_ID).any { !event[it].isNullOrBlank() }
         if (!recurring && (event[CalendarContract.Events.DTSTART]?.toLongOrNull() != ref.instanceStart.toEpochMilli() ||
             event[CalendarContract.Events.DTEND]?.toLongOrNull() != ref.instanceEnd.toEpochMilli())) throw Stale()
-        return Source(event, calendar(ref.calendarId),
+        // HAS_ATTENDEE_DATA=0 and a matching organizer email are not visibility authority.
+        // Check explicit provider policy before even querying the guest table.
+        if (event[CalendarContract.Events.IS_ORGANIZER] != "1" && event[CalendarContract.Events.GUESTS_CAN_SEE_GUESTS] != "1")
+            throw Denial(MutationDenial.UNSUPPORTED_EVENT)
+        policy(Source(event, calendar, emptyList(), emptyList()))
+        return Source(event, calendar,
             rows(CalendarContract.Reminders.CONTENT_URI, reminderFields, "${CalendarContract.Reminders.EVENT_ID} = ?", arrayOf(ref.eventId.toString())),
             rows(CalendarContract.Attendees.CONTENT_URI, attendeeFields, "${CalendarContract.Attendees.EVENT_ID} = ?", arrayOf(ref.eventId.toString())))
     }
