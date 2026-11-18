@@ -10,7 +10,7 @@ Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
   Wave 0 session.** The earlier two agents reviewed dependencies/ownership only.
 - Implementation branch: `codex/daily-driver`. Initial read-contract/module bootstrap and scope docs are implemented;
   mutation and persistence ports will be frozen before their dependent worker packets. A new module or contract alone does not establish native editing or new views.
-- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (134 tests), including
+- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (183 tests), including
   merged provider reads, native detail components, day fixes, reminder components and preferences. No device/cloud/beta result is claimed.
 
 ## Active implementation packets
@@ -40,11 +40,11 @@ wiring and integration; workers do not overwrite shared contracts or each other'
 | Wave 0 bootstrap | In progress | Core module/contracts, preserved baseline, tests/build/lint verified |
 | M0 Google compatibility | Pending external verification | Dedicated personal/Workspace two-account/provider/device round-trips |
 | M1 rendering/accessibility | Partial: D1/D3/D4/D5 automated checks pass; D2 renderer pending | Correct D1–D5 regression tests and inspected all-day/font/RTL/DST screens |
-| M2 calendars/ranges/sidebar | Planned | Stable identity, independent persisted filters, shared ranges/observer and coverage states |
-| M3 planning views | Planned | Day/three-day/week/month/agenda, date navigation, leap/six-row/dense/RTL cases |
+| M2 calendars/ranges/sidebar | Partial: reads/preferences verified; sidebar wiring pending | Stable identity, independent persisted filters, shared ranges/observer and coverage states |
+| M3 planning views | Partial: month component verified; app routing/other views pending | Day/three-day/week/month/agenda, date navigation, leap/six-row/dense/RTL cases |
 | M4 native details | Partial: live native read flow verified locally | Complete readable event context, correct occurrence identity and meeting links |
-| M5 native ordinary writes | Planned | Batched create/edit/delete/duplicate, conflict/draft/uncertain-create and offline recovery |
-| M6 recurrence | Planned | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
+| M5 native ordinary writes | Partial: writer/journal verified; editor/permission wiring pending | Batched create/edit/delete/duplicate, conflict/draft/uncertain-create and offline recovery |
+| M6 recurrence | Partial: rule engine verified; series mutations pending | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
 | M7 meetings | Planned | Invitation/RSVP/reschedule/recurrence-change/cancellation observed in second account |
 | M8 search/Android entry points | Planned | Filtered ranged search, settings, agenda widget and safe occurrence-preserving intents |
 | M9 reminders | Planned | App-owned alerts/snooze and permission/background/Doze/reboot/timezone/upgrade recovery |
@@ -64,10 +64,10 @@ gates pass. Do not turn the audit totals into a percentage-complete estimate.
 
 ## Current next packets
 
-- A2: durable draft/journal and safe one-off provider writer.
-- B3: recurrence rules/presets using pinned lib-recur; pure timing already merged in PR #7.
-- C2: native month component and navigation.
-- D2: native one-off editor and recovery controller.
+- A2: merged via PR #13; durable drafts/journal and one-off writer verified locally; actual Google sync pending.
+- B3: merged via PR #11; 21 recurrence rule tests. Series writes remain pending.
+- C2: merged via PR #12; 15 month tests and three inspected baselines. App month routing pending.
+- D2: PR #14; native editor/recovery controller verified in worker, integration CI pending.
 - Lead: shared read range/native-detail wiring, transition rendering, and contract integration.
 - Physical Google, notification delivery, beta and release gates remain pending.
 
@@ -82,3 +82,5 @@ gates pass. Do not turn the audit totals into a percentage-complete estimate.
 - Before write UI completion: separate read-only edit eligibility from WRITE permission, and expose
   definitely safe journal retry separately from unknown recovery failure so interrupted drafts cannot
   become permanently locked or be blindly resubmitted.
+
+Latest merged checkpoint: `183` integrated tests, debug APK and lint passed after PRs #11–#13.
