@@ -92,6 +92,10 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
     val seriesMutations = remember(app, context, writeRequest) { PermissionAwareSeriesMutations(app.calendarSeriesWriter,
         { ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED },
         { writeRequest.launch(Manifest.permission.WRITE_CALENDAR) }) }
+    var contactsAllowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) }
+    val contactsRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        contactsAllowed = granted
+    }
     val latestWeather by app.weather.state.collectAsStateWithLifecycle()
     val weather = latestWeather.takeIf { it.zone == deviceNow.zone } ?: WeatherState()
     var locationAllowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) }
@@ -107,6 +111,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
             if (event == Lifecycle.Event.ON_RESUME) {
                 deviceNow = ZonedDateTime.now()
                 app.calendarReader.refresh()
+                contactsAllowed = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
                 locationAllowed = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
             }
         }
@@ -157,6 +162,12 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
                         dateNavigation = dateNavigation, onDateNavigationConsumed = onDateNavigationConsumed,
                         recurringCreationSupported = true,
                         onWidgetNavigationConsumed = onWidgetNavigationConsumed,
+                        guestSuggestions = app.guestSuggestions,
+                        contactsPermissionGranted = contactsAllowed,
+                        requestContactsPermission = {
+                            contactsAllowed = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+                            if (!contactsAllowed) contactsRequest.launch(Manifest.permission.READ_CONTACTS)
+                        },
                         meetings = app.calendarMeetings,
                         operationRetirement = app.operationRetirement,
                         requestMeetingWritePermission = {

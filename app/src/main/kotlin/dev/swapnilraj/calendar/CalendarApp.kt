@@ -44,6 +44,10 @@ open class CalendarApp : Application(), ReminderRuntimeOwner, AgendaWidgetApplic
     override fun CalendarEditReviewTheme(content: @androidx.compose.runtime.Composable () -> Unit) {
         calendarSeedReviewRendererTheme(content)
     }
+    val guestSuggestions: dev.swapnilraj.calendar.contacts.DeviceContactSuggestionSource by lazy {
+        dev.swapnilraj.calendar.data.contacts.AndroidDeviceContactSuggestionSource(contentResolver,
+            { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED })
+    }
     private val calendarScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     private val reminderScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
     override val reminderRuntime: ReminderRuntime by lazy { createReminderRuntime(reminderScope) }

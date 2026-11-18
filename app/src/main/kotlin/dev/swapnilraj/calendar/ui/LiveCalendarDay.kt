@@ -102,6 +102,9 @@ internal fun LiveCalendarDay(
     onDateNavigationConsumed: (String) -> Unit = {},
     onLocalCancelled: () -> Unit = onLocalSaved,
     onRetainedOwnedMeetingChanged: (Boolean) -> Unit = {},
+    guestSuggestions: dev.swapnilraj.calendar.contacts.DeviceContactSuggestionSource? = null,
+    contactsPermissionGranted: Boolean = false,
+    requestContactsPermission: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -770,7 +773,9 @@ internal fun LiveCalendarDay(
         else MeetingCreationWorkflow(route, requireNotNull(meetings), requireNotNull(atomicDrafts), calendars,
             operationRetirement, requireNotNull(requestMeetingWritePermission), use24Hour,
             onDismiss = { meetingCreationText = null },
-            onSaved = { meetingCreationText = null; reader.refresh(); onLocalSaved() }, clock = draftClock)
+            onSaved = { meetingCreationText = null; reader.refresh(); onLocalSaved() }, clock = draftClock,
+            guestSuggestions = guestSuggestions, contactsPermissionGranted = contactsPermissionGranted,
+            requestContactsPermission = requestContactsPermission)
     }
     if (meetingWritable) ownedMeetingText?.let { raw ->
         val route = remember(raw) { runCatching { OwnedMeetingRouteCodec.decode(raw) }.getOrNull() }
@@ -782,7 +787,9 @@ internal fun LiveCalendarDay(
             presentationVisible = LocalCalendarReadAccess.current && snapshot != CalendarReadState.PermissionRequired && metadata != CalendarReadState.PermissionRequired,
             onDismiss = { ownedMeetingText = null },
             onSaved = { ownedMeetingText = null; reader.refresh(); onLocalSaved() },
-            onCancelled = { ownedMeetingText = null; reader.refresh(); onLocalCancelled() }, clock = draftClock)
+            onCancelled = { ownedMeetingText = null; reader.refresh(); onLocalCancelled() }, clock = draftClock,
+            guestSuggestions = guestSuggestions, contactsPermissionGranted = contactsPermissionGranted,
+            requestContactsPermission = requestContactsPermission)
     }
     if (showSearch && search != null) {
         val searchRange = remember(searchRangeText, displayNow.toLocalDate()) {

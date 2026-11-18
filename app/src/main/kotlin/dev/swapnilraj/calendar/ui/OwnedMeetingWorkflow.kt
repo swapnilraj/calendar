@@ -38,7 +38,9 @@ private sealed interface OwnedMeetingMount {
 internal fun OwnedMeetingWorkflow(route: OwnedMeetingRoute, meetings: CalendarMeetings,
     store: AtomicDraftStore, retirement: OperationRetirement?, requestWritePermission: suspend () -> Boolean,
     use24Hour: Boolean, presentationVisible: Boolean, onDismiss: () -> Unit,
-    onSaved: (EventRef) -> Unit, onCancelled: (EventRef) -> Unit, clock: Clock = Clock.systemUTC()) {
+    onSaved: (EventRef) -> Unit, onCancelled: (EventRef) -> Unit, clock: Clock = Clock.systemUTC(),
+    guestSuggestions: dev.swapnilraj.calendar.contacts.DeviceContactSuggestionSource? = null,
+    contactsPermissionGranted: Boolean = false, requestContactsPermission: () -> Unit = {}) {
     var retry by remember(route) { mutableIntStateOf(0) }
     val permission by rememberUpdatedState(requestWritePermission)
     val mounted by produceState<OwnedMeetingMount>(OwnedMeetingMount.Loading, route, store, retry) {
@@ -62,5 +64,7 @@ internal fun OwnedMeetingWorkflow(route: OwnedMeetingRoute, meetings: CalendarMe
         OwnedMeetingEditorController(launch, meetings, store, { permission() }, retirement, clock)
     }
     PhoneOwnedMeetingEditor(controller, onDismiss, onSaved, onCancelled, onDiscarded = onDismiss,
-        use24Hour = use24Hour, presentationVisible = presentationVisible)
+        use24Hour = use24Hour, presentationVisible = presentationVisible,
+        guestSuggestions = guestSuggestions, contactsPermissionGranted = contactsPermissionGranted,
+        requestContactsPermission = requestContactsPermission)
 }

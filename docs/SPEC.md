@@ -711,7 +711,7 @@ key or publish automatically. Draft candidates remain pending until account/devi
 seven-day beta acceptance is recorded. See [RELEASE_SIGNING.md](RELEASE_SIGNING.md) for provisioning
 and the one-time debug-to-stable certificate transition.
 
-## Optional local guest suggestions (implementation target)
+## Optional local guest suggestions
 
 A shared Add people picker may search the current Android user's local DEFAULT contact email
 directory only after an explicit opt-in for that picker session. Opening it or typing alone never
@@ -726,3 +726,10 @@ it does not normalize existing rows, select a new role, merge opaque guests or s
 Create/owned-edit advisory and authoritative validation keep their existing rules. The picker
 closes only after its existing raw persistence acknowledges Done; lost acknowledgments, stale
 callbacks and foreign generations preserve the current draft/recovery guarantees.
+
+The main meeting-create and owned-edit workflows supply the bounded local contact source and an
+explicit READ_CONTACTS launcher. Grants/resume refresh permission state only; they never append a
+guest or submit a calendar write. Picker opt-in resets independently on every opening, so a late
+grant cannot enable a newly opened session. The existing String-name draft format encodes a chosen
+null suggestion name as empty on append; both raw source tuples remain visible and are never merged
+or removed. Selection feedback may mark null/empty names as the same projected draft addition.

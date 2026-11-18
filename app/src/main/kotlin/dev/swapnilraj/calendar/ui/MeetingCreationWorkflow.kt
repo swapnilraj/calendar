@@ -36,7 +36,9 @@ private sealed interface MeetingCreationMount {
 internal fun MeetingCreationWorkflow(route: MeetingCreationLaunch, meetings: CalendarMeetings,
     store: AtomicDraftStore, calendars: List<CalendarInfo>, retirement: OperationRetirement?,
     requestWritePermission: suspend () -> Boolean, use24Hour: Boolean,
-    onDismiss: () -> Unit, onSaved: (EventRef) -> Unit, clock: Clock = Clock.systemUTC()) {
+    onDismiss: () -> Unit, onSaved: (EventRef) -> Unit, clock: Clock = Clock.systemUTC(),
+    guestSuggestions: dev.swapnilraj.calendar.contacts.DeviceContactSuggestionSource? = null,
+    contactsPermissionGranted: Boolean = false, requestContactsPermission: () -> Unit = {}) {
     var retry by remember(route.draftId, route.generation) { mutableIntStateOf(0) }
     val permission by rememberUpdatedState(requestWritePermission)
     val mounted by produceState<MeetingCreationMount>(MeetingCreationMount.Loading, route.draftId, route.generation, store, retry) {
@@ -59,5 +61,7 @@ internal fun MeetingCreationWorkflow(route: MeetingCreationLaunch, meetings: Cal
     val controller = remember(launch.draftId, launch.generation, meetings, store, retirement) {
         MeetingCreationController(launch, meetings, store, { permission() }, retirement, clock)
     }
-    PhoneMeetingCreateEditor(controller, calendars, onDismiss, onSaved, onDiscarded = onDismiss, use24Hour = use24Hour)
+    PhoneMeetingCreateEditor(controller, calendars, onDismiss, onSaved, onDiscarded = onDismiss, use24Hour = use24Hour,
+        guestSuggestions = guestSuggestions, contactsPermissionGranted = contactsPermissionGranted,
+        requestContactsPermission = requestContactsPermission)
 }
