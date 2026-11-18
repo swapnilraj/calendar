@@ -45,7 +45,7 @@
     <string name="reminder_calendars_not_delivery">Saving changes local reminder settings only. It does not verify permissions, schedule success, or actual device delivery.</string>
     <string name="reminder_calendars_changed">Reminder settings changed elsewhere. Your pending edits are kept, but can’t overwrite the newer choices. Reload to review them; reloading discards pending edits.</string>
     <string name="reminder_calendars_reload_discard">Reload and discard pending edits</string>
-    <string name="reminder_calendars_save_error">Reminder settings weren’t saved. Your pending choices are kept; review them and try Save again.</string>
+    <string name="reminder_calendars_save_error">The save couldn’t be confirmed. Your pending choices are kept; review saved choices before trying again.</string>
     <string name="reminder_calendars_cancel">Cancel</string>
     <string name="reminder_calendars_save">Save</string>
     <string name="reminder_calendars_saving">Saving…</string>

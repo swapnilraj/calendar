@@ -15,6 +15,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
@@ -69,6 +70,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState)
     val localDeleted = stringResource(dev.swapnilraj.calendar.R.string.navigation_local_deleted)
     val draftUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_draft_unavailable)
     val scope = rememberCoroutineScope()
+    var remindersOpen by rememberSaveable { mutableStateOf(false) }
     var deviceNow by remember { mutableStateOf(ZonedDateTime.now()) }
     val now = when (val zone = options.displayZone) {
         DisplayZoneOption.Device -> deviceNow
@@ -110,6 +112,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState)
         onDispose { lifecycle.removeObserver(observer) }
     }
     Surface(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
         PermissionGate {
             LaunchedEffect(deviceNow.zone, locationAllowed, weatherVisible) {
                 if (!weatherVisible) return@LaunchedEffect
@@ -148,6 +151,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState)
                         mutations = mutations,
                         seriesMutations = seriesMutations,
                         search = app.calendarSearch,
+                        onOpenReminders = { remindersOpen = true },
                         drafts = app.calendarLocalStore,
                         onLocalSaved = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localSaved) } },
                         onLocalDeleted = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localDeleted) } },
@@ -160,6 +164,9 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState)
                         })
                     SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
                 }
+        }
+        // Keep pending reminder choices mounted during calendar-permission recovery.
+        if (remindersOpen) ReminderSettingsWorkflow(app, onDismiss = { remindersOpen = false })
         }
     }
 }

@@ -126,8 +126,12 @@ the contract alone does not establish bounded provider reads.
 The Application owns one reminder runtime/coordinator/ledger, with fresh reminder configuration and
 device-zone suppliers. Startup registers recovery, resume and local event changes reconcile, and
 private alarm/action/recovery receivers plus the permission-protected job service are registered.
-Exact-alarm access has an inexact fallback. Reminders remain disabled by default; calendar setup and
-notification-open navigation are still pending integration, and no device delivery is claimed.
+Exact-alarm access has an inexact fallback. Reminders remain disabled by default; the drawer's Event
+reminders action opens explicit calendar selection and permission/delivery setup. Saving confirmed
+local choices triggers reconciliation; missing permissions show setup without prompting automatically.
+Raw choices remain mounted during permission recovery, and explicit reload starts a fresh collector
+and form only after the user requests discard. An uncertain preference save is read back before any
+success acknowledgement. Device delivery is not claimed by a local save.
 Notification permission must be requested through explicit setup before posting.
 Runtime startup, resume, notification actions and content-job rearming serialize configuration reads
 with job registration/cancellation. An older suspended read cannot cancel a newer enabled registration
@@ -147,7 +151,10 @@ separate private Activity that uses native read-only details without changing fi
 an editor. It drops old rows when its post/context changes, observes while started, and clears details
 when observation stops. A matching interrupted post can open without changing its delivery state or
 inventing an acknowledgement. Resolver tests do not establish physical notification navigation;
-integrated Activity and device acceptance remain separate evidence.
+integrated Activity and device acceptance remain separate evidence. A generic test notification is
+available only through an explicit setup action, uses no event/provider/ledger writes, and needs no
+calendar access. System acceptance is distinct from a person observing delivery. Real notification
+tap journeys now pass local synthetic-provider tests; physical/background/account gates remain pending.
 
 ## Approved daily-driver target (18 November 2026)
 

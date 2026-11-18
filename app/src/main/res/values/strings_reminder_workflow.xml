@@ -1,0 +1,14 @@
+<resources>
+    <string name="reminder_workflow_done">Done</string>
+    <string name="reminder_workflow_back">Back to reminder calendars</string>
+    <string name="reminder_workflow_checking">Checking reminder scheduling…</string>
+    <string name="reminder_workflow_ready">Local scheduling is ready. Send a test notification and check your device.</string>
+    <string name="reminder_workflow_disabled">App reminders are disabled. You can still send a test notification.</string>
+    <string name="reminder_workflow_permission">Reminders need permissions before they can be delivered.</string>
+    <string name="reminder_workflow_degraded">Some reminders need attention. Check permissions and calendar reminder defaults.</string>
+    <string name="reminder_workflow_unavailable">Reminder scheduling is unavailable. Your saved choices are kept.</string>
+    <string name="reminder_workflow_settings_unavailable">These device settings couldn’t be opened.</string>
+    <string name="reminder_workflow_test_accepted">Test notification requested. Check your device; scheduled delivery still depends on its settings.</string>
+    <string name="reminder_workflow_test_permission">Allow notifications and enable the reminder channel, then try again.</string>
+    <string name="reminder_workflow_test_unavailable">The test notification couldn’t be confirmed.</string>
+</resources>
