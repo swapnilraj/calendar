@@ -18,6 +18,7 @@ data class EditorDraftLaunch internal constructor(
     val rawDate: String,
     val calendarSelected: Boolean,
     private val normalizedSeed: EventDraft?,
+    val notices: List<EditorNotice> = emptyList(),
 ) {
     /** A seed never replaces stored raw fields. No current-date fallback is implicit. */
     fun seed(fallbackDate: LocalDate, fallbackZone: ZoneId): EventDraft = normalizedSeed ?: EventDraft(
@@ -75,7 +76,7 @@ object DraftBrowserCodec {
             val launch = EditorDraftLaunch(record.id, kind, ref,
                 submitted || retained != null && frozen == null,
                 raw.optString("title"), raw.optString("startDate"),
-                raw.getString("calendarId").toLongOrNull()?.let { it >= 0 } == true, seed)
+                raw.getString("calendarId").toLongOrNull()?.let { it >= 0 } == true, seed, EditorNoticeCodec.read(raw))
             DraftBrowserItem(record.id, record.updatedAt, launch, null)
         } catch (_: Exception) { DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNREADABLE) }
     }

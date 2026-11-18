@@ -83,6 +83,9 @@ fun EventEditorContent(
             Text(stringResource(R.string.events_drafts_recovery_only), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.events_drafts_recovery_description))
         }
+        state.notices.forEach { notice ->
+            Text(stringResource(noticeResource(notice)), style = MaterialTheme.typography.bodyMedium)
+        }
         if (state.loading) CircularProgressIndicator()
         state.problem?.let { problem ->
             Text(stringResource(problemResource(problem)), color = MaterialTheme.colorScheme.error)
@@ -177,7 +180,7 @@ fun EventEditorContent(
             CalendarContract.Events.ACCESS_CONFIDENTIAL.toString() to R.string.events_confidential,
         ), canEdit(EditableField.PRIVACY)) { value -> controller.change { it.copy(privacy = value) } }
         Text(stringResource(R.string.events_editor_local_save), style = MaterialTheme.typography.bodySmall)
-        Button(onClick = controller::save, enabled = !blocked && !state.reviewRequired && (existing != null || writableCalendars.any {
+        Button(onClick = controller::save, enabled = !blocked && !state.reviewRequired && !controller.visibilityChoiceRequired && (existing != null || writableCalendars.any {
             it.id.value.toString() == fields.calendarId && it.capabilities.createEvents == AccessDecision.ALLOWED
         }), modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.events_editor_save)) }
         if (existing != null && !controller.recoveryOnly) TextButton(onClick = controller::requestDelete, enabled = !blocked && !state.reviewRequired) {
@@ -282,6 +285,7 @@ private fun problemResource(problem: EditorProblem) = when (problem) {
     EditorProblem.DRAFT_VERSION -> R.string.events_editor_draft_version
     EditorProblem.SAFE_TO_RETRY -> R.string.events_editor_safe_retry
     EditorProblem.RETRY_UNAVAILABLE -> R.string.events_editor_retry_unavailable
+    EditorProblem.VISIBILITY_REQUIRED -> R.string.events_copy_visibility_review
 }
 
 @Composable
@@ -298,4 +302,14 @@ private fun MetadataChoice(label: Int, current: String, options: List<Pair<Strin
             }) }
         }
     }
+}
+
+private fun noticeResource(notice: EditorNotice) = when (notice) {
+    EditorNotice.DUPLICATE_AS_ONE_OFF -> R.string.events_copy_one_off
+    EditorNotice.GUESTS_NOT_COPIED -> R.string.events_copy_guests
+    EditorNotice.RECURRENCE_NOT_COPIED -> R.string.events_copy_recurrence
+    EditorNotice.DEFAULT_REMINDERS_UNRESOLVED -> R.string.events_copy_default_reminders
+    EditorNotice.REMINDERS_NOT_COPIED -> R.string.events_copy_other_reminders
+    EditorNotice.VISIBILITY_REVIEW_REQUIRED -> R.string.events_copy_visibility_review
+    EditorNotice.AVAILABILITY_REVIEW -> R.string.events_copy_availability_review
 }
