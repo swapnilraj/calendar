@@ -214,19 +214,23 @@ class EventEditorController(
     } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE); false }
     private fun stale() { closed = true; state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE, retryReady = false, recurrenceReview = null) }
     private suspend fun replace(next: OrdinaryDraftDocument): Boolean = storage.withLock {
-        if (closed || next.legacy) return@withLock false
-        val expected = expectedRecord ?: return@withLock false
-        val replacement = next.record(clock.instant())
-        val result = try { atomic?.compareAndSet(draftId, expected, replacement) ?: DraftChangeResult.Unavailable }
-            catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { DraftChangeResult.Unavailable }
-        val applied = when (result) {
-            DraftChangeResult.Applied -> true
-            DraftChangeResult.Changed -> { stale(); false }
-            DraftChangeResult.Unavailable -> try { drafts.load(draftId) == replacement } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false }
+        currentCoroutineContext().ensureActive()
+        // Local commit, exact receipt readback and adoption finish together even if the UI cancels.
+        withContext(NonCancellable) {
+            if (closed || next.legacy) return@withContext false
+            val expected = expectedRecord ?: return@withContext false
+            val replacement = next.record(clock.instant())
+            val result = try { atomic?.compareAndSet(draftId, expected, replacement) ?: DraftChangeResult.Unavailable }
+                catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { DraftChangeResult.Unavailable }
+            val applied = when (result) {
+                DraftChangeResult.Applied -> true
+                DraftChangeResult.Changed -> { stale(); false }
+                DraftChangeResult.Unavailable -> try { drafts.load(draftId) == replacement } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false }
+            }
+            if (applied) { document = OrdinaryDraftDocument.decode(replacement); expectedRecord = replacement }
+            else if (!closed) state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE)
+            applied
         }
-        if (applied) { document = OrdinaryDraftDocument.decode(replacement); expectedRecord = replacement }
-        else if (!closed) state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE)
-        applied
     }
     private suspend fun persistFields(): Boolean {
         val doc = document ?: return false
@@ -275,6 +279,7 @@ class EventEditorController(
             if (!verifyLease() || doc.hasRequest) return@launch
             if (!replace(doc.copy(fields = state.fields, notices = state.notices, frozen = command, submitted = true,
                 operationKind = command.kind, operationPayload = encodeRawFields(state.fields).toString()))) return@launch
+            currentCoroutineContext().ensureActive()
             state = state.copy(recoveryRequired = true)
             dispatch(command)
         } finally { state = state.copy(saving = false); action.set(false) } }

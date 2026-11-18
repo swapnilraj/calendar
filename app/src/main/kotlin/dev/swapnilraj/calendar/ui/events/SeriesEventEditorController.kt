@@ -138,22 +138,26 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
     }
 
     private suspend fun replace(next: SeriesDraftDocument): Boolean = storage.withLock {
-        if (retired || next.schema !in 2..3) return@withLock false
-        val expected = expectedRecord ?: return@withLock false
-        val replacement = SeriesDraftCodec.record(next.copy(revision = UUID.randomUUID().toString()), clock.instant())
-        val result = try { atomic?.compareAndSet(launch.draftId, expected, replacement) ?: DraftChangeResult.Unavailable }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { DraftChangeResult.Unavailable }
-        val applied = when (result) {
-            DraftChangeResult.Applied -> true
-            DraftChangeResult.Changed -> { stale(); false }
-            DraftChangeResult.Unavailable -> try { drafts.load(launch.draftId) == replacement }
+        currentCoroutineContext().ensureActive()
+        // Local commit, exact receipt readback and adoption finish together even if the UI cancels.
+        withContext(NonCancellable) {
+            if (retired || next.schema !in 2..3) return@withContext false
+            val expected = expectedRecord ?: return@withContext false
+            val replacement = SeriesDraftCodec.record(next.copy(revision = UUID.randomUUID().toString()), clock.instant())
+            val result = try { atomic?.compareAndSet(launch.draftId, expected, replacement) ?: DraftChangeResult.Unavailable }
                 catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { false }
+                catch (_: Exception) { DraftChangeResult.Unavailable }
+            val applied = when (result) {
+                DraftChangeResult.Applied -> true
+                DraftChangeResult.Changed -> { stale(); false }
+                DraftChangeResult.Unavailable -> try { drafts.load(launch.draftId) == replacement }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { false }
+            }
+            if (applied) { document = SeriesDraftCodec.decode(replacement); expectedRecord = replacement }
+            else if (!retired) state = state.copy(problem = SeriesEditorProblem.DRAFT_UNAVAILABLE)
+            applied
         }
-        if (applied) { document = SeriesDraftCodec.decode(replacement); expectedRecord = replacement }
-        else if (!retired) state = state.copy(problem = SeriesEditorProblem.DRAFT_UNAVAILABLE)
-        applied
     }
     private suspend fun persistFields(): Boolean {
         val doc = document ?: return false
@@ -257,6 +261,7 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
             if (doc.scope == RecurrenceScope.FOLLOWING && doc.action == SeriesEditorAction.DELETE) doc.masterStart else null,
             if (command is SeriesCommand.FollowingEdit) doc.masterStart else null)
         if (!replace(doc.copy(fields = state.fields, frozen = frozen, submitted = true))) return
+        currentCoroutineContext().ensureActive()
         state = state.copy(recoveryRequired = true)
         dispatch(frozen)
     }
