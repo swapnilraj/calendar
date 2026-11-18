@@ -94,6 +94,33 @@ class CalendarReaderTest {
         }
     }
 
+    @Test fun oneShotReadsObserveCurrentProviderWithoutNotificationOrReplay() = runBlocking {
+        fixture { provider, reader, _ ->
+            provider.events += event(1, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z")
+            val cached = CompletableDeferred<CalendarSnapshot>()
+            val observing = launch { reader.observeEvents(request).collect { if (it is CalendarReadState.Ready) cached.complete(it.value) } }
+            cached.await()
+            provider.calendars[0] = calendar() + mapOf("_sync_id" to "new-namespace")
+            provider.events[0] = provider.events[0] + mapOf("title" to "Fresh fixture")
+            val snapshot = reader.readSnapshot(request) as CalendarReadState.Ready
+            assertEquals("Fresh fixture", snapshot.value.occurrences.single().title)
+            assertEquals("new-namespace", snapshot.value.calendars.single().providerId)
+            val calendars = reader.readCalendars() as CalendarReadState.Ready
+            assertEquals("new-namespace", calendars.value.single().providerId)
+            observing.cancelAndJoin()
+        }
+    }
+
+    @Test fun oneShotReadsRetainPermissionAndUnavailableStates() = runBlocking {
+        fixture { provider, reader, _ ->
+            provider.failure = SecurityException()
+            assertEquals(CalendarReadState.PermissionRequired, reader.readCalendars())
+            assertEquals(CalendarReadState.PermissionRequired, reader.readSnapshot(request))
+            provider.failure = IllegalStateException()
+            assertEquals(CalendarReadState.Unavailable, reader.readSnapshot(request))
+        }
+    }
+
     @Test fun calendarIdentityRetainsProviderUidAndNormalizesOnlyBlankOptionalIdentity() = runBlocking {
         fixture { provider, reader, _ ->
             provider.calendars.clear()

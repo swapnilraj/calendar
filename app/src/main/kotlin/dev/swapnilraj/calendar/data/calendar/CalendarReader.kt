@@ -54,6 +54,11 @@ class CalendarReader(
     fun refresh() { manualRefresh.tryEmit(Unit) }
     fun observeCalendars(): Flow<CalendarReadState<List<CalendarInfo>>> = calendarFlow
 
+    /** A fresh bounded read; unlike a shared subscription this never returns its replay cache. */
+    suspend fun readCalendars(): CalendarReadState<List<CalendarInfo>> = guarded { queryCalendars() }
+    suspend fun readSnapshot(request: CalendarRequest): CalendarReadState<CalendarSnapshot> =
+        guarded(readBudgets.range) { querySnapshot(request) }
+
     // Look up on collection, not when constructing the Flow. Old Flow references can safely
     // resubscribe after idle entries are removed without creating duplicate live queries.
     fun observeEvents(request: CalendarRequest): Flow<CalendarReadState<CalendarSnapshot>> = flow {
