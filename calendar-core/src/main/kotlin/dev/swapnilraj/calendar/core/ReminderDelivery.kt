@@ -80,8 +80,8 @@ data class ReminderCandidate(
     }
 }
 
-/** Completeness covers this due window, including advance reminders on later event starts.
- * A failed/incomplete calendar may still supply known candidates, but cannot erase missing plans.
+/** Completeness covers discovery in this due window, including advance reminders on later starts.
+ * Absence here NEVER proves a tracked reminder disappeared: due can move outside the window.
  */
 data class ReminderSourceSnapshot(
     val window: InstantBounds,
@@ -98,6 +98,7 @@ data class ReminderSourceSnapshot(
         require(candidates.all { it.due in window })
         require(candidates.map { it.key }.toSet().size == candidates.size)
         require(failures.none { it.calendarId in completeCalendars })
+        require(completeCalendars.all { it in observedCalendarIdentities })
         require(candidates.all { observedCalendarIdentities[it.key.calendarId] == it.sourceCalendarIdentity })
         require(removedCalendars.none { it in observedCalendarIdentities })
     }
@@ -205,7 +206,15 @@ sealed interface ReminderDeliveryOutcome {
 data class ReminderPlanChanges(val cancelNotifications: Set<ReminderNotificationAlias> = emptySet())
 
 interface ReminderLedger {
-    /** Atomic upsert/cancel. Only complete calendars in snapshot.window can lose absent candidates.
+    /** All pending/interrupted/deferred records plus delivered history whose plannedDue is in window.
+     * Coordinator resolves their keys in ONE batch before reconciliation; no per-event detail reads.
+     */
+    suspend fun trackedForRevalidation(window: InstantBounds): List<ReminderRecord>
+
+    /** Atomic upsert/cancel. Missing map/window entries and Deferred NEVER prove disappearance.
+     * Only explicit GoneOrIneligible retires a known reminder (or authoritative namespace/removal
+     * evidence below). Eligible may be due outside snapshot.window; update it without discarding
+     * zone/end-only delivered history. completeCalendars certifies discovery, not global absence.
      * Disabled-calendar pending/snoozed work is cancelled; posted/dismissed history is retained.
      * Same actual start preserves delivered history on zone/end-only changes; start changes create
      * a new generation/alias. Preserve an unchanged snooze's elapsed effectiveDue. Never reset POSTING
@@ -217,7 +226,12 @@ interface ReminderLedger {
      * not inherit an old dismissed state. Every new generation gets a persisted unique nonce;
      * zone/end-only changes retain it. Same-account total reset without UIDs remains unprovable.
      */
-    suspend fun reconcile(snapshot: ReminderSourceSnapshot, enabledCalendars: Set<CalendarId>, now: Instant): ReminderPlanChanges
+    suspend fun reconcile(
+        snapshot: ReminderSourceSnapshot,
+        enabledCalendars: Set<CalendarId>,
+        resolutions: Map<ReminderKey, ReminderResolution>,
+        now: Instant,
+    ): ReminderPlanChanges
 
     /** One transaction moves due SCHEDULED/SNOOZED rows to POSTING with new unique claim tokens. */
     suspend fun claimDue(now: Instant, limit: Int): List<ReminderClaim>
