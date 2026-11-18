@@ -184,10 +184,10 @@ class CalendarSeriesTemporalTest {
         f.writer.mutate("proof", f.selected, edit.token, command(edit, duration = RecurrenceDurationChange.TimedElapsed(Duration.ofHours(2))))
         val original = f.store.operation("proof")!!.resultRef!!
         val changed = JSONObject(original).apply { getJSONObject("template").put("ordinal", 1) }
-        f.store.mark("proof", "COMMITTED", changed.toString())
+        f.store.forceOperationForTest("proof", "COMMITTED", changed.toString())
         f.provider.afterCommit = null; f.provider.delayedInstances = false
         assertEquals(SeriesMutationResult.Common(MutationResult.Uncertain("proof", 1)), f.writer.recover("proof"))
-        f.store.mark("proof", "COMMITTED", original)
+        f.store.forceOperationForTest("proof", "COMMITTED", original)
         assertTrue(f.writer.recover("proof") is SeriesMutationResult.LocalSaved)
         assertEquals(1, f.provider.batchCount)
     } }

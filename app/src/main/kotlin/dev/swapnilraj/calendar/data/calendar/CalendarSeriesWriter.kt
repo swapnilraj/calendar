@@ -84,13 +84,16 @@ class CalendarSeriesWriter(
 
     override suspend fun mutate(operationId: String, selected: EventRef, token: EditToken, command: SeriesCommand): SeriesMutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) {
         mutex.withLock {
+            try { store.abandoned(operationId) { retirementFingerprint(selected, token, command) }?.let { return@withLock common(it) } }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { return@withLock common(MutationResult.Unavailable) }
             if (!permissions()) return@withLock common(MutationResult.PermissionRequired)
             var attempted = false
+            var dispatch: CalendarLocalStore.Operation? = null
             var submitted: Prepared? = null
             try {
                 if (operationId.isBlank()) return@withLock SeriesMutationResult.Invalid("Operation ID is required")
-                val kind = kind(command)
-                val signature = hash(JSONObject().put("version", 1).put("selected", refJson(selected)).put("token", token.value).put("command", commandJson(command)).toString())
+                val (kind, signature) = retirementFingerprint(selected, token, command)
                 val existing = store.operation(operationId)
                 if (existing != null) {
                     if (existing.kind != kind || existing.signature != signature) return@withLock common(MutationResult.Conflict(null))
@@ -123,11 +126,12 @@ class CalendarSeriesWriter(
                 store.prepare(operationId, signature, kind)
                 val persisted = store.operation(operationId) ?: error("Journal unavailable")
                 if (persisted.kind != kind || persisted.signature != signature) return@withLock common(MutationResult.Conflict(null))
-                if (!store.attempt(operationId)) return@withLock recover(store.operation(operationId)!!, false)
+                if (!store.attempt(persisted)) return@withLock recover(store.operation(operationId)!!, false)
+                dispatch = persisted.copy(phase = "ATTEMPTED")
                 attempted = true
                 submitted = prepared
                 if (!permissions()) {
-                    store.mark(operationId, "FAILED")
+                    check(store.mark(requireNotNull(dispatch), "FAILED"))
                     return@withLock common(MutationResult.PermissionRequired)
                 }
                 currentCoroutineContext().ensureActive()
@@ -138,7 +142,7 @@ class CalendarSeriesWriter(
                     prepared.receipt.put("targets", JSONArray(listOf(id))).put("resultSelected", refJson(selected.copy(eventId = id)))
                         .put("syncIds", JSONObject().put(id.toString(), JSONObject.NULL)).put("eventUids", JSONObject().put(id.toString(), JSONObject.NULL))
                 }
-                store.mark(operationId, "COMMITTED", prepared.receipt.toString())
+                check(store.mark(requireNotNull(dispatch), "COMMITTED", prepared.receipt.toString()))
                 recover(store.operation(operationId)!!, false)
             } catch (_: ProviderReadLimitExceeded) {
                 if (attempted) common(MutationResult.Uncertain(operationId, null))
@@ -153,7 +157,7 @@ class CalendarSeriesWriter(
             catch (invalid: Invalid) { common(MutationResult.ValidationFailed(invalid.fields)) }
             catch (_: OperationApplicationException) {
                 if (!attempted) common(MutationResult.Unavailable) else try {
-                    store.mark(operationId, "FAILED")
+                    check(store.mark(requireNotNull(dispatch), "FAILED"))
                     val changed = try { sourceReader.source(selected).canonical() != submitted?.source?.canonical() }
                         catch (_: SeriesSourceConflict) { true }
                     common(if (changed) MutationResult.Conflict(null) else MutationResult.Unavailable)
@@ -603,6 +607,9 @@ class CalendarSeriesWriter(
     }).withExpectedCount(1).withYieldAllowed(false).build()
 
     override suspend fun recover(operationId: String): SeriesMutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
+        try { if (store.operationHeader(operationId)?.phase == "ABANDONED") return@withLock common(MutationResult.Retired(operationId)) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { return@withLock common(MutationResult.Unavailable) }
         if (!hasPermission(Manifest.permission.READ_CALENDAR)) return@withLock common(MutationResult.PermissionRequired)
         try { store.operation(operationId)?.let { operation ->
             try { recover(operation, true) }
@@ -615,6 +622,7 @@ class CalendarSeriesWriter(
         catch (_: Exception) { common(MutationResult.Unavailable) }
     } }
     private suspend fun recover(operation: CalendarLocalStore.Operation, safeRetry: Boolean): SeriesMutationResult {
+        if (operation.phase == "ABANDONED") return common(MutationResult.Retired(operation.id))
         fun uncertain(master: Long? = null) = common(MutationResult.Uncertain(operation.id, master))
         if (operation.kind !in kinds) return uncertain()
         if (operation.phase in setOf("PREPARED", "FAILED")) return if (operation.resultRef != null) uncertain()
@@ -690,7 +698,7 @@ class CalendarSeriesWriter(
         }
         val currentSelected = if (deleted) null else sourceReader.selectedReference(selected)
         ensureRead()
-        store.mark(operation.id, "VERIFIED")
+        check(store.mark(operation, "VERIFIED"))
         sourceReader.refresh()
         return if (deleted) SeriesMutationResult.LocalDeleted(identity, scope, selected) else SeriesMutationResult.LocalSaved(identity, currentSelected)
     }
@@ -780,7 +788,7 @@ class CalendarSeriesWriter(
         if (listOf("original_id", "original_sync_id", "originalInstanceTime").any { !occurrence[it].isNullOrBlank() }) return uncertain()
         if (!matchesCalendar(currentCalendar())) return uncertain()
         ensureRead()
-        store.mark(operation.id, "VERIFIED")
+        check(store.mark(operation, "VERIFIED"))
         sourceReader.refresh()
         val result = if (temporal.occurrence == null) null else EventRef(identity.calendarId, identity.masterEventId,
             Instant.ofEpochMilli(occurrence.getValue("begin")!!.toLong()), Instant.ofEpochMilli(occurrence.getValue("end")!!.toLong()),
@@ -832,7 +840,7 @@ class CalendarSeriesWriter(
             }
         }
         ensureRead()
-        store.mark(operation.id, "VERIFIED")
+        check(store.mark(operation, "VERIFIED"))
         sourceReader.refresh()
         return SeriesMutationResult.LocalDeleted(identity, RecurrenceScope.FOLLOWING, selected)
     }
@@ -878,7 +886,7 @@ class CalendarSeriesWriter(
         ensureRead()
         receipt.put("createdSync", receipt.nullable("createdSync") ?: event["_sync_id"]?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
             .put("createdUid", receipt.nullable("createdUid") ?: event["uid2445"]?.takeIf(String::isNotBlank)?.let(::hash) ?: JSONObject.NULL)
-        store.mark(operation.id, "VERIFIED", receipt.toString())
+        check(store.mark(operation, "VERIFIED", receipt.toString()))
         sourceReader.refresh()
         return if (deleted) SeriesMutationResult.LocalDeleted(identity, scope, selected) else SeriesMutationResult.LocalSaved(identity, current)
     }
@@ -916,6 +924,8 @@ class CalendarSeriesWriter(
         private val transformedEventColumns = setOf("_id", "dtstart", "dtend", "duration", "rrule", "rdate", "exrule", "exdate", "original_id", "original_sync_id",
             "originalInstanceTime", "originalAllDay", "lastDate", "dirty", "mutators", "lastSynced")
         private val kinds = setOf("SERIES_V1_ALL_EDIT", "SERIES_V1_THIS_EDIT", "SERIES_V1_ALL_DELETE", "SERIES_V1_THIS_DELETE", "SERIES_V1_FOLLOWING_DELETE")
+        internal fun retirementFingerprint(selected: EventRef, token: EditToken, command: SeriesCommand): Pair<String, String> =
+            kind(command) to hash(JSONObject().put("version", 1).put("selected", refJson(selected)).put("token", token.value).put("command", commandJson(command)).toString())
         private fun kind(command: SeriesCommand) = when (command) {
             is SeriesCommand.OccurrenceEdit -> "SERIES_V1_THIS_EDIT"
             is SeriesCommand.WholeEdit -> "SERIES_V1_ALL_EDIT"

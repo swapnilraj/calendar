@@ -162,7 +162,7 @@ class CalendarSeriesWriterTest {
             val receipt = JSONObject(operation.resultRef!!).put("token", legacy.value)
             val signature = hash(JSONObject().put("version", 1).put("selected", receipt.getJSONObject("selected")).put("token", legacy.value).put("command", receipt.getJSONObject("command")).toString())
             f.store.prepare("legacy-recovery", signature, operation.kind)
-            f.store.mark("legacy-recovery", "COMMITTED", receipt.toString())
+            f.store.forceOperationForTest("legacy-recovery", "COMMITTED", receipt.toString())
             assertTrue((f.writer.recover("legacy-recovery") as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
             assertEquals(legacyRaw, f.store.edit(legacy.value))
         }

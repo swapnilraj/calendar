@@ -81,11 +81,15 @@ class CalendarMeetingWriter(
 
     override suspend fun mutate(operationId: String, selected: EventRef, token: EditToken,
         command: MeetingCommand): MeetingMutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
+        try { store.abandoned(operationId) { requireNotNull(retirementFingerprint(selected, token, command)) }?.let { return@withLock common(it) } }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { return@withLock common(MutationResult.Unavailable) }
         if (selected.recurrence != null) return@withLock series.mutate(operationId, selected, token, command)
         if (command !is MeetingCommand.Respond || command.scope != RecurrenceScope.THIS)
             return@withLock MeetingMutationResult.Unsupported("Only THIS response on a proven nonrecurring invitation is implemented")
         if (!permissions()) return@withLock common(MutationResult.PermissionRequired)
         var attempted = false
+        var dispatch: CalendarLocalStore.Operation? = null
         try {
             if (operationId.isBlank()) return@withLock MeetingMutationResult.Invalid("Operation ID is required")
             val frozen = commandJson(selected, token, command.response)
@@ -131,13 +135,15 @@ class CalendarMeetingWriter(
             store.prepare(operationId, signature, Kind, encoded)
             val persisted = store.operation(operationId) ?: error("Journal unavailable")
             if (persisted.kind != Kind || persisted.signature != signature) return@withLock common(MutationResult.Conflict(null))
+            if (persisted.phase == "ABANDONED") return@withLock common(MutationResult.Retired(operationId))
             if (proof(persisted)?.toString() != metadata.toString()) return@withLock common(MutationResult.Uncertain(operationId, null))
-            if (!store.attempt(operationId)) return@withLock recover(store.operation(operationId)!!, false)
+            if (!store.attempt(persisted)) return@withLock recover(store.operation(operationId)!!, false)
+            dispatch = persisted.copy(phase = "ATTEMPTED")
             attempted = true
-            if (!permissions()) { store.mark(operationId, "FAILED"); return@withLock common(MutationResult.PermissionRequired) }
+            if (!permissions()) { check(store.mark(requireNotNull(dispatch), "FAILED")); return@withLock common(MutationResult.PermissionRequired) }
             resolver.applyBatch(CalendarContract.AUTHORITY, operations)
             metadata.put("stage", "committed")
-            store.mark(operationId, "COMMITTED", metadata.toString())
+            check(store.mark(requireNotNull(dispatch), "COMMITTED", metadata.toString()))
             recover(store.operation(operationId)!!, false)
         } catch (_: ProviderReadLimitExceeded) { if (attempted) common(MutationResult.Uncertain(operationId, selected.eventId)) else MeetingMutationResult.NeedsReview("Complete source exceeds the read budget") }
         catch (_: SecurityException) { common(if (attempted) MutationResult.Uncertain(operationId, selected.eventId) else MutationResult.PermissionRequired) }
@@ -145,7 +151,7 @@ class CalendarMeetingWriter(
         catch (review: Review) { MeetingMutationResult.NeedsReview(review.reason) }
         catch (_: Conflict) { common(MutationResult.Conflict(null)) }
         catch (_: OperationApplicationException) {
-            try { store.mark(operationId, "FAILED"); common(MutationResult.Unavailable) }
+            try { check(store.mark(requireNotNull(dispatch), "FAILED")); common(MutationResult.Unavailable) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { common(MutationResult.Uncertain(operationId, selected.eventId)) }
         } catch (cancelled: CancellationException) { throw cancelled }
@@ -154,6 +160,7 @@ class CalendarMeetingWriter(
 
     override suspend fun recover(operationId: String): MeetingMutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
         try {
+            if (store.operationHeader(operationId)?.phase == "ABANDONED") return@withLock common(MutationResult.Retired(operationId))
             ensureRead()
             store.operation(operationId)?.let { if (CalendarMeetingSeriesWriter.handles(it.kind)) series.recover(operationId) else recover(it, true) } ?: common(MutationResult.Unavailable)
         } catch (_: SecurityException) { common(MutationResult.PermissionRequired) }
@@ -183,6 +190,7 @@ class CalendarMeetingWriter(
     catch (_: Exception) { null }
 
     private suspend fun recover(operation: CalendarLocalStore.Operation, safeRetry: Boolean): MeetingMutationResult {
+        if (operation.phase == "ABANDONED") return common(MutationResult.Retired(operation.id))
         val proof = proof(operation) ?: return common(MutationResult.Uncertain(operation.id, null))
         if (operation.phase in setOf("PREPARED", "FAILED")) return if (proof.getString("stage") == "prepared") {
             common(if (safeRetry) MutationResult.SafeToRetry(operation.id) else MutationResult.Unavailable)
@@ -205,7 +213,7 @@ class CalendarMeetingWriter(
         if (old.event.filterKeys { it !in bookkeeping } != current.event.filterKeys { it !in bookkeeping }) return uncertain
         if (identity(calendar(old.selected.calendarId)) != target) return uncertain
         ensureRead()
-        store.mark(operation.id, "VERIFIED")
+        check(store.mark(operation, "VERIFIED"))
         reader.refresh()
         return MeetingMutationResult.LocalSaved(old.selected, RecurrenceScope.THIS)
     }
@@ -381,6 +389,11 @@ class CalendarMeetingWriter(
         private fun refJson(ref: EventRef): JSONObject { require(ref.recurrence == null); return JSONObject().put("calendar", ref.calendarId.value).put("event", ref.eventId)
             .put("start", ref.instanceStart.toString()).put("end", ref.instanceEnd.toString()) }
         private fun parseRef(value: JSONObject) = EventRef(CalendarId(value.getLong("calendar")), value.getLong("event"), Instant.parse(value.getString("start")), Instant.parse(value.getString("end")))
+        internal fun retirementFingerprint(selected: EventRef, token: EditToken, command: MeetingCommand): Pair<String, String>? {
+            if (selected.recurrence != null) return CalendarMeetingSeriesWriter.retirementFingerprint(selected, token, command)
+            if (command !is MeetingCommand.Respond || command.scope != RecurrenceScope.THIS) return null
+            return Kind to hash(CommandFeature + commandJson(selected, token, command.response).toString())
+        }
         private fun commandJson(selected: EventRef, token: EditToken, response: MeetingResponse) = JSONObject().put("selected", refJson(selected))
             .put("token", token.value).put("scope", RecurrenceScope.THIS.name).put("response", response.name)
         internal fun responseStatus(value: MeetingResponse) = when (value) {

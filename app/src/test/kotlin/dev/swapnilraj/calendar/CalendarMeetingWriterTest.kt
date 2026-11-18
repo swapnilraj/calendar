@@ -306,7 +306,7 @@ class CalendarMeetingWriterTest {
             assertTrue(f.writer.mutate("saved", selected, token, respond()) is MeetingMutationResult.LocalSaved)
             val operation = f.store.operation("saved")!!
             val receipt = org.json.JSONObject(operation.resultRef!!).put("self", "21")
-            f.store.mark("saved", "COMMITTED", receipt.toString())
+            f.store.forceOperationForTest("saved", "COMMITTED", receipt.toString())
             f.provider.queries.clear()
             assertEquals(common(MutationResult.Uncertain("saved", null)), f.writer.recover("saved"))
             f.store.prepare("legacy", "missing-proof", operation.kind)
@@ -554,7 +554,7 @@ class CalendarMeetingWriterTest {
             val signature = hash("MEETING_COMMAND_V1" + receipt.getJSONObject("command").toString())
             receipt.put("signature", signature)
             f.store.prepare("legacy-commit", signature, operation.kind)
-            f.store.mark("legacy-commit", "COMMITTED", receipt.toString())
+            f.store.forceOperationForTest("legacy-commit", "COMMITTED", receipt.toString())
             assertTrue((f.writer.recover("legacy-commit") as MeetingMutationResult.Common).outcome is MutationResult.Uncertain)
             assertEquals(1, f.provider.batchCount)
         }

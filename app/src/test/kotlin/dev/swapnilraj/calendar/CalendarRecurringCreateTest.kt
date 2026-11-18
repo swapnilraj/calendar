@@ -33,6 +33,7 @@ class CalendarRecurringCreateTest {
         var allowUpdates = false
         var expandInstances = false
         var afterCommit: (() -> Unit)? = null
+        var afterQuery: ((String) -> Unit)? = null
         val db = SQLiteDatabase.create(null)
         data class Query(val path: String, val fields: List<String>?, val selection: String?)
         val queries = mutableListOf<Query>()
@@ -82,7 +83,9 @@ class CalendarRecurringCreateTest {
                 while (cursor.moveToNext()) cursor.getString(1).takeIf { it != "native_duration_ms" }?.let(::add)
             }.toTypedArray() } else null
             if (path == "instances") { where += "(begin+$beginDelta) < CAST(? AS INTEGER) AND (end+$endDelta) > CAST(? AS INTEGER)"; bind += uri.pathSegments[3]; bind += uri.pathSegments[2] }
-            return db.query(if (path == "instances") "instance_view" else path, projected, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
+            val result = db.query(if (path == "instances") "instance_view" else path, projected, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
+            afterQuery?.invoke(path)
+            return result
         }
         override fun insert(uri: Uri, values: ContentValues?): Uri {
             val path = uri.pathSegments.first()

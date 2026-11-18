@@ -52,12 +52,16 @@ internal class CalendarMeetingSeriesWriter(
     }
 
     suspend fun mutate(id: String, selected: EventRef, token: EditToken, command: MeetingCommand): MeetingMutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
+        try { store.abandoned(id) { requireNotNull(retirementFingerprint(selected, token, command)) }?.let { return@withLock common(it) } }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { return@withLock common(MutationResult.Unavailable) }
         if (command !is MeetingCommand.Respond || command.scope == RecurrenceScope.FOLLOWING)
             return@withLock MeetingMutationResult.Unsupported("Only existing THIS and complete ALL series responses are implemented")
         if (command.scope == RecurrenceScope.THIS && selected.eventId == selected.recurrence?.masterEventId)
             return@withLock MeetingMutationResult.Unsupported("A generated occurrence needs a separately verified new exception")
         if (!permissions()) return@withLock common(MutationResult.PermissionRequired)
         var attempted = false
+        var dispatch: CalendarLocalStore.Operation? = null
         try {
             if (id.isBlank()) return@withLock MeetingMutationResult.Invalid("Operation ID is required")
             val frozen = commandJson(selected, token, command)
@@ -107,13 +111,15 @@ internal class CalendarMeetingSeriesWriter(
             store.prepare(id, signature, kind, metadata.toString())
             val persisted = store.operation(id) ?: error("Journal unavailable")
             if (persisted.kind != kind || persisted.signature != signature) return@withLock common(MutationResult.Conflict(null))
+            if (persisted.phase == "ABANDONED") return@withLock common(MutationResult.Retired(id))
             if (proof(persisted)?.toString() != metadata.toString()) return@withLock common(MutationResult.Uncertain(id, null))
-            if (!store.attempt(id)) return@withLock recover(store.operation(id)!!, false)
+            if (!store.attempt(persisted)) return@withLock recover(store.operation(id)!!, false)
+            dispatch = persisted.copy(phase = "ATTEMPTED")
             attempted = true
-            if (!permissions()) { store.mark(id, "FAILED"); return@withLock common(MutationResult.PermissionRequired) }
+            if (!permissions()) { check(store.mark(requireNotNull(dispatch), "FAILED")); return@withLock common(MutationResult.PermissionRequired) }
             resolver.applyBatch(CalendarContract.AUTHORITY, operations)
             metadata.put("stage", "committed")
-            store.mark(id, "COMMITTED", metadata.toString())
+            check(store.mark(requireNotNull(dispatch), "COMMITTED", metadata.toString()))
             recover(store.operation(id)!!, false)
         } catch (_: ProviderReadLimitExceeded) { if (attempted) common(MutationResult.Uncertain(id, selected.eventId)) else MeetingMutationResult.NeedsReview("Complete source exceeds the response budget") }
         catch (_: SecurityException) { common(if (attempted) MutationResult.Uncertain(id, selected.eventId) else MutationResult.PermissionRequired) }
@@ -121,7 +127,7 @@ internal class CalendarMeetingSeriesWriter(
         catch (review: MeetingSeriesReview) { if (attempted) common(MutationResult.Uncertain(id, selected.eventId)) else MeetingMutationResult.NeedsReview(review.reason) }
         catch (_: MeetingSeriesConflict) { common(if (attempted) MutationResult.Uncertain(id, selected.eventId) else MutationResult.Conflict(null)) }
         catch (_: OperationApplicationException) {
-            try { store.mark(id, "FAILED"); common(MutationResult.Unavailable) }
+            try { check(store.mark(requireNotNull(dispatch), "FAILED")); common(MutationResult.Unavailable) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { common(MutationResult.Uncertain(id, selected.eventId)) }
         } catch (cancelled: CancellationException) { throw cancelled }
@@ -129,7 +135,8 @@ internal class CalendarMeetingSeriesWriter(
     } }
 
     suspend fun recover(id: String): MeetingMutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
-        try { ensureRead(); store.operation(id)?.let { recover(it, true) } ?: common(MutationResult.Unavailable) }
+        try { if (store.operationHeader(id)?.phase == "ABANDONED") return@withLock common(MutationResult.Retired(id))
+            ensureRead(); store.operation(id)?.let { recover(it, true) } ?: common(MutationResult.Unavailable) }
         catch (_: SecurityException) { common(MutationResult.PermissionRequired) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { common(MutationResult.Uncertain(id, null)) }
@@ -159,6 +166,7 @@ internal class CalendarMeetingSeriesWriter(
     catch (_: Exception) { null }
 
     private suspend fun recover(operation: CalendarLocalStore.Operation, safeRetry: Boolean): MeetingMutationResult {
+        if (operation.phase == "ABANDONED") return common(MutationResult.Retired(operation.id))
         val proof = proof(operation) ?: return common(MutationResult.Uncertain(operation.id, null))
         if (operation.phase in setOf("PREPARED", "FAILED")) return common(if (proof.getString("stage") != "prepared") MutationResult.Uncertain(operation.id, null)
             else if (safeRetry) MutationResult.SafeToRetry(operation.id) else MutationResult.Unavailable)
@@ -179,7 +187,7 @@ internal class CalendarMeetingSeriesWriter(
         val expectedOwn = old.ownRows.mapValues { (event, row) -> if (event in targets) row + ("attendeeStatus" to status) else row }
         if (current.ownRows != expectedOwn || meetingIdentity(sourceReader.calendar(old.selected.calendarId)) != targetIdentity) return uncertain
         ensureRead()
-        store.mark(operation.id, "VERIFIED")
+        check(store.mark(operation, "VERIFIED"))
         reader.refresh()
         return MeetingMutationResult.LocalSaved(old.selected, RecurrenceScope.valueOf(command.getString("scope")))
     }
@@ -225,6 +233,12 @@ internal class CalendarMeetingSeriesWriter(
         private const val AllKind = "MEETING_SERIES_V1_ALL_RESPOND"
         private val Bookkeeping = setOf("dirty", "mutators")
         fun handles(kind: String) = kind == ThisKind || kind == AllKind
+        internal fun retirementFingerprint(selected: EventRef, token: EditToken, command: MeetingCommand): Pair<String, String>? {
+            val recurrence = selected.recurrence ?: return null
+            if (command !is MeetingCommand.Respond || command.scope == RecurrenceScope.FOLLOWING ||
+                command.scope == RecurrenceScope.THIS && selected.eventId == recurrence.masterEventId) return null
+            return kind(command.scope) to meetingHash(CommandFeature + commandJson(selected, token, command).toString())
+        }
         private fun kind(scope: RecurrenceScope) = if (scope == RecurrenceScope.THIS) ThisKind else AllKind
         private fun commandJson(selected: EventRef, token: EditToken, command: MeetingCommand.Respond) = JSONObject().put("selected", meetingRefJson(selected))
             .put("token", token.value).put("scope", command.scope.name).put("response", command.response.name)

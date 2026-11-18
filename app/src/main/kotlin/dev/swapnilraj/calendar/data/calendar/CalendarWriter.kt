@@ -73,6 +73,9 @@ class CalendarWriter(
     }
 
     override suspend fun create(operationId: String, draft: EventDraft): MutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) {
+        try { store.abandoned(operationId) { createFingerprint(draft, readBudgets.maxCanonicalBytes) }?.let { return@withContext it } }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { return@withContext MutationResult.Unavailable }
         val target = draft.targetIdentity
         if (target == null || target.calendarId != draft.calendarId || target.account.name.isBlank() || target.account.type.isBlank()) return@withContext MutationResult.ValidationFailed(setOf(InvalidEventField.CALENDAR))
         if (!permissions()) return@withContext MutationResult.PermissionRequired
@@ -159,7 +162,7 @@ class CalendarWriter(
         }
 
     override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult =
-        mutate(operationId, { refJson(ref).put("token", token.value) }, "DELETE") {
+        mutate(operationId, { deleteJson(ref, token) }, "DELETE") {
             val source = checkedSource(ref, token)
             policy(source)
             Prepared(assertions(source).apply {
@@ -173,8 +176,12 @@ class CalendarWriter(
 
     private suspend fun mutate(id: String, payloadFactory: () -> JSONObject, kind: String, prepare: suspend () -> Prepared): MutationResult =
         withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
+            try { store.abandoned(id) { kind to signature(kind, payloadFactory()) }?.let { return@withLock it } }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { return@withLock MutationResult.Unavailable }
             if (!permissions()) return@withLock MutationResult.PermissionRequired
             var attempted = false
+            var dispatch: CalendarLocalStore.Operation? = null
             var knownId: Long? = null
             var submitted: Prepared? = null
             try {
@@ -184,7 +191,7 @@ class CalendarWriter(
                 val existing = store.operation(id)
                 if (existing != null) {
                     if (existing.signature != signature || existing.kind != kind) return@withLock MutationResult.Conflict(null)
-                    if (existing.phase in setOf("ATTEMPTED", "COMMITTED", "VERIFIED")) return@withLock recover(existing, allowSafeRetry = false)
+                    if (existing.phase in setOf("ABANDONED", "ATTEMPTED", "COMMITTED", "VERIFIED")) return@withLock recover(existing, allowSafeRetry = false)
                     // An old unbound create is not made dispatchable by a newer UI/calendar choice.
                     if (proof(existing) == null) return@withLock MutationResult.Uncertain(id, null)
                 }
@@ -198,12 +205,14 @@ class CalendarWriter(
                 store.prepare(id, signature, kind, preparedProof.toString())
                 val persisted = store.operation(id) ?: error("Operation journal unavailable")
                 if (persisted.signature != signature || persisted.kind != kind) return@withLock MutationResult.Conflict(null)
+                if (persisted.phase == "ABANDONED") return@withLock MutationResult.Retired(id)
                 if (proof(persisted)?.toString() != preparedProof.toString()) return@withLock MutationResult.Uncertain(id, null)
-                if (!store.attempt(id)) return@withLock recover(store.operation(id)!!, allowSafeRetry = false)
+                if (!store.attempt(persisted)) return@withLock recover(store.operation(id)!!, allowSafeRetry = false)
+                dispatch = persisted.copy(phase = "ATTEMPTED")
                 attempted = true
                 submitted = prepared
                 if (!permissions()) {
-                    store.mark(id, "FAILED")
+                    check(store.mark(requireNotNull(dispatch), "FAILED"))
                     return@withLock MutationResult.PermissionRequired
                 }
                 val results = resolver.applyBatch(CalendarContract.AUTHORITY, prepared.operations)
@@ -216,7 +225,7 @@ class CalendarWriter(
                 preparedProof.put("stage", "committed")
                 if (prepared.recurrence == null) preparedProof.put("ref", refJson(reference(prepared.calendarId, knownId, prepared.time)))
                 else preparedProof.put("master", knownId)
-                store.mark(id, "COMMITTED", preparedProof.toString())
+                check(store.mark(requireNotNull(dispatch), "COMMITTED", preparedProof.toString()))
                 recover(store.operation(id)!!, allowSafeRetry = false)
             } catch (_: ProviderReadLimitExceeded) { if (attempted) MutationResult.Uncertain(id, knownId) else MutationResult.Unavailable }
             catch (denied: Denial) { MutationResult.Denied(denied.reason) }
@@ -228,7 +237,9 @@ class CalendarWriter(
                 // CalendarProvider applies the non-yielding batch in one transaction. An assertion
                 // failure is definite rollback; permit a user-requested retry after fresh checks.
                 try {
-                    store.mark(id, "FAILED")
+                    store.abandoned(id) { kind to signature(kind, payloadFactory()) }?.let { return@withLock it }
+                    if (!attempted) return@withLock MutationResult.Unavailable
+                    check(store.mark(requireNotNull(dispatch), "FAILED"))
                     val ref = submitted?.originalRef
                     val changed = if (ref == null) false else try {
                         source(ref).encode() != submitted?.expectedSource?.encode()
@@ -241,6 +252,9 @@ class CalendarWriter(
 
     /** Recovery never submits provider operations, even if a matching create seems likely. */
     override suspend fun recover(operationId: String): MutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
+        try { if (store.operationHeader(operationId)?.phase == "ABANDONED") return@withLock MutationResult.Retired(operationId) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { return@withLock MutationResult.Unavailable }
         if (!hasPermission(Manifest.permission.READ_CALENDAR)) MutationResult.PermissionRequired
         else try { store.operation(operationId)?.let { recover(it) } ?: MutationResult.Unavailable }
         catch (_: SecurityException) { MutationResult.PermissionRequired }
@@ -305,6 +319,7 @@ class CalendarWriter(
     } catch (_: Exception) { null }
 
     private suspend fun recover(operation: CalendarLocalStore.Operation, allowSafeRetry: Boolean = true): MutationResult {
+        if (operation.phase == "ABANDONED") return MutationResult.Retired(operation.id)
         val proof = proof(operation) ?: return MutationResult.Uncertain(operation.id, null)
         if (operation.phase in setOf("PREPARED", "FAILED")) {
             return if (proof.getString("stage") != "prepared") MutationResult.Uncertain(operation.id, null)
@@ -330,14 +345,14 @@ class CalendarWriter(
             if (rows.any { it[CalendarContract.Events.CALENDAR_ID]?.toLongOrNull() != target.calendarId.value } ||
                 rows.isNotEmpty() && rows.single()[CalendarContract.Events.DELETED] != "1") return MutationResult.Uncertain(operation.id, null)
             if (calendarIdentity(calendar(target.calendarId)) != target) return MutationResult.Uncertain(operation.id, null)
-            store.mark(operation.id, "VERIFIED")
+            check(store.mark(operation, "VERIFIED"))
             reader.refresh()
             return MutationResult.LocalDeleted(ref)
         }
         val result = reader.readDetails(ref)
         if (result !is CalendarReadState.Ready) return MutationResult.Uncertain(operation.id, ref.eventId)
         if (calendarIdentity(calendar(target.calendarId)) != target) return MutationResult.Uncertain(operation.id, null)
-        store.mark(operation.id, "VERIFIED")
+        check(store.mark(operation, "VERIFIED"))
         reader.refresh()
         return MutationResult.LocalSaved(result.value.occurrence.ref)
     }
@@ -378,7 +393,7 @@ class CalendarWriter(
             first["allDay"] != (if (plan.allDay) "1" else "0")) return uncertain()
         if (listOf("original_id", "original_sync_id", "originalInstanceTime").any { !first[it].isNullOrBlank() }) return uncertain()
         if (calendarIdentity(calendar(target.calendarId)) != target || !hasPermission(Manifest.permission.READ_CALENDAR)) return uncertain()
-        store.mark(operation.id, "VERIFIED", JSONObject(proof.toString()).put("firstRef", recurringRefJson(expectedFirst)).toString())
+        check(store.mark(operation, "VERIFIED", JSONObject(proof.toString()).put("firstRef", recurringRefJson(expectedFirst)).toString()))
         reader.refresh()
         return MutationResult.LocalSaved(expectedFirst)
     }
@@ -633,6 +648,11 @@ class CalendarWriter(
             return CalendarIdentity(CalendarId(json.getLong("calendar")), CalendarAccount(json.getString("name"), json.getString("type")),
                 if (json.isNull("owner")) null else json.getString("owner"), if (json.isNull("providerId")) null else json.getString("providerId"))
         }
+        internal fun createFingerprint(draft: EventDraft, maxBytes: Int): Pair<String, String> = "CREATE" to signature("CREATE", draftJson(draft, maxBytes))
+        internal fun updateFingerprint(ref: EventRef, token: EditToken, patch: EventPatch, maxBytes: Int): Pair<String, String> =
+            "UPDATE" to signature("UPDATE", patchJson(ref, token, patch, maxBytes))
+        internal fun deleteFingerprint(ref: EventRef, token: EditToken): Pair<String, String> = "DELETE" to signature("DELETE", deleteJson(ref, token))
+        private fun deleteJson(ref: EventRef, token: EditToken) = refJson(ref).put("token", token.value)
         private fun eventUri(id: Long) = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id)
         private fun json(values: Map<String, String?>): JSONObject = JSONObject().apply {
             values.toSortedMap().forEach { (key, value) -> put(key, value ?: JSONObject.NULL) }
