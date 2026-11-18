@@ -59,5 +59,7 @@ sealed interface CalendarReadState<out T> {
     data object Loading : CalendarReadState<Nothing>
     data class Ready<T>(val value: T) : CalendarReadState<T>
     data object PermissionRequired : CalendarReadState<Nothing>
+    /** The complete authorized result exceeds a read budget. No partial authority snapshot is valid. */
+    data object LimitExceeded : CalendarReadState<Nothing>
     data object Unavailable : CalendarReadState<Nothing>
 }

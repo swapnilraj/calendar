@@ -103,6 +103,14 @@ Opening a result navigates day/week/three-day/month/agenda to its date before na
 pager explicitly seeks external search selections while retaining the shared logical time anchor.
 Changed query/range/calendar/zone/declined context clears old private rows before effects run.
 
+Provider input budgets cover rows, cells and text payloads before retaining complete range/detail or
+mutation source snapshots. Exceeding an authority-read budget yields LimitExceeded (series edits need
+review), without a usable partial snapshot or edit token. Search may return verified completed chunks
+with an explicit truncated indication, including when no matches were retained. The UI keeps this
+distinct from an empty calendar or a complete no-match result. Raw metadata is never clipped to make
+a source snapshot appear valid. Payload enforcement and its UI wiring follow the shared contract;
+the contract alone does not establish bounded provider reads.
+
 1. **Events always win.** Weather is painted under the hour lines and events. Nothing covers an event
    or its text, and event colours are never tinted.
 2. **Glanceable, not readable.** "Rainy evening, dark by five" should land in under a second without

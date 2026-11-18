@@ -48,6 +48,8 @@ sealed interface EditReadResult {
     data class Ready(val event: EditableEvent) : EditReadResult
     data object PermissionRequired : EditReadResult
     data class Denied(val reason: MutationDenial) : EditReadResult
+    /** No edit token/source snapshot was issued for an oversized read. */
+    data object LimitExceeded : EditReadResult
     data object Unavailable : EditReadResult
 }
 
