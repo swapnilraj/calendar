@@ -147,7 +147,14 @@ class NativeSeriesTemporalJourneyTest {
         shown("Entire series"); compose.onNodeWithText("Entire series").performClick()
         shown("Edit recurring event"); shown("Master start and duration")
     }
-    private fun replace(label: String, value: String) = compose.onNode(hasSetTextAction() and hasText(label)).performScrollTo().performTextReplacement(value)
+    private fun replace(label: String, value: String) {
+        val field = hasSetTextAction() and hasText(label)
+        compose.waitUntil(15_000) { compose.onAllNodes(field and isEnabled()).fetchSemanticsNodes().size == 1 }
+        compose.onNode(field).performScrollTo()
+        compose.waitForIdle()
+        // Conditional repeat fields can be recomposed during bring-into-view. Resolve them again.
+        compose.onNode(field).performTextReplacement(value)
+    }
     private fun review(f: Fixture) {
         compose.onNodeWithText("Save").performScrollTo().performClick(); shown("Review entire-series changes")
         assertUnsubmitted(f)
