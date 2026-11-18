@@ -36,6 +36,11 @@ and guest-policy metadata without inferring unknown defaults. Full guest lists a
 explicit organizer or guest-list visibility proof. Free/busy-only details contain none of that
 restricted metadata or event-specific styling. Guest-policy flags do not authorize event writes.
 
+Native details present availability, visibility, status, organizer role, own response and advisory
+guest policy using readable labels. Calendar-default visibility is never inferred public. Unknown
+guest access shows unavailable rather than an empty guest list. Cancelled events have no featured
+Join or mutation actions; stored links remain explicit links. Account labels hide raw provider types.
+
 1. **Events always win.** Weather is painted under the hour lines and events. Nothing covers an event
    or its text, and event colours are never tinted.
 2. **Glanceable, not readable.** "Rainy evening, dark by five" should land in under a second without
