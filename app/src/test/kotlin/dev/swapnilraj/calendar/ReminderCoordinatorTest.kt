@@ -18,14 +18,15 @@ class ReminderCoordinatorTest {
     private val config = ReminderConfiguration(true, setOf(id), ZoneOffset.UTC,
         expectedCalendarIdentities = mapOf(id to identity))
     private val permissions = ReminderPermissionState(true, true, true, true, true)
-    private fun candidate(eventId: Long = 7, start: Instant = now, minutes: Int = 0): ReminderCandidate {
-        val ref = EventRef(id, eventId, start, start.plusSeconds(3600))
+    private fun candidate(eventId: Long = 7, start: Instant = now, minutes: Int = 0,
+        calendarId: CalendarId = id, sourceIdentity: ReminderCalendarIdentity = identity): ReminderCandidate {
+        val ref = EventRef(calendarId, eventId, start, start.plusSeconds(3600))
         val occurrence = EventOccurrence(ref, EventTime.Timed(ref.instanceStart, ref.instanceEnd), "Synthetic event", 0xff112233.toInt())
-        return ReminderCandidate(ReminderKey.of(ref, minutes), identity, occurrence,
+        return ReminderCandidate(ReminderKey.of(ref, minutes), sourceIdentity, occurrence,
             dueInstant(occurrence.time, minutes, ZoneOffset.UTC), "event-$eventId")
     }
     private fun record(candidate: ReminderCandidate, state: ReminderDeliveryState = ReminderDeliveryState.SCHEDULED,
-        nonce: String = "nonce-${candidate.key.masterOrEventId}") = ReminderRecord(candidate.key, identity,
+        nonce: String = "nonce-${candidate.key.masterOrEventId}") = ReminderRecord(candidate.key, candidate.sourceCalendarIdentity,
         candidate.occurrence.ref, candidate.occurrence.time is EventTime.AllDay, candidate.due, candidate.due,
         ReminderNotificationAlias(candidate.occurrence.ref, candidate.due, nonce), state, 1, 1,
         lastPostedAt = if (state == ReminderDeliveryState.POSTED || state == ReminderDeliveryState.DISMISSED) now else null,
@@ -75,6 +76,13 @@ class ReminderCoordinatorTest {
         override suspend fun reconcile(snapshot: ReminderSourceSnapshot, enabledCalendars: Set<CalendarId>,
             resolutions: Map<ReminderKey, ReminderResolution>, now: Instant): ReminderPlanChanges {
             lastSnapshot = snapshot; lastResolutions = resolutions
+            val disabled = rows.values.filter { it.key.calendarId !in enabledCalendars }
+            for (row in disabled) {
+                if (row.state in setOf(ReminderDeliveryState.SCHEDULED, ReminderDeliveryState.SNOOZED,
+                        ReminderDeliveryState.DEFERRED)) {
+                    rows[row.key] = row.copy(state = ReminderDeliveryState.CANCELLED, revision = row.revision + 1)
+                }
+            }
             val fresh = snapshot.candidates + resolutions.values.mapNotNull { (it as? ReminderResolution.Eligible)?.candidate }
             for (candidate in fresh.distinctBy { it.key }) {
                 val old = rows[candidate.key]
@@ -87,7 +95,7 @@ class ReminderCoordinatorTest {
                         effectiveDue = old.snoozedUntil ?: candidate.due)
                 }
             }
-            return ReminderPlanChanges()
+            return ReminderPlanChanges(disabled.map { it.notificationAlias }.toSet())
         }
         override suspend fun claimDue(now: Instant, limit: Int): List<ReminderClaim> = rows.values.filter {
             it.state in setOf(ReminderDeliveryState.SCHEDULED, ReminderDeliveryState.SNOOZED) && it.effectiveDue <= now
@@ -218,6 +226,32 @@ class ReminderCoordinatorTest {
         assertTrue(sink.posts.isEmpty()); assertTrue(sink.cancelled.isEmpty())
     }
 
+    @Test fun disabledCalendarCleanupStillAppliesWhenDiscoveryIsUnavailable() = runBlocking {
+        val enabled = record(candidate(7, now.plusSeconds(1200)))
+        val disabledId = CalendarId(3)
+        val disabledIdentity = ReminderCalendarIdentity("disabled-calendar")
+        val disabledAlarm = record(candidate(8, now.plusSeconds(600), calendarId = disabledId,
+            sourceIdentity = disabledIdentity))
+        val disabledPosted = record(candidate(9, calendarId = disabledId, sourceIdentity = disabledIdentity),
+            ReminderDeliveryState.POSTED)
+        val ledger = Ledger(listOf(enabled, disabledAlarm, disabledPosted))
+        val source = Source().apply { unavailable = true }
+        val sink = Notifications().apply { active.add(disabledPosted.notificationAlias) }
+        val alarms = Alarms().apply { next = ReminderAlarmRequest(disabledAlarm.effectiveDue, disabledAlarm.version) }
+        val result = engine(source, ledger, sink, alarms).reconcile()
+        assertEquals(ReminderCycleStatus.UNAVAILABLE, result.status)
+        assertNotNull(ledger.lastSnapshot)
+        assertTrue(ledger.lastSnapshot!!.candidates.isEmpty())
+        assertTrue(ledger.lastSnapshot!!.completeCalendars.isEmpty())
+        assertTrue(ledger.lastResolutions[enabled.key] is ReminderResolution.Deferred)
+        assertEquals(ReminderDeliveryState.CANCELLED, ledger.rows[disabledAlarm.key]!!.state)
+        assertEquals(ReminderDeliveryState.SCHEDULED, ledger.rows[enabled.key]!!.state)
+        assertEquals(ReminderDeliveryState.POSTED, ledger.rows[disabledPosted.key]!!.state)
+        assertFalse(disabledPosted.notificationAlias in sink.active)
+        assertEquals(enabled.version, alarms.next!!.version)
+        assertTrue(sink.posts.isEmpty())
+    }
+
     @Test fun interruptedActivePostIsAcknowledgedWithoutReposting() = runBlocking {
         val reminder = candidate(); val interrupted = record(reminder, ReminderDeliveryState.POSTING)
         val source = Source().apply { candidates[reminder.key] = reminder }
@@ -265,6 +299,19 @@ class ReminderCoordinatorTest {
         assertEquals(ReminderActionResult.APPLIED, coordinator.dismiss(old.notificationAlias))
         assertEquals(ReminderDeliveryState.DISMISSED, ledger.rows[reminder.key]!!.state)
         assertEquals(ReminderActionResult.IGNORED, coordinator.dismiss(old.notificationAlias))
+    }
+
+    @Test fun staleAccountSnoozeDoesNotPromoteAnInterruptedPostInANewEnabledNamespace() = runBlocking {
+        val reminder = candidate(); val old = record(reminder, ReminderDeliveryState.POSTING)
+        val ledger = Ledger(listOf(old)); val source = Source(); val sink = Notifications().apply { active.add(old.notificationAlias) }
+        val replacement = ReminderCalendarIdentity("replacement-account")
+        val coordinator = engine(source, ledger, sink, Alarms(),
+            configuration = config.copy(expectedCalendarIdentities = mapOf(id to replacement)))
+        assertEquals(ReminderActionResult.IGNORED, coordinator.snooze(old.notificationAlias, 5))
+        assertEquals(ReminderDeliveryState.POSTING, ledger.rows[old.key]!!.state)
+        assertNull(ledger.rows[old.key]!!.snoozedUntil)
+        assertFalse(old.notificationAlias in sink.active)
+        assertTrue(source.calls.isEmpty())
     }
 
     @Test fun permissionLossClearsOlderPrivateAlertsOutsidePlanningWindow() = runBlocking {

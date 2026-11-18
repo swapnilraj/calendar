@@ -70,10 +70,11 @@ class ReminderCoordinator(
         val snapshot = (loaded as? ReminderSourceResult.Ready)?.snapshot?.takeIf { it.window == window }
             ?.let { safeSnapshot(it, config) }
         val counts = Counts()
-        if (snapshot != null) {
-            ledger.reconcile(snapshot, config.enabledCalendars, resolved.values, now)
-                .cancelNotifications.forEach(notifications::cancel)
-        }
+        // Discovery failure cannot erase plans, but confirmed configuration and per-key resolution
+        // still apply. In particular, a disabled calendar must not keep its old alarm/active alert.
+        val reconciliation = snapshot ?: ReminderSourceSnapshot(window, emptyList(), emptySet(), emptyMap())
+        ledger.reconcile(reconciliation, config.enabledCalendars, resolved.values, now)
+            .cancelNotifications.forEach(notifications::cancel)
         ledger.expireBefore(now.minus(catchUp)).cancelNotifications.forEach(notifications::cancel)
         recover(ledger.interruptedDeliveries(), resolved.values, config, counts)
         while (true) {
@@ -231,6 +232,12 @@ class ReminderCoordinator(
         val config = configuration()
         if (!config.enabled) return@withLock ReminderActionResult.IGNORED
         if (!canDeliver()) return@withLock ReminderActionResult.PERMISSION_REQUIRED
+        val existing = ledger.findByAlias(alias) ?: return@withLock ReminderActionResult.IGNORED
+        if (existing.key.calendarId !in config.enabledCalendars ||
+            config.expectedCalendarIdentities[existing.key.calendarId] != existing.sourceCalendarIdentity) {
+            notifications.cancel(alias)
+            return@withLock ReminderActionResult.IGNORED
+        }
         val record = postedForAction(alias) ?: return@withLock ReminderActionResult.IGNORED
         val result = resolve(setOf(record.key), config)
         if (result.permissionRequired) return@withLock ReminderActionResult.PERMISSION_REQUIRED

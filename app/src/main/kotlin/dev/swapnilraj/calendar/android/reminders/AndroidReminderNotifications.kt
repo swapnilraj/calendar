@@ -1,7 +1,10 @@
 package dev.swapnilraj.calendar.android.reminders
 
+import android.Manifest
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import dev.swapnilraj.calendar.core.EventDetails
 import dev.swapnilraj.calendar.core.ReminderCandidate
 import dev.swapnilraj.calendar.core.ReminderNotificationAlias
@@ -27,6 +30,10 @@ class AndroidReminderNotifications(
                 displayZone(), notificationIdentity = alias.identity())
             val current = permissions()
             if (!current.calendarAccess || !current.canPostNotifications) return ReminderPostResult.PERMISSION_REQUIRED
+            // Keep the platform POST check visible to both the runtime and static permission audit;
+            // the injected health reader additionally guards calendar/global/channel settings.
+            if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) return ReminderPostResult.PERMISSION_REQUIRED
             manager.notify(notification.tag, notification.id, notification.notification)
             // Accepted by NotificationManager, not a claim that sound/device delivery was observed.
             ReminderPostResult.POSTED

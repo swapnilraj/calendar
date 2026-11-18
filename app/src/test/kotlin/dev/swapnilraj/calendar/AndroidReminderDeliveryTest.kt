@@ -137,4 +137,13 @@ class AndroidReminderDeliveryTest {
         assertNull(legacy.generation)
         assertEquals(legacy, ReminderIntents.identity(ReminderIntents.intent(context, targets, legacy, ReminderIntents.ACTION_OPEN)))
     }
+
+    @Test fun revokedPlatformPermissionCannotBeBypassedByAStaleReadyHealthSnapshot() {
+        shadowOf(context as Application).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val targets = ReminderIntentTargets(ComponentName(context.packageName, "MainActivity"), receiver)
+        val notifications = AndroidReminderNotifications(context, targets, { ZoneOffset.UTC }, { ready })
+        assertEquals(ReminderPostResult.PERMISSION_REQUIRED,
+            notifications.post(candidate(), ReminderNotificationAlias(ref, now, "revoked-before-post")))
+        assertTrue(context.getSystemService(NotificationManager::class.java).activeNotifications.isEmpty())
+    }
 }
