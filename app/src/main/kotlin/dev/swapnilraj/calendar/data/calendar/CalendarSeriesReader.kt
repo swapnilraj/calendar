@@ -51,6 +51,39 @@ class CalendarSeriesReader(
 
     internal fun refresh() { reader.refresh() }
 
+    /** Rebuild planning inputs from an already verified private token snapshot; never reads/writes provider. */
+    internal fun frozenSnapshot(encoded: String): RecurrenceSeriesSnapshot {
+        val json = JSONObject(encoded)
+        require(json.getInt("version") == 1)
+        fun row(value: JSONObject) = value.keys().asSequence().associateWith { if (value.isNull(it)) null else value.getString(it) }
+        val master = row(json.getJSONObject("master"))
+        val selection = json.getJSONObject("selection")
+        val selected = EventRef(CalendarId(selection.getLong("calendar")), selection.getLong("event"),
+            Instant.parse(selection.getString("start")), Instant.parse(selection.getString("end")),
+            RecurrenceRef(selection.getLong("master"), Instant.parse(selection.getString("original"))))
+        val identity = SeriesIdentity(selected.calendarId, requireNotNull(selected.recurrence).masterEventId)
+        require(master.long("_id") == identity.masterEventId && master.long("calendar_id") == identity.calendarId.value)
+        val start = masterStart(master)
+        val allDay = start is RecurrenceStart.AllDay
+        val rawExceptions = json.getJSONArray("exceptions")
+        val exceptions = List(rawExceptions.length()) { index ->
+            val event = row(rawExceptions.getJSONObject(index))
+            val original = Instant.ofEpochMilli(requireNotNull(event.long("originalInstanceTime")))
+            val key = if (allDay) {
+                require(original.atOffset(ZoneOffset.UTC).toLocalTime() == java.time.LocalTime.MIDNIGHT)
+                RecurrenceKey.Date(original.atOffset(ZoneOffset.UTC).toLocalDate())
+            } else RecurrenceKey.Timed(original)
+            val ref = EventRef(identity.calendarId, requireNotNull(event.long("_id")), Instant.ofEpochMilli(requireNotNull(event.long("dtstart"))),
+                Instant.ofEpochMilli(requireNotNull(event.long("dtend"))), RecurrenceRef(identity.masterEventId, original))
+            SeriesException(ref, key, event["eventStatus"]?.toIntOrNull() == CalendarContract.Events.STATUS_CANCELED)
+        }
+        val decoded = RecurrenceDateCodec.parse(master["exdate"], start, RecurrenceDateBudget(maxValues = budget.maxInstances),
+            AllDayDateTimePolicy.PROVIDER_UTC_MIDNIGHT) as? ParsedRecurrenceDates.Supported
+        val validProperty = master["exdate"] == null || !Regex("(?im)^RDATE[:;]").containsMatchIn(master.getValue("exdate")!!)
+        return RecurrenceSeriesSnapshot(identity, start, master["rrule"], master["duration"], master["rdate"], master["exrule"], master["exdate"],
+            if (validProperty) decoded?.keys.orEmpty() else emptySet(), validProperty && decoded != null, exceptions, SeriesCoverage.COMPLETE, selected)
+    }
+
     internal suspend fun selectedReference(ref: EventRef): EventRef? = withContext(io) {
         ensureRead()
         when (val result = reader.readDetails(ref)) {

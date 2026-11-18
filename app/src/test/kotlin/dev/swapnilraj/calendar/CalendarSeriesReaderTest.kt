@@ -153,7 +153,20 @@ class CalendarSeriesReaderTest {
         private fun effectiveInstances(): List<Map<String, String?>> {
             val base = instances.filter { instance ->
                 val event = events.singleOrNull { it["_id"] == instance["event_id"] } ?: return@filter false
-                event["deleted"] != "1" && event["eventStatus"] != "2" && events.none { exception ->
+                val rule = event["rrule"].orEmpty().split(';').mapNotNull { part -> part.split('=', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }.toMap()
+                val begin = instance["begin"]!!.toLong()
+                val until = rule["UNTIL"]?.let { raw ->
+                    if (raw.length == 8) java.time.LocalDate.parse(raw, java.time.format.DateTimeFormatter.BASIC_ISO_DATE).plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() - 1
+                    else java.time.LocalDateTime.parse(raw.removeSuffix("Z"), java.time.format.DateTimeFormatter.ofPattern("uuuuMMdd'T'HHmmss")).toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
+                }
+                val countAllowed = if (rule["FREQ"] == "DAILY" && rule["COUNT"] != null) {
+                    val zone = java.time.ZoneId.of(event["eventTimezone"] ?: "UTC")
+                    val first = Instant.ofEpochMilli(event["dtstart"]!!.toLong()).atZone(zone).toLocalDate()
+                    val current = Instant.ofEpochMilli(begin).atZone(zone).toLocalDate()
+                    val ordinal = java.time.temporal.ChronoUnit.DAYS.between(first, current) / (rule["INTERVAL"]?.toLong() ?: 1)
+                    ordinal < rule.getValue("COUNT").toLong()
+                } else true
+                event["deleted"] != "1" && event["eventStatus"] != "2" && countAllowed && (until == null || begin <= until) && events.none { exception ->
                     exception["deleted"] != "1" && exception["originalInstanceTime"] == instance["begin"] &&
                         (exception["original_id"] == instance["event_id"] || (!event["_sync_id"].isNullOrBlank() && exception["original_sync_id"] == event["_sync_id"]))
                 }
@@ -215,7 +228,19 @@ class CalendarSeriesReaderTest {
             check(allowWrites)
             if (uri.pathSegments.first() == "events") {
                 val rows = events.filter { (uri.lastPathSegment?.toLongOrNull() == null || it["_id"] == uri.lastPathSegment) && matches(it, selection, args) }
-                rows.forEach { it["deleted"] = "1" }
+                rows.forEach { row ->
+                    val id = row["_id"]!!
+                    val hard = row["_sync_id"].isNullOrBlank()
+                    val cascaded = events.filter { it["original_id"] == id && (hard || it["_sync_id"].isNullOrBlank()) }.map { it["_id"] }.toSet()
+                    val removed = cascaded + if (hard) setOf(id) else emptySet()
+                    if (!hard) { row["deleted"] = "1"; row["dirty"] = "1" }
+                    events.removeAll { it["_id"] in removed }
+                    reminders.removeAll { it["event_id"] == id || it["event_id"] in removed }
+                    extendedProperties.removeAll { it["event_id"] == id || it["event_id"] in removed }
+                    attendees.removeAll { it["event_id"] in removed }
+                    insertedExceptions.removeAll(removed.filterNotNull().toSet())
+                    (removed.filterNotNull() + id).forEach(rawTimes::remove)
+                }
                 return rows.size
             }
             check(uri.pathSegments.first() == "reminders")
@@ -226,8 +251,8 @@ class CalendarSeriesReaderTest {
         override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?): Int {
             check(allowWrites && uri.pathSegments.first() == "events")
             val rows = events.filter { (uri.lastPathSegment?.toLongOrNull() == null || it["_id"] == uri.lastPathSegment) && matches(it, selection, args) }
-            if (values!!.containsKey("dtend") && rows.any { it["_id"] in insertedExceptions }) {
-                if (failCorrection) throw android.content.OperationApplicationException("Synthetic correction rollback")
+            if (values!!.containsKey("dtstart") || values.containsKey("dtend")) {
+                if (failCorrection && rows.any { it["_id"] in insertedExceptions }) throw android.content.OperationApplicationException("Synthetic correction rollback")
                 rows.forEach { rawTimes[it["_id"]!!] = values.keySet().associateWith { field -> values.get(field)?.toString() } }
             }
             rows.forEach { row -> values.keySet().forEach { if (!(ignoreCorrectionEnd && it == "dtend")) row[it] = values.get(it)?.toString() } }
@@ -531,7 +556,9 @@ class CalendarSeriesReaderTest {
             val fold = Instant.parse("2026-11-01T06:30:00Z")
             p.events[0].apply { put("dtstart", fold.toEpochMilli().toString()); put("eventTimezone", "America/New_York"); put("eventEndTimezone", "America/New_York") }
             p.calendar["allowedAvailability"] = null
-            val result = source.ready()
+            val occurrence = EventRef(CalendarId(2), 10, fold.plusSeconds(86_400), fold.plusSeconds(90_000), RecurrenceRef(10, fold.plusSeconds(86_400)))
+            p.instances.clear(); p.instances += instance(occurrence)
+            val result = source.ready(occurrence)
             val timed = result.snapshot.start as RecurrenceStart.Timed
             assertEquals(fold, timed.instant)
             assertEquals(ZoneOffset.ofHours(-5), timed.preferredOffset)

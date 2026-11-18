@@ -141,7 +141,6 @@ class CalendarSeriesWriterTest {
             val commands = listOf(
                 SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Would need new row"))),
                 SeriesCommand.FollowingEdit(RecurrenceEditIntent.FollowingSeriesEdit(RecurrenceKey.Timed(selected.recurrence!!.originalStart), fields = EventPatch(title = FieldChange.Set("Tail")))),
-                SeriesCommand.Delete(RecurrenceScope.FOLLOWING),
                 SeriesCommand.WholeEdit(RecurrenceEditIntent.WholeSeriesEdit(editable.snapshot.start, duration = RecurrenceDurationChange.TimedElapsed(java.time.Duration.ofHours(2))))
             )
             commands.forEachIndexed { index, command ->
@@ -168,7 +167,7 @@ class CalendarSeriesWriterTest {
             assertFalse(EditableField.TIME in editable.scopes.getValue(RecurrenceScope.ALL).fields)
             assertFalse(EditableField.ZONE in editable.allowedFields)
             assertEquals(SeriesActionLimitation.REVIEW_REQUIRED, editable.scopes.getValue(RecurrenceScope.THIS).limitation)
-            assertEquals(AccessDecision.DENIED, editable.scopes.getValue(RecurrenceScope.FOLLOWING).delete)
+            assertEquals(AccessDecision.ALLOWED, editable.scopes.getValue(RecurrenceScope.FOLLOWING).delete)
             assertEquals(common(MutationResult.PermissionRequired), f.writer.mutate("no-write", selected, editable.token, whole(editable, EventPatch(title = FieldChange.Set("No write")))))
             assertEquals(0, f.provider.batchCount)
         }
@@ -575,6 +574,161 @@ class CalendarSeriesWriterTest {
             val corrupted = JSONObject(raw).apply { getJSONObject("resultSelected").put("event", 10) }
             f.store.writableDatabase.execSQL("UPDATE mutation_journal SET result_ref = ? WHERE id = ?", arrayOf(corrupted.toString(), "known-insert"))
             assertTrue((f.writer.recover("known-insert") as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
+            assertEquals(1, f.provider.batchCount)
+        }
+    }
+
+    @Test fun followingDeletePartitionsMovedOverridesByOriginalNotActualAndPreservesPastUnknownData() = runBlocking {
+        fixture { f ->
+            // Selected future-original override moved BEFORE the cut's actual date; past-original
+            // override moved far AFTER it. Deletion follows ORIGINAL identities, never actual dates.
+            val cut = EventRef(CalendarId(2), 11, start.minusSeconds(86_400), start.minusSeconds(82_800), RecurrenceRef(10, start.plusSeconds(2 * 86_400)))
+            f.provider.events[1]["dtstart"] = cut.instanceStart.toEpochMilli().toString(); f.provider.events[1]["dtend"] = cut.instanceEnd.toEpochMilli().toString()
+            f.provider.events += exception(13, 1, 200).apply { put("future_private_column", "Retain past override") }
+            f.provider.instances.clear(); f.provider.instances += instance(cut, f.provider.events[1])
+            f.provider.reminders += mutableMapOf("_id" to "80", "event_id" to "13", "minutes" to "99", "method" to "2", "oem_past" to "Retain")
+            f.provider.extendedProperties += mutableMapOf("_id" to "81", "event_id" to "13", "name" to "Past opaque", "value" to "Retain")
+            val editable = f.editable(cut)
+            assertEquals(AccessDecision.ALLOWED, editable.scopes.getValue(RecurrenceScope.FOLLOWING).delete)
+            assertEquals(AccessDecision.DENIED, editable.scopes.getValue(RecurrenceScope.FOLLOWING).edit)
+            assertEquals(SeriesMutationResult.LocalDeleted(SeriesIdentity(CalendarId(2), 10), RecurrenceScope.FOLLOWING, cut),
+                f.writer.mutate("following-count", cut, editable.token, SeriesCommand.Delete(RecurrenceScope.FOLLOWING)))
+            assertEquals("FREQ=DAILY;COUNT=2", f.provider.events[0]["rrule"])
+            assertEquals("PT1H", f.provider.events[0]["duration"])
+            assertEquals("77", f.provider.events[0]["availability"])
+            assertEquals("1", f.provider.events.single { it["_id"] == "11" }["deleted"])
+            assertEquals("1", f.provider.events.single { it["_id"] == "12" }["deleted"])
+            val past = f.provider.events.single { it["_id"] == "13" }
+            assertEquals("0", past["deleted"]); assertEquals("Retain past override", past["future_private_column"])
+            assertEquals(start.plusSeconds(200 * 86_400).toEpochMilli().toString(), past["dtstart"])
+            assertEquals("Retain", f.provider.reminders.single { it["_id"] == "80" }["oem_past"])
+            assertEquals("Retain", f.provider.extendedProperties.single { it["_id"] == "81" }["value"])
+            assertEquals("cloud-master-A", f.provider.events.single { it["_id"] == "11" }["original_sync_id"])
+            val context = f.provider.rawTimes.getValue("10")
+            assertEquals(f.provider.events[0]["dtstart"], context["dtstart"])
+            assertEquals("PT1H", context["duration"])
+        }
+    }
+
+    @Test fun followingUntilPrefixAndRawPastFutureExdatesRemainExactWithoutNormalization() = runBlocking {
+        for (rawRule in listOf("FREQ=DAILY;UNTIL=20261130T090000Z", "FREQ=DAILY")) fixture { f ->
+            val rawExdate = "UTC;20261117T090000,20261121T090000"
+            f.provider.events[0]["rrule"] = rawRule; f.provider.events[0]["exdate"] = rawExdate
+            val editable = f.editable()
+            assertTrue(f.writer.mutate("following-until-$rawRule", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.FOLLOWING)) is SeriesMutationResult.LocalDeleted)
+            assertEquals("FREQ=DAILY;UNTIL=20261117T090000Z", f.provider.events[0]["rrule"])
+            assertEquals(rawExdate, f.provider.events[0]["exdate"])
+        }
+    }
+
+    @Test fun firstVisibleAfterExcludedDtstartKeepsRealPrefixButFirstGeneratedUsesWholeDelete() = runBlocking {
+        fixture { f ->
+            f.provider.events[0]["exdate"] = "20261117T090000Z"
+            val editable = f.editable()
+            assertTrue(f.writer.mutate("visible-not-first", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.FOLLOWING)) is SeriesMutationResult.LocalDeleted)
+            assertEquals("0", f.provider.events[0]["deleted"])
+            assertEquals("FREQ=DAILY;COUNT=1", f.provider.events[0]["rrule"])
+            assertEquals("20261117T090000Z", f.provider.events[0]["exdate"])
+        }
+        fixture { f ->
+            val first = EventRef(CalendarId(2), 10, start, start.plusSeconds(3_600), RecurrenceRef(10, start))
+            f.provider.instances.clear(); f.provider.instances += instance(first, f.provider.events[0])
+            val editable = f.editable(first)
+            assertEquals(SeriesMutationResult.LocalDeleted(SeriesIdentity(CalendarId(2), 10), RecurrenceScope.FOLLOWING, first),
+                f.writer.mutate("first-whole", first, editable.token, SeriesCommand.Delete(RecurrenceScope.FOLLOWING)))
+            assertTrue(f.provider.events.all { it["deleted"] == "1" })
+            assertEquals(RecurrenceScope.FOLLOWING, (f.writer.recover("first-whole") as SeriesMutationResult.LocalDeleted).scope)
+        }
+    }
+
+    @Test fun allDayFollowingRetainsRawUtcMidnightExdatesAndDateDuration() = runBlocking {
+        fixture { f ->
+            val midnight = Instant.parse("2026-11-17T00:00:00Z")
+            val ref = EventRef(CalendarId(2), 10, midnight.plusSeconds(86_400), midnight.plusSeconds(2 * 86_400), RecurrenceRef(10, midnight.plusSeconds(86_400)))
+            f.provider.events.removeAll { it["_id"] != "10" }
+            f.provider.events[0].apply { put("dtstart", midnight.toEpochMilli().toString()); put("duration", "P1D"); put("allDay", "1"); put("eventTimezone", "UTC"); put("eventEndTimezone", "UTC"); put("exdate", "20261117T000000Z,20261121T000000Z") }
+            f.provider.instances.clear(); f.provider.instances += instance(ref, f.provider.events[0])
+            val editable = f.editable(ref)
+            assertTrue(f.writer.mutate("date-prefix", ref, editable.token, SeriesCommand.Delete(RecurrenceScope.FOLLOWING)) is SeriesMutationResult.LocalDeleted)
+            assertEquals("FREQ=DAILY;COUNT=1", f.provider.events[0]["rrule"])
+            assertEquals("P1D", f.provider.events[0]["duration"])
+            assertEquals("20261117T000000Z,20261121T000000Z", f.provider.events[0]["exdate"])
+        }
+    }
+
+    @Test fun followingDeleteHardDeletesUnsyncedFutureRowsAndSoftTombstonesCloudLinks() = runBlocking {
+        fixture { f ->
+            f.provider.events[1]["_sync_id"] = null
+            f.provider.extendedProperties += mutableMapOf("_id" to "70", "event_id" to "11", "name" to "Future", "value" to "Delete")
+            f.provider.attendees += mutableMapOf("_id" to "71", "event_id" to "11", "attendeeEmail" to "owner@example.invalid")
+            val editable = f.editable()
+            assertTrue(f.writer.mutate("mixed-delete", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.FOLLOWING)) is SeriesMutationResult.LocalDeleted)
+            assertTrue(f.provider.events.none { it["_id"] == "11" })
+            assertTrue(f.provider.reminders.none { it["event_id"] == "11" })
+            assertTrue(f.provider.attendees.none { it["event_id"] == "11" })
+            assertTrue(f.provider.extendedProperties.none { it["event_id"] == "11" })
+            val tombstone = f.provider.events.single { it["_id"] == "12" }
+            assertEquals("1", tombstone["deleted"])
+            assertEquals("cloud-exception-12", tombstone["_sync_id"])
+            assertEquals("cloud-master-A", tombstone["original_sync_id"])
+        }
+    }
+
+    @Test fun followingUnsupportedSetsUndecodedDatesOrOrphanOriginalsNeverDispatch() = runBlocking {
+        val cases = listOf("rdate", "exrule", "rrule", "exdate", "orphan")
+        for (case in cases) fixture { f ->
+            when (case) {
+                "rdate" -> f.provider.events[0]["rdate"] = "20261130T090000Z"
+                "exrule" -> f.provider.events[0]["exrule"] = "FREQ=WEEKLY"
+                "rrule" -> f.provider.events[0]["rrule"] = "FREQ=HOURLY"
+                "exdate" -> f.provider.events[0]["exdate"] = "20261117T090000Z,FloatingUnknown"
+                else -> f.provider.events[2]["originalInstanceTime"] = start.plusSeconds(50 * 86_400).toEpochMilli().toString()
+            }
+            val editable = f.editable()
+            assertTrue(editable.scopes.getValue(RecurrenceScope.FOLLOWING).delete != AccessDecision.ALLOWED)
+            val result = f.writer.mutate("unsupported-follow-$case", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.FOLLOWING))
+            assertTrue(result is SeriesMutationResult.Unsupported || result is SeriesMutationResult.PlanningReview)
+            assertEquals(0, f.provider.batchCount); assertNull(f.store.operation("unsupported-follow-$case"))
+        }
+    }
+
+    @Test fun followingAssertionRaceRollsBackAndUnknownAckNeverReplaysKnownIds() = runBlocking {
+        fixture { f ->
+            val editable = f.editable()
+            f.provider.beforeBatch = { f.provider.events[2]["description"] = "External override notes" }
+            val result = f.writer.mutate("following-race", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.FOLLOWING))
+            assertTrue((result as SeriesMutationResult.Common).outcome is MutationResult.Conflict)
+            assertEquals("FREQ=DAILY;COUNT=5", f.provider.events[0]["rrule"])
+            assertTrue(f.provider.events.all { it["deleted"] == "0" })
+        }
+        fixture { f ->
+            val editable = f.editable()
+            val command = SeriesCommand.Delete(RecurrenceScope.FOLLOWING)
+            f.provider.lostAcknowledgement = true
+            assertTrue((f.writer.mutate("following-lost", selected, editable.token, command) as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
+            f.provider.calls.clear()
+            assertEquals(common(MutationResult.Uncertain("following-lost", null)), f.writer.recover("following-lost"))
+            assertTrue(f.provider.calls.isEmpty())
+            assertTrue((f.writer.mutate("following-lost", selected, editable.token, command) as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
+            assertEquals(1, f.provider.batchCount)
+        }
+    }
+
+    @Test fun followingKnownCommitReadOnlyRecoveryRecomputesPlanAndRejectsCorruptPrefix() = runBlocking {
+        fixture { f ->
+            val editable = f.editable()
+            f.provider.failReadsAfterCommit = true
+            assertTrue((f.writer.mutate("following-known", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.FOLLOWING)) as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
+            assertEquals("COMMITTED", f.store.operation("following-known")!!.phase)
+            f.provider.failReadsAfterCommit = false; f.permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            assertEquals(SeriesMutationResult.LocalDeleted(SeriesIdentity(CalendarId(2), 10), RecurrenceScope.FOLLOWING, selected), f.writer.recover("following-known"))
+            val raw = f.store.operation("following-known")!!.resultRef!!
+            val corrupt = JSONObject(raw).put("prefixRule", "FREQ=DAILY;COUNT=100")
+            f.store.writableDatabase.execSQL("UPDATE mutation_journal SET result_ref = ? WHERE id = ?", arrayOf(corrupt.toString(), "following-known"))
+            assertTrue((f.writer.recover("following-known") as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
+            f.store.writableDatabase.execSQL("UPDATE mutation_journal SET result_ref = ? WHERE id = ?", arrayOf(raw, "following-known"))
+            f.provider.events[0]["rrule"] = "FREQ=DAILY;COUNT=100"
+            assertTrue((f.writer.recover("following-known") as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
             assertEquals(1, f.provider.batchCount)
         }
     }

@@ -39,6 +39,7 @@ class CalendarSeriesWriter(
     private data class Prepared(val operations: ArrayList<ContentProviderOperation>, val receipt: JSONObject, val source: CalendarSeriesSource,
         val insertedAt: Int? = null)
     private data class ExceptionTemplate(val ref: EventRef, val allDay: Boolean, val zone: String, val duration: String)
+    private data class FollowingDelete(val whole: Boolean, val prefixRule: String?, val future: List<SeriesException>)
 
     override suspend fun loadForEdit(selected: EventRef): SeriesReadResult = try { when (val result = sourceReader.loadForEdit(selected)) {
         is SeriesReadResult.Ready -> {
@@ -51,8 +52,19 @@ class CalendarSeriesWriter(
                 supported
             } catch (_: Unsupported) { unsupported }
             catch (_: SeriesSourceReview) { unsupported.copy(limitation = SeriesActionLimitation.REVIEW_REQUIRED) }
+            val following = when (val plan = RecurrencePlanning.plan(result.series.snapshot, selected, RecurrenceScope.FOLLOWING, RecurrenceMutation.Delete, budget)) {
+                is RecurrencePlanningResult.Ready -> try {
+                    followingDelete(result.series.snapshot, plan)
+                    if (plan.actions.singleOrNull() !is RecurrencePlanAction.DeleteSeries)
+                        followingContext(sourceReader.checkedSource(selected, result.series.token).master)
+                    unsupported.copy(delete = AccessDecision.ALLOWED, limitation = SeriesActionLimitation.UNKNOWN)
+                } catch (_: Unsupported) { unsupported }
+                catch (_: SeriesSourceReview) { unsupported.copy(limitation = SeriesActionLimitation.REVIEW_REQUIRED) }
+                is RecurrencePlanningResult.Unsupported -> unsupported
+                else -> unsupported.copy(limitation = SeriesActionLimitation.REVIEW_REQUIRED)
+            }
             result.copy(series = result.series.copy(allowedFields = fields, scopes = mapOf(RecurrenceScope.ALL to supported,
-                RecurrenceScope.THIS to thisCapabilities, RecurrenceScope.FOLLOWING to unsupported)))
+                RecurrenceScope.THIS to thisCapabilities, RecurrenceScope.FOLLOWING to following)))
         }
         else -> result
     } } catch (_: SecurityException) { SeriesReadResult.PermissionRequired }
@@ -88,7 +100,7 @@ class CalendarSeriesWriter(
                     is RecurrencePlanningResult.Invalid -> return@withLock SeriesMutationResult.Invalid(planned.reason)
                     is RecurrencePlanningResult.Ready -> Unit
                 }
-                if (command is SeriesCommand.FollowingEdit || command is SeriesCommand.Delete && command.scope == RecurrenceScope.FOLLOWING)
+                if (command is SeriesCommand.FollowingEdit)
                     throw Unsupported("Following scopes require a separately verified split and transfer executor")
                 val prepared = prepare(source, token, command, planned)
                 val parcel = Parcel.obtain()
@@ -136,6 +148,7 @@ class CalendarSeriesWriter(
 
     private fun prepare(source: CalendarSeriesSource, token: EditToken, command: SeriesCommand, plan: RecurrencePlanningResult.Ready): Prepared {
         check(plan.series == source.snapshot.identity)
+        if (command == SeriesCommand.Delete(RecurrenceScope.FOLLOWING)) return prepareFollowing(source, token, command, plan)
         if (plan.actions.size != 1) throw Unsupported("This executor requires a single preserving series action")
         val operations = assertions(source)
         var deleted = false
@@ -191,6 +204,95 @@ class CalendarSeriesWriter(
             .put("eventUids", JSONObject().apply { targets.forEach { put(it.toString(), rows.getValue(it)[CalendarContract.Events.UID_2445]?.takeIf(String::isNotBlank)?.let(::hash) ?: JSONObject.NULL) } })
         template?.let { receipt.put("createdAllDay", it.allDay).put("createdZone", it.zone) }
         return Prepared(operations, receipt, source, insertedAt)
+    }
+
+    private fun followingDelete(snapshot: RecurrenceSeriesSnapshot, plan: RecurrencePlanningResult.Ready): FollowingDelete {
+        check(plan.series == snapshot.identity)
+        val selected = requireNotNull(snapshot.validatedSelection)
+        val cutoff = requireNotNull(selected.recurrence).originalStart
+        fun before(key: RecurrenceKey) = when (key) {
+            is RecurrenceKey.Timed -> key.instant < cutoff
+            is RecurrenceKey.Date -> key.date < cutoff.atOffset(ZoneOffset.UTC).toLocalDate()
+        }
+        val whole = plan.actions.singleOrNull() as? RecurrencePlanAction.DeleteSeries
+        if (whole != null) {
+            check(whole.exceptions.toSet() == snapshot.exceptions.toSet())
+            return FollowingDelete(true, null, whole.exceptions)
+        }
+        val master = plan.actions.firstOrNull() as? RecurrencePlanAction.UpdateMaster ?: throw Unsupported("Unsupported following deletion plan")
+        val rule = (master.rule as? FieldChange.Set)?.value ?: throw Unsupported("Following deletion requires an exact prefix rule")
+        val exclusions = (master.exclusions as? FieldChange.Set)?.value ?: throw Unsupported("Following deletion requires decoded exclusion coverage")
+        if (master.patch != EventPatch() || master.anchor != FieldChange.Keep || master.duration != RecurrenceDurationChange.KeepRaw ||
+            !snapshot.rDatesRaw.isNullOrBlank() || !snapshot.exRuleRaw.isNullOrBlank()) throw Unsupported("Unsupported following deletion transformation")
+        // A single RRULE prefix contains no starts at/after the cutoff. Keeping the exact raw EXDATE
+        // is set-equivalent: future exclusions are already outside that prefix. Do not normalize
+        // imported local/TZID tokens, or discard their meaning if a user later extends the rule.
+        if (!snapshot.exDatesRaw.isNullOrBlank() && !snapshot.exDatesDecoded) throw SeriesSourceReview("Exclusion coverage is incomplete")
+        check(exclusions == snapshot.exDates.filterTo(linkedSetOf(), ::before))
+        val removed = plan.actions.drop(1).map { (it as? RecurrencePlanAction.RemoveException)?.exception ?: throw Unsupported("Unsupported following deletion action") }
+        val future = snapshot.exceptions.filter { !before(it.original) }
+        check(removed.toSet() == future.toSet() && removed.size == future.size)
+        return FollowingDelete(false, rule, future)
+    }
+
+    private fun followingContext(master: Map<String, String?>): ContentValues {
+        if (master["dtstart"]?.toLongOrNull() == null || master["allDay"] !in setOf("0", "1") || master["eventTimezone"].isNullOrBlank() ||
+            master["duration"].isNullOrBlank() || master["dtend"] != null) throw SeriesSourceReview("Recurring master context cannot be preserved safely")
+        return ContentValues().apply {
+            // Repeat unchanged context to seed raw times when updating RRULE, never interpret or
+            // re-encode the source DURATION. No actual event-time/zone field is being edited.
+            listOf("dtstart", "dtend", "duration", "eventTimezone", "allDay", "originalInstanceTime", "originalAllDay").forEach { key ->
+                master[key]?.let { put(key, it) } ?: putNull(key)
+            }
+        }
+    }
+
+    private fun prepareFollowing(source: CalendarSeriesSource, token: EditToken, command: SeriesCommand, plan: RecurrencePlanningResult.Ready): Prepared {
+        val deletion = followingDelete(source.snapshot, plan)
+        val operations = assertions(source)
+        val allRows = (listOf(source.master) + source.exceptions).associateBy { it["_id"]!!.toLong() }
+        val removed = deletion.future.map { it.ref.eventId }
+        if (!deletion.whole) operations += ContentProviderOperation.newUpdate(eventUri(source.snapshot.identity.masterEventId))
+            .withValues(followingContext(source.master).apply { put("rrule", deletion.prefixRule) }).withExpectedCount(1).withYieldAllowed(false).build()
+        val targets = if (deletion.whole) removed + source.snapshot.identity.masterEventId else listOf(source.snapshot.identity.masterEventId) + removed
+        (if (deletion.whole) targets else removed).forEach { id ->
+            operations += ContentProviderOperation.newDelete(eventUri(id)).withExpectedCount(1).withYieldAllowed(false).build()
+            val row = allRows.getValue(id)
+            if (row["_sync_id"].isNullOrBlank()) {
+                operations += ContentProviderOperation.newAssertQuery(eventUri(id)).withExpectedCount(0).withYieldAllowed(false).build()
+            } else {
+                val tombstone = row.filterKeys { it in tombstoneIdentityColumns }.toMutableMap().apply { put("deleted", "1") }
+                operations += assertRow(eventUri(id), tombstone)
+            }
+        }
+        if (!deletion.whole) {
+            val expected = source.master.filterKeys { it !in setOf("dirty", "mutators", "lastDate", "lastSynced") }.toMutableMap()
+            expected["rrule"] = deletion.prefixRule
+            operations += assertRow(eventUri(source.snapshot.identity.masterEventId), expected)
+            val past = source.exceptions.filter { it["_id"]!!.toLong() !in removed }
+            past.forEach { operations += assertRow(eventUri(it["_id"]!!.toLong()), it) }
+            // Native deletion may remove only future children. All retained provider payload,
+            // including unknown/OEM columns, must survive unchanged.
+            val kept = past.map { it["_id"]!!.toLong() }.toSet() + source.snapshot.identity.masterEventId
+            listOf(CalendarContract.Reminders.CONTENT_URI to source.reminders, CalendarContract.Attendees.CONTENT_URI to source.attendees,
+                CalendarContract.ExtendedProperties.CONTENT_URI to source.extendedProperties).forEach { (uri, grouped) ->
+                kept.forEach { id ->
+                    val rows = grouped[id].orEmpty()
+                    operations += ContentProviderOperation.newAssertQuery(uri).withSelection("event_id = ?", arrayOf(id.toString()))
+                        .withExpectedCount(rows.size).withYieldAllowed(false).build()
+                    rows.forEach { operations += assertRow(ContentUris.withAppendedId(uri, it["_id"]!!.toLong()), it) }
+                }
+            }
+        }
+        val receipt = JSONObject().put("version", 1).put("token", token.value).put("command", commandJson(command))
+            .put("calendar", source.snapshot.identity.calendarId.value).put("master", source.snapshot.identity.masterEventId)
+            .put("selected", refJson(source.snapshot.validatedSelection!!)).put("scope", RecurrenceScope.FOLLOWING.name)
+            .put("deleted", true).put("created", false).put("following", true).put("whole", deletion.whole)
+            .put("prefixRule", deletion.prefixRule ?: JSONObject.NULL).put("exDatesRaw", source.master["exdate"] ?: JSONObject.NULL)
+            .put("namespace", namespace(source.calendar)).put("targets", JSONArray(targets))
+            .put("syncIds", JSONObject().apply { targets.forEach { put(it.toString(), allRows.getValue(it)["_sync_id"]?.takeIf(String::isNotBlank) ?: JSONObject.NULL) } })
+            .put("eventUids", JSONObject().apply { targets.forEach { put(it.toString(), allRows.getValue(it)["uid2445"]?.takeIf(String::isNotBlank)?.let(::hash) ?: JSONObject.NULL) } })
+        return Prepared(operations, receipt, source)
     }
 
     private fun newTemplate(source: CalendarSeriesSource): ExceptionTemplate {
@@ -401,7 +503,7 @@ class CalendarSeriesWriter(
         val scope = RecurrenceScope.valueOf(receipt.getString("scope"))
         if (selected.calendarId != identity.calendarId || selected.recurrence?.masterEventId != identity.masterEventId) return uncertain()
         val deleted = receipt.getBoolean("deleted")
-        if (scope == RecurrenceScope.FOLLOWING || operation.kind != "SERIES_V1_${scope.name}_${if (deleted) "DELETE" else "EDIT"}") return uncertain()
+        if (operation.kind != "SERIES_V1_${scope.name}_${if (deleted) "DELETE" else "EDIT"}") return uncertain()
         val original = store.edit(receipt.getString("token")) ?: return uncertain(identity.masterEventId)
         if (hash("SERIES_EDIT_V1" + original) != receipt.getString("token")) return uncertain(identity.masterEventId)
         val bound = JSONObject(original)
@@ -421,6 +523,7 @@ class CalendarSeriesWriter(
         val originalExceptions = bound.getJSONArray("exceptions").let { array -> List(array.length()) { array.getJSONObject(it).getString("_id").toLong() } }
         val boundRows = (listOf(bound.getJSONObject("master")) + bound.getJSONArray("exceptions").let { array -> List(array.length()) { array.getJSONObject(it) } })
             .associateBy { it.getString("_id").toLong() }
+        if (scope == RecurrenceScope.FOLLOWING) return recoverFollowing(operation, receipt, identity, selected, bound, boundRows, targets)
         if (receipt.optBoolean("created", false)) return recoverCreated(operation, receipt, identity, selected, scope, deleted, bound, boundRows, targets)
         val expectedTargets = when {
             scope == RecurrenceScope.ALL && deleted -> originalExceptions.toSet() + identity.masterEventId
@@ -459,6 +562,55 @@ class CalendarSeriesWriter(
         store.mark(operation.id, "VERIFIED")
         sourceReader.refresh()
         return if (deleted) SeriesMutationResult.LocalDeleted(identity, scope, selected) else SeriesMutationResult.LocalSaved(identity, currentSelected)
+    }
+
+    private suspend fun recoverFollowing(operation: CalendarLocalStore.Operation, receipt: JSONObject, identity: SeriesIdentity, selected: EventRef,
+        bound: JSONObject, boundRows: Map<Long, JSONObject>, targets: List<Long>): SeriesMutationResult {
+        fun uncertain() = common(MutationResult.Uncertain(operation.id, identity.masterEventId))
+        if (!receipt.optBoolean("following", false) || receipt.optBoolean("created", false) || !receipt.getBoolean("deleted")) return uncertain()
+        val snapshot = sourceReader.frozenSnapshot(store.edit(receipt.getString("token")) ?: return uncertain())
+        if (snapshot.identity != identity || snapshot.validatedSelection != selected) return uncertain()
+        val planned = RecurrencePlanning.plan(snapshot, selected, RecurrenceScope.FOLLOWING, RecurrenceMutation.Delete, budget)
+            as? RecurrencePlanningResult.Ready ?: return uncertain()
+        val deletion = followingDelete(snapshot, planned)
+        if (receipt.getBoolean("whole") != deletion.whole || receipt.nullable("prefixRule") != deletion.prefixRule ||
+            receipt.nullable("exDatesRaw") != bound.getJSONObject("master").nullable("exdate")) return uncertain()
+        val expectedTargets = deletion.future.map { it.ref.eventId }.toSet() + identity.masterEventId
+        if (targets.toSet() != expectedTargets) return uncertain()
+        for (id in targets) {
+            val original = boundRows.getValue(id)
+            if (receipt.getJSONObject("syncIds").nullable(id.toString()) != original.nullable("_sync_id")?.takeIf(String::isNotBlank) ||
+                receipt.getJSONObject("eventUids").nullable(id.toString()) != original.nullable("uid2445")?.takeIf(String::isNotBlank)?.let(::hash)) return uncertain()
+        }
+        val current = mutableMapOf<Long, Map<String, String?>>()
+        for (chunk in targets.chunked(200)) for (row in recoveryRows(chunk)) {
+            val id = row["_id"]?.toLongOrNull() ?: return uncertain()
+            if (id !in chunk || current.put(id, row) != null) return uncertain()
+        }
+        val deleted = if (deletion.whole) targets.toSet() else deletion.future.map { it.ref.eventId }.toSet()
+        for (id in targets) {
+            val row = current[id]
+            if (row != null) {
+                if (row["calendar_id"]?.toLongOrNull() != identity.calendarId.value) return uncertain()
+                val sync = receipt.getJSONObject("syncIds").nullable(id.toString())
+                val uid = receipt.getJSONObject("eventUids").nullable(id.toString())
+                if (sync != null && !row["_sync_id"].isNullOrBlank() && row["_sync_id"] != sync) return uncertain()
+                if (uid != null && !row["uid2445"].isNullOrBlank() && hash(row.getValue("uid2445")!!) != uid) return uncertain()
+            }
+            if (id in deleted) {
+                if (row != null && row["deleted"] != "1") return uncertain()
+                if (row != null) for (column in listOf("original_id", "original_sync_id", "originalInstanceTime", "originalAllDay"))
+                    if (row[column] != boundRows.getValue(id).nullable(column)) return uncertain()
+            } else {
+                if (row == null || row["deleted"] != "0" || row["rrule"] != deletion.prefixRule || row["exdate"] != snapshot.exDatesRaw) return uncertain()
+                for (column in listOf("dtstart", "dtend", "duration", "eventTimezone", "allDay"))
+                    if (row[column] != boundRows.getValue(id).nullable(column)) return uncertain()
+            }
+        }
+        ensureRead()
+        store.mark(operation.id, "VERIFIED")
+        sourceReader.refresh()
+        return SeriesMutationResult.LocalDeleted(identity, RecurrenceScope.FOLLOWING, selected)
     }
 
     private suspend fun recoverCreated(operation: CalendarLocalStore.Operation, receipt: JSONObject, identity: SeriesIdentity, selected: EventRef,
@@ -530,13 +682,14 @@ class CalendarSeriesWriter(
     }
 
     companion object {
+        private val tombstoneIdentityColumns = setOf("_id", "calendar_id", "_sync_id", "uid2445", "original_id", "original_sync_id", "originalInstanceTime", "originalAllDay")
         private val reminderCloneColumns = setOf("minutes", "method")
         private val attendeeCloneColumns = setOf("attendeeName", "attendeeEmail", "attendeeStatus", "attendeeRelationship", "attendeeType", "attendeeIdentity", "attendeeIdNamespace")
         private val propertyCloneColumns = setOf("name", "value")
         private val clearedSyncColumns = setOf("_sync_id") + (1..10).map { "sync_data$it" }
         private val transformedEventColumns = setOf("_id", "dtstart", "dtend", "duration", "rrule", "rdate", "exrule", "exdate", "original_id", "original_sync_id",
             "originalInstanceTime", "originalAllDay", "lastDate", "dirty", "mutators", "lastSynced")
-        private val kinds = setOf("SERIES_V1_ALL_EDIT", "SERIES_V1_THIS_EDIT", "SERIES_V1_ALL_DELETE", "SERIES_V1_THIS_DELETE")
+        private val kinds = setOf("SERIES_V1_ALL_EDIT", "SERIES_V1_THIS_EDIT", "SERIES_V1_ALL_DELETE", "SERIES_V1_THIS_DELETE", "SERIES_V1_FOLLOWING_DELETE")
         private fun kind(command: SeriesCommand) = when (command) {
             is SeriesCommand.OccurrenceEdit -> "SERIES_V1_THIS_EDIT"
             is SeriesCommand.WholeEdit -> "SERIES_V1_ALL_EDIT"
@@ -609,6 +762,6 @@ class CalendarSeriesWriter(
         }
         private val calendarProof = arrayOf("_id", CalendarContract.Calendars.ACCOUNT_NAME, CalendarContract.Calendars.ACCOUNT_TYPE, CalendarContract.Calendars.OWNER_ACCOUNT, CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL)
         private val recoveryFields = arrayOf("_id", "calendar_id", "deleted", "eventStatus", "_sync_id", CalendarContract.Events.UID_2445,
-            "original_id", "original_sync_id", "originalInstanceTime", "originalAllDay", "dtstart", "dtend", "allDay", "eventTimezone")
+            "original_id", "original_sync_id", "originalInstanceTime", "originalAllDay", "dtstart", "dtend", "allDay", "eventTimezone", "duration", "rrule", "exdate")
     }
 }
