@@ -63,6 +63,20 @@ class DayScreenTest {
         compose.waitForIdle()
     }
     @Test @Config(qualifiers="+notnight") fun overlapsLight() { show();compose.onRoot().captureRoboImage("src/test/screenshots/overlaps_light.png") }
+    @Test fun densityChangePreservesLogicalWallMinuteRatherThanPixelOffset() {
+        val density = androidx.compose.runtime.mutableFloatStateOf(1f)
+        var minute = -1.0
+        compose.setContent { DaylightTheme {
+            CompositionLocalProvider(LocalDensity provides Density(density.floatValue, 1f)) {
+                DayScreen(now, true, 64f, { _, _ -> flowOf(CalendarState.Ready(emptyList())) }, {}, {},
+                    initialScrollHour = 9.5, onScrollMinuteChanged = { minute = it })
+            }
+        } }
+        compose.waitUntil(10_000) { kotlin.math.abs(minute - 570.0) < 0.1 }
+        compose.runOnIdle { density.floatValue = 2f }
+        compose.waitForIdle()
+        assertEquals(570.0, minute, 0.1)
+    }
     @Test @Config(qualifiers="+night") fun overlapsDark() { show();compose.onRoot().captureRoboImage("src/test/screenshots/overlaps_dark.png") }
     @Test @Config(qualifiers="+notnight") fun allDayTodayLight() { show(true);compose.onRoot().captureRoboImage("src/test/screenshots/all_day_today_light.png") }
     @Test @Config(qualifiers="+night") fun allDayTodayDark() { show(true);compose.onRoot().captureRoboImage("src/test/screenshots/all_day_today_dark.png") }

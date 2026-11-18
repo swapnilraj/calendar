@@ -38,7 +38,7 @@ fun DayPage(date: LocalDate, events: List<CalEvent>, now: ZonedDateTime, zone: Z
         HorizontalDivider(thickness = 0.5.dp)
         BoxWithConstraints(Modifier.weight(1f)) {
             val viewport = with(density) { maxHeight.toPx() }
-            LaunchedEffect(active, sharedScroll < 0) {
+            LaunchedEffect(active, sharedScroll < 0, density.density) {
                 if (active) {
                     withFrameNanos { }
                     val initial = initialScrollHour?.times(hourHeight)?.let { with(density) { it.toFloat().dp.toPx() } }

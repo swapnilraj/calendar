@@ -25,6 +25,7 @@ import dev.swapnilraj.calendar.data.*
 import java.time.*
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
@@ -40,14 +41,18 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
     onVisibleDateChanged: (LocalDate) -> Unit = {},
     onRetry: () -> Unit = {},
     leadingActions: @Composable RowScope.() -> Unit = {},
-    compactTitle: Boolean = false) {
+    compactTitle: Boolean = false,
+    onScrollMinuteChanged: (Double) -> Unit = {}) {
     val zone = now.zone
     val anchorText = rememberSaveable { initialDate.toString() }
     val anchor = LocalDate.parse(anchorText)
     val pager = rememberPagerState(initialPage = MiddlePage, pageCount = { Int.MAX_VALUE })
     val scope = rememberCoroutineScope()
     var height by rememberSaveable { mutableFloatStateOf(initialHourHeight.coerceIn(32f, 160f)) }
-    var sharedScroll by rememberSaveable { mutableIntStateOf(-1) }
+    // A new saved-state key prevents interpreting a pre-upgrade pixel offset as wall minutes.
+    var sharedMinute by key("day-wall-minute-v1") { rememberSaveable { mutableDoubleStateOf(initialScrollHour?.times(60) ?: -1.0) } }
+    val density = LocalDensity.current
+    val sharedScroll = if (sharedMinute < 0) -1 else (sharedMinute / 60 * with(density) { height.dp.toPx() }).roundToInt()
     val visibleDate = anchor.plusDays((pager.currentPage - MiddlePage).toLong())
     LaunchedEffect(visibleDate) { onVisibleDateChanged(visibleDate) }
     val locale = LocalLocale.current.platformLocale
@@ -99,7 +104,10 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
                 }
                 DayPage(date, (state as? CalendarState.Ready)?.events.orEmpty(), now, zone, use24Hour, height,
                     sharedScroll, page == pager.currentPage, initialScrollHour,
-                    onScroll = { sharedScroll = it }, onHourHeight = { height = it },
+                    onScroll = { pixels ->
+                        sharedMinute = (pixels.toDouble() / with(density) { height.dp.toPx() } * 60).coerceIn(0.0, 1440.0)
+                        onScrollMinuteChanged(sharedMinute)
+                    }, onHourHeight = { height = it },
                     onZoomFinished = onSaveHourHeight, onEventClick,
                     summary = { summary(date) }, background = { background(date) })
             }
