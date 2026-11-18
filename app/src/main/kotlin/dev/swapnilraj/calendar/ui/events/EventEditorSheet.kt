@@ -70,13 +70,18 @@ fun EventEditorContent(
     var timeField by remember { mutableStateOf<String?>(null) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var confirmRetryDelete by remember { mutableStateOf(false) }
-    val blocked = state.loading || state.saving || state.draftReadFailed || state.reviewRequired || state.recoveryRequired || state.retryReady || state.problem in setOf(EditorProblem.UNCERTAIN,
+    val blocked = controller.recoveryOnly || state.loading || state.saving || state.draftReadFailed || state.reviewRequired || state.recoveryRequired || state.retryReady || state.problem in setOf(EditorProblem.UNCERTAIN,
         EditorProblem.UNSUPPORTED, EditorProblem.DRAFT_VERSION) || state.result is MutationResult.LocalSaved || state.result is MutationResult.LocalDeleted
     fun canEdit(field: EditableField) = !blocked && (existing == null || field in existing.allowedFields)
     Column(Modifier.fillMaxWidth().imePadding().verticalScroll(scroll).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(if (existing == null) R.string.events_editor_create else R.string.events_editor_edit),
+        Text(stringResource(if (controller.recoveryOnly) R.string.events_drafts_recover
+            else if (existing == null) R.string.events_editor_create else R.string.events_editor_edit),
             style = MaterialTheme.typography.headlineSmall)
+        if (controller.recoveryOnly) {
+            Text(stringResource(R.string.events_drafts_recovery_only), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.events_drafts_recovery_description))
+        }
         if (state.loading) CircularProgressIndicator()
         state.problem?.let { problem ->
             Text(stringResource(problemResource(problem)), color = MaterialTheme.colorScheme.error)
@@ -104,7 +109,7 @@ fun EventEditorContent(
         }
         OutlinedTextField(fields.title, { value -> controller.change { it.copy(title = value) } },
             label = { Text(stringResource(R.string.events_editor_title)) }, enabled = canEdit(EditableField.TITLE), modifier = Modifier.fillMaxWidth())
-        if (existing == null) {
+        if (existing == null && !controller.recoveryOnly) {
             Text(stringResource(R.string.events_calendar))
             writableCalendars.filter { it.capabilities.createEvents == AccessDecision.ALLOWED }.forEach { calendar ->
                 FilterChip(selected = fields.calendarId == calendar.id.value.toString(), enabled = !blocked,
@@ -113,7 +118,9 @@ fun EventEditorContent(
             }
             if (writableCalendars.none { it.capabilities.createEvents == AccessDecision.ALLOWED })
                 Text(stringResource(R.string.events_editor_no_calendar))
-        } else Text(existing.details.calendar?.displayName ?: stringResource(R.string.events_calendar))
+        } else Text(existing?.details?.calendar?.displayName ?: writableCalendars.firstOrNull {
+            it.id.value.toString() == fields.calendarId
+        }?.displayName ?: stringResource(R.string.events_drafts_calendar_unavailable))
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = fields.allDay,
             enabled = canEdit(EditableField.TIME), role = Role.Checkbox,
             onValueChange = { value -> controller.change { it.copy(allDay = value) } }),
@@ -159,7 +166,7 @@ fun EventEditorContent(
         Button(onClick = controller::save, enabled = !blocked && !state.reviewRequired && (existing != null || writableCalendars.any {
             it.id.value.toString() == fields.calendarId && it.capabilities.createEvents == AccessDecision.ALLOWED
         }), modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.events_editor_save)) }
-        if (existing != null) TextButton(onClick = controller::requestDelete, enabled = !blocked && !state.reviewRequired) {
+        if (existing != null && !controller.recoveryOnly) TextButton(onClick = controller::requestDelete, enabled = !blocked && !state.reviewRequired) {
             Text(stringResource(R.string.events_editor_delete))
         }
         TextButton(onClick = onClose, enabled = !state.saving, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.events_editor_cancel)) }
