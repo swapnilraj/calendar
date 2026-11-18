@@ -764,4 +764,40 @@ class CalendarWriterTest {
             } finally { reopened.close() }
         }
     }
+    @Test fun authoredBareAndCustomOffsetZonesRefuseCreateBeforeJournalOrBatch() = runBlocking {
+        for (zone in listOf(ZoneId.of("+05:30"), ZoneId.of("GMT+05:30"))) fixture { provider, writer, store, _ ->
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.ZONE)), writer.create("unsupported-zone", draft.copy(eventZone = zone)))
+            assertNull(store.operationHeader("unsupported-zone")); assertEquals(0, provider.batchCount); assertTrue(provider.events.isEmpty())
+        }
+    }
+
+    @Test fun explicitZoneOrTimePatchCannotAuthorUnsupportedNativeZoneEvenWhenTimeOtherwiseValid() = runBlocking {
+        for (zone in listOf(ZoneId.of("+05:30"), ZoneId.of("GMT+05:30"))) fixture { provider, writer, store, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            var edit = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            val before = provider.batchCount
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.ZONE)), writer.update("zone-set", ref, edit.token, EventPatch(eventZone = FieldChange.Set(zone))))
+            assertNull(store.operationHeader("zone-set")); assertEquals(before, provider.batchCount)
+            provider.events.single()["eventTimezone"] = zone.id; provider.events.single()["eventEndTimezone"] = zone.id
+            edit = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.ZONE)), writer.update("time-set", ref, edit.token,
+                EventPatch(time = FieldChange.Set(EventTime.Timed(ref.instanceStart, ref.instanceEnd.plusSeconds(60))))))
+            assertNull(store.operationHeader("time-set")); assertEquals(before, provider.batchCount)
+        }
+    }
+
+    @Test fun importedUnsupportedZoneSurvivesUnrelatedTitleAndAlertEditsWithOpaqueMetadata() = runBlocking {
+        for (zone in listOf("+05:30", "GMT+05:30")) fixture { provider, writer, _, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val event = provider.events.single(); event["eventTimezone"] = zone; event["eventEndTimezone"] = zone
+            event["sync_data1"] = "Opaque imported metadata"
+            val edit = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            assertTrue(writer.update("keep-zone", ref, edit.token, EventPatch(title = FieldChange.Set("Edited title"), alertMinutes = FieldChange.Set(listOf(15)))) is MutationResult.LocalSaved)
+            assertEquals(zone, event["eventTimezone"]); assertEquals(zone, event["eventEndTimezone"])
+            assertEquals("Opaque imported metadata", event["sync_data1"]); assertEquals("Edited title", event["title"])
+            assertEquals(ref.instanceStart.toEpochMilli().toString(), event["dtstart"])
+            assertEquals(ref.instanceEnd.toEpochMilli().toString(), event["dtend"])
+        }
+    }
+
 }

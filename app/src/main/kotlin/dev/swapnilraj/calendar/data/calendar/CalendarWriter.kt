@@ -135,7 +135,7 @@ class CalendarWriter(
             authoredAvailability?.let { changes.put(CalendarContract.Events.AVAILABILITY, it) }
             authoredPrivacy?.let { changes.put(CalendarContract.Events.ACCESS_LEVEL, it) }
             if (patch.time is FieldChange.Set || patch.eventZone is FieldChange.Set) {
-                validateTime(draft)
+                validateTime(draft, authored = true)
                 if (source.calendar[CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE] == "0" &&
                     draft.eventZone?.id != source.event[CalendarContract.Events.EVENT_TIMEZONE]) throw Invalid(setOf(InvalidEventField.ZONE))
                 changes.putAll(timeValues(draft))
@@ -483,11 +483,16 @@ class CalendarWriter(
             throw Denial(MutationDenial.INVITATION)
     }
 
-    private fun validateTime(draft: EventDraft) {
-        if (draft.time is EventTime.Timed && draft.eventZone == null) throw Invalid(setOf(InvalidEventField.ZONE))
+    private fun validateTime(draft: EventDraft, authored: Boolean = false) {
+        if (draft.time is EventTime.Timed) {
+            val zone = draft.eventZone ?: throw Invalid(setOf(InvalidEventField.ZONE))
+            // Native CalendarProvider parses stored zone strings through tzdb/TimeZone. Keep
+            // unrelated imported data untouched, but never author a Java-only zone spelling.
+            if (authored && !ProviderTimeZoneCompatibility.isCompatible(zone)) throw Invalid(setOf(InvalidEventField.ZONE))
+        }
     }
     private fun validate(draft: EventDraft, calendar: Map<String, String?>, preservedReminderCount: Int, initial: Boolean = false) {
-        validateTime(draft)
+        validateTime(draft, authored = initial)
         validateMetadata(draft.availability, draft.privacy, calendar)
         if (initial && calendar[CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE] == "0" && draft.time is EventTime.Timed &&
             draft.eventZone?.id != calendar[CalendarContract.Calendars.CALENDAR_TIME_ZONE]) throw Invalid(setOf(InvalidEventField.ZONE))
@@ -520,8 +525,6 @@ class CalendarWriter(
     internal fun meetingOneOffValues(draft: EventDraft, calendar: Map<String, String?>): ContentValues {
         if (draft.recurrence != null) throw Invalid(setOf(InvalidEventField.RECURRENCE))
         validate(draft, calendar, 0, initial = true)
-        val zone = draft.eventZone
-        if (draft.time is EventTime.Timed && zone != null && !ProviderTimeZoneCompatibility.isCompatible(zone)) throw Invalid(setOf(InvalidEventField.ZONE))
         return values(draft).apply { remove(CalendarContract.Events.HAS_ALARM) }
     }
     private fun values(draft: EventDraft) = timeValues(draft).apply {
