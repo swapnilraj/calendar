@@ -17,7 +17,172 @@ the two disagree, this file wins, and it should be updated in the same change as
    without copying anyone's branding, icons or fonts.
 6. **No accounts.** Calendar data comes from Android's calendar store. No sign-in, and no server of our own.
 
-## Phase 1: the day view (read-only)
+## Approved daily-driver target (18 November 2026)
+
+This target supersedes the original phase roadmap and its widget/notification exclusions below.
+It describes required behaviour, **not completed implementation**. The historical phase sections
+retain the existing day-view and weather baseline. See [progress](DAILY_DRIVER_PROGRESS.md) for
+actual implementation/evidence and [tasks](TASKS.md) for the dependency order.
+
+### Accounts, privacy and ownership
+
+- Support personal Google and Google Workspace calendars exposed by Android's calendar provider.
+  The installed Google sync adapter handles synchronization; it must remain enabled even when the
+  user disables duplicate Google Calendar notifications. There is no app OAuth, backend or sync engine.
+- Calendar display selection is app-local. Never change provider visibility or synchronization just
+  to hide a calendar. Reminder enablement is independent of display selection.
+- Keep independent branding, no analytics/private-event logging, and no application network services
+  other than Open-Meteo. Existing weather constants and pure-JVM weather rules remain unchanged.
+- Outside this release: Microsoft certification, managed-profile aggregation, Tasks, direct Google
+  service APIs, conference creation, room booking, coworker availability and sharing administration.
+  Exposed existing meeting links are supported. Do not promise access bypassing employer policy.
+
+### M0 — Google compatibility evidence
+
+Use dedicated authorized personal and Workspace test calendars, with a second test account for
+organizer/attendee checks. Prove ordinary mutations, offline/reconnect sync, recurrence exceptions,
+series splits, guest/RSVP propagation and reminder round-tripping. Local rows are not proof of cloud
+synchronization or invitation delivery. A blocked required provider workflow blocks release; external
+handoff does not count as native completion. Do not alter real meetings for test evidence.
+
+### M1 — Reliable day rendering
+
+- Keep three compact all-day entries and make overflow an accessible action. A scrolling day-events
+  sheet exposes every event, full title and date range; rows open the relevant occurrence. Support
+  Back/dismissal, focus restoration, live data updates and dismissal on date navigation. Include a
+  date-header action to reach all day events when grid density is difficult to use.
+- Announce all-day events using their UTC-encoded dates and exclusive end-date semantics, never
+  converted storage-boundary times. Localize text/plurals; preserve complete accessible titles.
+- Measure header/gutter/date/event geometry for large text. Minimum event height includes scaled text
+  and padding and participates in overlap detection. Secondary text appears only when it fits.
+  Keep zoom 32–160dp/hour and store a logical time anchor rather than raw scroll pixels.
+- Mirror gutter, grid, weather, event columns and navigation coherently in RTL, exactly once. Use
+  bidi-safe ranges and complete semantics.
+- Keep a 24-hour wall-clock grid. Clip events by actual instants and split at every offset transition;
+  map each constant-offset segment with that segment's offset. Preserve real duration and occurrence
+  identity. Label repeated/missing bands and affected offsets; mask weather within ambiguous/missing
+  bands. Handle half-hour transitions too. Exact Google Android DST visual parity is unverified.
+
+### M2 — Calendars and range reads
+
+Read calendar identity, account name/type, display name/colour, owner, timezone, visibility, sync and
+access constraints. Keep provider-local IDs distinct from cloud IDs and conservative capabilities
+separate from runtime permissions and event restrictions. Unknown access is not permission to write.
+
+Use one shared observed invalidation source and cancellable IO range queries. Bounds cover local
+appointments and UTC all-day dates; exact half-open filtering follows the query. Include zero-length
+events starting inside the range, exclude starts at its exclusive end, and return a multi-day
+occurrence once before view segmentation. No per-cell month queries or per-page observer fan-out.
+
+Group sidebar calendars by account. Persist independent selections across views/search and restart;
+handle renamed calendars, removed accounts and newly discovered calendars. Initially select readable
+provider-visible calendars; new ones follow that default unless explicitly deselected. Keep a separate
+default writable creation calendar. Explain hidden/sync-disabled/provider-unavailable coverage and
+distinguish permission denial, no calendars, no selection and no matching events.
+
+### M3 — Navigation and planning views
+
+Deliver day, three-day, week, month and paginated agenda with one shared selected date and persistent
+view preference. Support arbitrary date picking, Today, previous/next, first weekday and hidden
+weekends. Switching views retains the selected date. Month arithmetic covers leap years, six rows,
+adjacent-month dates and multi-day continuation. Date taps open day events, event taps open details,
+and empty-space long presses create on that date. Every crowded date has accessible overflow.
+
+Hourly weather belongs in timed grids; month/agenda use compact daily summaries only where forecast
+coverage exists. Unavailable dates remain ordinary calendar dates, not misleading forecasts.
+
+### M4 — Native details and meeting access
+
+Show full title, dates, duration, zones, calendar/account, description/location, organizer, guest
+responses, recurrence, reminders, availability, privacy and supported colour. Preserve occurrence
+identity through navigation, notifications, widgets and search. Render descriptions without executing
+embedded content. Open maps/telephone/email/web through appropriate Android handlers. Show Join for
+an unambiguous existing conference URL; otherwise list labelled links. Derive actions from actual
+rights; specialized/read-only events remain readable without unsupported edit promises.
+
+### M5 — Native ordinary event management
+
+Create from the persistent action, grid slot and month date, using the browsed date. Support title,
+calendar, start/end, zones, all-day/multi-day, location, notes, reminders, guests and supported
+availability/privacy/colour/guest controls. Default duration is 60 minutes, configurable. Blank titles
+display as “No title”. Explicitly resolve ambiguous input and reject nonexistent clock times.
+
+Retain drafts through rotation, process death and failures. Request write permission only when needed;
+denial preserves read-only use. Validate current calendar/event rights and source state before writes,
+apply supported changed fields only and preserve unknown metadata. Batch linked event/reminder/guest
+changes. Detect conflicts and offer review/reload rather than overwriting. Journal uncertain outcomes;
+never automatically resubmit an uncertain create. Reload before reporting a local save; do not claim
+server acknowledgement the app cannot observe. Offline saves use the provider's normal sync path.
+
+Support confirmed deletion, duplicate-as-draft (guests omitted by default), and verified copy/delete
+moves for guest-free non-recurring events. Cross-account moves of meetings/series are excluded. Timed
+grid drag/resize previews snap to 15 minutes and use the same validation/save path; editor is the
+accessible alternative.
+
+### M6 — Recurrence
+
+Offer daily/weekly/weekday/monthly/yearly presets, custom intervals/weekdays/monthly date or ordinal,
+and count/date/no-end limits. Preserve master/original occurrence identity and timezone/duration,
+RRULE/RDATE/EXDATE and explicit exceptions.
+
+“This event” writes a linked exception; “all” updates the master retaining explicit exceptions;
+“this and following” truncates/splits at the original occurrence boundary and transfers the future
+portion. Equivalent deletion scopes apply. Partition moved exceptions by original identity; retain
+overrides, re-anchor by recurrence ordinal on future-pattern changes, and require review for overrides
+that cannot map safely. Preserve unsupported recurrence syntax and allow non-pattern field edits
+without silently simplifying the rule. Verify COUNT/UNTIL, exclusions, moved exceptions, month ends,
+leap days, all-day patterns and DST against Google as well as unit fixtures.
+
+### M7 — Everyday work meetings
+
+Support guest email entry, required/optional attendees where exposed, response display, eligible
+Yes/Maybe/No RSVP, organizer guest changes, rescheduling and cancellation. Distinguish decline from
+owned-event deletion and show attendee consequences before saving. Respect guest visibility/edit
+restrictions. Provide pending-invitation filtering and conflicts against the user's selected calendars;
+these are not coworker availability. Do not offer unverified suppression of attendee updates. Verify
+invitation/RSVP/reschedule/recurrence-change/cancellation effects in the second account.
+
+### M8 — Search, preferences and Android entry points
+
+Search title/location/description with cancellation/debounce and calendar filters. Default range is
+previous 12 through next 24 months; show it and offer custom dates/expansion and coverage limitations.
+Add default view/calendar/duration/reminders, first weekday/weekends/declined visibility, system/light/
+dark theme, device/fixed display zone and weather visibility/units preferences.
+
+Provide a resizable agenda widget with independent calendar selection/privacy and Create/Today/event
+actions. Validate incoming calendar view/date/create/edit intents, preserve occurrence refs, and handle
+permission recovery. Support external keyboard focus/navigation.
+
+### M9 — App-owned reminders
+
+- Own notification presentation, dismissals, snoozes and delivery tracking. Guide setup for notification
+  permission, exact-alarm access, channels, test notifications and disabling duplicate alerts elsewhere.
+- Read and preserve existing reminders, obey calendar limits and preserve non-alert methods without
+  treating them as local notifications. New defaults: 10 minutes before timed events; 09:00 the previous
+  day for all-day events. All-day reminder date/time uses device zone independently of display zone.
+- Plan reminders due in a rolling 90-day window, accounting for advance reminders on events beyond the
+  ordinary event window. Schedule next due delivery and reconcile provider edits, resume, reboot,
+  clock/zone changes, upgrades and restored permissions. Use content-trigger and persisted periodic jobs.
+- Revalidate events before posting; deduplicate app alarms/provider broadcasts with stable delivery
+  identity. Persist 5/10/30-minute snoozes. Use private lock-screen presentation by default and respect DND.
+- Show reminder-health degradation when precise delivery is unavailable. Test actual Android/Doze
+  limitations; never claim an inexact fallback is precise.
+
+### Release acceptance
+
+All M0–M9 requirements need implementation and evidence. Run test/debug build/lint and inspect changed
+Roborazzi screenshots with synthetic data. Add pure temporal/recurrence/reminder, fake-provider,
+persistence/migration, UI and integrated failure/recovery tests. Verify controlled Google/Workspace
+round-trips and physical-device TalkBack, permissions, reboot/Doze, timezones, offline/conflicts and APK
+upgrades. No mocked/local-only result substitutes for remote/device evidence.
+
+Complete seven days of work/personal beta including weekend, offline use, remote edits, recurrence,
+reminders and upgrade. Data loss, duplicate writes, wrong recurrence scope, missed eligible reminders
+or failed meeting propagation block release. Publish a stably signed upgradeable APK/checksum/release
+notes in a durable GitHub release, with signing material outside Git. If device/account/signing/beta
+access is unavailable, continue independent work but leave those gates pending.
+
+## Historical phase 1: the day view (read-only)
 
 ### Layout, top to bottom
 
@@ -123,7 +288,7 @@ identical:
   unit tests on the hours-for-day mapping and the alignment rule.
 - Screenshot tests render a dry day, a rainy evening and a snowy morning, in light and dark themes.
 
-## Phase 2: events
+## Historical phase 2: events
 
 - **Tap an event:** an in-app details sheet with time, location, calendar, description, attendees and
   your RSVP status.
@@ -134,12 +299,12 @@ identical:
 - **Hour readout:** tap empty space to briefly show `18:00 · Dark · Light rain 1.9 mm · Cool 11°`, the
   same wording as desktop.
 
-## Phase 3: week view
+## Historical phase 3: week view
 
 - **Same grid** with 7 columns. Swipe pages by week, and the first day follows the system setting.
 - **The weather layer** works per column. It already depends only on column geometry.
 
-## Out of scope
+## Historical initial exclusions (superseded where stated above)
 
 - Tasks.
 - Home-screen widgets.

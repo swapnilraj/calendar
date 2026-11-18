@@ -43,7 +43,36 @@ the PR.
 On AGP 9, Kotlin support is built in. **Do not** apply `org.jetbrains.kotlin.android`. Do apply
 `org.jetbrains.kotlin.plugin.compose` and `org.jetbrains.kotlin.plugin.serialization` where needed.
 
-## Modules
+## Daily-driver architecture (approved target; bootstrap in progress)
+
+The existing app below describes the read-only baseline. Wave 0 is adding `:calendar-core`, a pure
+Kotlin/JVM module for shared calendar identity/date contracts and later geometry, validation,
+recurrence plans and reminder calculations. It must contain no Android imports. The lead owns module
+wiring; initial contracts are being implemented, not yet a complete repository/editor API.
+
+Target boundaries:
+
+- Android provider adapters share range invalidation and expose calendar metadata, details and typed
+  mutation outcomes. Display segmentation is separate from occurrence/master/original-instance identity.
+- Pure recurrence plans are interpreted by one Android batch writer. `org.dmfs:lib-recur:0.17.1` is the
+  approved future recurrence dependency, **not yet added**. Its adoption needs the actual dependency
+  change and decisions-log entry; provider-expanded Instances remain the display source.
+- One DataStore instance holds preferences. Versioned private SQLite holds drafts, operation recovery,
+  delivery state and snoozes; it is not a competing calendar event database.
+- Mutation outcomes include local success, conflict, permission/provider failure and uncertain outcome.
+  Unknown create outcomes must be reconciled, never blindly retried.
+- AlarmManager owns reminder delivery; JobScheduler reconciles, alongside provider reminder signals.
+  The notification ledger is independent from display selection. Background/device behaviour remains
+  unverified until the explicit acceptance gates pass.
+- Lead owns shared contracts, composition/navigation, Gradle, manifest, CI and release wiring. Feature
+  agents inject ports rather than reaching across ownership or accessing ContentResolver from UI.
+- Keep existing `:weather` rules/constants unchanged. Pure transition geometry can mask ambiguous
+  weather bands in Android presentation without changing normal-day weather calculations.
+
+See [SPEC.md](SPEC.md) for behaviour, [TASKS.md](TASKS.md) for parallel waves and
+[DAILY_DRIVER_PROGRESS.md](DAILY_DRIVER_PROGRESS.md) for completed versus pending evidence.
+
+## Baseline modules
 
 ```
 calendar/

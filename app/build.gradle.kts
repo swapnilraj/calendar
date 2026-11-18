@@ -41,6 +41,7 @@ roborazzi {
 }
 
 dependencies {
+    implementation(project(":calendar-core"))
     implementation(project(":weather"))
     implementation(platform(libs.compose.bom))
     implementation(libs.activity.compose)

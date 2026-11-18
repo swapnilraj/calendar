@@ -2,9 +2,9 @@ name: Android
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex/daily-driver]
   pull_request:
-    branches: [main]
+    branches: [main, codex/daily-driver]
 
 permissions:
   contents: read

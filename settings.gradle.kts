@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Daylight"
-include(":app", ":weather")
+include(":app", ":weather", ":calendar-core")
