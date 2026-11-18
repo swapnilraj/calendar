@@ -241,6 +241,19 @@ class TimedGridInteractionTest {
         compose.mainClock.advanceTimeBy(400)
         assertEquals(stopped, minute, 1.0)
     }
+    @Test fun positiveMillisecondMovePreviewKeepsVisibleAndAccessibleDurationNonzero() {
+        val original = event()
+        val end = original.start.plusMillis(1)
+        val short = original.copy(end = end, ref = original.ref!!.copy(instanceEnd = end))
+        show(events = listOf(short))
+        val node = compose.onNodeWithText("Meeting")
+        val bounds = node.fetchSemanticsNode().boundsInRoot
+        hold(node, Offset(bounds.width / 2, bounds.height / 4))
+        move(node, Offset(0f, 64f))
+        compose.onNodeWithText("0.001 s", substring = true).assertExists()
+        compose.onNodeWithContentDescription("0.001 elapsed seconds", substring = true).assertExists()
+        release(node)
+    }
     @Test @Config(qualifiers = "+notnight") fun createPreviewUsesUntintedOutlineUnderExistingEvents() {
         show()
         val node = viewport()

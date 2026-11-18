@@ -36,9 +36,9 @@ internal fun TimedGridFeedback(date: LocalDate, zone: ZoneId, use24Hour: Boolean
         current.phase == TimedGridGesturePhase.REJECTED -> stringResource(R.string.timed_grid_unavailable)
         current.phase == TimedGridGesturePhase.ORIGINAL -> stringResource(R.string.timed_grid_original)
         result is GridPreviewResult.Ready -> {
-            val duration = result.time.duration
-            val minutes = duration.seconds / 60.0 + duration.nano / 60_000_000_000.0
-            stringResource(R.string.timed_grid_ready, "\u202a${time(result.time.start)} – ${time(result.time.end)}\u202c", java.text.NumberFormat.getNumberInstance(locale).format(minutes))
+            val elapsed = gridElapsedAmount(result.time.duration, locale)
+            stringResource(if (elapsed.seconds) R.string.timed_grid_ready_seconds else R.string.timed_grid_ready,
+                "\u202a${time(result.time.start)} – ${time(result.time.end)}\u202c", elapsed.value)
         }
         result is GridPreviewResult.NeedsReview -> {
             val target = result.snappedTarget
@@ -55,9 +55,11 @@ internal fun TimedGridFeedback(date: LocalDate, zone: ZoneId, use24Hour: Boolean
         if (it.toLocalDate() == date) it.format(clock) else "${it.toLocalDate().format(DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT).withLocale(locale))} ${it.format(clock)}"
     }
     val visualMessage = when (result) {
-        is GridPreviewResult.Ready -> stringResource(R.string.timed_grid_ready_compact,
-            "\u202a${compactTime(result.time.start)} – ${compactTime(result.time.end)}\u202c",
-            java.text.NumberFormat.getNumberInstance(locale).format(result.time.duration.seconds / 60.0 + result.time.duration.nano / 60_000_000_000.0))
+        is GridPreviewResult.Ready -> {
+            val elapsed = gridElapsedAmount(result.time.duration, locale)
+            stringResource(if (elapsed.seconds) R.string.timed_grid_ready_compact_seconds else R.string.timed_grid_ready_compact,
+                "\u202a${compactTime(result.time.start)} – ${compactTime(result.time.end)}\u202c", elapsed.value)
+        }
         is GridPreviewResult.NeedsReview -> {
             val target = result.snappedTarget
             val wall = LocalTime.MIDNIGHT.plusSeconds((target.minute * 60).toLong()).format(clock)

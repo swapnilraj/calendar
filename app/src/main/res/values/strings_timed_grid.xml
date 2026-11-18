@@ -16,4 +16,6 @@
     <string name="timed_grid_ready_compact">%1$s · %2$s min\nRelease to review</string>
     <string name="timed_grid_gap_compact">%1$s · Clock gap\nRelease to review</string>
     <string name="timed_grid_overlap_compact">%1$s · Time occurs twice\nRelease to review</string>
+    <string name="timed_grid_ready_seconds">%1$s · %2$s elapsed seconds. Release to review in the editor.</string>
+    <string name="timed_grid_ready_compact_seconds">%1$s · %2$s s\nRelease to review</string>
 </resources>
