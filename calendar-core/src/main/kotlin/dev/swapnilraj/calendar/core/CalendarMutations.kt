@@ -52,6 +52,11 @@ sealed interface MutationResult {
     data class ValidationFailed(val fields: Set<InvalidEventField>) : MutationResult
     data class Conflict(val latest: EventDetails?) : MutationResult
     data object Unavailable : MutationResult
+    /** Recovery-only proof that this journaled command was never dispatched or atomically rolled back.
+     * Retry requires an explicit user action with the same operation ID and exact original command.
+     * Missing journals, unknown outcomes and unreadable records never establish this proof.
+     */
+    data class SafeToRetry(val operationId: String) : MutationResult
     /** A possibly committed operation must be reconciled, never blindly re-submitted. */
     data class Uncertain(val operationId: String, val knownEventId: Long?) : MutationResult
 }

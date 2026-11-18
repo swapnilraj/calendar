@@ -226,6 +226,7 @@ class EventEditorController(
             is MutationResult.Conflict -> EditorProblem.CONFLICT
             is MutationResult.Uncertain -> EditorProblem.UNCERTAIN
             MutationResult.Unavailable -> EditorProblem.UNAVAILABLE
+            is MutationResult.SafeToRetry -> EditorProblem.UNCERTAIN // Locked until exact-command retry UI is implemented.
         })
     }
 

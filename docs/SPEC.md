@@ -16,6 +16,10 @@ calendar subscriptions begin. An unavailable preference store shows Retry instea
 provider visibility. Month date sheets survive adjacent-month range loading; supported date picking
 and navigation span years 1–9999. Creation controls appear only when a working editor route exists.
 
+Journal recovery distinguishes an unknown outcome from proof that a command never dispatched or
+atomically rolled back. Such proof permits only an explicit retry using the original operation ID,
+payload and edit token; recovery itself never writes. Missing or unreadable journals remain unknown.
+
 1. **Events always win.** Weather is painted under the hour lines and events. Nothing covers an event
    or its text, and event colours are never tinted.
 2. **Glanceable, not readable.** "Rainy evening, dark by five" should land in under a second without
