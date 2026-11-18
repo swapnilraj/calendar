@@ -21,7 +21,7 @@ data class MeetingCreationState(val fields: MeetingCreationFields? = null, val l
     val busy: Boolean = false, val problem: MeetingCreationProblem? = null, val policyAccepted: Boolean = false,
     val allowedGuestTypes: Set<MeetingGuestType> = emptySet(), val recoveryRequired: Boolean = false,
     val retryReady: Boolean = false, val confirmDiscard: Boolean = false, val discarded: Boolean = false,
-    val localSaved: EventRef? = null)
+    val localSaved: EventRef? = null, val acknowledged: Boolean = false)
 
 /** Dedicated meeting-create state machine. Public actions are suspending; hosts launch them explicitly.
  * Exact CAS owns local data, not the provider transaction. Frozen authorization remains recoverable.
@@ -38,8 +38,10 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
     private var verified = false
     private var retirementProven = false
     private var pendingRaw: MeetingCreationDocument? = null
+    val hasPendingRawInput: Boolean get() = pendingRaw != null
     val frozen: Boolean get() = document?.frozen != null
     val canChange: Boolean get() = !state.busy && canChangeIgnoringBusy()
+    val canEditRaw: Boolean get() = !state.busy && canAcceptRaw()
     val canSave: Boolean get() = canChange && verified && document?.authority != null && state.problem !in setOf(MeetingCreationProblem.STALE_DRAFT, MeetingCreationProblem.DRAFT_UNAVAILABLE)
     val canDiscard: Boolean get() = !stopped && !state.loading && !state.busy && document != null && state.localSaved == null && (!frozen || retirement != null)
     /** Fixed backend policy; presentation must disclose this before asking for acceptance. */
@@ -172,7 +174,7 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
     /** Commit acknowledgment is cleanup, not retirement and never another create. */
     suspend fun acknowledgeLocalSave() = exclusive {
         if (state.localSaved == null || stopped) return@exclusive
-        if (deleteExact()) stopped = true
+        if (deleteExact()) { stopped = true; state = state.copy(acknowledged = true) }
     }
     suspend fun flushDraft() = exclusive {
         val candidate = pendingRaw ?: return@exclusive

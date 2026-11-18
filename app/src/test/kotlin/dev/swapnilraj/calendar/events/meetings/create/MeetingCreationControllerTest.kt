@@ -224,7 +224,7 @@ class MeetingCreationControllerTest {
     }
     @Test fun knownLocalSaveAcknowledgesByExactCleanupWithoutRetirementOrSecondCreate() = runBlocking {
         val f=Fixture(); val c=f.ready(); f.next=MeetingMutationResult.LocalSaved(f.ref,RecurrenceScope.THIS); c.save()
-        assertEquals(f.ref,c.state.localSaved); assertFalse(c.canDiscard); c.acknowledgeLocalSave(); assertTrue(f.store.rows.isEmpty()); c.save(); assertEquals(1,f.calls.size); assertEquals(0,f.retireCalls)
+        assertEquals(f.ref,c.state.localSaved); assertFalse(c.canDiscard); assertFalse(c.state.acknowledged); c.acknowledgeLocalSave(); assertTrue(c.state.acknowledged); assertTrue(f.store.rows.isEmpty()); c.save(); assertEquals(1,f.calls.size); assertEquals(0,f.retireCalls)
     }
     @Test fun allDaySuccessUsesUtcExclusiveDateBounds() = runBlocking {
         val f=Fixture(); val c=f.ready(); c.changeFields(c.state.fields!!.event.copy(allDay=true,startDate="2028-06-15",endDate="2028-06-16",zone="Pacific/Auckland"))
@@ -258,7 +258,8 @@ class MeetingCreationControllerTest {
     }
 }
 
-private class Fixture {
+private typealias Fixture = MeetingCreationFixture
+internal class MeetingCreationFixture {
     val clock=Clock.fixed(Instant.parse("2028-06-01T00:00:00Z"),ZoneOffset.UTC)
     val start=Instant.parse("2028-06-15T09:00:00Z")
     val calendar=CalendarInfo(CalendarId(2),"Work",1,CalendarAccount("self@example.test","Fixture"),"self@example.test",ZoneOffset.UTC,500,true,true,providerId="uid-A")
@@ -294,7 +295,7 @@ private class Fixture {
     suspend fun open()=controller(prepare()).also { it.load() }
     suspend fun ready()=open().also { it.selectCalendar(calendar); it.changeGuests(listOf(guest)); it.acceptFixedGuestPolicy(true) }
 }
-private class AtomicCreationStore:AtomicDraftStore {
+internal class AtomicCreationStore:AtomicDraftStore {
     val rows=mutableMapOf<String,DraftRecord>(); var legacy=0; var unknownBefore=false; var unknownAfter=false; var failRead=false
     var beforeCas:suspend (DraftRecord?,DraftRecord?)->Unit={_,_->}
     override suspend fun load(id:String):DraftRecord? { if(failRead) error("unreadable"); return rows[id] }
