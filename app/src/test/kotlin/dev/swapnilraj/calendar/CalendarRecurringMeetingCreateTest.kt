@@ -228,18 +228,68 @@ class CalendarRecurringMeetingCreateTest {
             assertTrue(f.writer.create("child-race", f.creation().token, draft, guests) is MeetingMutationResult.LocalSaved)
             f.p.queries.clear()
             f.p.beforeQuery = { path ->
-                if (path == child) {
+                if (path == child && (path != "reminders" || f.p.queries.last().itemId != null)) {
                     f.p.beforeQuery = null
                     f.p.db.execSQL("UPDATE events SET uid2445='foreign-parent-identity'")
                 }
             }
             assertEquals(common(MutationResult.Uncertain("child-race", 1)), f.writer.recover("child-race"))
-            val privateReads = f.p.queries.filter { it.path in setOf("attendees", "reminders") }
+            val privateReads = f.p.queries.filter { it.path == "attendees" || it.path == "reminders" && it.fields?.contains("minutes") == true }
             assertTrue(privateReads.isNotEmpty())
             assertTrue(privateReads.all { it.selection?.contains("uid2445 = ?") == true && it.selection.contains("calendar_id = ?") })
             assertEquals(1, f.p.batchCount)
         }
     }
+
+    @Test fun rawReminderCollectionRejectsJoinsAndRecoveryOnlyReadsPayloadFromGuardedItems() = runBlocking { fixture { f ->
+        assertTrue(f.writer.create("native-shape", f.creation().token, draft, guests) is MeetingMutationResult.LocalSaved)
+        try {
+            RuntimeEnvironment.getApplication().contentResolver.query(CalendarContract.Reminders.CONTENT_URI,
+                arrayOf("_id", "minutes"), "event_id = ? AND uid2445 = ?", arrayOf("1", f.p.value("uid2445")), null)?.close()
+            fail("The pinned native collection has no joined event columns")
+        } catch (_: android.database.sqlite.SQLiteException) { }
+        f.p.queries.clear()
+        assertTrue(f.writer.recover("native-shape") is MeetingMutationResult.LocalSaved)
+        val collections = f.p.queries.filter { it.path == "reminders" && it.itemId == null }
+        assertEquals(2, collections.size)
+        assertTrue(collections.all { it.fields == listOf("_id", "event_id") && it.selection == "event_id = ?" })
+        val items = f.p.queries.filter { it.path == "reminders" && it.itemId != null }
+        assertEquals(2, items.size)
+        assertTrue(items.all { it.fields == listOf("_id", "event_id", "minutes", "method") && it.selection?.contains("uid2445 = ?") == true })
+    } }
+
+    @Test fun changedReminderMembershipBetweenScansStaysCommittedAndNeverReplays() = runBlocking {
+        for (change in listOf("extra", "deleted", "replaced")) fixture { f ->
+            val token = f.creation().token; f.p.failReadsAfterCommit = true
+            assertEquals(common(MutationResult.Uncertain("membership", 1)), f.writer.create("membership", token, draft, guests))
+            val committed = f.store.operation("membership")!!; assertEquals("COMMITTED", committed.phase)
+            f.p.failReadsAfterCommit = false; f.p.queries.clear()
+            var collections = 0
+            f.p.beforeQuery = { path ->
+                if (path == "reminders" && f.p.queries.last().itemId == null && ++collections == 2) {
+                    f.p.beforeQuery = null
+                    if (change != "extra") f.p.db.execSQL("DELETE FROM reminders WHERE _id=1")
+                    if (change != "deleted") f.p.db.execSQL("INSERT INTO reminders(event_id,minutes,method) VALUES (1,45,1)")
+                }
+            }
+            assertEquals(common(MutationResult.Uncertain("membership", 1)), f.writer.recover("membership"))
+            assertEquals(committed, f.store.operation("membership"))
+            assertEquals(common(MutationResult.Uncertain("membership", 1)), f.writer.create("membership", token, draft, guests))
+            assertEquals(1, f.p.batchCount)
+        }
+    }
+
+    @Test fun changedParentUidAfterChildrenCannotVerifyOrMutateTheCommittedReceipt() = runBlocking { fixture { f ->
+        val token = f.creation().token; f.p.failReadsAfterCommit = true
+        assertEquals(common(MutationResult.Uncertain("parent-after", 1)), f.writer.create("parent-after", token, draft, guests))
+        val committed = f.store.operation("parent-after")!!; f.p.failReadsAfterCommit = false
+        f.p.afterQuery = { path -> if (path == "instances") {
+            f.p.afterQuery = null
+            f.p.db.execSQL("UPDATE events SET uid2445='replacement-after-child-reads'")
+        } }
+        assertEquals(common(MutationResult.Uncertain("parent-after", 1)), f.writer.recover("parent-after"))
+        assertEquals(committed, f.store.operation("parent-after")); assertEquals(1, f.p.batchCount)
+    } }
 
     @Test fun delayedOrWrongNativeBoundsNeverInventTheFirstOccurrence() = runBlocking { fixture { f ->
         val token = f.creation().token; f.p.delayedInstances = true

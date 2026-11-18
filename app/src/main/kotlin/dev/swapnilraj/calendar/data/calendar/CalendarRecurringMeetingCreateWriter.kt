@@ -166,27 +166,45 @@ internal class CalendarRecurringMeetingCreateWriter(private val resolver:Content
             if(!sameCalendar(p))return uncertain()
             val expected=p.event+mapOf("_id" to id.toString(),"deleted" to "0","isOrganizer" to "1","selfAttendeeStatus" to "1","hasAlarm" to if(p.draft.alertMinutes.isEmpty())"0"else "1")
             val fields=(expected.keys+listOf("_sync_id","rdate","exdate","exrule","original_id","original_sync_id","originalInstanceTime","originalAllDay")).toTypedArray()
-            val actual=provider.rows(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,id),fields,maxRows=1).singleOrNull()?:return uncertain()
-            if(expected.any{(key,value)->actual[key]!=value}||listOf("rdate","exdate","exrule","original_id","original_sync_id","originalInstanceTime","originalAllDay").any{actual[it]!=null})return uncertain()
+            suspend fun parent():Map<String,String?>? {
+                val row=provider.rows(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,id),fields,maxRows=1).singleOrNull()?:return null
+                if(expected.any{(key,value)->row[key]!=value}||listOf("rdate","exdate","exrule","original_id","original_sync_id","originalInstanceTime","originalAllDay").any{row[it]!=null})return null
+                return row
+            }
+            val actual=parent()?:return uncertain()
             val knownSync=j.nullable("_sync_id")?.takeIf(String::isNotBlank);val actualSync=actual["_sync_id"]?.takeIf(String::isNotBlank)
             if(knownSync!=null&&knownSync!=actualSync)return uncertain()
             val guestIds=j.getJSONArray("attendees").longs();val reminderIds=j.getJSONArray("reminders").longs()
-            // Joined event predicates fence ID reuse after the event read, before either private
-            // child cursor is materialized. UID is an exact known-parent guard, never a row search.
+            // Attendees collection and reminder ITEM reads expose joined event predicates. The
+            // native reminder COLLECTION is raw: only inspect bounded row identity there, never
+            // request minutes/method without the item URI's exact known-parent UID guard.
             val children="event_id = ? AND calendar_id = ? AND organizer = ? AND uid2445 = ?"
             val childArgs=arrayOf(id.toString(),p.draft.calendarId.value.toString(),meetingIdentity(p.source.calendar).owner,p.uid)
             val guests=provider.rows(CalendarContract.Attendees.CONTENT_URI,AttendeeFields,children,childArgs,201)
             if(guests.size!=p.attendees.size)return uncertain()
             p.attendees.forEachIndexed{i,values->val row=guests.singleOrNull{it["_id"]==guestIds[i].toString()}?:return uncertain();if(row["event_id"]!=id.toString()||values.any{(key,value)->row[key]!=value}||!row["attendeeIdentity"].isNullOrBlank()||!row["attendeeIdNamespace"].isNullOrBlank())return uncertain()}
-            val reminders=provider.rows(CalendarContract.Reminders.CONTENT_URI,ReminderFields,children,childArgs,readBudgets.maxSeriesChildren)
-            if(reminders.size!=p.draft.alertMinutes.size)return uncertain()
-            p.draft.alertMinutes.forEachIndexed{i,minutes->val row=reminders.singleOrNull{it["_id"]==reminderIds[i].toString()}?:return uncertain();if(row["event_id"]!=id.toString()||row["minutes"]!=minutes.toString()||row["method"]!="1")return uncertain()}
+            suspend fun reminderMembership():Boolean {
+                val rows=provider.rows(CalendarContract.Reminders.CONTENT_URI,arrayOf("_id","event_id"),"event_id = ?",arrayOf(id.toString()),minOf(readBudgets.maxSeriesChildren,reminderIds.size+1))
+                val ids=rows.map{it["_id"]?.toLongOrNull()?:return false}
+                return rows.all{it["event_id"]==id.toString()}&&ids.all{it>0}&&ids.size==reminderIds.size&&ids.toSet().size==ids.size&&ids.toSet()==reminderIds.toSet()
+            }
+            if(!reminderMembership())return uncertain()
+            p.draft.alertMinutes.forEachIndexed{i,minutes->
+                val reminderId=reminderIds[i]
+                val row=provider.rows(ContentUris.withAppendedId(CalendarContract.Reminders.CONTENT_URI,reminderId),ReminderFields,children,childArgs,1).singleOrNull()?:return uncertain()
+                if(row["_id"]!=reminderId.toString()||row["event_id"]!=id.toString()||row["minutes"]!=minutes.toString()||row["method"]!="1")return uncertain()
+            }
             val ref=p.plan.ref(p.draft.calendarId,id)
             val uri=CalendarContract.Instances.CONTENT_URI.buildUpon().apply{ContentUris.appendId(this,ref.instanceStart.toEpochMilli());ContentUris.appendId(this,Math.addExact(ref.instanceStart.toEpochMilli(),1))}.build()
             val native=provider.rows(uri,InstanceFields,"event_id = ? AND calendar_id = ? AND begin = ?",arrayOf(id.toString(),ref.calendarId.value.toString(),ref.instanceStart.toEpochMilli().toString()),1).singleOrNull()?:return uncertain()
             if(native["event_id"]!=id.toString()||native["calendar_id"]!=ref.calendarId.value.toString()||native["begin"]!=ref.instanceStart.toEpochMilli().toString()||native["end"]!=ref.instanceEnd.toEpochMilli().toString()||native["allDay"]!=(if(p.plan.allDay)"1"else "0")||listOf("original_id","original_sync_id","originalInstanceTime").any{!native[it].isNullOrBlank()})return uncertain()
+            if(!reminderMembership())return uncertain()
+            val finalParent=parent()?:return uncertain()
+            val finalSync=finalParent["_sync_id"]?.takeIf(String::isNotBlank)
+            val observedSync=knownSync?:actualSync
+            if(observedSync!=null&&observedSync!=finalSync)return uncertain()
             if(!sameCalendar(p))return uncertain();provider.ensureRead()
-            val verified=JSONObject(j.toString()).put("_sync_id",knownSync?:actualSync?:JSONObject.NULL).put("firstRef",meetingRefJson(ref))
+            val verified=JSONObject(j.toString()).put("_sync_id",observedSync?:finalSync?:JSONObject.NULL).put("firstRef",meetingRefJson(ref))
             check(store.mark(operation,"VERIFIED",verified.toString()));reader.refresh();MeetingMutationResult.LocalSaved(ref,RecurrenceScope.ALL)
         }catch(s:SecurityException){throw s}catch(c:CancellationException){throw c}catch(_:Exception){uncertain()}
     }

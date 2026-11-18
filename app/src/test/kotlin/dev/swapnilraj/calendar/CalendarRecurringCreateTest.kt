@@ -42,7 +42,7 @@ class CalendarRecurringCreateTest {
         var afterQuery: ((String) -> Unit)? = null
         var beforeQuery: ((String) -> Unit)? = null
         val db = SQLiteDatabase.create(null)
-        data class Query(val path: String, val fields: List<String>?, val selection: String?)
+        data class Query(val path: String, val fields: List<String>?, val selection: String?, val itemId: Long? = null)
         val queries = mutableListOf<Query>()
         var batchCount = 0
         var lostAck = false
@@ -78,7 +78,7 @@ class CalendarRecurringCreateTest {
         override fun getType(uri: Uri): String? = null
         override fun query(uri: Uri, fields: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor {
             if (failReadsAfterCommit && committed) error("Synthetic post-commit read failure")
-            val path = uri.pathSegments.first(); queries += Query(path, fields?.toList(), selection)
+            val path = uri.pathSegments.first(); queries += Query(path, fields?.toList(), selection, uri.pathSegments.getOrNull(1)?.toLongOrNull())
             beforeQuery?.invoke(path)
             if(rejectEventUidProjection && path=="events" && fields?.contains("uid2445")==true)throw IllegalArgumentException("Synthetic missing uid2445 projection")
             if (path == "instances" && delayedInstances) return MatrixCursor(fields!!)
@@ -97,7 +97,7 @@ class CalendarRecurringCreateTest {
             }?.toTypedArray() else projected
             val table = when {
                 path == "instances" -> "instance_view"
-                nativeMeetingMode && path in setOf("attendees", "reminders") && selection?.contains("calendar_id") == true ->
+                nativeMeetingMode && (path == "attendees" || path == "reminders" && uri.pathSegments.size == 2) ->
                     "(SELECT $path.*, events.calendar_id, events.organizer, events.uid2445 FROM $path JOIN events ON $path.event_id = events._id)"
                 else -> path
             }
