@@ -3,6 +3,7 @@ package dev.swapnilraj.calendar.android.widgets
 import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.UUID
 import dev.swapnilraj.calendar.core.*
 import java.time.Clock
 import java.time.LocalDate
@@ -15,6 +16,7 @@ import kotlinx.coroutines.*
 class AgendaWidgetRuntime(
     private val source: AgendaWidgetSnapshotReader,
     private val settings: AgendaWidgetSettings,
+    private val writer: AgendaWidgetConfigurationWriter,
     private val scheduler: AgendaWidgetRefreshScheduler,
     private val host: AgendaWidgetHost,
     private val renderer: AgendaWidgetRenderer,
@@ -23,8 +25,14 @@ class AgendaWidgetRuntime(
     private val timeoutMillis: Long = 15_000,
 ) {
     private val revisions = ConcurrentHashMap<Int, Long>()
-    private data class Removal(val token: Any = Any(), val display: AgendaWidgetDisplay = AgendaWidgetDisplay.SetupRequired)
+    private data class Removal(val epoch: WidgetEpoch, val receipt: Deferred<WidgetRemovalReceipt>,
+        val display: AgendaWidgetDisplay = AgendaWidgetDisplay.SetupRequired)
     private val removals = ConcurrentHashMap<Int, Removal>()
+    private val epochs = ConcurrentHashMap<Int, WidgetEpoch>()
+    private val cleanup = mutableMapOf<Int, MutableList<Deferred<WidgetRemovalReceipt>>>()
+    private data class SaveAttempt(val epoch: WidgetEpoch, val serial: Long, val display: AgendaWidgetDisplay = AgendaWidgetDisplay.Loading)
+    private val saves = ConcurrentHashMap<Int, SaveAttempt>()
+    private var nextSaveSerial = 0L
     private val publication = Any()
     init { require(timeoutMillis > 0) }
 
@@ -60,56 +68,150 @@ class AgendaWidgetRuntime(
         return successful
     }
 
-    /** Immediate invalidation precedes IO; a failed cleanup cannot reveal inherited titles. */
+    /** Registration, quarantine and the actor enqueue happen synchronously before any coroutine.
+     * Broadcast timeout ends only the broadcast; it neither cancels nor settles shared cleanup IO.
+     */
     fun removed(widgetIds: Set<Int>, finished: () -> Unit = {}): Job {
-        val marker = Removal()
-        synchronized(publication) {
-            widgetIds.forEach { id ->
+        val registrations = synchronized(publication) {
+            widgetIds.filter { it > 0 }.map { id ->
+                val epoch = WidgetEpoch(id, UUID.randomUUID().toString())
+                epochs[id] = epoch
+                saves.remove(id)
                 revisions.merge(id, 1L, Long::plus)
-                removals[id] = marker
                 publish(id, AgendaWidgetDisplay.SetupRequired)
+                val receipt = try { writer.enqueueRemoval(epoch) }
+                    catch (_: Exception) { CompletableDeferred<WidgetRemovalReceipt>(WidgetRemovalReceipt.Unavailable) }
+                val removal = Removal(epoch, receipt)
+                removals[id] = removal
+                cleanup.getOrPut(id) { mutableListOf() }.add(receipt)
+                removal
             }
         }
-        fun failed() { widgetIds.forEach { id -> removals.computeIfPresent(id) { _, current ->
-            if (current.token === marker.token) marker.copy(display = AgendaWidgetDisplay.Unavailable) else current
-        } } }
         val once = AtomicBoolean()
         fun finishOnce() { if (once.compareAndSet(false, true)) finished() }
         val job = scope.launch {
-            try {
-                settings.removed(widgetIds)
-                currentCoroutineContext().ensureActive()
-                widgetIds.forEach { removals.remove(it, marker) }
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { failed() }
+            registrations.forEach { registration ->
+                val result = try { registration.receipt.await() }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { WidgetRemovalReceipt.Unavailable }
+                synchronized(publication) {
+                    val id = registration.epoch.widgetId
+                    val current = removals[id]
+                    if (epochs[id] == registration.epoch && current?.epoch == registration.epoch) {
+                        val display = if (result == WidgetRemovalReceipt.Committed(registration.epoch))
+                            AgendaWidgetDisplay.SetupRequired else AgendaWidgetDisplay.Unavailable
+                        removals[id] = current.copy(display = display)
+                        publish(id, display)
+                    }
+                }
+            }
         }
         val handler = Handler(Looper.getMainLooper())
-        val deadline = Runnable {
-            job.cancel()
-            failed()
-            finishOnce()
-        }
+        val deadline = Runnable { finishOnce() }
         handler.postDelayed(deadline, 8_000)
-        job.invokeOnCompletion { failure ->
-            handler.removeCallbacks(deadline)
-            if (failure != null) failed()
-            invalidate(widgetIds)
-            finishOnce()
-        }
+        job.invokeOnCompletion { handler.removeCallbacks(deadline); finishOnce() }
         return job
     }
 
-    /** Root calls only after successfully saving a fresh configuration/generation. */
-    fun configurationSaved(widgetId: Int): Boolean {
-        removals.remove(widgetId)
-        return invalidate(setOf(widgetId))
+    suspend fun beginConfiguration(widgetId: Int): WidgetConfigurationSessionResult = try {
+        withTimeout(timeoutMillis) {
+            require(widgetId in host.widgetIds())
+            val known = synchronized(publication) { epochs[widgetId] }
+            if (known != null && removals.containsKey(widgetId))
+                return@withTimeout WidgetConfigurationSessionResult.Ready(WidgetConfigurationSession(known))
+            val proof = settings.lifecycle(widgetId)
+            val verified = (proof as? WidgetLifecycleProof.Verified)?.epoch
+            if (proof == WidgetLifecycleProof.Unavailable) WidgetConfigurationSessionResult.Unavailable
+            else if (verified == null || verified.widgetId != widgetId) WidgetConfigurationSessionResult.SetupRequired
+            else synchronized(publication) {
+                val expected = epochs.putIfAbsent(widgetId, verified) ?: verified
+                if (expected != verified) WidgetConfigurationSessionResult.SetupRequired
+                else WidgetConfigurationSessionResult.Ready(WidgetConfigurationSession(expected))
+            }
+        }
+    } catch (_: TimeoutCancellationException) { WidgetConfigurationSessionResult.Unavailable }
+    catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { WidgetConfigurationSessionResult.Unavailable }
+
+    /** All UI writes use this path. No raw save callback can remove quarantine. Awaiting a receipt
+     * does not own/cancel the actor operation; a bounded UI timeout leaves shared cleanup pending.
+     */
+    suspend fun saveFreshConfiguration(session: WidgetConfigurationSession, choice: WidgetConfigurationChoice): WidgetConfigurationSaveResult {
+        val epoch = session.epoch
+        val attempt = synchronized(publication) {
+            if (epochs[epoch.widgetId] != epoch) return WidgetConfigurationSaveResult.Stale
+            SaveAttempt(epoch, ++nextSaveSerial).also {
+                saves[epoch.widgetId] = it
+                revisions.merge(epoch.widgetId, 1L, Long::plus)
+                publish(epoch.widgetId, AgendaWidgetDisplay.Loading)
+            }
+        }
+        val result = try {
+            withTimeout(timeoutMillis) {
+                val barriers = synchronized(publication) { cleanup[epoch.widgetId]?.toList().orEmpty() }
+                var latest: WidgetRemovalReceipt? = null
+                barriers.forEach { latest = it.await() }
+                if (barriers.isNotEmpty() && latest != WidgetRemovalReceipt.Committed(epoch))
+                    return@withTimeout WidgetConfigurationSaveResult.Unavailable
+                if (epoch.widgetId !in host.widgetIds()) return@withTimeout WidgetConfigurationSaveResult.Stale
+                if (settings.lifecycle(epoch.widgetId) != WidgetLifecycleProof.Verified(epoch))
+                    return@withTimeout WidgetConfigurationSaveResult.Unavailable
+                val selection = when (val selected = choice.selection) {
+                    WidgetCalendarSelection.FollowApp -> selected
+                    is WidgetCalendarSelection.Explicit -> WidgetCalendarSelection.Explicit(selected.ids.toSet())
+                }
+                val configuration = AgendaWidgetConfiguration(UUID.randomUUID().toString(), selection, choice.privacy)
+                val receipt = synchronized(publication) {
+                    if (!current(attempt)) return@withTimeout WidgetConfigurationSaveResult.Stale
+                    writer.enqueueSave(epoch, configuration)
+                }
+                val committed = receipt.await()
+                currentCoroutineContext().ensureActive()
+                if (committed != WidgetSaveReceipt.Committed(epoch, configuration.generation))
+                    return@withTimeout if (committed == WidgetSaveReceipt.Stale) WidgetConfigurationSaveResult.Stale else WidgetConfigurationSaveResult.Unavailable
+                val stored = settings.configuration(epoch.widgetId)
+                val proof = settings.lifecycle(epoch.widgetId)
+                synchronized(publication) {
+                    if (!current(attempt)) return@withTimeout WidgetConfigurationSaveResult.Stale
+                    if (stored != AgendaWidgetConfigurationState.Ready(configuration, epoch) || proof != WidgetLifecycleProof.Verified(epoch))
+                        return@withTimeout WidgetConfigurationSaveResult.Unavailable
+                    removals.remove(epoch.widgetId)
+                    cleanup.remove(epoch.widgetId)
+                    saves.remove(epoch.widgetId)
+                    invalidate(setOf(epoch.widgetId))
+                    WidgetConfigurationSaveResult.Saved(configuration)
+                }
+            }
+        } catch (_: TimeoutCancellationException) { WidgetConfigurationSaveResult.Unavailable }
+        catch (cancelled: CancellationException) {
+            failSave(attempt)
+            throw cancelled
+        } catch (_: Exception) { WidgetConfigurationSaveResult.Unavailable }
+        if (result !is WidgetConfigurationSaveResult.Saved) failSave(attempt)
+        return result
+    }
+
+    private fun current(attempt: SaveAttempt) = epochs[attempt.epoch.widgetId] == attempt.epoch && saves[attempt.epoch.widgetId]?.serial == attempt.serial
+    private fun failSave(attempt: SaveAttempt) = synchronized(publication) {
+        if (current(attempt)) {
+            saves[attempt.epoch.widgetId] = attempt.copy(display = AgendaWidgetDisplay.Unavailable)
+            publish(attempt.epoch.widgetId, AgendaWidgetDisplay.Unavailable)
+        }
     }
 
     private suspend fun load(id: Int): AgendaWidgetDisplay {
         removals[id]?.let { return it.display }
+        saves[id]?.let { return it.display }
         val state = settings.configuration(id)
         if (state == AgendaWidgetConfigurationState.SetupRequired) return AgendaWidgetDisplay.SetupRequired
-        val config = (state as? AgendaWidgetConfigurationState.Ready)?.value ?: return AgendaWidgetDisplay.Unavailable
+        val stored = state as? AgendaWidgetConfigurationState.Ready ?: return AgendaWidgetDisplay.Unavailable
+        val proof = settings.lifecycle(id)
+        if (proof == WidgetLifecycleProof.Unavailable) return AgendaWidgetDisplay.Unavailable
+        val verified = (proof as? WidgetLifecycleProof.Verified)?.epoch ?: return AgendaWidgetDisplay.SetupRequired
+        if (stored.epoch != verified || verified.widgetId != id) return AgendaWidgetDisplay.SetupRequired
+        val expected = synchronized(publication) { epochs.putIfAbsent(id, verified) ?: verified }
+        if (expected != verified) return AgendaWidgetDisplay.SetupRequired
+        val config = stored.value
         val environment = (settings.environment() as? CalendarReadState.Ready)?.value ?: return AgendaWidgetDisplay.Unavailable
         val today = clock.instant().atZone(environment.displayZone).toLocalDate()
         require(today.year in 1..9999)
@@ -158,7 +260,7 @@ class AgendaWidgetRuntime(
         }
         // A preference failure/change during the query cannot publish old titles or old filters.
         if (clock.instant().atZone(environment.displayZone).toLocalDate() != today ||
-            settings.configuration(id) != state ||
+            settings.configuration(id) != state || settings.lifecycle(id) != WidgetLifecycleProof.Verified(expected) ||
             (settings.environment() as? CalendarReadState.Ready)?.value != environment) {
             scheduler.requestRefresh(setOf(id))
             return AgendaWidgetDisplay.Unavailable

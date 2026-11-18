@@ -29,6 +29,8 @@ class AgendaWidgetTest {
     private val now = Instant.parse("2026-11-18T09:00:00Z")
     private val today = LocalDate.of(2026, 11, 18)
     private val config = AgendaWidgetConfiguration("configuration-generation")
+    private val epoch = WidgetEpoch(1, "verified-initial-binding")
+    private fun ready(value: AgendaWidgetConfiguration) = AgendaWidgetConfigurationState.Ready(value, epoch)
     private val environment = AgendaWidgetEnvironment(CalendarSelection.Explicit(setOf(CalendarId(1))), ZoneOffset.UTC, false, true)
     private fun event(id: Long = 7, calendar: Long = 1, start: Instant = now.plusSeconds(3600), end: Instant = start.plusSeconds(3600),
         title: String = "Synthetic confidential title", declined: Boolean = false) = EventOccurrence(
@@ -50,7 +52,8 @@ class AgendaWidgetTest {
     }
     private inner class Fixture {
         val host = Host()
-        var configuration: AgendaWidgetConfigurationState = AgendaWidgetConfigurationState.Ready(config)
+        var configuration: AgendaWidgetConfigurationState = ready(config)
+        var proof: WidgetLifecycleProof = WidgetLifecycleProof.Verified(epoch)
         var env: CalendarReadState<AgendaWidgetEnvironment> = CalendarReadState.Ready(environment)
         var requested: CalendarRequest? = null
         var reads = 0; var scheduled = 0; var deletes = 0
@@ -66,11 +69,16 @@ class AgendaWidgetTest {
         }, object : AgendaWidgetSettings {
             override suspend fun configuration(widgetId: Int) = configuration
             override suspend fun environment() = env
-            override suspend fun removed(widgetIds: Set<Int>) {
+            override suspend fun lifecycle(widgetId: Int) = proof
+        }, object : AgendaWidgetConfigurationWriter {
+            override fun enqueueRemoval(epoch: WidgetEpoch): Deferred<WidgetRemovalReceipt> {
                 deletes++
-                if (deleteFailure) error("Unavailable")
+                if (deleteFailure) return CompletableDeferred(WidgetRemovalReceipt.Unavailable)
+                proof = WidgetLifecycleProof.Verified(epoch)
                 configuration = AgendaWidgetConfigurationState.SetupRequired
+                return CompletableDeferred(WidgetRemovalReceipt.Committed(epoch))
             }
+            override fun enqueueSave(epoch: WidgetEpoch, configuration: AgendaWidgetConfiguration): Deferred<WidgetSaveReceipt> = error("Not used")
         }, object : AgendaWidgetRefreshScheduler {
             override fun requestRefresh(widgetIds: Set<Int>): Boolean { scheduled++; return true }
         }, host, AgendaWidgetRenderer(context, activity), scope, object : Clock() {
@@ -94,7 +102,7 @@ class AgendaWidgetTest {
 
     @Test fun titleModeUsesExplicitChoiceAndPrivacyFailureReapplyRemovesExistingRows() = runBlocking {
         val f = Fixture()
-        f.configuration = AgendaWidgetConfigurationState.Ready(config.copy(privacy = WidgetPrivacy.EVENT_TITLES))
+        f.configuration = ready(config.copy(privacy = WidgetPrivacy.EVENT_TITLES))
         f.runtime.refresh()
         val original = f.host.last()
         assertTrue(text(original).contains("Synthetic confidential title"))
@@ -111,7 +119,7 @@ class AgendaWidgetTest {
         val f = Fixture(); f.configuration = AgendaWidgetConfigurationState.SetupRequired
         f.runtime.refresh(); assertEquals(0, f.reads)
         assertTrue(text(f.host.last()).contains("Choose calendars"))
-        f.configuration = AgendaWidgetConfigurationState.Ready(config)
+        f.configuration = ready(config)
         f.env = CalendarReadState.Unavailable
         assertFalse(f.runtime.refresh()); assertEquals(0, f.reads)
         f.close()
@@ -120,11 +128,11 @@ class AgendaWidgetTest {
     @Test fun followAppAndExplicitOverrideAreIndependentAndEmptyNeverBroadens() = runBlocking {
         val f = Fixture(); f.runtime.refresh()
         assertEquals(environment.appSelection, f.requested!!.selection)
-        f.configuration = AgendaWidgetConfigurationState.Ready(config.copy(selection = WidgetCalendarSelection.Explicit(setOf(CalendarId(2)))))
+        f.configuration = ready(config.copy(selection = WidgetCalendarSelection.Explicit(setOf(CalendarId(2)))))
         f.rows = listOf(event(calendar = 2)); f.runtime.refresh()
         assertEquals(CalendarSelection.Explicit(setOf(CalendarId(2))), f.requested!!.selection)
         assertTrue(text(f.host.last()).contains("Busy"))
-        f.configuration = AgendaWidgetConfigurationState.Ready(config.copy(selection = WidgetCalendarSelection.Explicit(emptySet())))
+        f.configuration = ready(config.copy(selection = WidgetCalendarSelection.Explicit(emptySet())))
         val reads = f.reads; f.runtime.refresh()
         assertEquals(reads, f.reads)
         assertTrue(text(f.host.last()).contains("No calendars selected"))
@@ -145,8 +153,8 @@ class AgendaWidgetTest {
 
     @Test fun changedConfigurationOrEnvironmentDuringReadNeverPublishesStaleTitles() = runBlocking {
         val f = Fixture()
-        f.configuration = AgendaWidgetConfigurationState.Ready(config.copy(privacy = WidgetPrivacy.EVENT_TITLES))
-        f.duringRead = { f.configuration = AgendaWidgetConfigurationState.Ready(config.copy(generation = "changed")) }
+        f.configuration = ready(config.copy(privacy = WidgetPrivacy.EVENT_TITLES))
+        f.duringRead = { f.configuration = ready(config.copy(generation = "changed")) }
         assertFalse(f.runtime.refresh())
         assertFalse(text(f.host.last()).contains("confidential"))
         assertEquals(1, f.scheduled)
@@ -155,7 +163,7 @@ class AgendaWidgetTest {
 
     @Test fun invalidationDuringQueryWinsOverAnOlderSnapshotAndClearsTextImmediately() = runBlocking {
         val f = Fixture()
-        f.configuration = AgendaWidgetConfigurationState.Ready(config.copy(privacy = WidgetPrivacy.EVENT_TITLES))
+        f.configuration = ready(config.copy(privacy = WidgetPrivacy.EVENT_TITLES))
         f.runtime.refresh(); assertTrue(text(f.host.last()).contains("confidential"))
         f.duringRead = { f.runtime.invalidate(); assertFalse(text(f.host.last()).contains("confidential")) }
         assertFalse(f.runtime.refresh())
@@ -195,7 +203,7 @@ class AgendaWidgetTest {
         assertEquals(1, f.deletes); assertEquals(1, finished)
         assertTrue(text(f.host.last()).contains("Choose calendars"))
         f.deleteFailure = true
-        f.configuration = AgendaWidgetConfigurationState.Ready(config.copy(privacy = WidgetPrivacy.EVENT_TITLES))
+        f.configuration = ready(config.copy(privacy = WidgetPrivacy.EVENT_TITLES))
         f.runtime.removed(setOf(1)) { finished++ }.join()
         assertFalse(f.runtime.refresh())
         assertFalse(text(f.host.last()).contains("confidential"))
@@ -238,7 +246,7 @@ class AgendaWidgetTest {
 
     @Test fun timedOutSnapshotAndCancelledRemovalNeverLeavePrivateTextOrUnfinishedCallback() = runBlocking {
         val f = Fixture()
-        f.configuration = AgendaWidgetConfigurationState.Ready(config.copy(privacy = WidgetPrivacy.EVENT_TITLES))
+        f.configuration = ready(config.copy(privacy = WidgetPrivacy.EVENT_TITLES))
         f.runtime.refresh()
         f.duringRead = { awaitCancellation() }
         assertFalse(f.runtime.refresh())

@@ -22,7 +22,7 @@ data class AgendaWidgetConfiguration(
 ) { init { require(generation.isNotBlank()) } }
 sealed interface AgendaWidgetConfigurationState {
     data object SetupRequired : AgendaWidgetConfigurationState
-    data class Ready(val value: AgendaWidgetConfiguration) : AgendaWidgetConfigurationState
+    data class Ready(val value: AgendaWidgetConfiguration, val epoch: WidgetEpoch) : AgendaWidgetConfigurationState
     data object Unavailable : AgendaWidgetConfigurationState
 }
 data class AgendaWidgetEnvironment(
@@ -34,8 +34,8 @@ data class AgendaWidgetEnvironment(
 interface AgendaWidgetSettings {
     suspend fun configuration(widgetId: Int): AgendaWidgetConfigurationState
     suspend fun environment(): CalendarReadState<AgendaWidgetEnvironment>
-    /** Serialize with fresh setup writes. Deleted/restored IDs become SetupRequired; failures throw. */
-    suspend fun removed(widgetIds: Set<Int>)
+    /** Root validates the live host binding independently of any stored configuration row. */
+    suspend fun lifecycle(widgetId: Int): WidgetLifecycleProof
 }
 interface AgendaWidgetRefreshScheduler { fun requestRefresh(widgetIds: Set<Int>): Boolean }
 interface AgendaWidgetRuntimeOwner { val agendaWidgetRuntime: AgendaWidgetRuntime }
