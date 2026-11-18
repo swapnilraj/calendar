@@ -78,7 +78,7 @@ class NativeRecurringCreateJourneyTest {
         review()
         assertUnsubmitted(f)
         confirm()
-        try { shown(f.app.getString(R.string.phone_event_permission)) } catch (failure: AssertionError) {
+        try { shown(f.app.getString(R.string.phone_event_permission)) } catch (failure: Exception) {
             val categories = listOf(R.string.phone_event_pending_permission, R.string.phone_event_invalid,
                 R.string.phone_event_unavailable, R.string.events_calendar_reselection, R.string.phone_event_uncertain)
                 .associateWith { compose.onAllNodesWithText(f.app.getString(it)).fetchSemanticsNodes().size }
