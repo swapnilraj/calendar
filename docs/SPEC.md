@@ -472,3 +472,17 @@ identical:
 - Home-screen widgets.
 - Our own sync or accounts.
 - Notifications. The system calendar app keeps sending reminders for the same events.
+
+## Typed retirement contract (publication foundation)
+
+An app-private operation retirement port accepts the exact typed create/update/delete, series or
+meeting request; a caller-supplied fingerprint is not authority. A matching permanent fence is
+required before an eventual frozen-draft replacement/deletion. Inspection returning NotRetired is
+not proof that a request never dispatched. Attempted or committed requests cannot be advertised as
+safely abandoned, and an unavailable acknowledgement requires inspection of the same original request.
+
+The ordinary editor recognizes a retirement result only for its own operation ID, stops changes and
+submission, and leaves the raw draft untouched. A retirement result for another ID remains uncertain.
+This contract packet adds no provider retirement implementation, abandonment UI, meeting writer or
+recurrence activation. Existing serialized drafts, frozen commands and writer fingerprints are
+unchanged; the backend and connected retirement actions require separate verified packets.
