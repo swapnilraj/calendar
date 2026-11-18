@@ -8,11 +8,11 @@ How Daylight is built. [SPEC.md](SPEC.md) says *what* it does; this file says *h
 |---|---|---|
 | Language | Kotlin | |
 | UI | Jetpack Compose + Material 3 | Dynamic colour (Material You) on Android 12+; light and dark themes follow the system |
-| Calendar data | `CalendarContract` via `ContentResolver` | Reads `Instances`, so there's no sign-in. Writes come in phase 2. |
+| Calendar data | `CalendarContract` via `ContentResolver` | Shared bounded reads use `Instances`; native writes use asserted batches and durable operation journals. Installed account sync remains external. |
 | Weather | Open-Meteo over `HttpURLConnection` | No API key, and no HTTP library needed |
 | JSON | kotlinx.serialization (`JsonElement` parsing) | |
 | Async | Coroutines + Flow | |
-| Settings | DataStore Preferences | Phase 1 stores only the hour height |
+| Settings | DataStore Preferences | App-local display/filter/default-calendar preferences and independent reminder policy; widget configuration uses its own durable namespace. |
 | DI | None. Constructor injection, wired in `CalendarApp`. | Revisit only if wiring gets painful. |
 | Build | Gradle Kotlin DSL, version catalog, AGP 9 (built-in Kotlin) | JDK 21 to run Gradle; bytecode target 17 |
 | Tests | JUnit 4; Robolectric + Roborazzi for screenshot tests | All tests run on the JVM, with no device or emulator, so they work in cloud sessions |

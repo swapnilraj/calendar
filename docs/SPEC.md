@@ -5,6 +5,11 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+Authored recurrence is a distinct new-event input. Until a writer supports that input completely,
+it rejects the command before journaling or provider writes instead of creating a one-off event.
+Existing one-off operations retain their representation; recurring updates remain on scoped series
+operations. Bounded recurrence previews do not establish the provider's complete future expansion.
+
 Native invitation details expose Respond only after the meeting writer issues response rights for
 that exact occurrence and calendar namespace. Opening a response creates or reopens a durable draft;
 choosing a response and scope never writes until Save. A calendar permission prompt returns without
