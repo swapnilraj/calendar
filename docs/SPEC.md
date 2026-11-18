@@ -522,3 +522,12 @@ and cleanup acknowledgment after a known local outcome. Dispatch or recorded com
 unknown acknowledgments and foreign successors retain the draft instead of permitting another save.
 Permission grants, replacement preparation and reopening never submit automatically. Recurrence
 controls and other feature workflows remain unactivated by this ordinary-draft migration.
+
+## Signed candidate release process
+
+A manual release workflow must use an owner-controlled stable key held outside Git, verify its
+public certificate fingerprint, embed an increasing version code and create a draft GitHub release
+with the APK and checksum after the complete automated gate. It must never generate a replacement
+key or publish automatically. Draft candidates remain pending until account/device/upgrade and
+seven-day beta acceptance is recorded. See [RELEASE_SIGNING.md](RELEASE_SIGNING.md) for provisioning
+and the one-time debug-to-stable certificate transition.
