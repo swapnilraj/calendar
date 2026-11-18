@@ -10,6 +10,7 @@ import org.json.JSONObject
 import java.util.UUID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.withLock
+import dev.swapnilraj.calendar.ui.events.meetings.create.*
 
 /** Raw fields remain recoverable even when a date, time or alert entry is incomplete. */
 data class EventEditorFields(
@@ -45,6 +46,7 @@ class EventEditorController(
     private val requireStoredDraft: Boolean = false, val recurringCreationSupported: Boolean = false,
     private val expectedGeneration: String? = null, private val retirement: OperationRetirement? = null,
     private val requestWritePermission: (suspend () -> Boolean)? = null,
+    private val allowMeetingPromotion: Boolean = false,
 ) {
     private var original = fieldsFor(initial).let { if (existing == null && !initialCalendarSelected) it.copy(calendarId = "", targetIdentity = null) else it }
     var state by mutableStateOf(EventEditorState(EventEditorFields("", "", "", "", "", "", false, "", "", "", "")))
@@ -87,6 +89,54 @@ class EventEditorController(
     val canInspectRetirement: Boolean get() = !closed && !state.saving && document?.frozen != null && retirement != null
     val canAcknowledge: Boolean get() = !closed && !state.saving && state.localOutcome != null && atomic != null
     val canReviewLatest: Boolean get() = !closed && !state.saving && document?.launch?.kind == EditorDraftKind.EDIT && document?.sourceIdentity != null && document?.hasRequest == false && !recoveryOnly
+    val canPromoteToMeeting: Boolean get() = !state.saving && meetingPromotionEligible()
+
+    private fun meetingPromotionEligible(): Boolean = allowMeetingPromotion && !closed && !dispatchStopped &&
+        !recoveryOnly && existing == null && recoveryRef == null && !state.loading && !state.draftReadFailed &&
+        !state.reviewRequired && !state.recoveryRequired && state.localOutcome == null && atomic != null &&
+        !listOf("incoming:", "incoming-edit:", "incoming-review:", "incoming-edit-review:").any(draftId::startsWith) &&
+        state.notices.all { it == EditorNotice.CALENDAR_RESELECTION_REQUIRED } &&
+        document?.let { !it.legacy && !it.hasRequest && it.launch.kind == EditorDraftKind.CREATE &&
+            it.launch.ref == null && it.target == "create" && it.sourceToken.isEmpty() && it.sourceIdentity == null &&
+            it.notices.all { notice -> notice == EditorNotice.CALENDAR_RESELECTION_REQUIRED } } == true
+
+    /** Explicit Add people action. The exact ordinary record becomes one dedicated meeting draft.
+     * Once CAS starts this controller stays closed, even when the acknowledgment cannot be proved.
+     * The browser can restore the surviving ordinary or meeting record without creating a second one.
+     */
+    suspend fun promoteToMeeting(): MeetingDraftPromotion {
+        if (!canPromoteToMeeting || !action.compareAndSet(false, true)) return MeetingDraftPromotion.Rejected
+        state = state.copy(saving = true)
+        try {
+            persistence?.cancelAndJoin()
+            return storage.withLock {
+                currentCoroutineContext().ensureActive()
+                if (!meetingPromotionEligible()) return@withLock MeetingDraftPromotion.Rejected
+                val expected = expectedRecord ?: return@withLock MeetingDraftPromotion.Rejected
+                val next = MeetingCreationDocument(draftId, UUID.randomUUID().toString(), UUID.randomUUID().toString(),
+                    MeetingCreationFields(state.fields), UUID.randomUUID().toString())
+                val replacement = MeetingCreationDraftCodec.record(next, clock.instant())
+                withContext(NonCancellable) {
+                    closed = true; dispatchStopped = true
+                    state = state.copy(draftReadFailed = true, recurrenceReview = null, retryReady = false)
+                    val result = try { atomic!!.compareAndSet(draftId, expected, replacement) }
+                        catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { DraftChangeResult.Unavailable }
+                    val actual = if (result == DraftChangeResult.Changed) null else try { drafts.load(draftId) }
+                        catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { null }
+                    if (actual == replacement) {
+                        // The old controller has no authority over this new feature/generation.
+                        document = null; expectedRecord = null
+                        MeetingCreationDraftCodec.describe(actual)?.let { MeetingDraftPromotion.Ready(it) }
+                            ?: MeetingDraftPromotion.Unavailable
+                    } else {
+                        state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE)
+                        MeetingDraftPromotion.Unavailable
+                    }
+                }
+            }
+        } finally { state = state.copy(saving = false); action.set(false) }
+    }
 
     init { scope.launch { restore() } }
     private suspend fun restore() {

@@ -4,6 +4,7 @@ import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.meetings.*
 import dev.swapnilraj.calendar.android.navigation.CalendarEditReviewPreview
 import dev.swapnilraj.calendar.android.navigation.calendarEditReviewPreview
+import dev.swapnilraj.calendar.ui.events.meetings.create.*
 import dev.swapnilraj.calendar.android.navigation.CalendarSeedReviewPreview
 import dev.swapnilraj.calendar.android.navigation.calendarSeedReviewPreview
 import java.time.*
@@ -41,7 +42,8 @@ data class DraftBrowserItem(val recordId: String, val updatedAt: Instant,
     val meetingPreview: MeetingResponseDraftPreview? = null, val seedReview: CalendarSeedReviewPreview? = null,
     val seedRecord: DraftRecord? = null, val editReview: CalendarEditReviewPreview? = null,
     val editRecord: DraftRecord? = null, val editCompanion: DraftRecord? = null,
-    val editLaunch: EditorDraftLaunch? = null)
+    val editLaunch: EditorDraftLaunch? = null,
+    val meetingCreation: MeetingCreationLaunch? = null, val meetingCreationTitle: String = "")
 
 /** Reads the feature's versioned opaque payload without normalizing or saving incomplete fields. */
 object DraftBrowserCodec {
@@ -54,6 +56,12 @@ object DraftBrowserCodec {
             return DraftBrowserItem(record.id, record.updatedAt, null,
                 if (preview == null) DraftReadIssue.UNREADABLE else null, editReview = preview,
                 editRecord = record.takeIf { preview != null })
+        }
+        if (record.version == MeetingCreationDraftCodec.VERSION || feature == "meeting-create") {
+            val document = try { MeetingCreationDraftCodec.decode(record) } catch (_: Exception) { null }
+            return DraftBrowserItem(record.id, record.updatedAt, null,
+                if (document == null) DraftReadIssue.UNREADABLE else null,
+                meetingCreation = document?.launch(), meetingCreationTitle = document?.fields?.event?.title.orEmpty())
         }
         if (record.version == 7 || feature == "calendar-seed-review") {
             val preview = calendarSeedReviewPreview(record)
