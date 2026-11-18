@@ -34,17 +34,29 @@ class PhoneEventEditorScreenTest {
     private val draft = EventDraft(CalendarId(2), EventTime.Timed(Instant.parse("2028-06-15T09:00:00Z"), Instant.parse("2028-06-15T10:00:00Z")), ZoneOffset.UTC,
         "Planning for next week", location = "Garden room", alertMinutes = listOf(10), targetIdentity = eventTestIdentity())
     private fun editor() = preparedEditor(draft, null, "phone", writer, store, scope, recurringCreationSupported = true)
-    private fun show(controller: EventEditorController, dark: Boolean = false, largeRtl: Boolean = false, onDismiss: () -> Unit = {}, onSaved: (EventRef) -> Unit = {}, onReplacedLaunch: ((EditorDraftLaunch) -> Unit)? = null) {
+    private fun show(controller: EventEditorController, dark: Boolean = false, largeRtl: Boolean = false, onDismiss: () -> Unit = {}, onSaved: (EventRef) -> Unit = {}, onReplacedLaunch: ((EditorDraftLaunch) -> Unit)? = null, contentVisible: Boolean = true) {
         RuntimeEnvironment.setFontScale(if (largeRtl) 2f else 1f)
         compose.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, if (largeRtl) 2f else density.fontScale), LocalLayoutDirection provides if (largeRtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-                DaylightTheme(dark = dark) { PhoneEventEditor(controller, listOf(eventTestCalendar()), onDismiss, onSaved, {}, onReplacedLaunch = onReplacedLaunch) }
+                DaylightTheme(dark = dark) { PhoneEventEditor(controller, listOf(eventTestCalendar()), onDismiss, onSaved, {}, onReplacedLaunch = onReplacedLaunch, contentVisible = contentVisible) }
             }
         }
         compose.waitForIdle()
     }
     @After fun stop() { scope.cancel(); RuntimeEnvironment.setFontScale(1f) }
+    @Test fun maskedAuthorityCheckHidesFieldsAndAllowsSafeCloseWithoutWriting() {
+        val controller = editor(); var closed = false
+        show(controller, onDismiss = { closed = true }, contentVisible = false)
+        compose.onNodeWithContentDescription("Title").assertDoesNotExist()
+        compose.onNodeWithText("Planning for next week").assertDoesNotExist()
+        compose.onNodeWithText("Save").assertDoesNotExist()
+        compose.onNode(isDialog()).captureRoboImage("src/test/screenshots/phone_event_editor_authority_mask.png")
+        compose.onNodeWithText("Close").assertIsDisplayed().performClick()
+        compose.waitForIdle()
+        assertTrue(closed); assertEquals(0, writer.creates)
+        assertEquals("Planning for next week", editor().state.fields.title)
+    }
     @Test fun normalDraftReplacementIsVisibleAndRequiresConfirmationBeforePublishingFreshLaunch() {
         var replacement: EditorDraftLaunch? = null
         val controller = editor(); val oldGeneration = controller.generation

@@ -29,6 +29,13 @@ existing draft, permission, conflict and recovery rules; it does not authorize w
 dismissing. Details lose their old payload and actions immediately when the read state loses
 authority. Standalone legacy sheets remain available to existing component fixtures.
 
+Private CREATE/EDIT review activities retain the exact native editor owner while an accepted write
+or known local outcome awaits cleanup acknowledgment, including stop/resume transitions. Fresh
+authority checks mask the presentation without replacing that owner. A successful exact deletion
+acknowledgment can complete the original activity while preserving a newer draft generation;
+backgrounding never authorizes a second provider write. Masked editors offer a safe Close action
+when no operation is running.
+
 For a modern raw ordinary edit with a NULL provider timezone, explicitly selecting the currently
 rendered timezone is an authored zone choice even when the visible text stays identical. Persist
 that intent separately from raw fields: a zone-only choice emits ZONE.Set and TIME.Keep; later time
