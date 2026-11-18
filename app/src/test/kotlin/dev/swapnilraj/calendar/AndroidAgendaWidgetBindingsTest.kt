@@ -11,6 +11,7 @@ import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.data.widgets.*
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.*
@@ -169,9 +170,13 @@ class AndroidAgendaWidgetBindingsTest {
         val directory = files.newFolder("fence-failure"); val f = Fixture(directory); f.setupAndSave()
         val moved = File(files.root, "fence-saved")
         assertTrue(directory.renameTo(moved)); directory.writeText("not a directory")
-        var finished = 0
-        f.runtime.removed(setOf(1, 2)) { finished++ }.join()
-        assertEquals(1, finished)
+        val finished = AtomicInteger()
+        val completion = CompletableDeferred<Unit>()
+        val removal = f.runtime.removed(setOf(1, 2)) { finished.incrementAndGet(); completion.complete(Unit) }
+        // join orders the Job's body, not a different completion-handler's callback. Await the
+        // callback itself and use a thread-safe counter because runtime work runs on Dispatchers.IO.
+        withTimeout(5_000) { removal.join(); completion.await() }
+        assertEquals(1, finished.get())
         assertEquals(WidgetBindingObservation.Unavailable, f.bindings.observe(1))
         assertEquals(WidgetLifecycleProof.SetupRequired, f.actor.lifecycle(1))
         assertEquals(WidgetConfigurationSessionResult.Unavailable, f.runtime.beginConfiguration(1))
