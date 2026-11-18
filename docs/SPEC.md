@@ -67,6 +67,12 @@ A draft browser can distinguish resumable edits, submitted recovery and unreadab
 source-missing submitted operations remain recovery-only. Preparing a launch first persists and
 reads back its draft. App routing to these components is a separate integration change.
 
+Reminder source/ledger components now read events independently of display filters, pin calendar
+namespace identities, and include advance notifications for events beyond the ordinary event window.
+A bounded discovery absence never proves a tracked event disappeared; tracked keys are revalidated
+separately. Private SQLite delivery history retains generation/post identity and rejects stale action
+tokens after snooze reposts. Background app delivery is not enabled by these components alone.
+
 ## Approved daily-driver target (18 November 2026)
 
 This target supersedes the original phase roadmap and its widget/notification exclusions below.
