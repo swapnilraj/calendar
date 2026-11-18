@@ -5,6 +5,23 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+The live native creation editor supports authored daily, weekly, monthly and yearly rules with
+interval, count or inclusive date limits, explicit master-time review and durable frozen recovery.
+A recurring local save is reported only after known-master journal receipt and actual first native
+instance verification; it never claims Google delivery. Imported unsupported recurrence remains
+preserved and does not imply editing rights.
+
+Timed editor gestures are connected in Day, three-day and week views. Cross-column moves use
+physically visible column bounds (including RTL); continued fragments retain their full original
+source and grab offset. Opening another navigation or modal flow cancels a pending drop.
+
+Agenda widget setup, refresh and internal navigation are app-wired. New setup defaults to Busy,
+explicit calendar selection is independent of display filters, and title access requires namespace
+and read-rights proof. Event clicks revalidate their rendered namespace before opening a private
+read-only details screen, preserving filters and drafts. Missing host markers after reboot require
+manual reconfiguration rather than adopting stored data without proof. Captured setup contexts
+prevent an old form from adopting a known replacement widget slot.
+
 Day-view timed create, move and resize gestures prepare durable native-editor drafts; they never
 save automatically. Editing requires fresh provider eligibility and the same occurrence/calendar
 namespace before and after preparation. Restoring an unsubmitted edit also requires its original

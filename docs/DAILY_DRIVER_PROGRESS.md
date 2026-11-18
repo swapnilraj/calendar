@@ -4,6 +4,21 @@ Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+At `5bd64d4`, the complete required gate passed: **1,340 tests** (core189, app1,134,
+weather17), debug APK assembly and lint; no failures, errors or skipped tests. This includes real
+app journeys for widget setup/click/permission/draft isolation, recurring creation/recovery and
+Day/three-day/week timed editor gestures. Screens for cross-column and larger-text RTL previews
+were recorded and inspected. This is local synthetic-provider evidence, not physical-device or
+Google delivery certification.
+
+The subsequent widget setup-context lease fix (`fc68d9d`) passed96 focused checks including the
+six actual widget journeys. Pure master-template/ordinal helpers passed215 core checks. These
+later packets are separate from the `5bd64d4` full checkpoint. Whole-series temporal/rule edits
+are being implemented behind explicit adapter-issued rights; guest/organizer workflows, remaining
+recurrence scopes, incoming public intents, device/account/beta and signed-release gates remain.
+
+Earlier local checkpoints:
+
 At `945c6b5`, the full test/debug APK/lint gate passed with 1,171 tests. This is local
 synthetic evidence; device/account/beta and signed-release gates remain pending.
 
@@ -70,9 +85,9 @@ wiring and integration; workers do not overwrite shared contracts or each other'
 | M3 planning views | Partial: all five views routed and tested; device/dense acceptance pending | Day/three-day/week/month/agenda, date navigation, leap/six-row/dense/RTL cases |
 | M4 native details | Partial: live native context and guest-visibility rules verified locally | Complete readable event context, correct occurrence identity and meeting links |
 | M5 native ordinary writes | Partial: native one-off create/edit/delete/duplicate, durable drafts and metadata verified locally | Batched create/edit/delete/duplicate, conflict/draft/uncertain-create and offline recovery |
-| M6 recurrence | Partial: live scoped route, ALL non-temporal edits/delete, THIS exception edits/cancel and FOLLOWING delete tested; temporal/pattern/following edits pending | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
-| M7 meetings | Partial: native response workflow connected; full recurring response, guests/organizer flows and external verification pending | Invitation/RSVP/reschedule/recurrence-change/cancellation observed in second account |
-| M8 search/Android entry points | Partial: live settings and filtered search routed; widget components tested; widget/intent/background wiring pending | Filtered ranged search, settings, agenda widget and safe occurrence-preserving intents |
+| M6 recurrence | Partial: authored recurring creation, ALL non-temporal edits/delete, THIS exception edits/cancel and FOLLOWING delete verified locally; temporal/pattern/following edits pending | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
+| M7 meetings | Partial: single and existing-exception/whole-series RSVP connected and tested; generated-exception response, guests/organizer flows and external verification pending | Invitation/RSVP/reschedule/recurrence-change/cancellation observed in second account |
+| M8 search/Android entry points | Partial: settings, filtered search and agenda widget app flows wired/tested; public incoming intents and device/host acceptance pending | Filtered ranged search, settings, agenda widget and safe occurrence-preserving intents |
 | M9 reminders | Partial: application runtime, setup/navigation and private recovery wired and tested; device acceptance pending | App-owned alerts/snooze and permission/background/Doze/reboot/timezone/upgrade recovery |
 | Seven-day beta | Not started | Work/personal week including weekend/offline/remote edits/recurrence/reminders/upgrade |
 | Durable APK release | Not started | Stable signed upgradeable APK, checksum, release notes and durable download |
