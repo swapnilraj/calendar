@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.ContentUris
 import android.database.ContentObserver
 import android.database.Cursor
+import android.database.MatrixCursor
 import android.net.Uri
 import android.os.CancellationSignal
 import android.provider.CalendarContract
@@ -88,18 +89,20 @@ class CalendarReader(
 
     /** CancellationSignal also aborts a query blocked inside another provider process. */
     private suspend fun query(uri: Uri, fields: Array<String>, selection: String? = null,
-        args: Array<String>? = null, order: String? = null): Cursor = suspendCancellableCoroutine { continuation ->
+        args: Array<String>? = null, order: String? = null, beforeQuery: () -> Unit = {}): Cursor = suspendCancellableCoroutine { continuation ->
         val signal = CancellationSignal()
         continuation.invokeOnCancellation { signal.cancel() }
         try {
+            beforeQuery()
             val cursor = resolver.query(uri, fields, selection, args, order, signal)
                 ?: throw IllegalStateException("Calendar provider unavailable")
+            try { beforeQuery() } catch (failure: Exception) { cursor.close(); throw failure }
             continuation.resume(cursor, onCancellation = { _, resource, _ -> resource.close() })
         } catch (failure: Exception) { continuation.resumeWithException(failure) }
     }
 
-    private suspend fun queryCalendars(): List<CalendarInfo> = query(CalendarContract.Calendars.CONTENT_URI,
-        calendarFields, order = "${CalendarContract.Calendars._ID} ASC").use { cursor ->
+    private suspend fun queryCalendars(beforeQuery: () -> Unit = {}): List<CalendarInfo> = query(CalendarContract.Calendars.CONTENT_URI,
+        calendarFields, order = "${CalendarContract.Calendars._ID} ASC", beforeQuery = beforeQuery).use { cursor ->
         buildList {
             while (cursor.moveToNext()) {
                 currentCoroutineContext().ensureActive()
@@ -146,6 +149,27 @@ class CalendarReader(
             it.accessLevel?.let { access -> access >= CalendarContract.Calendars.CAL_ACCESS_FREEBUSY } != false
         } == true }
         if (eligible.isEmpty()) return CalendarSnapshot(request, calendars, emptyList(), coverage)
+        return CalendarSnapshot(request, calendars, queryOccurrences(request, byId, eligible).occurrences, coverage)
+    }
+
+    /** Adapter reads share the existing root observer; no per-page observers or dormant jobs. */
+    internal fun <T> observeProviderReads(block: suspend () -> T): Flow<CalendarReadState<T>> =
+        changes.mapLatest { guarded(block) }.onStart { emit(CalendarReadState.Loading) }
+
+    internal suspend fun searchCalendars(beforeQuery: () -> Unit): List<CalendarInfo> = queryCalendars(beforeQuery)
+
+    internal suspend fun searchPage(request: CalendarRequest, calendars: List<CalendarInfo>, maxRows: Int,
+        beforeQuery: () -> Unit): CalendarOccurrencePage {
+        require(maxRows > 0)
+        val ids = (request.selection as? CalendarSelection.Explicit)?.ids ?: error("Search selection must be resolved")
+        val byId = calendars.associateBy { it.id }
+        check(ids.all { byId[it]?.capabilities?.readDetails == AccessDecision.ALLOWED })
+        return queryOccurrences(request, byId, ids.sortedBy { it.value }, maxRows, beforeQuery)
+    }
+
+    private suspend fun queryOccurrences(request: CalendarRequest, byId: Map<CalendarId, CalendarInfo>, eligible: List<CalendarId>,
+        rowLimit: Int? = null, beforeQuery: () -> Unit = {}): CalendarOccurrencePage {
+        if (eligible.isEmpty()) return CalendarOccurrencePage(emptyList(), 0, false)
         val local = request.range.instantBounds(request.displayZone)
         val utc = request.range.instantBounds(ZoneOffset.UTC)
         val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().apply {
@@ -153,21 +177,37 @@ class CalendarReader(
             ContentUris.appendId(this, maxOf(local.endExclusive, utc.endExclusive).toEpochMilli())
         }.build()
         val selection = "${CalendarContract.Instances.CALENDAR_ID} IN (${eligible.joinToString(",") { "?" }})"
-        val occurrences = query(uri, instanceFields, selection, eligible.map { it.value.toString() }.toTypedArray(),
-            "${CalendarContract.Instances.BEGIN} ASC, ${CalendarContract.Instances.EVENT_ID} ASC").use { cursor ->
-            val parents = syncParents(cursor, byId.filterKeys { it in eligible })
-            buildList {
+        var scanned = 0
+        var truncated = false
+        suspend fun collect(cursor: Cursor): List<EventOccurrence> {
+            val parents = syncParents(cursor, byId.filterKeys { it in eligible }, beforeQuery)
+            return buildList {
                 while (cursor.moveToNext()) {
                     currentCoroutineContext().ensureActive()
+                    if (rowLimit == null) scanned++
                     val id = CalendarId(cursor.requiredLong(CalendarContract.Instances.CALENDAR_ID))
-                    if (id !in eligible) continue // Do not trust a provider ignoring selection.
+                    if (id !in eligible) continue
                     val occurrence = cursor.occurrence(byId[id], parents)
                     if (occurrence.time.intersects(request.range, request.displayZone)) add(occurrence)
                 }
             }
+        }
+        val occurrences = query(uri, instanceFields, selection, eligible.map { it.value.toString() }.toTypedArray(),
+            "${CalendarContract.Instances.BEGIN} ASC, ${CalendarContract.Instances.EVENT_ID} ASC", beforeQuery).use { cursor ->
+            if (rowLimit == null) collect(cursor) else MatrixCursor(instanceFields).use { bounded ->
+                // Bound raw rows BEFORE the sync-parent identity prepass or occurrence materialization.
+                while (cursor.moveToNext()) {
+                    currentCoroutineContext().ensureActive()
+                    if (scanned == rowLimit) { truncated = true; break }
+                    scanned++
+                    val id = CalendarId(cursor.requiredLong(CalendarContract.Instances.CALENDAR_ID))
+                    if (id in eligible) bounded.addRow(instanceFields.map { field -> cursor.text(field) }.toTypedArray())
+                }
+                collect(bounded)
+            }
         }.distinctBy { it.ref }.sortedWith(compareBy<EventOccurrence> { it.ref.instanceStart }
             .thenBy { it.ref.eventId }.thenBy { it.ref.calendarId.value })
-        return CalendarSnapshot(request, calendars, occurrences, coverage)
+        return CalendarOccurrencePage(occurrences, scanned, truncated)
     }
 
     suspend fun readDetails(ref: EventRef): CalendarReadState<EventDetails> = guarded {
@@ -256,7 +296,7 @@ class CalendarReader(
     private data class SyncParent(val calendar: CalendarId, val syncId: String)
 
     /** Resolve sync-only exception parents once per cursor, scoped by proven readable calendars. */
-    private suspend fun syncParents(instances: Cursor, calendars: Map<CalendarId, CalendarInfo>): Map<SyncParent, Long> {
+    private suspend fun syncParents(instances: Cursor, calendars: Map<CalendarId, CalendarInfo>, beforeQuery: () -> Unit = {}): Map<SyncParent, Long> {
         val requested = mutableSetOf<SyncParent>()
         while (instances.moveToNext()) {
             val id = CalendarId(instances.requiredLong(CalendarContract.Instances.CALENDAR_ID))
@@ -272,7 +312,7 @@ class CalendarReader(
             val syncs = chunk.map { it.syncId }.distinct()
             val selection = "calendar_id IN (${ids.joinToString(",") { "?" }}) AND _sync_id IN (${syncs.joinToString(",") { "?" }})"
             query(CalendarContract.Events.CONTENT_URI, arrayOf("_id", "calendar_id", "_sync_id", "original_id", "original_sync_id", "deleted"),
-                selection, (ids.map { it.value.toString() } + syncs).toTypedArray()).use { rows ->
+                selection, (ids.map { it.value.toString() } + syncs).toTypedArray(), beforeQuery = beforeQuery).use { rows ->
                 while (rows.moveToNext()) {
                     currentCoroutineContext().ensureActive()
                     val key = SyncParent(CalendarId(rows.requiredLong("calendar_id")), rows.text("_sync_id") ?: continue)
@@ -362,3 +402,5 @@ class CalendarReader(
         private val reminderFields = arrayOf(CalendarContract.Reminders.MINUTES, CalendarContract.Reminders.METHOD)
     }
 }
+
+internal data class CalendarOccurrencePage(val occurrences: List<EventOccurrence>, val scannedRows: Int, val truncated: Boolean)
