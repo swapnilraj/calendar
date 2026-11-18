@@ -15,6 +15,8 @@ data class EventDraft(
     /** Optional provider metadata. Null omits a new-event override; unknown existing values survive Keep. */
     val availability: Int? = null,
     val privacy: Int? = null,
+    /** Null is an unproven legacy/newly unselected destination, not permission to adopt its current ID. */
+    val targetIdentity: CalendarIdentity? = null,
 )
 
 sealed interface FieldChange<out T> {
