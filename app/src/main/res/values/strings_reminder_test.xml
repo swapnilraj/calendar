@@ -1,0 +1,5 @@
+<resources>
+    <string name="reminder_test_title">Daylight test reminder</string>
+    <string name="reminder_test_body">This is a test reminder.</string>
+    <string name="reminder_test_public_title">Daylight reminder</string>
+</resources>
