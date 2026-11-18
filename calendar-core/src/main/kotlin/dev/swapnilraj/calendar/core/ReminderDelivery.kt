@@ -274,4 +274,8 @@ interface ReminderNotificationPort {
     fun post(candidate: ReminderCandidate, alias: ReminderNotificationAlias): ReminderPostResult
     fun isActive(alias: ReminderNotificationAlias): Boolean
     fun cancel(alias: ReminderNotificationAlias)
+    /** Remove this app's reminder notifications on permission loss, including older posted rows
+     * outside the current reconciliation window. Never touches another application's alerts.
+     */
+    fun cancelAllOwn()
 }
