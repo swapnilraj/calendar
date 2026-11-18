@@ -35,6 +35,8 @@ Native detail reads retain optional provider availability, privacy, status, orga
 and guest-policy metadata without inferring unknown defaults. Full guest lists are read only with
 explicit organizer or guest-list visibility proof. Free/busy-only details contain none of that
 restricted metadata or event-specific styling. Guest-policy flags do not authorize event writes.
+Edit-source eligibility checks validate writable calendar access before event data and explicit guest
+visibility before private child rows, including when invoked from a readable details screen.
 
 Native details present availability, visibility, status, organizer role, own response and advisory
 guest policy using readable labels. Calendar-default visibility is never inferred public. Unknown
