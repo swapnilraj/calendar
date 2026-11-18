@@ -87,14 +87,21 @@ class EventEditorController(
         try {
             val record = drafts.load(draftId) ?: error("Missing durable draft")
             require(record.id == draftId)
-            val doc = OrdinaryDraftDocument.decode(record)
+            var doc = OrdinaryDraftDocument.decode(record)
             require(doc.generation == expectedGeneration)
             require(doc.legacy || atomic != null)
             require(doc.launch.ref == (existing?.details?.occurrence?.ref ?: recoveryRef))
             require(!recoveryOnly || doc.hasRequest)
-            val changed = doc.launch.kind == EditorDraftKind.EDIT && !doc.hasRequest && (existing == null || doc.sourceIdentity == null ||
-                !sameSourceNamespace(doc.sourceIdentity, existing) || doc.sourceToken != existing.token.value || doc.sourceBaseline != sourceBaseline(initial, existing))
             document = doc; expectedRecord = record
+            val sourceIdentity = doc.sourceIdentity
+            if (!doc.legacy && !doc.hasRequest && existing != null && sourceIdentity != null && sameSourceNamespace(sourceIdentity, existing) &&
+                doc.sourceToken != existing.token.value && doc.sourceBaseline == sourceBaseline(initial, existing)) {
+                if (!replace(doc.copy(sourceToken = existing.token.value, operationId = UUID.randomUUID().toString()))) error("Draft changed during refresh")
+                doc = requireNotNull(document)
+            }
+            val changed = doc.launch.kind == EditorDraftKind.EDIT && !doc.hasRequest && (existing == null || sourceIdentity == null ||
+                !sameSourceNamespace(sourceIdentity, existing) || doc.sourceToken != existing.token.value || doc.sourceBaseline != sourceBaseline(initial, existing))
+            document = doc
             state = state.copy(fields = doc.fields, notices = doc.notices, loading = false, legacy = doc.legacy,
                 recoveryRequired = doc.hasRequest, reviewRequired = changed,
                 reviewLatest = if (changed && existing != null && doc.sourceIdentity?.let { sameSourceNamespace(it, existing) } == true) existing.details else null,
@@ -295,11 +302,15 @@ class EventEditorController(
             state = state.copy(problem = EditorProblem.DRAFT_RETIRED, saving = false, retryReady = false, recoveryRequired = true, result = received)
             return
         }
-        val proof = recovery && received is MutationResult.SafeToRetry && received.operationId == doc.operationId && retryValid(doc)
+        val proof = !dispatchStopped && recovery && received is MutationResult.SafeToRetry && received.operationId == doc.operationId && retryValid(doc)
         val result = if (received is MutationResult.Retired || received is MutationResult.SafeToRetry && !proof) MutationResult.Uncertain(doc.operationId, doc.launch.ref?.eventId) else received
         val success = when (result) {
-            is MutationResult.LocalSaved -> result.ref.calendarId == (doc.frozen as? FrozenEditorSubmission.Create)?.draft?.calendarId || result.ref.calendarId == doc.launch.ref?.calendarId
-            is MutationResult.LocalDeleted -> result.ref == doc.launch.ref
+            is MutationResult.LocalSaved -> when (val command = doc.frozen) {
+                is FrozenEditorSubmission.Create -> result.ref.calendarId == command.draft.calendarId
+                is FrozenEditorSubmission.Update -> result.ref.calendarId == command.ref.calendarId && result.ref.eventId == command.ref.eventId
+                else -> false
+            }
+            is MutationResult.LocalDeleted -> doc.operationKind == "delete" && result.ref == doc.launch.ref
             else -> false
         }
         if (result is MutationResult.LocalSaved || result is MutationResult.LocalDeleted) {
