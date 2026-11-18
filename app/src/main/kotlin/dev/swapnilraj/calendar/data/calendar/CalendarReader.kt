@@ -59,6 +59,60 @@ class CalendarReader(
     suspend fun readSnapshot(request: CalendarRequest): CalendarReadState<CalendarSnapshot> =
         guarded(readBudgets.range) { querySnapshot(request) }
 
+    /** An external event number is only a lookup hint. Do not construct EventRef from this row. */
+    suspend fun readEventNavigationInfo(eventId: Long): CalendarReadState<EventNavigationInfo?> = guarded(readBudgets.details) {
+        require(eventId > 0)
+        val uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, eventId)
+        suspend fun event(): Map<String, String?>? = query(uri, navigationFields, maxRows = 1).use { cursor ->
+            if (!cursor.moveToFirst()) null else navigationFields.associateWith { cursor.text(it) }.also {
+                check(!cursor.moveToNext())
+                check(it[CalendarContract.Events._ID]?.toLongOrNull() == eventId)
+            }
+        }
+        val row = event() ?: return@guarded null
+        val calendarId = CalendarId(checkNotNull(row[CalendarContract.Events.CALENDAR_ID]?.toLongOrNull()))
+        val calendar = queryCalendars().singleOrNull { it.id == calendarId }
+            ?: error("Calendar unavailable")
+        check(calendar.capabilities.readDetails == AccessDecision.ALLOWED)
+        check(calendar.account.name.isNotBlank() && calendar.account.type.isNotBlank())
+        check(row[CalendarContract.Events.DELETED] in setOf("0", "1"))
+        if (row[CalendarContract.Events.DELETED] == "1" ||
+            row[CalendarContract.Events.STATUS] == CalendarContract.Events.STATUS_CANCELED.toString()) return@guarded null
+        val allDay = when (row[CalendarContract.Events.ALL_DAY]) { "0" -> false; "1" -> true; else -> error("Unknown event kind") }
+        fun instant(raw: String?): Instant = Instant.ofEpochMilli(checkNotNull(raw?.toLongOrNull())).also {
+            check(it.atOffset(ZoneOffset.UTC).year in 1..9999)
+        }
+        val start = instant(row[CalendarContract.Events.DTSTART])
+        if (allDay) check(start.atOffset(ZoneOffset.UTC).toLocalTime() == java.time.LocalTime.MIDNIGHT)
+        val recurring = listOf(CalendarContract.Events.RRULE, CalendarContract.Events.RDATE,
+            CalendarContract.Events.EXRULE, CalendarContract.Events.EXDATE,
+            CalendarContract.Events.ORIGINAL_ID, CalendarContract.Events.ORIGINAL_SYNC_ID,
+            CalendarContract.Events.ORIGINAL_INSTANCE_TIME).any { !row[it].isNullOrBlank() }
+        val end = row[CalendarContract.Events.DTEND]?.let(::instant) ?: if (!recurring) {
+            val origin = if (allDay) RecurrenceStart.AllDay(start.atOffset(ZoneOffset.UTC).toLocalDate()) else {
+                val eventZone = checkNotNull(zone(row[CalendarContract.Events.EVENT_TIMEZONE]))
+                val local = start.atZone(eventZone)
+                RecurrenceStart.Timed(local.toLocalDateTime(), eventZone, local.offset)
+            }
+            val resolved = RecurrenceMasterTemplates.resolve(origin, row[CalendarContract.Events.DURATION]) as? RecurrenceMasterTemplateResult.Ready
+                ?: error("Unresolved event duration")
+            when (val time = resolved.template.time) {
+                is EventTime.Timed -> time.end
+                is EventTime.AllDay -> time.dates.endExclusive.atStartOfDay(ZoneOffset.UTC).toInstant()
+            }
+        } else null
+        end?.let {
+            check((if (allDay) it > start else it >= start) && it.atOffset(ZoneOffset.UTC).year in 1..9999)
+            if (allDay) check(it.atOffset(ZoneOffset.UTC).toLocalTime() == java.time.LocalTime.MIDNIGHT)
+        }
+        // Pin both namespaces and raw temporal metadata across the asynchronous lookup.
+        check(event() == row)
+        val latest = queryCalendars().singleOrNull { it.id == calendarId }
+        check(latest != null && latest.identity == calendar.identity && latest.capabilities.readDetails == AccessDecision.ALLOWED)
+        EventNavigationInfo(eventId, calendar.identity,
+            row[CalendarContract.Events.UID_2445]?.takeIf(String::isNotBlank), allDay, start, end, recurring)
+    }
+
     // Look up on collection, not when constructing the Flow. Old Flow references can safely
     // resubscribe after idle entries are removed without creating duplicate live queries.
     fun observeEvents(request: CalendarRequest): Flow<CalendarReadState<CalendarSnapshot>> = flow {
@@ -393,6 +447,13 @@ class CalendarReader(
 
     companion object {
         private const val FallbackColor = -8947849
+        private val navigationFields = arrayOf(CalendarContract.Events._ID, CalendarContract.Events.CALENDAR_ID,
+            CalendarContract.Events.UID_2445, CalendarContract.Events.DELETED, CalendarContract.Events.STATUS,
+            CalendarContract.Events.ALL_DAY, CalendarContract.Events.DTSTART, CalendarContract.Events.DTEND,
+            CalendarContract.Events.DURATION, CalendarContract.Events.EVENT_TIMEZONE,
+            CalendarContract.Events.RRULE, CalendarContract.Events.RDATE, CalendarContract.Events.EXRULE,
+            CalendarContract.Events.EXDATE, CalendarContract.Events.ORIGINAL_ID,
+            CalendarContract.Events.ORIGINAL_SYNC_ID, CalendarContract.Events.ORIGINAL_INSTANCE_TIME)
         private val calendarFields = arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
             CalendarContract.Calendars.CALENDAR_COLOR, CalendarContract.Calendars.ACCOUNT_NAME, CalendarContract.Calendars.ACCOUNT_TYPE,
             CalendarContract.Calendars.OWNER_ACCOUNT, CalendarContract.Calendars.CALENDAR_TIME_ZONE,

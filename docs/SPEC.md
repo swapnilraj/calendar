@@ -308,6 +308,13 @@ Provide a resizable agenda widget with independent calendar selection/privacy an
 actions. Validate incoming calendar view/date/create/edit intents, preserve occurrence refs, and handle
 permission recovery. Support external keyboard focus/navigation.
 
+Incoming event links first perform a bounded, fresh metadata read of the exact event item and readable
+calendar namespace, checking that metadata and namespace remain stable across the read. This lookup
+does not query private children or construct an occurrence reference. Canonical refs come only from
+provider-expanded Instances; recurring/detached event IDs require an explicit occurrence hint. Hidden
+app/provider display filters do not authorize or prevent a directly requested readable link. Missing
+or canceled/deleted rows, ambiguous identity, and insufficient read authority do not open stale details.
+
 ### M9 — App-owned reminders
 
 - Own notification presentation, dismissals, snoozes and delivery tracking. Guide setup for notification
