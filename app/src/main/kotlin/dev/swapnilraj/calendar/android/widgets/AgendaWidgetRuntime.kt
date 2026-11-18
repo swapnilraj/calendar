@@ -31,6 +31,9 @@ class AgendaWidgetRuntime(
         ids.associateWith { WidgetEpoch(it, UUID.randomUUID().toString()) }
     },
 ) {
+    private val setupOwner = Any()
+    private val setupVersions = mutableMapOf<Int, Long>()
+    private fun advanceSetup(id: Int) { setupVersions[id] = (setupVersions[id] ?: 0L) + 1L }
     private val mutableChanges = MutableStateFlow(0L)
     /** A revision trigger, not authority or a successful IO receipt. Readers must revalidate proof. */
     val changes: StateFlow<Long> = mutableChanges.asStateFlow()
@@ -85,9 +88,12 @@ class AgendaWidgetRuntime(
     /** Registration, quarantine and the actor enqueue happen synchronously before any coroutine.
      * Broadcast timeout ends only the broadcast; it neither cancels nor settles shared cleanup IO.
      */
-    fun removed(widgetIds: Set<Int>, finished: () -> Unit = {}): Job {
+    fun removed(widgetIds: Set<Int>, finished: () -> Unit = {}): Job = remove(widgetIds, finished) {}
+
+    private fun remove(widgetIds: Set<Int>, finished: () -> Unit, issuedToClaim: (Map<Int, WidgetEpoch>) -> Unit): Job {
         val registrations = synchronized(publication) {
             val ids = widgetIds.filter { it > 0 }.toSet()
+            ids.forEach(::advanceSetup) // Even a failed known fence retires the old form context.
             epochs.values.forEach { seenEpochTokens += it.token }
             val issued = try {
                 removalEpochs(ids.toSet()).toMap().also { supplied ->
@@ -104,6 +110,7 @@ class AgendaWidgetRuntime(
                 }
                 emptyMap()
             }
+            issuedToClaim(issued) // Exact epoch of this registration, never a later nested reset.
             issued.map { (id, epoch) ->
                 seenEpochTokens += epoch.token
                 blocked.remove(id)
@@ -147,6 +154,28 @@ class AgendaWidgetRuntime(
         return job
     }
 
+    fun captureSetupContext(widgetId: Int): WidgetSetupContext? = synchronized(publication) {
+        if (widgetId <= 0 || widgetId !in host.widgetIds()) null
+        else WidgetSetupContext(setupOwner, widgetId, setupVersions[widgetId] ?: 0L)
+    }
+
+    fun isSetupContextCurrent(context: WidgetSetupContext): Boolean = synchronized(publication) {
+        context.runtime === setupOwner && context.widgetId in host.widgetIds() &&
+            context.version == (setupVersions[context.widgetId] ?: 0L)
+    }
+
+    /** Compare and quarantine in one publication -> binding/ledger ordering boundary. This is the
+     * only form claim; an old context never recaptures a fresh version implicitly during Save.
+     */
+    internal fun claimSetup(context: WidgetSetupContext): WidgetSetupClaim = synchronized(publication) {
+        if (!isSetupContextCurrent(context)) return@synchronized WidgetSetupClaim.Stale
+        var issued: WidgetEpoch? = null
+        remove(setOf(context.widgetId), {}) { issued = it[context.widgetId] }
+        val exact = issued ?: return@synchronized WidgetSetupClaim.Unavailable
+        if (context.widgetId in blocked || epochs[context.widgetId] != exact) WidgetSetupClaim.Stale
+        else WidgetSetupClaim.Claimed(exact)
+    }
+
     suspend fun beginConfiguration(widgetId: Int): WidgetConfigurationSessionResult = (try {
         withTimeout(timeoutMillis) {
             require(widgetId in host.widgetIds())
@@ -179,6 +208,7 @@ class AgendaWidgetRuntime(
         val epoch = session.epoch
         val attempt = synchronized(publication) {
             if (epochs[epoch.widgetId] != epoch) return WidgetConfigurationSaveResult.Stale
+            advanceSetup(epoch.widgetId)
             SaveAttempt(epoch, ++nextSaveSerial).also {
                 saves[epoch.widgetId] = it
                 revisions.merge(epoch.widgetId, 1L, Long::plus)
@@ -208,7 +238,7 @@ class AgendaWidgetRuntime(
                     writer.enqueueSave(epoch, configuration).also { receipt ->
                         // Independent of the UI coroutine: even an unknown/cancelled ACK must
                         // invalidate readers once the accepted durable operation actually ends.
-                        receipt.invokeOnCompletion { synchronized(publication) { changed() } }
+                        receipt.invokeOnCompletion { synchronized(publication) { advanceSetup(epoch.widgetId); changed() } }
                     }
                 }
                 val committed = receipt.await()

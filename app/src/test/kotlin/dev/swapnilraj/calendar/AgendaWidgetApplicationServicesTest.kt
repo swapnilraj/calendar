@@ -52,10 +52,11 @@ class AgendaWidgetApplicationServicesTest {
         var reads = 0
         var instance = event
         var afterRead: (suspend () -> Unit)? = null
+        var beforeMetadataRead: (suspend () -> Unit)? = null
         val views = java.util.Collections.synchronizedList(mutableListOf<RemoteViews>())
         val services = AgendaWidgetApplicationServices(context, scope, AgendaWidgetSnapshotReader { request ->
             reads++; val snapshot = CalendarSnapshot(request, metadata, listOf(instance)); afterRead?.invoke(); CalendarReadState.Ready(snapshot)
-        }, { flowOf(CalendarReadState.Ready(metadata)) }, { CalendarReadState.Ready(metadata) }, { env },
+        }, { flowOf(CalendarReadState.Ready(metadata)) }, { beforeMetadataRead?.invoke(); CalendarReadState.Ready(metadata) }, { env },
             ComponentName(context.packageName, "MainActivity"), object : AgendaWidgetHost {
                 override fun widgetIds() = own.toSet()
                 override fun size(widgetId: Int) = AgendaWidgetSize(240, 240)
@@ -65,8 +66,12 @@ class AgendaWidgetApplicationServicesTest {
                 override fun marker(id: Int) = marker[id]
                 override fun marker(id: Int, value: String) { marker[id] = value }
             }, Clock.fixed(now, ZoneOffset.UTC), bootstrapDispatcher)
+        suspend fun configureFromNewForm(widgetId: Int, choice: WidgetSetupChoice, authorized: List<CalendarInfo>?): WidgetConfigurationSaveResult {
+            val form = services.captureSetupForm(1) as WidgetSetupForm.Ready
+            return services.configure(widgetId, choice, authorized, form.context)
+        }
         suspend fun configure(privacy: WidgetPrivacy = WidgetPrivacy.BUSY_ONLY): AgendaWidgetConfiguration {
-            val result = services.configure(1, WidgetSetupChoice(WidgetCalendarSelection.Explicit(setOf(calendar.id)), privacy), listOf(calendar))
+            val result = configureFromNewForm(1, WidgetSetupChoice(WidgetCalendarSelection.Explicit(setOf(calendar.id)), privacy), listOf(calendar))
             services.framework.health.first { it != AgendaWidgetFrameworkHealth.STARTING }
             return (result as WidgetConfigurationSaveResult.Saved).configuration
         }
@@ -100,7 +105,7 @@ class AgendaWidgetApplicationServicesTest {
         val f = Fixture()
         try {
             f.metadata = listOf(calendar.copy(account = CalendarAccount("replacement@example.invalid", "local")))
-            assertEquals(WidgetConfigurationSaveResult.Stale, f.services.configure(1,
+            assertEquals(WidgetConfigurationSaveResult.Stale, f.configureFromNewForm(1,
                 WidgetSetupChoice(WidgetCalendarSelection.Explicit(setOf(calendar.id)), WidgetPrivacy.EVENT_TITLES), listOf(calendar)))
             assertTrue(f.marker.isEmpty())
             f.metadata = listOf(calendar)
@@ -134,7 +139,7 @@ class AgendaWidgetApplicationServicesTest {
             assertFalse(f.services.runtime.refresh()); assertEquals(0, f.reads)
             assertEquals(AgendaWidgetRouteResult.Unavailable, f.services.validateRoute(AgendaWidgetRoute.Today(1, config.generation)))
             assertEquals(AgendaWidgetRouteResult.Invalid, f.services.validateRoute(AgendaWidgetRoute.Setup(99)))
-            assertEquals(WidgetConfigurationSaveResult.Stale, f.services.configure(99, WidgetSetupChoice(), null))
+            assertEquals(WidgetConfigurationSaveResult.Stale, f.configureFromNewForm(99, WidgetSetupChoice(), null))
         } finally { f.close() }
     }
 
@@ -144,12 +149,12 @@ class AgendaWidgetApplicationServicesTest {
             for (account in listOf(CalendarAccount("", "local"), CalendarAccount("name", ""))) {
                 val incomplete = calendar.copy(account = account)
                 f.metadata = listOf(incomplete)
-                assertEquals(WidgetConfigurationSaveResult.Unavailable, f.services.configure(1,
+                assertEquals(WidgetConfigurationSaveResult.Unavailable, f.configureFromNewForm(1,
                     WidgetSetupChoice(WidgetCalendarSelection.Explicit(setOf(calendar.id)), WidgetPrivacy.EVENT_TITLES), listOf(incomplete)))
                 assertTrue(f.marker.isEmpty())
             }
             f.metadata = listOf(calendar.copy(accessLevel = 100))
-            val result = f.services.configure(1, WidgetSetupChoice(WidgetCalendarSelection.Explicit(setOf(calendar.id)), WidgetPrivacy.EVENT_TITLES), f.metadata)
+            val result = f.configureFromNewForm(1, WidgetSetupChoice(WidgetCalendarSelection.Explicit(setOf(calendar.id)), WidgetPrivacy.EVENT_TITLES), f.metadata)
                 as WidgetConfigurationSaveResult.Saved
             f.services.runtime.refresh(); assertTrue(f.text().contains("Busy")); assertFalse(f.text().contains(event.title))
             assertEquals(AgendaWidgetRouteResult.Unavailable, f.services.validateRoute(AgendaWidgetRoute.OpenEvent(1,
@@ -210,7 +215,7 @@ class AgendaWidgetApplicationServicesTest {
     @Test fun retainedFollowAppClickCannotRebindToAReplacementCalendarNamespace() = runBlocking {
         val f = Fixture()
         try {
-            val saved = f.services.configure(1, WidgetSetupChoice(), null) as WidgetConfigurationSaveResult.Saved
+            val saved = f.configureFromNewForm(1, WidgetSetupChoice(), null) as WidgetConfigurationSaveResult.Saved
             val route = AgendaWidgetRoute.OpenEvent(1, saved.configuration.generation, ref,
                 now.atZone(ZoneOffset.UTC).toLocalDate(), widgetCalendarFingerprint(calendar.identity))
             assertTrue(f.services.validateRoute(route) is AgendaWidgetRouteResult.Ready)
@@ -251,7 +256,7 @@ class AgendaWidgetApplicationServicesTest {
         try {
             val saved = f.configure(WidgetPrivacy.EVENT_TITLES)
             f.metadata = listOf(calendar.copy(owner = null, providerId = null))
-            val result = f.services.configure(1, WidgetSetupChoice(WidgetCalendarSelection.Explicit(setOf(calendar.id)), WidgetPrivacy.EVENT_TITLES), f.metadata)
+            val result = f.configureFromNewForm(1, WidgetSetupChoice(WidgetCalendarSelection.Explicit(setOf(calendar.id)), WidgetPrivacy.EVENT_TITLES), f.metadata)
             assertEquals(WidgetConfigurationSaveResult.Stale, result)
             assertEquals(saved, (f.services.configuration(1) as AgendaWidgetConfigurationState.Ready).value)
         } finally { f.close() }
@@ -285,6 +290,43 @@ class AgendaWidgetApplicationServicesTest {
                 AgendaWidgetRoute.More(1, saved.generation, date)))
                 assertEquals(AgendaWidgetRouteResult.SetupRequired(1), f.services.validateRoute(route))
             assertEquals(0, f.reads)
+        } finally { f.close() }
+    }
+
+    @Test fun formCapturedBeforeSameIdRemovalCannotMintANewEpochAtSave() = runBlocking {
+        val f = Fixture()
+        try {
+            f.configure(WidgetPrivacy.EVENT_TITLES)
+            val form = f.services.captureSetupForm(1) as WidgetSetupForm.Ready
+            f.services.runtime.invalidate(); f.services.runtime.refresh()
+            assertTrue(f.services.isSetupContextCurrent(form.context)) // Ordinary refresh is not a lifecycle fence.
+            f.services.runtime.removed(setOf(1)).join()
+            val fenced = requireNotNull(WidgetBindingLedger.open(context.noBackupFilesDir)).snapshot().records.getValue(1)
+            assertEquals(WidgetConfigurationSaveResult.Stale, f.services.configure(1,
+                WidgetSetupChoice(WidgetCalendarSelection.Explicit(setOf(calendar.id)), WidgetPrivacy.EVENT_TITLES), listOf(calendar), form.context))
+            assertEquals(fenced, requireNotNull(WidgetBindingLedger.open(context.noBackupFilesDir)).snapshot().records.getValue(1))
+            assertEquals(AgendaWidgetConfigurationState.SetupRequired, f.services.configuration(1))
+            val fresh = f.configure()
+            assertEquals(WidgetPrivacy.BUSY_ONLY, fresh.privacy)
+        } finally { f.close() }
+    }
+
+    @Test fun removalDuringSaveMetadataAwaitCannotPassASeparatePrecheckAndAdoptFreshEpoch() = runBlocking {
+        val f = Fixture()
+        try {
+            f.configure()
+            val form = f.services.captureSetupForm(1) as WidgetSetupForm.Ready
+            val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+            f.beforeMetadataRead = { entered.complete(Unit); release.await() }
+            val saving = async { f.services.configure(1,
+                WidgetSetupChoice(WidgetCalendarSelection.Explicit(setOf(calendar.id)), WidgetPrivacy.EVENT_TITLES), listOf(calendar), form.context) }
+            entered.await()
+            f.services.runtime.removed(setOf(1)).join()
+            val fenced = requireNotNull(WidgetBindingLedger.open(context.noBackupFilesDir)).snapshot().records.getValue(1)
+            release.complete(Unit)
+            assertEquals(WidgetConfigurationSaveResult.Stale, saving.await())
+            assertEquals(fenced, requireNotNull(WidgetBindingLedger.open(context.noBackupFilesDir)).snapshot().records.getValue(1))
+            assertEquals(AgendaWidgetConfigurationState.SetupRequired, f.services.configuration(1))
         } finally { f.close() }
     }
 

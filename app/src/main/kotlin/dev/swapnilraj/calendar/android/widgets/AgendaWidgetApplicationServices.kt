@@ -112,11 +112,32 @@ class AgendaWidgetApplicationServices internal constructor(
     suspend fun environment(): CalendarReadState<AgendaWidgetEnvironment> = readEnvironment()
     fun isOwnWidget(widgetId: Int): Boolean = try { widgetId > 0 && markers.isOwnWidget(widgetId) } catch (_: Exception) { false }
 
+    /** Pair configuration with the context that surrounded its read. A known fence during IO
+     * cannot attach an old choice to a newer incarnation/version of the same numeric widget ID.
+     */
+    suspend fun captureSetupForm(widgetId: Int): WidgetSetupForm = try {
+        withContext(Dispatchers.IO) { withTimeout(15_000) {
+            if (!isOwnWidget(widgetId)) return@withTimeout WidgetSetupForm.Stale
+            val context = runtime.captureSetupContext(widgetId) ?: return@withTimeout WidgetSetupForm.Stale
+            val configuration = settings.configuration(widgetId)
+            if (!runtime.isSetupContextCurrent(context) || !isOwnWidget(widgetId)) return@withTimeout WidgetSetupForm.Stale
+            if (configuration == AgendaWidgetConfigurationState.Unavailable) WidgetSetupForm.Unavailable
+            else WidgetSetupForm.Ready(context, configuration)
+        } }
+    } catch (_: TimeoutCancellationException) { WidgetSetupForm.Unavailable }
+    catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { WidgetSetupForm.Unavailable }
+
+    fun isSetupContextCurrent(context: WidgetSetupContext): Boolean = try { runtime.isSetupContextCurrent(context) }
+    catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { false }
+
     /** The metadata displayed at Save authorizes identities, not merely reusable numeric IDs. */
     suspend fun configure(widgetId: Int, choice: WidgetSetupChoice,
-        authorizedCalendars: List<CalendarInfo>?): WidgetConfigurationSaveResult = try {
+        authorizedCalendars: List<CalendarInfo>?, context: WidgetSetupContext): WidgetConfigurationSaveResult = try {
         withContext(Dispatchers.IO) { withTimeout(30_000) {
-            if (!isOwnWidget(widgetId)) return@withTimeout WidgetConfigurationSaveResult.Stale
+            if (!isOwnWidget(widgetId) || context.widgetId != widgetId || !runtime.isSetupContextCurrent(context))
+                return@withTimeout WidgetConfigurationSaveResult.Stale
             val previousPins = (settings.configuration(widgetId) as? AgendaWidgetConfigurationState.Ready)
                 ?.value?.expectedCalendarIdentities.orEmpty()
             val pins = when (val selected = choice.selection) {
@@ -143,7 +164,7 @@ class AgendaWidgetApplicationServices internal constructor(
                 if (!widgetPinsAuthorize(candidate, fresh)) return@withTimeout WidgetConfigurationSaveResult.Stale
             }
             val binding = bootstrap.await() ?: return@withTimeout WidgetConfigurationSaveResult.Unavailable
-            when (binding.prepareForSetup(widgetId, runtime)) {
+            when (binding.prepareForSetup(widgetId, runtime, context)) {
                 is WidgetBindingSetupResult.Prepared -> Unit
                 WidgetBindingSetupResult.Stale -> return@withTimeout WidgetConfigurationSaveResult.Stale
                 WidgetBindingSetupResult.Unavailable -> return@withTimeout WidgetConfigurationSaveResult.Unavailable

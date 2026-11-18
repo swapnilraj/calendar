@@ -56,13 +56,12 @@ internal class AndroidAgendaWidgetBindings(
     private var poisoned = false
     private val confirmed = mutableMapOf<Int, WidgetEpoch>()
     private val resets = mutableMapOf<Int, Pair<WidgetEpoch, Deferred<WidgetRemovalReceipt>>>()
-    private val setupCapture = ThreadLocal<MutableMap<Int, WidgetEpoch>>()
 
     /** Whole-batch synchronous AtomicFile fence BEFORE any actor enqueue. Runtime uses this map. */
     fun quarantineBatch(ids: Set<Int>): Map<Int, WidgetEpoch> = synchronized(lock) {
         check(!poisoned)
         ids.forEach { actor.revokeValidation(it); confirmed.remove(it) }
-        try { ledger.quarantine(ids).also { setupCapture.get()?.putAll(it) } }
+        try { ledger.quarantine(ids) }
         catch (failure: Exception) { poison(); throw failure }
     }
     override fun enqueueRemoval(epoch: WidgetEpoch): Deferred<WidgetRemovalReceipt> = synchronized(lock) {
@@ -98,17 +97,16 @@ internal class AndroidAgendaWidgetBindings(
     }
 
     /** Only explicit setup mints a fresh runtime/ledger epoch. Candidate phases never auto-resume. */
-    suspend fun prepareForSetup(id: Int, runtime: AgendaWidgetRuntime): WidgetBindingSetupResult = try {
+    suspend fun prepareForSetup(id: Int, runtime: AgendaWidgetRuntime, context: WidgetSetupContext): WidgetBindingSetupResult = try {
         withContext(Dispatchers.IO) {
             withTimeout(setupTimeoutMillis) {
                 if (!markers.isOwnWidget(id)) return@withTimeout WidgetBindingSetupResult.Stale
-                // Runtime invokes the fence synchronously on this call stack; capture exactly
-                // this reset, never a newer concurrent setup's epoch. No lock inversion with runtime.
-                val capture = mutableMapOf<Int, WidgetEpoch>()
-                val previous = setupCapture.get()
-                setupCapture.set(capture)
-                try { runtime.removed(setOf(id)) } finally { setupCapture.set(previous) }
-                val requested = capture[id] ?: return@withTimeout WidgetBindingSetupResult.Unavailable
+                if (context.widgetId != id) return@withTimeout WidgetBindingSetupResult.Stale
+                val requested = when (val claim = runtime.claimSetup(context)) {
+                    is WidgetSetupClaim.Claimed -> claim.epoch
+                    WidgetSetupClaim.Stale -> return@withTimeout WidgetBindingSetupResult.Stale
+                    WidgetSetupClaim.Unavailable -> return@withTimeout WidgetBindingSetupResult.Unavailable
+                }
                 val (epoch, receipt) = synchronized(lock) {
                     check(!poisoned)
                     val current = requireNotNull(resets[id])

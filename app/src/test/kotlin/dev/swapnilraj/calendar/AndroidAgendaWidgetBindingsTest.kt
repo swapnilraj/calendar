@@ -61,7 +61,7 @@ class AndroidAgendaWidgetBindingsTest {
         }, host, AgendaWidgetRenderer(context, ComponentName(context.packageName, "SyntheticWidgetActivity")), scope,
             removalEpochs = if (wired) bindings::quarantineBatch else { ids -> ids.associateWith { WidgetEpoch(it, "unfenced-$it") } })
         suspend fun setupAndSave(): Pair<WidgetEpoch, AgendaWidgetConfiguration> {
-            val prepared = bindings.prepareForSetup(1, runtime) as WidgetBindingSetupResult.Prepared
+            val prepared = bindings.prepareForSetup(1, runtime, requireNotNull(runtime.captureSetupContext(1))) as WidgetBindingSetupResult.Prepared
             val session = (runtime.beginConfiguration(1) as WidgetConfigurationSessionResult.Ready).session
             val saved = runtime.saveFreshConfiguration(session, WidgetConfigurationChoice()) as WidgetConfigurationSaveResult.Saved
             return prepared.epoch to saved.configuration
@@ -110,7 +110,7 @@ class AndroidAgendaWidgetBindingsTest {
         for (writeFailure in listOf(true, false)) {
             val f = Fixture(files.newFolder())
             f.markers.failWrite = writeFailure; f.markers.mismatch = !writeFailure
-            assertTrue(f.bindings.prepareForSetup(1, f.runtime) !is WidgetBindingSetupResult.Prepared)
+            assertTrue(f.bindings.prepareForSetup(1, f.runtime, requireNotNull(f.runtime.captureSetupContext(1))) !is WidgetBindingSetupResult.Prepared)
             assertEquals(WidgetBindingPhase.CANDIDATE, f.ledger.snapshot().records.getValue(1).phase)
             val snapshot = f.ledger.snapshot(); val writes = f.markers.writes
             assertEquals(WidgetBindingObservation.SetupRequired, f.bindings.observe(1))
@@ -134,8 +134,8 @@ class AndroidAgendaWidgetBindingsTest {
 
     @Test fun unknownForeignOrUnwiredSetupCannotInventBindingAuthority() = runBlocking {
         val f = Fixture(files.root, wired = false)
-        assertEquals(WidgetBindingSetupResult.Stale, f.bindings.prepareForSetup(99, f.runtime))
-        assertEquals(WidgetBindingSetupResult.Unavailable, f.bindings.prepareForSetup(1, f.runtime))
+        assertEquals(WidgetBindingSetupResult.Stale, f.bindings.prepareForSetup(99, f.runtime, requireNotNull(f.runtime.captureSetupContext(1))))
+        assertEquals(WidgetBindingSetupResult.Unavailable, f.bindings.prepareForSetup(1, f.runtime, requireNotNull(f.runtime.captureSetupContext(1))))
         assertTrue(f.ledger.snapshot().records.isEmpty()); assertEquals(0, f.markers.writes)
         f.close()
     }
@@ -158,7 +158,7 @@ class AndroidAgendaWidgetBindingsTest {
         f.markers.onWrite = {
             assertTrue(directory.renameTo(moved)); directory.writeText("not a directory")
         }
-        assertEquals(WidgetBindingSetupResult.Unavailable, f.bindings.prepareForSetup(1, f.runtime))
+        assertEquals(WidgetBindingSetupResult.Unavailable, f.bindings.prepareForSetup(1, f.runtime, requireNotNull(f.runtime.captureSetupContext(1))))
         assertEquals(WidgetBindingObservation.Unavailable, f.bindings.observe(1))
         assertEquals(WidgetLifecycleProof.SetupRequired, f.actor.lifecycle(1))
         f.close()

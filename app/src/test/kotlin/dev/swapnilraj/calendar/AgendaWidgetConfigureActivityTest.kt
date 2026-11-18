@@ -198,6 +198,39 @@ class AgendaWidgetConfigureActivityTest {
         }
     }
 
+    @Test fun knownSameIdRestoreBeforeSaveRejectsRetainedTitlesAndRetryStartsFreshBusyForm() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO); val markers = Markers()
+        val services = services(scope, markers); app.agendaWidgetServices = services
+        val activity = open()
+        try {
+            compose.onNodeWithTag("widget_setup_fields").performScrollToNode(hasTestTag("widget_privacy_titles"))
+            compose.onNodeWithTag("widget_privacy_titles").performClick()
+            runBlocking { services.runtime.removed(setOf(41)).join() } // Same numeric ID, known new lifecycle fence.
+            val fenced = requireNotNull(WidgetBindingLedger.open(app.noBackupFilesDir)).snapshot().records.getValue(41)
+            compose.onNodeWithTag("widget_setup_save").performClick()
+            compose.waitUntil { compose.onAllNodesWithText(app.getString(R.string.widget_config_stale)).fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(Activity.RESULT_CANCELED, shadowOf(activity.get()).resultCode)
+            assertEquals(fenced, requireNotNull(WidgetBindingLedger.open(app.noBackupFilesDir)).snapshot().records.getValue(41))
+            assertTrue(markers.values.isEmpty())
+            compose.onNodeWithTag("widget_setup_fields").performScrollToNode(hasText("Retry"))
+            compose.onNodeWithText("Retry").performClick()
+            compose.waitUntil { compose.onAllNodesWithTag("widget_setup_save").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("widget_setup_fields").performScrollToNode(hasTestTag("widget_privacy_busy"))
+            compose.onNodeWithTag("widget_privacy_busy").assertIsSelected()
+            compose.onNodeWithTag("widget_setup_save").performClick()
+            compose.waitUntil(20_000) {
+                activity.get().isFinishing || compose.onAllNodesWithText(app.getString(R.string.widget_config_save_failed)).fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue(activity.get().isFinishing); assertEquals(Activity.RESULT_OK, shadowOf(activity.get()).resultCode)
+            val saved = runBlocking { services.configuration(41) } as AgendaWidgetConfigurationState.Ready
+            assertEquals(WidgetPrivacy.BUSY_ONLY, saved.value.privacy)
+            assertNotEquals(fenced.epoch, saved.epoch)
+        } finally {
+            compose.runOnUiThread { activity.pause().stop().destroy() }
+            runBlocking { services.closeAndJoin(); scope.coroutineContext[Job]!!.cancelAndJoin() }
+        }
+    }
+
     @Test fun resultOkOnlyFollowsDurableVerifiedPrivateSaveWithoutNotificationPermission() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO); val markers = Markers()
         val services = services(scope, markers); app.agendaWidgetServices = services

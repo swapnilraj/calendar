@@ -39,6 +39,7 @@ class AgendaWidgetConfigureActivity : ComponentActivity() {
     private var initial by mutableStateOf<WidgetSetupChoice?>(null)
     private val sessionIdentities = mutableMapOf<CalendarId, CalendarIdentity>()
     private var formStale = false
+    private var formContext by mutableStateOf<WidgetSetupContext?>(null)
     private val uiSession = java.util.UUID.randomUUID().toString()
     private var setupRevision by mutableIntStateOf(0)
     private var saving by mutableStateOf(false)
@@ -63,15 +64,29 @@ class AgendaWidgetConfigureActivity : ComponentActivity() {
                         currentCoroutineContext().ensureActive()
                         if (!currentRevision(revision)) return@collectLatest
                         environment = nextEnvironment
-                        if (initial == null) {
-                            val state = owner.configuration(widgetId)
+                        val existing = formContext
+                        if (existing != null && !owner.isSetupContextCurrent(existing)) {
+                            staleForm(); return@collectLatest
+                        }
+                        if (existing == null) {
+                            val form = owner.captureSetupForm(widgetId)
                             currentCoroutineContext().ensureActive()
                             if (!currentRevision(revision)) return@collectLatest
-                            initial = (state as? AgendaWidgetConfigurationState.Ready)?.value
-                                ?.takeIf { validWidgetPins(it.selection, it.expectedCalendarIdentities) }?.let {
-                                    sessionIdentities.putAll(it.expectedCalendarIdentities)
-                                    WidgetSetupChoice(it.selection, it.privacy)
-                                } ?: WidgetSetupChoice()
+                            when (form) {
+                                is WidgetSetupForm.Ready -> {
+                                    formContext = form.context
+                                    if (initial == null) initial = (form.configuration as? AgendaWidgetConfigurationState.Ready)?.value
+                                        ?.takeIf { validWidgetPins(it.selection, it.expectedCalendarIdentities) }?.let {
+                                            sessionIdentities.putAll(it.expectedCalendarIdentities)
+                                            WidgetSetupChoice(it.selection, it.privacy)
+                                        } ?: WidgetSetupChoice()
+                                }
+                                WidgetSetupForm.Stale -> { staleForm(); return@collectLatest }
+                                WidgetSetupForm.Unavailable -> {
+                                    environment = CalendarReadState.Unavailable; metadata = CalendarReadState.Unavailable
+                                    return@collectLatest
+                                }
+                            }
                         }
                         owner.observeCalendars().collect { read ->
                             currentCoroutineContext().ensureActive()
@@ -98,8 +113,9 @@ class AgendaWidgetConfigureActivity : ComponentActivity() {
                     val ready = (environment as? CalendarReadState.Ready)?.value
                     val choice = initial
                     val displayedMetadata = metadata
-                    if (ready != null && choice != null) key(uiSession, setupRevision) { WidgetSetupSheet(widgetId, choice, displayedMetadata, ready.appSelection,
-                        onSave = { save(it, (displayedMetadata as? CalendarReadState.Ready)?.value?.toList()) }, onDismiss = ::finish, onRetryMetadata = ::reload,
+                    val displayedContext = formContext
+                    if (ready != null && choice != null && displayedContext != null) key(uiSession, setupRevision) { WidgetSetupSheet(widgetId, choice, displayedMetadata, ready.appSelection,
+                        onSave = { save(it, (displayedMetadata as? CalendarReadState.Ready)?.value?.toList(), displayedContext) }, onDismiss = ::finish, onRetryMetadata = ::reload,
                         saving = saving, saveError = saveError,
                         onRequestPermission = { calendarPermission.launch(Manifest.permission.READ_CALENDAR) }) }
                     else Column(Modifier.fillMaxSize().systemBarsPadding()) {
@@ -133,7 +149,7 @@ class AgendaWidgetConfigureActivity : ComponentActivity() {
 
     private fun reload() {
         if (saving) return
-        if (formStale) { initial = WidgetSetupChoice(); setupRevision++; sessionIdentities.clear(); formStale = false }
+        if (formStale) { initial = WidgetSetupChoice(); formContext = null; setupRevision++; sessionIdentities.clear(); formStale = false }
         metadata = if (hasCalendarPermission()) CalendarReadState.Loading else CalendarReadState.PermissionRequired
         environment = CalendarReadState.Loading
         reloadRevision.update { it + 1 }
@@ -141,6 +157,11 @@ class AgendaWidgetConfigureActivity : ComponentActivity() {
 
     private fun currentRevision(revision: Long) = reloadRevision.value == revision &&
         lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+
+    private fun staleForm() {
+        formStale = true; metadata = CalendarReadState.Unavailable
+        saveError = getString(R.string.widget_config_stale)
+    }
 
     private fun knownIdentityDrift(calendars: List<CalendarInfo>): Boolean {
         var changed = false
@@ -155,18 +176,22 @@ class AgendaWidgetConfigureActivity : ComponentActivity() {
         return changed
     }
 
-    private fun save(choice: WidgetSetupChoice, authorized: List<CalendarInfo>?) {
+    private fun save(choice: WidgetSetupChoice, authorized: List<CalendarInfo>?, context: WidgetSetupContext) {
         if (saving) return
         if (formStale) { saveError = getString(R.string.widget_config_stale); return }
         val owner = services ?: return
         saving = true; saveError = null
         lifecycleScope.launch {
             try {
-                val result = owner.configure(widgetId, choice, authorized)
+                val result = owner.configure(widgetId, choice, authorized, context)
                 if (result is WidgetConfigurationSaveResult.Saved && owner.isOwnWidget(widgetId)) {
                     setResult(RESULT_OK, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId))
                     finish()
-                } else saveError = getString(if (result == WidgetConfigurationSaveResult.Stale) R.string.widget_config_stale else R.string.widget_config_save_failed)
+                } else if (result == WidgetConfigurationSaveResult.Stale) staleForm()
+                else {
+                    if (!owner.isSetupContextCurrent(context)) { formStale = true; metadata = CalendarReadState.Unavailable }
+                    saveError = getString(R.string.widget_config_save_failed)
+                }
             } finally { saving = false }
         }
     }
