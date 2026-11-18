@@ -5,7 +5,9 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
 /**
- * Resolve one stored reminder offset; this does not select defaults, schedule, or deliver an alert.
+ * Resolve one resolved minute offset; this does not select defaults, schedule, or deliver an alert.
+ * Provider sentinels such as MINUTES_DEFAULT (-1) must be resolved by the caller first;
+ * passing that sentinel here would incorrectly interpret it as one minute after the event.
  *
  * Timed offsets are elapsed minutes before the actual start instant. All-day offsets are wall-clock
  * minutes before the first date's local midnight, resolved in the device zone (not the display zone).
