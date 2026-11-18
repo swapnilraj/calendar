@@ -13,6 +13,13 @@ meeting/details/navigation tests pass. Its full test/debug APK/lint gate passed 
 this does not establish Google invitation delivery. Reminder setup is already wired through the
 live app; the latest active-alert cleanup also preserves posted history when a calendar is unpinned.
 
+The subsequent response-draft discovery fix reopens a reviewed replacement's exact generation
+rather than preparing another operation. Its 49 focused checks passed. Three independent actual
+MainActivity journeys also passed through the real meeting writer, SQLite draft/journal and a native
+provider-semantic fixture: decline preserves other event/guest metadata, WRITE permission grant
+needs another Save, and frozen committed-outcome recovery never replays. Two native UI crops were
+recorded, inspected and verified. This establishes local RSVP integration, not remote delivery.
+
 ## Verified starting point
 
 - Audited baseline: `23808c1` on `codex/calendar-feature-audit`; existing app is a read-only day view
