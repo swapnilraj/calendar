@@ -1,6 +1,8 @@
 package dev.swapnilraj.calendar
 
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -80,7 +82,16 @@ class EventWriteWorkflowTest {
     }
     private fun shown(text: String) = compose.waitUntil(15_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
     private fun readyTitle() = compose.waitUntil(15_000) {
-        compose.onAllNodes(hasSetTextAction() and hasText("Title") and isEnabled()).fetchSemanticsNodes().size == 1
+        compose.onAllNodes(hasSetTextAction() and hasContentDescription("Title") and isEnabled()).fetchSemanticsNodes().size == 1
+    }
+    private fun chooseCalendar() {
+        val choose = hasText("Choose a calendar") and hasClickAction() and isEnabled()
+        compose.waitUntil(15_000) { compose.onAllNodes(choose).fetchSemanticsNodes().size == 1 }
+        compose.onNode(choose).performScrollTo().performClick()
+        val row = hasText(calendar.displayName) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
+        compose.waitUntil(15_000) { compose.onAllNodes(row and isEnabled()).fetchSemanticsNodes().size == 1 }
+        compose.onNode(row).performClick()
+        compose.waitUntil(15_000) { compose.onAllNodes(row).fetchSemanticsNodes().isEmpty() }
     }
     private fun confirmDraftAction() { compose.onNodeWithText("Confirm").performClick() }
 
@@ -91,19 +102,19 @@ class EventWriteWorkflowTest {
             EventWriteWorkflow(request, writer, store, listOf(calendar), true, {}, { saved = it }, {},
                 requestWritePermission = { requests++; permission })
         } }
-        shown("Save"); readyTitle(); compose.onAllNodesWithText("2028-06-15").assertCountEquals(2)
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        shown("Save"); readyTitle(); compose.onAllNodesWithText(date.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.FULL).withLocale(java.util.Locale.US)), substring = true).assertCountEquals(2)
+        compose.onNodeWithText("Save").performClick()
         assertEquals(0, requests); assertEquals(0, writer.creates)
-        compose.onNodeWithText("Fixture calendar · owner@example.invalid").performScrollTo().performClick()
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        chooseCalendar()
+        compose.onNodeWithText("Save").performClick()
         compose.waitUntil(15_000) { compose.waitForIdle(); requests == 1 }
         assertEquals(0, writer.creates)
         val denied = org.json.JSONObject(store.records.getValue(request.draftId).payload)
         assertFalse(denied.getBoolean("submitted")); assertFalse(denied.has("submission")); assertEquals("", denied.getString("operationKind"))
         compose.runOnIdle { permission = true }; compose.waitForIdle(); assertEquals(0, writer.creates)
-        compose.onNodeWithText("New event").performScrollTo()
+        compose.onNodeWithText("New event").assertIsDisplayed()
         compose.onNode(isRoot() and hasAnyDescendant(hasText("New event"))).captureRoboImage("src/test/screenshots/integration_create_event.png")
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performClick()
         compose.waitUntil(15_000) { compose.waitForIdle(); saved != null }
         assertEquals(2, requests); assertEquals(1, writer.creates)
         assertEquals(calendar.identity, writer.saved?.targetIdentity)
@@ -116,7 +127,7 @@ class EventWriteWorkflowTest {
         restoration.setContent { DaylightTheme {
             EventWriteWorkflow(request, writer, store, listOf(calendar), true, {}, {}, {}, requestWritePermission = { true })
         } }
-        shown("Save"); readyTitle(); compose.onNodeWithText("Save").performScrollTo().performClick()
+        shown("Save"); readyTitle(); compose.onNodeWithText("Save").performClick()
         compose.waitUntil(15_000) { compose.waitForIdle(); writer.creates == 1 && store.records.isEmpty() }
         restoration.emulateSavedInstanceStateRestore()
         shown("This draft could not be opened."); compose.onNodeWithText("Save").assertDoesNotExist()
@@ -153,15 +164,15 @@ class EventWriteWorkflowTest {
                 onReplacedLaunch = { replacements++; raw = EventWriteRequest.fromLaunch(it, date, ZoneId.of("UTC")).encode() })
         } }
         shown("Save"); readyTitle()
-        compose.onNode(hasSetTextAction() and hasText("Title")).performScrollTo().performTextReplacement("Retained copied fields")
-        compose.onNodeWithText("Replace with a new draft").performScrollTo().performClick(); confirmDraftAction()
+        compose.onNode(hasSetTextAction() and hasContentDescription("Title")).performScrollTo().performTextReplacement("Retained copied fields")
+        compose.onNodeWithText("Start a new draft").performScrollTo().performClick(); confirmDraftAction()
         compose.waitUntil(15_000) { compose.waitForIdle(); replacements == 1 && route?.draftId != initial.draftId }
         val replaced = requireNotNull(route); assertNotEquals(initial.generation, replaced.generation)
         assertFalse(store.records.containsKey(initial.draftId)); assertEquals(1, store.records.size)
         restoration.emulateSavedInstanceStateRestore(); shown("Retained copied fields")
         assertEquals(replaced, route); assertEquals(1, replacements); assertEquals(0, writer.loads); assertEquals(0, writer.creates)
         assertEquals("", org.json.JSONObject(store.records.getValue(replaced.draftId).payload).getString("calendarId"))
-        compose.onNodeWithText("Save").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Save").assertIsNotEnabled()
     }
 
     @Test fun sourceUnavailableDraftCanBeDiscardedWithoutAProviderWriteOrAutomaticReplacement() = discardUnavailable(unbound = false)
@@ -180,10 +191,10 @@ class EventWriteWorkflowTest {
         val request = EventWriteRequest.fromLaunch(launch, date, ZoneId.of("UTC"))
         compose.setContent { DaylightTheme { EventWriteWorkflow(request, writer, store, listOf(calendar), true, { dismissed = true }, {}, {},
             requestWritePermission = { error("Discard must not prompt") }, onReplacedLaunch = { replacements++ }) } }
-        shown("Discard draft only")
+        shown("Discard draft")
         compose.onNodeWithText("Edit event").assertExists(); compose.onNodeWithText("New event").assertDoesNotExist()
-        if (unbound) { assertEquals(0, writer.loads); compose.onNodeWithText("Replace with a new draft").assertDoesNotExist() }
-        compose.onNodeWithText("Discard draft only").performScrollTo().performClick(); confirmDraftAction()
+        if (unbound) { assertEquals(0, writer.loads); compose.onNodeWithText("Start a new draft").assertDoesNotExist() }
+        compose.onNodeWithText("Discard draft").performScrollTo().performClick(); confirmDraftAction()
         compose.waitUntil(15_000) { compose.waitForIdle(); dismissed }
         assertTrue(store.records.isEmpty()); assertEquals(0, replacements); assertEquals(0, writer.creates); assertEquals(0, writer.recovered)
     }
@@ -199,16 +210,16 @@ class EventWriteWorkflowTest {
         }
         compose.setContent { DaylightTheme { EventWriteWorkflow(initial, writer, store, listOf(calendar), true, {}, {}, {}, retirement = port,
             requestWritePermission = { true }, onReplacedLaunch = { replacements++ }) } }
-        shown("Save"); readyTitle(); compose.onNodeWithText("Save").performScrollTo().performClick()
-        shown("The operation may have completed. Review it before creating or changing anything again.")
+        shown("Save"); readyTitle(); compose.onNodeWithText("Save").performClick()
+        shown("We could not confirm the result of this change. Check its result before trying again.")
         val frozen = store.records.getValue(initial.draftId)
-        compose.onNodeWithText("Replace with a new draft").performScrollTo().performClick(); confirmDraftAction()
-        shown("The journal does not match this exact original request. The draft is retained for review.")
+        compose.onNodeWithText("Start a new draft").performScrollTo().performClick(); confirmDraftAction()
+        shown("The original change could not be identified safely. Your draft is kept for review.")
         assertEquals(frozen, store.records.getValue(initial.draftId)); assertEquals(0, replacements); assertEquals(1, writer.creates)
         assertTrue(retired.single() is RetirableOperation.Create)
         assertEquals(writer.saved, (retired.single() as RetirableOperation.Create).draft)
         matching = true
-        compose.onNodeWithText("Replace with a new draft").performScrollTo().performClick(); confirmDraftAction()
+        compose.onNodeWithText("Start a new draft").performScrollTo().performClick(); confirmDraftAction()
         compose.waitUntil(15_000) { compose.waitForIdle(); replacements == 1 }
         assertEquals(retired[0], retired[1]); assertFalse(store.records.containsKey(initial.draftId)); assertEquals(1, store.records.size)
         assertEquals(1, writer.creates); assertEquals(0, writer.recovered)

@@ -12,6 +12,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import com.github.takahirom.roborazzi.captureRoboImage
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.data.calendar.CalendarReader
@@ -91,8 +93,17 @@ class GridEditorIntegrationTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(title).assertIsDisplayed()
         compose.waitUntil(10_000) {
-            compose.onAllNodes(hasSetTextAction() and hasText("Title") and isEnabled()).fetchSemanticsNodes().size == 1
+            compose.onAllNodes(hasSetTextAction() and hasContentDescription("Title") and isEnabled()).fetchSemanticsNodes().size == 1
         }
+    }
+    private fun chooseCalendar() {
+        val choose = hasText("Choose a calendar") and hasClickAction() and isEnabled()
+        compose.waitUntil(10_000) { compose.onAllNodes(choose).fetchSemanticsNodes().size == 1 }
+        compose.onNode(choose).performScrollTo().performClick()
+        val row = hasText(calendar.displayName) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
+        compose.waitUntil(10_000) { compose.onAllNodes(row and isEnabled()).fetchSemanticsNodes().size == 1 }
+        compose.onNode(row).performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(row).fetchSemanticsNodes().isEmpty() }
     }
     @Test fun nativeEmptySlotCreatesDurableTimedDraftAndWaitsForExplicitSave() {
         show()
@@ -106,8 +117,8 @@ class GridEditorIntegrationTest {
         assertEquals("11:00", raw.getString("startTime")); assertEquals("12:00", raw.getString("endTime"))
         assertEquals("", raw.getString("calendarId"))
         assertEquals(0, writes); assertEquals(0, reads)
-        compose.onNodeWithText("Fixture calendar · owner@example.invalid").performScrollTo().performClick()
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        chooseCalendar()
+        compose.onNodeWithText("Save").performClick()
         compose.waitUntil(10_000) { writes == 1 }
         assertEquals(1, writes)
     }
@@ -120,13 +131,11 @@ class GridEditorIntegrationTest {
         val raw = JSONObject(store.records.values.single().payload)
         assertEquals("10:00", raw.getString("startTime")); assertEquals("11:00", raw.getString("endTime"))
         assertEquals("Fixture notes", raw.getString("description"))
-        // Expand the sheet before checking fields below its initial half-height viewport.
-        compose.onNode(isDialog()).performTouchInput { swipe(Offset(center.x, 455f), Offset(center.x, 80f), 300) }
-        compose.waitForIdle()
-        compose.onNode(hasSetTextAction() and hasText("11:00")).performScrollTo().assertIsDisplayed()
+        // Phone time rows expose their complete value; editing opens the guarded picker.
+        compose.onNodeWithContentDescription("Ends: 11:00").performScrollTo().assertIsDisplayed()
         compose.waitForIdle()
         compose.onNode(isDialog()).captureRoboImage("src/test/screenshots/grid_editor_move.png")
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performClick()
         compose.waitUntil(10_000) { writes == 1 }
         assertEquals(1, writes)
     }
@@ -199,7 +208,7 @@ class GridEditorIntegrationTest {
         show()
         val node = compose.onNodeWithText("Fixture meeting")
         hold(node); drop(node, Offset(0f, 64f))
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Replace with a new draft").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Start a new draft").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Edit event").assertExists()
         assertTrue(reads >= 3)
         val raw = JSONObject(store.records.values.single().payload)
