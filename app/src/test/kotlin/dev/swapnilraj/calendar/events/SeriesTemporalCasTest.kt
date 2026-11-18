@@ -99,4 +99,27 @@ class SeriesTemporalCasTest {
         assertEquals(SeriesDraftPreparationResult.Unavailable, prepareSeriesDraft(unknown, RecurrenceScope.ALL, SeriesEditorAction.EDIT, "series", f.store))
         assertTrue(f.calls.isEmpty())
     }
+    @Test fun discardReviewCannotAdoptReplacementUidFromLiveConstructorSource() = runBlocking {
+        val editor = editor(); editor.change { it.copy(title = "Keep original A raw fields") }; editor.flushDraft()
+        val original = f.store.records.getValue("series")
+        val replacement = source.copy(selectedDetails = source.selectedDetails.copy(calendar = source.selectedDetails.calendar!!.copy(providerId = "replacement-namespace")))
+        f.readResult = SeriesReadResult.Ready(replacement)
+        val restored = f.controller(editor.launch, replacement)
+        assertTrue(restored.state.reviewRequired)
+        assertTrue(restored.discardAndReload() is SeriesReadResult.NeedsReview)
+        assertEquals(original, f.store.records.getValue("series")); assertEquals("Keep original A raw fields", restored.state.fields.title)
+        assertTrue(f.calls.isEmpty()); assertEquals(0, f.store.legacyCalls)
+    }
+    @Test fun legacyDraftWithoutPersistedNamespaceCannotAutoReviewOrRebind() = runBlocking {
+        val editor = editor(); editor.change { it.copy(title = "Legacy retained A raw fields") }; editor.flushDraft()
+        val old = legacySeriesRecord(f.store.records.getValue("series")); f.store.records[old.id] = old
+        val replacement = source.copy(selectedDetails = source.selectedDetails.copy(calendar = source.selectedDetails.calendar!!.copy(providerId = "replacement-namespace")))
+        f.readResult = SeriesReadResult.Ready(replacement)
+        val restored = f.controller(SeriesDraftCodec.describe(old)!!, replacement)
+        assertTrue(restored.state.reviewRequired); assertFalse(restored.canReviewDraft)
+        assertNull(restored.discardAndReload()); assertEquals(0, f.reads)
+        assertEquals(old, f.store.records.getValue("series")); assertEquals("Legacy retained A raw fields", restored.state.fields.title)
+        assertTrue(f.calls.isEmpty()); assertEquals(0, f.store.legacyCalls)
+    }
+
 }

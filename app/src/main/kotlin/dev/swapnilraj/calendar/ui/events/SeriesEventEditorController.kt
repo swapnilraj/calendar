@@ -53,7 +53,7 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
     val canChangeTime: Boolean get() = canChange && temporalPresented
     val canChangeZone: Boolean get() = canChangeTime && EditableField.ZONE in fieldsAllowed
     val canReviewDraft: Boolean get() = !retired && !state.reviewing && !state.saving && state.reviewRequired &&
-        document?.frozen == null && !recoveryOnly && !state.draftReadFailed
+        document?.frozen == null && document?.context?.calendar != null && !recoveryOnly && !state.draftReadFailed
     val canChange: Boolean get() = launch.action == SeriesEditorAction.EDIT && !locked()
     val hasChanges: Boolean get() = document?.let { doc -> try { val command = seriesCommand(doc.copy(fields = state.fields)); when (command) {
         is SeriesCommand.WholeEdit -> command.intent.fields != EventPatch() || command.intent.newMasterStart != FieldChange.Keep || command.intent.duration != RecurrenceDurationChange.KeepRaw || command.intent.rule != RecurrenceRuleChanges()
@@ -305,6 +305,13 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
             val latest = reloadForReview()
             if (latest !is SeriesReadResult.Ready) return latest
             if (latest.series.selectedDetails.occurrence.ref != launch.selected || latest.series.snapshot.validatedSelection != launch.selected) return SeriesReadResult.Unavailable
+            // The live constructor source may already be a reused ID in another account. Only
+            // the ORIGINAL durable namespace can authorize continuing this draft's review flow.
+            val original = document?.context?.calendar ?: return null
+            if (latest.series.selectedDetails.calendar?.identity != original || latest.series.snapshot.identity != document?.identity) {
+                state = state.copy(problem = SeriesEditorProblem.SOURCE_CHANGED)
+                return SeriesReadResult.NeedsReview("The original source namespace is no longer available")
+            }
             val expected = expectedRecord ?: return null
             if (!removeExact(expected)) { state = state.copy(problem = SeriesEditorProblem.DRAFT_UNAVAILABLE); return null }
             retired = true
