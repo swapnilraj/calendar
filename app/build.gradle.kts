@@ -16,6 +16,11 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        // SDK-only LOCAL provider experiments are explicit test builds, never release entry points.
+        if (providers.gradleProperty("daylight.providerProbe").orNull == "true") {
+            testApplicationId = "dev.swapnilraj.calendar.providerprobe"
+            testInstrumentationRunner = "dev.swapnilraj.calendar.probe.NativeCalendarProviderProbe"
+        }
     }
 
     compileOptions {
