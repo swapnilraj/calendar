@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Text
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -13,6 +14,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import dev.swapnilraj.calendar.R
 
@@ -34,8 +36,8 @@ internal fun CalendarDrawerViews(availableViews: List<CalendarViewOption>, curre
                     CalendarViewOption.THREE_DAY -> R.string.calendars_view_three_day
                     CalendarViewOption.WEEK -> R.string.calendars_view_week
                     CalendarViewOption.MONTH -> R.string.calendars_view_month
-                })) },
-                icon = { CalendarViewIcon(view) },
+                }), style = LocalTextStyle.current.copy(textDirection = TextDirection.Content)) },
+                icon = { CalendarViewIcon(view, currentView == view) },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 12.dp)
                     .testTag("calendar_drawer_view_${view.name}"),
             )
@@ -45,8 +47,8 @@ internal fun CalendarDrawerViews(availableViews: List<CalendarViewOption>, curre
 
 /** Original geometric glyphs; the text label supplies the accessible name. */
 @Composable
-private fun CalendarViewIcon(view: CalendarViewOption) {
-    val color = MaterialTheme.colorScheme.onSurfaceVariant
+private fun CalendarViewIcon(view: CalendarViewOption, selected: Boolean) {
+    val color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     Canvas(Modifier.size(22.dp)) {
         val left = 2.dp.toPx()
         val top = 3.dp.toPx()
