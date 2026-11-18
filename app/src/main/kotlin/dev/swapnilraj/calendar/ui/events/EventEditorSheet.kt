@@ -285,7 +285,7 @@ private fun problemResource(problem: EditorProblem) = when (problem) {
     EditorProblem.DRAFT_VERSION -> R.string.events_editor_draft_version
     EditorProblem.SAFE_TO_RETRY -> R.string.events_editor_safe_retry
     EditorProblem.RETRY_UNAVAILABLE -> R.string.events_editor_retry_unavailable
-    EditorProblem.VISIBILITY_REQUIRED -> R.string.events_copy_visibility_review
+    EditorProblem.VISIBILITY_REQUIRED -> R.string.events_copy_visibility_required
 }
 
 @Composable
@@ -312,4 +312,6 @@ private fun noticeResource(notice: EditorNotice) = when (notice) {
     EditorNotice.REMINDERS_NOT_COPIED -> R.string.events_copy_other_reminders
     EditorNotice.VISIBILITY_REVIEW_REQUIRED -> R.string.events_copy_visibility_review
     EditorNotice.AVAILABILITY_REVIEW -> R.string.events_copy_availability_review
+    EditorNotice.CALENDAR_VISIBILITY_REVIEW_REQUIRED -> R.string.events_copy_calendar_visibility_review
+    EditorNotice.VISIBILITY_RECOVERY_ONLY -> R.string.events_copy_visibility_recovery_only
 }
