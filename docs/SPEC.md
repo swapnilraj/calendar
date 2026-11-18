@@ -258,6 +258,16 @@ restrictions. Provide pending-invitation filtering and conflicts against the use
 these are not coworker availability. Do not offer unverified suppression of attendee updates. Verify
 invitation/RSVP/reschedule/recurrence-change/cancellation effects in the second account.
 
+The shared meeting port reuses persisted edit tokens and the global operation journal with distinct
+feature kinds. Guest changes are explicit add/type/remove deltas through opaque source/scope-bound
+selectors, never wholesale replacement or caller-supplied responses. Backend-issued rights default
+unknown; ordinary guest-free writers remain separate. THIS affects its occurrence. ALL RSVP updates
+only self responses on the master and active exceptions; ALL guest changes require complete,
+unambiguous mapping and preserve other guests, responses and overrides. Unsupported scopes refuse
+before dispatch. Organizer cancellation and attendee decline are distinct commands. Dedicated durable
+meeting drafts freeze the exact command before submission; recovery is read-only. Local outcomes do
+not establish invitation delivery. The interface is a dependency contract, not enabled meeting writes.
+
 ### M8 — Search, preferences and Android entry points
 
 Search title/location/description with cancellation/debounce and calendar filters. Default range is
