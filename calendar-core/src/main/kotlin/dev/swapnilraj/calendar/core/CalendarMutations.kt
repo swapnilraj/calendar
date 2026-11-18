@@ -12,6 +12,9 @@ data class EventDraft(
     val location: String = "",
     val description: String = "",
     val alertMinutes: List<Int> = emptyList(),
+    /** Optional provider metadata. Null omits a new-event override; unknown existing values survive Keep. */
+    val availability: Int? = null,
+    val privacy: Int? = null,
 )
 
 sealed interface FieldChange<out T> {
@@ -27,15 +30,17 @@ data class EventPatch(
     val location: FieldChange<String> = FieldChange.Keep,
     val description: FieldChange<String> = FieldChange.Keep,
     val alertMinutes: FieldChange<List<Int>> = FieldChange.Keep,
+    val availability: FieldChange<Int?> = FieldChange.Keep,
+    val privacy: FieldChange<Int?> = FieldChange.Keep,
 )
 
-enum class EditableField { TITLE, TIME, ZONE, LOCATION, DESCRIPTION, ALERTS }
+enum class EditableField { TITLE, TIME, ZONE, LOCATION, DESCRIPTION, ALERTS, AVAILABILITY, PRIVACY }
 
 /** Opaque repository-issued token bound to a private persisted source snapshot, not a provider revision. */
 data class EditToken(val value: String)
 data class EditableEvent(val details: EventDetails, val token: EditToken, val allowedFields: Set<EditableField>)
 enum class MutationDenial { CALENDAR_READ_ONLY, OWNERSHIP_UNKNOWN, INVITATION, RECURRENCE, UNSUPPORTED_EVENT }
-enum class InvalidEventField { CALENDAR, TIME, ZONE, ALERTS }
+enum class InvalidEventField { CALENDAR, TIME, ZONE, ALERTS, AVAILABILITY, PRIVACY }
 
 sealed interface EditReadResult {
     data class Ready(val event: EditableEvent) : EditReadResult
