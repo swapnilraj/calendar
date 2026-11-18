@@ -9,6 +9,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.platform.testTag
+import dev.swapnilraj.calendar.ui.grid.*
 import dev.swapnilraj.calendar.data.CalEvent
 import java.time.*
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -20,7 +25,8 @@ fun DayPage(date: LocalDate, events: List<CalEvent>, now: ZonedDateTime, zone: Z
     onScroll: (Int) -> Unit, onHourHeight: (Float) -> Unit, onZoomFinished: (Float) -> Unit,
     onEventClick: (CalEvent) -> Unit,
     summary: @Composable RowScope.() -> Unit = {},
-    background: @Composable BoxScope.() -> Unit = {}) {
+    background: @Composable BoxScope.() -> Unit = {},
+    interactions: TimedGridInteractions? = null) {
     val scroll = rememberScrollState(maxOf(0, sharedScroll))
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
@@ -30,12 +36,25 @@ fun DayPage(date: LocalDate, events: List<CalEvent>, now: ZonedDateTime, zone: Z
     val latestActive by rememberUpdatedState(active)
     val latestOnScroll by rememberUpdatedState(onScroll)
     var positioned by remember { mutableStateOf(false) }
+    var viewportBounds by remember { mutableStateOf(Rect.Zero) }
+    var preview by remember { mutableStateOf<TimedGridPreview?>(null) }
+    var cancelSignal by remember { mutableLongStateOf(0) }
+    val effective = interactions?.takeIf { active }?.let { config ->
+        val editable = events.any { config.eligible(it) }
+        when {
+            !editable && !config.creationEnabled -> null
+            !editable -> config.copy(onEdit = null, onBeginEdit = null, onOpenEditor = null)
+            else -> config
+        }
+    }
+    LaunchedEffect(effective?.contextKey, events, active) { preview = null }
     LaunchedEffect(scroll) {
         snapshotFlow { scroll.value }.distinctUntilChanged().collect { if (latestActive && positioned) latestOnScroll(it) }
     }
     Column(Modifier.fillMaxSize()) {
         DayHeader(date, now.withZoneSameInstant(zone).toLocalDate(), events.filter { it.allDay }, zone, use24Hour, onEventClick, summary, dayEvents = events)
         HorizontalDivider(thickness = 0.5.dp)
+        if (effective != null) TimedGridFeedback(date, zone, use24Hour, effective, preview) { cancelSignal++; preview = null }
         BoxWithConstraints(Modifier.weight(1f)) {
             val viewport = with(density) { maxHeight.toPx() }
             LaunchedEffect(active, sharedScroll < 0, density.density) {
@@ -51,7 +70,7 @@ fun DayPage(date: LocalDate, events: List<CalEvent>, now: ZonedDateTime, zone: Z
             LaunchedEffect(sharedScroll, active) {
                 if (!active && sharedScroll >= 0) scroll.scrollTo(sharedScroll)
             }
-            Box(Modifier.fillMaxSize().clipScrollableContainer(Orientation.Vertical)
+            Box(Modifier.fillMaxSize().onGloballyPositioned { viewportBounds = it.boundsInRoot() }.then(if (effective != null) Modifier.testTag("timed_grid_viewport_$date") else Modifier).clipScrollableContainer(Orientation.Vertical)
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
@@ -83,7 +102,9 @@ fun DayPage(date: LocalDate, events: List<CalEvent>, now: ZonedDateTime, zone: Z
                         if (zoomed) latestOnFinish(gestureHeight)
                     }
                 }.verticalScroll(scroll)) {
-                DayGrid(date, events, hourHeight, now, zone, use24Hour, onEventClick, background = background)
+                DayGrid(date, events, hourHeight, now, zone, use24Hour, onEventClick, background = background,
+                    interactions = effective, viewport = if (effective != null) TimedGridViewport(viewportBounds, { scroll.value }, { scroll.scrollBy(it) }) else null,
+                    onPreviewChanged = { preview = it }, cancelSignal = cancelSignal)
             }
         }
     }

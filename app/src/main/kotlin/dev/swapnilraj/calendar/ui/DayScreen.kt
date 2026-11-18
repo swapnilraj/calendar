@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.swapnilraj.calendar.data.*
+import dev.swapnilraj.calendar.ui.grid.TimedGridInteractions
 import java.time.*
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -49,7 +50,8 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
     leadingActions: @Composable RowScope.() -> Unit = {},
     compactTitle: Boolean = false,
     onScrollMinuteChanged: (Double) -> Unit = {},
-    onChooseCalendars: (() -> Unit)? = null) {
+    onChooseCalendars: (() -> Unit)? = null,
+    interactions: TimedGridInteractions? = null) {
     val zone = now.zone
     val anchorText = rememberSaveable { initialDate.toString() }
     val anchor = LocalDate.parse(anchorText)
@@ -123,7 +125,8 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
                         onScrollMinuteChanged(sharedMinute)
                     }, onHourHeight = { height = it },
                     onZoomFinished = onSaveHourHeight, onEventClick,
-                    summary = { summary(date) }, background = { background(date) })
+                    summary = { summary(date) }, background = { background(date) },
+                    interactions = interactions?.takeIf { state is CalendarState.Ready && page == pager.currentPage })
             }
         }
     }
