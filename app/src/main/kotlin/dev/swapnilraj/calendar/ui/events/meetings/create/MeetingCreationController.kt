@@ -125,7 +125,7 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
             require(it.none { guest -> guest.email.equals(authority.identity.account.name, true) || guest.email.equals(authority.identity.owner, true) })
         } } catch (_: Exception) { state = state.copy(problem = MeetingCreationProblem.INVALID_GUEST); return@exclusive }
         if (!permission()) { state = state.copy(problem = MeetingCreationProblem.PERMISSION); return@exclusive }
-        val frozen = FrozenMeetingCreation(doc.operationId, authority.token, draft, guests)
+        val frozen = FrozenMeetingCreation(doc.operationId, authority.token, draft, guests, MeetingCreationDraftCodec.fingerprint(doc.fields))
         if (!replace(doc.copy(frozen = frozen))) return@exclusive
         dispatch(frozen)
     }

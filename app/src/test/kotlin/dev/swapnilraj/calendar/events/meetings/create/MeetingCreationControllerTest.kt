@@ -114,6 +114,61 @@ class MeetingCreationControllerTest {
         f.recovery=MeetingMutationResult.Common(MutationResult.SafeToRetry(frozen.operationId)); c.recover(); assertTrue(c.state.retryReady); assertEquals(1,f.calls.size)
         c.retryOriginal(); assertEquals(f.calls.first(),f.calls.last()); assertEquals(2,f.calls.size)
     }
+    @Test fun historicalFrozenRawThatCurrentParsersRejectStillRecoversAndRetriesOriginalWithoutSourceReads() = runBlocking {
+        val f=Fixture(); f.ready().save(); val original=MeetingCreationDraftCodec.decode(f.record())
+        val legacy=original.fields.copy(event=original.fields.event.copy(startDate="15/06/2028",startTime="9 am",zone="historical display zone"),
+            guests=original.fields.guests.map { it.copy(email=" legacy representation ",type="OLD_REQUIRED") })
+        assertTrue(runCatching { EventEditorController.normalizedDraft(legacy.event) }.isFailure)
+        assertTrue(runCatching { typedGuests(legacy.guests,original.authority!!.allowedTypes) }.isFailure)
+        val persisted=MeetingCreationDraftCodec.record(original.copy(fields=legacy,frozen=original.frozen!!.copy(rawFingerprint=MeetingCreationDraftCodec.fingerprint(legacy))),f.clock.instant())
+        f.store.rows["draft"]=persisted; val reads=f.reads; val c=f.controller(MeetingCreationDraftCodec.describe(persisted)!!)
+        c.load(); assertEquals(legacy,c.state.fields); assertEquals(reads,f.reads); assertEquals(persisted,f.record())
+        f.recovery=MeetingMutationResult.Common(MutationResult.SafeToRetry(original.operationId)); c.recover(); assertTrue(c.state.retryReady)
+        assertEquals(persisted,f.record()); assertEquals(reads,f.reads); c.retryOriginal()
+        assertEquals(f.calls.first(),f.calls.last()); assertEquals(persisted,f.record()); assertEquals(reads,f.reads)
+    }
+    @Test fun frozenRawHashMissingVersionAndTamperRemainExactReviewOnly() = runBlocking {
+        for (kind in 0..4) {
+            val f=Fixture(); f.ready().save(); val old=f.record(); val launch=f.launch(); val json=JSONObject(old.payload)
+            when(kind) {
+                0 -> json.getJSONObject("event").put("title","tampered")
+                1 -> json.getJSONArray("guests").getJSONObject(0).put("email","changed@example.test")
+                2 -> json.getJSONObject("frozen").put("rawFingerprint","0".repeat(64))
+                3 -> json.getJSONObject("frozen").remove("rawFingerprint")
+                4 -> json.getJSONObject("frozen").put("fingerprintSchema",2)
+            }
+            val bad=old.copy(payload=json.toString()); f.store.rows["draft"]=bad; val reads=f.reads
+            assertNull(MeetingCreationDraftCodec.describe(bad)); val c=f.controller(launch); c.load()
+            assertEquals(MeetingCreationProblem.DRAFT_REVIEW,c.state.problem); c.recover(); c.retryOriginal(); c.requestDiscard(); c.confirmDiscard()
+            assertEquals(bad,f.record()); assertEquals(reads,f.reads); assertEquals(1,f.calls.size)
+        }
+    }
+    @Test fun frozenTypedIdentityTokenAndPositiveBoundsAreCheckedWithoutRecompilingRaw() = runBlocking {
+        for (kind in 0..4) {
+            val f=Fixture(); f.ready().save(); val old=f.record(); val launch=f.launch(); val json=JSONObject(old.payload); val frozen=json.getJSONObject("frozen")
+            when(kind) {
+                0 -> frozen.put("operationId",java.util.UUID.randomUUID().toString())
+                1 -> frozen.put("token","foreign-token")
+                2 -> frozen.getJSONObject("draft").getJSONObject("targetIdentity").put("providerId","UID-B")
+                3 -> frozen.getJSONObject("draft").put("calendar",3)
+                4 -> frozen.getJSONObject("draft").getJSONObject("time").put("end",f.start.toString())
+            }
+            val bad=old.copy(payload=json.toString()); f.store.rows["draft"]=bad; val reads=f.reads
+            val c=f.controller(launch); c.load(); c.recover(); assertEquals(MeetingCreationProblem.DRAFT_REVIEW,c.state.problem)
+            assertEquals(bad,f.record()); assertEquals(reads,f.reads); assertEquals(1,f.calls.size)
+        }
+    }
+    @Test fun rawFingerprintIsIndependentOfJsonObjectOrderAndCoversEveryRawPart() = runBlocking {
+        val f=Fixture(); val c=f.ready(); c.save(); val record=f.record(); val original=MeetingCreationDraftCodec.decode(record)
+        val json=JSONObject(record.payload); val event=json.getJSONObject("event"); val reordered=JSONObject()
+        event.keys().asSequence().toList().reversed().forEach { reordered.put(it,event.get(it)) }; json.put("event",reordered)
+        assertEquals(original,MeetingCreationDraftCodec.decode(record.copy(payload=json.toString())))
+        val before=original.frozen!!.rawFingerprint
+        assertNotEquals(MeetingCreationDraftCodec.fingerprint(original.fields.copy(event=original.fields.event.copy(title="\uD800"))),
+            MeetingCreationDraftCodec.fingerprint(original.fields.copy(event=original.fields.event.copy(title="?"))))
+        assertNotEquals(before,MeetingCreationDraftCodec.fingerprint(original.fields.copy(event=original.fields.event.copy(recurrence=RecurrenceEditorFields(count="unparsed")))))
+        assertNotEquals(before,MeetingCreationDraftCodec.fingerprint(original.fields.copy(guests=original.fields.guests.map { it.copy(rowId=java.util.UUID.randomUUID().toString()) })))
+    }
     @Test fun unknownRecoveryAndDefiniteErrorsNeverInventRetryOrFreshOperation() = runBlocking {
         val f=Fixture(); f.ready().save(); val c=f.controller(f.launch()); c.load(); val exact=f.record()
         for (result in listOf(MeetingMutationResult.Common(MutationResult.Unavailable),MeetingMutationResult.Common(MutationResult.PermissionRequired),MeetingMutationResult.NeedsReview("private backend detail"),MeetingMutationResult.Invalid("raw reason"))) {

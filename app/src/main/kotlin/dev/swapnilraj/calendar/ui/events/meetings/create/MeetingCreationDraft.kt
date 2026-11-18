@@ -38,7 +38,7 @@ internal fun validIdentity(value: CalendarIdentity) = value.account.name.isNotBl
 internal data class MeetingCreationAuthority(val identity: CalendarIdentity, val token: EditToken,
     val allowedTypes: Set<MeetingGuestType>)
 internal data class FrozenMeetingCreation(val operationId: String, val token: EditToken,
-    val draft: EventDraft, val guests: List<MeetingGuestInput>) {
+    val draft: EventDraft, val guests: List<MeetingGuestInput>, val rawFingerprint: String) {
     fun retirement() = RetirableOperation.MeetingCreate(operationId, token, draft, guests)
 }
 internal data class MeetingCreationDocument(val id: String, val generation: String, val revision: String,
@@ -59,6 +59,7 @@ object MeetingCreationDraftCodec {
         put("authority", d.authority?.let { JSONObject().put("identity", CalendarIdentityJson.encode(it.identity)).put("token", it.token.value)
             .put("allowedTypes", JSONArray(it.allowedTypes.map { type -> type.name }.sorted())) } ?: JSONObject.NULL)
         put("frozen", d.frozen?.let { JSONObject().put("schema", 1).put("operationId", it.operationId).put("token", it.token.value)
+            .put("fingerprintSchema", 1).put("rawFingerprint", it.rawFingerprint)
             .put("draft", draft(it.draft)).put("guests", JSONArray(it.guests.map { guest -> JSONObject().put("email", guest.email)
                 .put("name", guest.name ?: JSONObject.NULL).put("type", guest.type.name) })) } ?: JSONObject.NULL)
     }.toString(), at)
@@ -81,10 +82,10 @@ object MeetingCreationDraftCodec {
             MeetingCreationAuthority(identity, EditToken(text(it,"token").also { token -> require(token.isNotBlank()) }), types.toSet())
         }
         val frozen = if (p.isNull("frozen")) null else p.getJSONObject("frozen").let {
-            keys(it,"schema","operationId","token","draft","guests"); require(it.get("schema") == 1)
+            keys(it,"schema","operationId","token","draft","guests","fingerprintSchema","rawFingerprint"); require(it.get("schema") == 1 && it.get("fingerprintSchema") == 1)
             FrozenMeetingCreation(text(it,"operationId"), EditToken(text(it,"token")), draft(it.getJSONObject("draft")),
                 it.getJSONArray("guests").objects().map { guest -> keys(guest,"email","name","type")
-                    MeetingGuestInput(text(guest,"email"), MeetingGuestType.valueOf(text(guest,"type")), if (guest.isNull("name")) null else text(guest,"name")) })
+                    MeetingGuestInput(text(guest,"email"), MeetingGuestType.valueOf(text(guest,"type")), if (guest.isNull("name")) null else text(guest,"name")) }, text(it,"rawFingerprint"))
         }
         require(p.get("policyAccepted") is Boolean)
         val accepted = p.getBoolean("policyAccepted")
@@ -92,10 +93,31 @@ object MeetingCreationDraftCodec {
             require(authority != null && accepted && it.operationId == operationId && it.token == authority.token && it.draft.targetIdentity == authority.identity)
             require(it.draft.calendarId == authority.identity.calendarId && it.draft.recurrence == null && it.guests.isNotEmpty())
             require(it.guests.all { guest -> guest.type in authority.allowedTypes })
-            require(it.draft == EventEditorController.normalizedDraft(fields.event))
-            require(it.guests == typedGuests(fields.guests, authority.allowedTypes))
+            require(it.draft.time.let { time -> time !is EventTime.Timed || time.end > time.start })
+            // Mutable form parsers and current policy never reconstruct an already authorized request.
+            require(it.rawFingerprint.matches(Regex("[0-9a-f]{64}")) && it.rawFingerprint == fingerprint(fields))
         }
         return MeetingCreationDocument(record.id, generation, revision, fields, operationId, authority, accepted, frozen)
+    }
+    /** Schema 1: sorted object keys, ordered arrays, typed length-delimited values, UTF-16 string code-unit hex, then UTF-8 SHA-256.
+     * This is raw-data integrity, not a replacement for backend-issued authority or a journal signature.
+     * Its representation is frozen independently of mutable date/guest parsing and JSON key order.
+     */
+    internal fun fingerprint(fields: MeetingCreationFields): String {
+        val data = JSONObject().put("event", raw(fields.event)).put("guests", JSONArray(fields.guests.map {
+            JSONObject().put("id",it.rowId).put("email",it.email).put("name",it.name).put("type",it.type)
+        }))
+        fun canonical(value: Any?): String = when (value) {
+            null, JSONObject.NULL -> "N;"
+            is String -> "S${value.length}:" + value.map { it.code.toString(16).padStart(4,'0') }.joinToString("")
+            is Boolean -> if (value) "T;" else "F;"
+            is Number -> "I${value};"
+            is JSONArray -> "A${value.length()}:" + (0 until value.length()).joinToString("") { canonical(value.get(it)) }
+            is JSONObject -> "O${value.length()}:" + value.keys().asSequence().toList().sorted().joinToString("") { canonical(it) + canonical(value.get(it)) }
+            else -> error("Unknown raw fingerprint value")
+        }
+        return java.security.MessageDigest.getInstance("SHA-256").digest(canonical(data).toByteArray(Charsets.UTF_8))
+            .joinToString("") { (it.toInt() and 255).toString(16).padStart(2,'0') }
     }
     private val rawText = setOf("calendarId","title","startDate","endDate","startTime","endTime","zone","location","description","alerts","startOffset","endOffset","availability","privacy","defaultVisibilityCalendar")
     private fun raw(f: EventEditorFields) = JSONObject().apply {
