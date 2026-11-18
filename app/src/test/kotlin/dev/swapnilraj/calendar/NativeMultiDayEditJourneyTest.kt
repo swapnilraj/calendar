@@ -4,6 +4,7 @@ import android.Manifest
 import android.provider.CalendarContract
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import dev.swapnilraj.calendar.core.*
@@ -12,6 +13,7 @@ import dev.swapnilraj.calendar.ui.settings.*
 import dev.swapnilraj.calendar.ui.calendars.CalendarViewOption
 import java.time.*
 import java.time.temporal.TemporalAdjusters
+import kotlin.math.abs
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -63,7 +65,7 @@ class NativeMultiDayEditJourneyTest {
         val retained = runBlocking { f.app.calendarLocalStore.list() }.single()
         f.provider.setCalendar("_sync_id", "replacement-calendar-B")
         compose.runOnUiThread { f.activity.recreate() }
-        shown("Replace with a new draft")
+        shown("Start a new draft")
         compose.onNodeWithText("Edit event").assertExists(); compose.onNodeWithText("New event").assertDoesNotExist()
         compose.onNodeWithText("Save").assertIsNotEnabled()
         compose.onNodeWithText("Delete event").assertDoesNotExist()
@@ -76,20 +78,35 @@ class NativeMultiDayEditJourneyTest {
 
     private fun gesture(f: Fixture, resize: Boolean) {
         shown(title)
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeByFrame()
+        compose.waitForIdle()
         val columns = compose.onNodeWithTag("multiday_columns")
         columns.performSemanticsAction(SemanticsActions.ScrollBy) { it(-10000f, 0f) }
+        compose.waitForIdle()
         val node = compose.onNodeWithText(title)
         val viewport = compose.onNodeWithTag("multiday_time_scroll")
-        val initial = node.fetchSemanticsNode().boundsInRoot
-        val body = viewport.fetchSemanticsNode().boundsInRoot
-        viewport.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, initial.top - body.top - 64f) }
+        // Use the public scroll position, never an off-screen event's clipped/empty rectangle.
+        // The fixture pins 64px/hour: put 09:00 one hour below the viewport's top edge.
+        val hourPixels = 64f
+        val targetScroll = 9 * hourPixels - hourPixels
+        fun scrollValue() = viewport.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+        compose.waitUntil(15_000) {
+            viewport.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].maxValue() >= targetScroll
+        }
+        val scrollDelta = targetScroll - scrollValue()
+        viewport.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, scrollDelta) }
+        compose.waitUntil(15_000) { abs(scrollValue() - targetScroll) <= 1f }
+        compose.waitForIdle()
         node.assertIsDisplayed()
+        val body = viewport.fetchSemanticsNode().boundsInRoot
         val bounds = node.fetchSemanticsNode().boundsInRoot
+        assertTrue("The entire 09:00 event must be visible before choosing move versus resize: event=$bounds viewport=$body scroll=${scrollValue()}",
+            bounds.top >= body.top && bounds.bottom <= body.bottom && bounds.height >= hourPixels - 1f)
         val target = compose.onNodeWithTag("multiday_grid_${f.date.plusDays(1)}").fetchSemanticsNode().boundsInRoot
         // Fixture pins 64dp/hour and mdpi; semantics day bounds are viewport-clipped.
-        val hourPixels = 64f
         compose.mainClock.autoAdvance = false
-        node.performTouchInput { down(if (resize) Offset(bounds.width / 2, bounds.height - 3) else center) }
+        node.performTouchInput { down(if (resize) Offset(bounds.width / 2, bounds.height - 3) else Offset(bounds.width / 2, bounds.height / 4)) }
         compose.mainClock.advanceTimeBy(700)
         compose.waitUntil(15_000) {
             compose.mainClock.advanceTimeBy(16)
@@ -114,7 +131,7 @@ class NativeMultiDayEditJourneyTest {
         assertEquals(0, f.provider.batchCount)
     }
     private fun save(f: Fixture) {
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performClick()
         compose.waitUntil(15_000) {
             compose.waitForIdle()
             f.app.calendarLocalStore.readableDatabase.rawQuery("SELECT COUNT(*) FROM mutation_journal WHERE phase='VERIFIED'", null).use {

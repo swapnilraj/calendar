@@ -10,6 +10,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import dev.swapnilraj.calendar.ui.DaylightContent
 import dev.swapnilraj.calendar.ui.WidgetCalendarNavigation
+import dev.swapnilraj.calendar.ui.CalendarDateNavigation
+import dev.swapnilraj.calendar.ui.CalendarDateIntents
 import dev.swapnilraj.calendar.android.widgets.*
 import androidx.compose.runtime.*
 import androidx.lifecycle.lifecycleScope
@@ -18,6 +20,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private var calendarDateNavigation by mutableStateOf<CalendarDateNavigation?>(null)
+    private var handledCalendarDate: String? = null
+    private fun acceptCalendarDate(intent: Intent?) { calendarDateNavigation = CalendarDateIntents.decode(this, intent)?.takeIf { it.id != handledCalendarDate } }
+    private fun consumeCalendarDate(id: String) { handledCalendarDate = id; if (calendarDateNavigation?.id == id) calendarDateNavigation = null }
     private var widgetNavigation by mutableStateOf<WidgetCalendarNavigation?>(null)
     private var widgetRoute: AgendaWidgetRoute? = null
     private var widgetNonce: String? = null
@@ -34,8 +40,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handledCalendarDate = savedInstanceState?.getString("calendar_date_handled")
+        acceptCalendarDate(intent)
         setContent {
-            DaylightContent(application as CalendarApp, widgetNavigation, ::consumeWidgetNavigation)
+            DaylightContent(application as CalendarApp, widgetNavigation, ::consumeWidgetNavigation, calendarDateNavigation, ::consumeCalendarDate)
         }
         acceptWidgetIntent(intent, savedInstanceState?.getString(WIDGET_NONCE), savedInstanceState?.getBoolean(WIDGET_HANDLED) ?: false)
     }
@@ -43,9 +51,11 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         acceptWidgetIntent(intent)
+        acceptCalendarDate(intent)
         resolveWidgetRoute()
     }
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("calendar_date_handled", handledCalendarDate)
         outState.putString(WIDGET_NONCE, widgetNonce)
         outState.putBoolean(WIDGET_HANDLED, widgetHandled)
         super.onSaveInstanceState(outState)

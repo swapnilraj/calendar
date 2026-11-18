@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.*
+import dev.swapnilraj.calendar.android.navigation.isCalendarSeedNativeHandoffVerified
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -112,7 +113,13 @@ internal fun EventWriteWorkflow(
     val stored by produceState<StoredEditor>(StoredEditor.Loading, request, drafts, retry) {
         value = StoredEditor.Loading
         value = try {
-            val document = withContext(Dispatchers.IO) { drafts.load(request.draftId)?.let { OrdinaryDraftDocument.decode(it) } }
+            val document = withContext(Dispatchers.IO) {
+                drafts.load(request.draftId)?.let { record ->
+                    if (record.id.startsWith("incoming:")) require(isCalendarSeedNativeHandoffVerified(record,
+                        drafts.load("incoming-review:${record.id.removePrefix("incoming:")}")))
+                    OrdinaryDraftDocument.decode(record)
+                }
+            }
             val launch = document?.launch
             if (launch != null && request.matches(launch))
                 StoredEditor.Ready(launch, requireNotNull(document).sourceIdentity)
@@ -172,7 +179,7 @@ internal fun EventWriteWorkflow(
         if (!state.loading && state.problem == null && !state.recoveryRequired && !state.reviewRequired && !state.draftReadFailed && request.delete)
             controller.requestDelete()
     }
-    EventEditorSheet(controller, calendars, onDismiss, onSaved, onDeleted,
+    PhoneEventEditor(controller, calendars, onDismiss, onSaved, onDeleted,
         use24Hour = use24Hour,
         onReplacedLaunch = if (onReplacedLaunch != null) ({ value -> latestReplacement?.invoke(value) }) else null,
         onDiscarded = onDismiss)

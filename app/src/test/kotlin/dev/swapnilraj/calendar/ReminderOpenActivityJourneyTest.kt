@@ -59,6 +59,8 @@ class ReminderOpenActivityJourneyTest {
         f.provider.setEvent("description", "Fresh synthetic meeting: $currentLink")
         f.open(intent)
         shown(title)
+        compose.onNodeWithContentDescription(f.app.getString(R.string.events_editor_edit)).assertDoesNotExist()
+        compose.onNodeWithContentDescription(f.app.getString(R.string.phone_details_more_actions)).assertDoesNotExist()
         // Capture only the stable title region of the real Activity; dates use its actual clock.
         compose.onNodeWithText(title).captureToImage().asAndroidBitmap()
             .captureRoboImage("src/test/screenshots/integration_reminder_notification_open.png")
@@ -110,6 +112,28 @@ class ReminderOpenActivityJourneyTest {
         compose.runOnUiThread { f.activity!!.restart().start().resume() }
         unavailable()
         compose.onNodeWithText(title).assertDoesNotExist()
+        assertEquals(0, f.provider.detailReads)
+        f.assertNone()
+    }
+
+    @Test fun privatePhoneReminderDetailsScrubTitleJoinAndContextAfterReadRevocation() = fixture { f ->
+        val intent = f.tap(f.post().contentIntent)
+        f.provider.setEvent("description", "Synthetic meeting $currentLink")
+        f.open(intent)
+        shown(title)
+        compose.onNodeWithText("Join meeting").assertExists()
+        compose.onNodeWithText(f.app.getString(R.string.phone_details_more)).performScrollTo().performClick()
+        compose.onNodeWithText(f.app.getString(R.string.phone_details_less)).assertExists()
+        compose.runOnUiThread { f.activity!!.pause().stop() }
+        shadowOf(f.app).denyPermissions(Manifest.permission.READ_CALENDAR)
+        f.provider.detailReads = 0
+        compose.runOnUiThread { f.activity!!.restart().start().resume() }
+        shown("Allow calendar access")
+        compose.onNodeWithText(title).assertDoesNotExist()
+        compose.onNodeWithText("Join meeting").assertDoesNotExist()
+        compose.onNodeWithText(f.app.getString(R.string.phone_details_less)).assertDoesNotExist()
+        compose.onNodeWithText(f.app.getString(R.string.phone_details_more)).assertDoesNotExist()
+        compose.onNodeWithContentDescription(f.app.getString(R.string.events_editor_edit)).assertDoesNotExist()
         assertEquals(0, f.provider.detailReads)
         f.assertNone()
     }

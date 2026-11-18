@@ -16,7 +16,7 @@ import dev.swapnilraj.calendar.data.calendar.CalendarMeetingWriter
 import dev.swapnilraj.calendar.data.calendar.CalendarSearchReader
 import dev.swapnilraj.calendar.data.calendar.CalendarReminderSource
 import dev.swapnilraj.calendar.data.calendar.SqliteReminderLedger
-import dev.swapnilraj.calendar.android.navigation.ReminderOpenResolver
+import dev.swapnilraj.calendar.android.navigation.*
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import kotlinx.coroutines.CoroutineScope
@@ -26,11 +26,19 @@ import dev.swapnilraj.calendar.android.reminders.ReminderRuntimeOwner
 import dev.swapnilraj.calendar.android.reminders.ReminderRuntime
 import dev.swapnilraj.calendar.android.widgets.*
 
-open class CalendarApp : Application(), ReminderRuntimeOwner, AgendaWidgetApplicationOwner {
+open class CalendarApp : Application(), ReminderRuntimeOwner, AgendaWidgetApplicationOwner, CalendarEntryOwner, CalendarSeedReviewOwner {
     /** Imported-row cloning requires independently verified provider implementation evidence. */
     protected open val providerClonePolicy: dev.swapnilraj.calendar.data.calendar.ProviderClonePolicy
         get() = dev.swapnilraj.calendar.data.calendar.ProviderClonePolicy.Unverified
 
+    override val calendarEntryServices by lazy { createCalendarEntryServices() }
+    override val calendarEntryContent by lazy { calendarEntryRenderer() }
+    override val calendarEntryReviewHandler by lazy { calendarEntryReviewer() }
+    override val calendarSeedReviewServices by lazy { createCalendarSeedReviewServices() }
+    @androidx.compose.runtime.Composable
+    override fun CalendarSeedReviewTheme(content: @androidx.compose.runtime.Composable () -> Unit) {
+        calendarSeedReviewRendererTheme(content)
+    }
     private val calendarScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     private val reminderScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
     override val reminderRuntime: ReminderRuntime by lazy { createReminderRuntime(reminderScope) }

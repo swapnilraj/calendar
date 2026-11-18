@@ -10,13 +10,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.CalendarReadState
-import dev.swapnilraj.calendar.ui.events.EventDetailsStateSheet
+import dev.swapnilraj.calendar.ui.events.PhoneEventDetails
 
 /** Neutral fallback; Root may replace seed/edit review with its guarded native editor surface. */
 @Composable
 fun BasicCalendarEntryScreen(state: CalendarEntryState, actions: CalendarEntryActions) {
     if (state is CalendarEntryState.Details && state.resolved.proposedEdit == null) {
-        EventDetailsStateSheet(CalendarReadState.Ready(state.details), actions.dismiss, actions.retry, actions.openLink,
+        PhoneEventDetails(CalendarReadState.Ready(state.details), actions.dismiss, actions.retry, actions.openLink,
             displayZone = state.displayZone)
         return
     }

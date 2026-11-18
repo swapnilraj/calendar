@@ -22,6 +22,13 @@ Android emulator; see the dated evidence update in GOOGLE_CALENDAR_UX_PARITY.md.
 flows and exact live/pixel parity remain unverified. Provider
 permissions, draft preservation and uncertain-save handling remain required under the matched UI.
 
+Production ordinary create/edit and event details use full-height phone presentations with fixed
+close/Save or close/edit/overflow controls. Date/time and repeat inputs open focused pickers, with
+raw invalid input and explicit offset choices retained for review. This presentation delegates the
+existing draft, permission, conflict and recovery rules; it does not authorize writes on opening or
+dismissing. Details lose their old payload and actions immediately when the read state loses
+authority. Standalone legacy sheets remain available to existing component fixtures.
+
 The live native creation editor supports authored daily, weekly, monthly and yearly rules with
 interval, count or inclusive date limits, explicit master-time review and durable frozen recovery.
 A recurring local save is reported only after known-master journal receipt and actual first native
@@ -407,6 +414,15 @@ does not query private children or construct an occurrence reference. Canonical 
 provider-expanded Instances; recurring/detached event IDs require an explicit occurrence hint. Hidden
 app/provider display filters do not authorize or prevent a directly requested readable link. Missing
 or canceled/deleted rows, ambiguous identity, and insufficient read authority do not open stale details.
+
+Incoming Android VIEW event/date and INSERT event intents use an exported read-only entry activity.
+Explicit Create review opens a private native-editor activity; arrival, Cancel and permission grants
+never submit provider writes. Incomplete inputs remain durable, unsupported recurrence and guests stay
+visible, and an exact permanent handoff receipt precedes Save access. The browser hides only strictly
+recognized handoff receipts, routes unfinished incoming inputs back through their private review,
+and blocks generic incoming-native launches without a matching receipt. Date navigation consumes its
+session once and converts the original instant using fresh display-zone settings. Proposed EDIT
+inputs are not yet applied; recurring/guest editing and live Google UX verification remain separate.
 
 ### M9 — App-owned reminders
 

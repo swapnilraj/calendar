@@ -20,7 +20,7 @@ import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.android.widgets.*
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.data.CalendarPreferenceState
-import dev.swapnilraj.calendar.ui.events.EventDetailsStateSheet
+import dev.swapnilraj.calendar.ui.events.PhoneEventDetails
 import dev.swapnilraj.calendar.ui.settings.DisplayZoneOption
 import java.time.ZoneId
 import kotlinx.coroutines.flow.collectLatest
@@ -46,7 +46,7 @@ internal fun WidgetOpenContent(app: CalendarApp, route: AgendaWidgetRoute.OpenEv
     }
     CalendarPreferenceTheme(preferences) {
         Surface(Modifier.fillMaxSize()) {
-            if (route == null) EventDetailsStateSheet(CalendarReadState.Unavailable, onDismiss, {}, {})
+            if (route == null) PhoneEventDetails(CalendarReadState.Unavailable, onDismiss, {}, {})
             else PermissionGate {
                 val options = (preferences as? CalendarPreferenceState.Ready)?.value?.options
                 val zone = (options?.displayZone as? DisplayZoneOption.Fixed)?.zone ?: ZoneId.systemDefault()
@@ -75,7 +75,7 @@ internal fun WidgetOpenContent(app: CalendarApp, route: AgendaWidgetRoute.OpenEv
                         }
                     }
                 }
-                EventDetailsStateSheet(if (started) state else CalendarReadState.Loading, onDismiss,
+                PhoneEventDetails(if (started) state else CalendarReadState.Loading, onDismiss,
                     onRetry = { app.calendarReader.refresh(); app.settings.refreshPreferences(); app.agendaWidgetFramework.onResume() },
                     onOpenLink = { link ->
                         val uri = Uri.parse(link)
