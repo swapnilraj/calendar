@@ -183,6 +183,23 @@ class MeetingCreationControllerTest {
         f.store.unknownBefore=false; c.flushDraft(); assertTrue(c.prepareDismiss())
         val restored=f.controller(f.launch()); restored.load(); assertEquals(raw,restored.state.fields!!.event)
     }
+    @Test fun continuedRawTypingAfterFailedCasComposesFieldsGuestsAndPolicyBeforeFlush() = runBlocking {
+        val f=Fixture(); val c=f.open(); f.store.unknownBefore=true
+        c.changeFields(f.fields.copy(title="P")); c.changeFields(c.state.fields!!.event.copy(title="Planning partial",startDate="2028-"))
+        c.changeGuests(listOf(f.guest.copy(email="partial@"))); c.acceptFixedGuestPolicy(true)
+        assertEquals("Planning partial",c.state.fields!!.event.title); assertEquals("2028-",c.state.fields!!.event.startDate)
+        assertEquals("partial@",c.state.fields!!.guests.single().email); assertTrue(c.state.policyAccepted); assertFalse(c.prepareDismiss())
+        f.store.unknownBefore=false; c.flushDraft(); val restored=f.controller(f.launch()); restored.load()
+        assertEquals(c.state.fields,restored.state.fields); assertTrue(restored.state.policyAccepted); assertTrue(f.calls.isEmpty())
+    }
+    @Test fun unknownEarlierRawWriteNeverOverwritesSuccessorAndRetainsLaterTypedInputInMemory() = runBlocking {
+        val f=Fixture(); val c=f.open(); f.store.unknownAfter=true; f.store.failRead=true
+        c.changeFields(f.fields.copy(title="First write")); val unknown=f.record()
+        f.store.failRead=false; c.changeFields(c.state.fields!!.event.copy(title="Later typing")); c.changeGuests(listOf(f.guest.copy(email="later@")))
+        assertEquals(MeetingCreationProblem.STALE_DRAFT,c.state.problem); assertEquals("Later typing",c.state.fields!!.event.title)
+        assertEquals("later@",c.state.fields!!.guests.single().email); assertEquals(unknown,f.record()); assertFalse(c.prepareDismiss())
+        c.flushDraft(); c.save(); c.requestDiscard(); c.confirmDiscard(); assertEquals(unknown,f.record()); assertFalse(c.state.discarded); assertTrue(f.calls.isEmpty())
+    }
     @Test fun staleControllerCasAndUnknownReadbackNeverDispatchOrOverwriteSuccessor() = runBlocking {
         val f=Fixture(); val a=f.ready(); val b=f.controller(f.launch()); b.load()
         a.changeFields(a.state.fields!!.event.copy(title="New raw")); val newest=f.record(); b.save()

@@ -74,19 +74,20 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
     }
 
     suspend fun changeFields(fields: EventEditorFields) = exclusive {
-        if (!canChangeIgnoringBusy()) return@exclusive
-        val doc = document!!
+        if (!canAcceptRaw()) return@exclusive
+        val doc = pendingRaw ?: document!!
         // Calendar authority can only come from selectCalendar's fresh backend response.
         val event = fields.copy(calendarId = doc.fields.event.calendarId, targetIdentity = doc.fields.event.targetIdentity)
         persistRaw(doc.copy(fields = doc.fields.copy(event = event)))
     }
     suspend fun changeGuests(guests: List<MeetingCreationGuestFields>) = exclusive {
-        if (!canChangeIgnoringBusy() || guests.map { it.rowId }.distinct().size != guests.size) return@exclusive
+        if (!canAcceptRaw() || guests.map { it.rowId }.distinct().size != guests.size) return@exclusive
         if (guests.any { runCatching { require(java.util.UUID.fromString(it.rowId).toString() == it.rowId) }.isFailure }) return@exclusive
-        persistRaw(document!!.copy(fields = document!!.fields.copy(guests = guests.toList())))
+        val doc = pendingRaw ?: document!!
+        persistRaw(doc.copy(fields = doc.fields.copy(guests = guests.toList())))
     }
     suspend fun acceptFixedGuestPolicy(accepted: Boolean) = exclusive {
-        if (canChangeIgnoringBusy()) persistRaw(document!!.copy(policyAccepted = accepted))
+        if (canAcceptRaw()) persistRaw((pendingRaw ?: document!!).copy(policyAccepted = accepted))
     }
     suspend fun selectCalendar(calendar: CalendarInfo) = exclusive {
         if (!canChangeIgnoringBusy() || !validIdentity(calendar.identity)) return@exclusive
@@ -186,6 +187,7 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
         pendingRaw = candidate
         state = state.copy(fields = candidate.fields, policyAccepted = candidate.policyAccepted,
             allowedGuestTypes = candidate.authority?.allowedTypes.orEmpty())
+        if (state.problem == MeetingCreationProblem.STALE_DRAFT) return false
         return replace(candidate).also { if (it) pendingRaw = null }
     }
 
@@ -238,6 +240,8 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
         is MeetingReadResult.NeedsReview -> MeetingCreationProblem.SOURCE_CHANGED
         else -> MeetingCreationProblem.UNAVAILABLE
     }
+    private fun canAcceptRaw() = canChangeIgnoringBusy() || (!stopped && !state.loading && !frozen && pendingRaw != null &&
+        expected != null && state.problem in setOf(MeetingCreationProblem.DRAFT_UNAVAILABLE, MeetingCreationProblem.STALE_DRAFT))
     private fun canChangeIgnoringBusy() = !stopped && !state.loading && document != null && !frozen && expected != null && state.problem !in setOf(MeetingCreationProblem.STALE_DRAFT, MeetingCreationProblem.DRAFT_UNAVAILABLE, MeetingCreationProblem.DRAFT_REVIEW)
     private suspend fun read(): DraftRecord? = try { store.load(launch.draftId) } catch (e: CancellationException) { throw e }
         catch (_: Exception) { null }
