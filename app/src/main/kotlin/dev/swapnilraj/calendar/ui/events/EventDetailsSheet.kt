@@ -43,9 +43,10 @@ fun EventDetailsStateSheet(
     use24Hour: Boolean = true,
     onEdit: ((EventRef) -> Unit)? = null,
     onDelete: ((EventRef) -> Unit)? = null,
+    onDuplicate: ((EventDetails) -> Unit)? = null,
 ) {
     if (state is CalendarReadState.Ready) {
-        EventDetailsSheet(state.value, onDismiss, onOpenLink, displayZone, use24Hour, onEdit, onDelete)
+        EventDetailsSheet(state.value, onDismiss, onOpenLink, displayZone, use24Hour, onEdit, onDelete, onDuplicate)
     } else {
         ModalBottomSheet(onDismissRequest = onDismiss) {
             Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -78,9 +79,10 @@ fun EventDetailsSheet(
     use24Hour: Boolean = true,
     onEdit: ((EventRef) -> Unit)? = null,
     onDelete: ((EventRef) -> Unit)? = null,
+    onDuplicate: ((EventDetails) -> Unit)? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        EventDetailsContent(details, onDismiss, onOpenLink, displayZone, use24Hour, onEdit, onDelete)
+        EventDetailsContent(details, onDismiss, onOpenLink, displayZone, use24Hour, onEdit, onDelete, onDuplicate)
     }
 }
 
@@ -93,6 +95,7 @@ fun EventDetailsContent(
     use24Hour: Boolean = true,
     onEdit: ((EventRef) -> Unit)? = null,
     onDelete: ((EventRef) -> Unit)? = null,
+    onDuplicate: ((EventDetails) -> Unit)? = null,
 ) {
     val locale = LocalLocale.current.platformLocale
     val links = remember(details.description, details.location) {
@@ -237,6 +240,9 @@ fun EventDetailsContent(
                 Text(stringResource(R.string.events_editor_delete))
             } }
         }
+        onDuplicate?.let { action -> TextButton(onClick = { action(details) }, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text(stringResource(R.string.navigation_duplicate_draft))
+        } }
         TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.events_close)) }
     }
 }

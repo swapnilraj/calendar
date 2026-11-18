@@ -28,6 +28,11 @@ import dev.swapnilraj.calendar.ui.multiday.multiDayWindow
 import dev.swapnilraj.calendar.ui.multiday.MultiDayMinDate
 import dev.swapnilraj.calendar.ui.multiday.MultiDayMaxDate
 import dev.swapnilraj.calendar.ui.events.EventDetailsStateSheet
+import dev.swapnilraj.calendar.ui.events.DraftBrowserSheet
+import dev.swapnilraj.calendar.ui.events.DraftPreparationResult
+import dev.swapnilraj.calendar.ui.events.prepareNewDraft
+import dev.swapnilraj.calendar.ui.events.prepareEditDraft
+import dev.swapnilraj.calendar.ui.events.prepareDuplicateDraft
 import dev.swapnilraj.calendar.ui.month.MonthView
 import dev.swapnilraj.calendar.ui.month.monthDates
 import dev.swapnilraj.calendar.ui.month.MonthDaySheet
@@ -64,10 +69,14 @@ internal fun LiveCalendarDay(
     drafts: DraftStore? = null,
     onLocalSaved: () -> Unit = {},
     onLocalDeleted: () -> Unit = {},
+    onDraftFailure: () -> Unit = {},
+    draftClock: Clock = Clock.systemUTC(),
 ) {
     val scope = rememberCoroutineScope()
     var dateText by rememberSaveable { mutableStateOf(now.toLocalDate().toString()) }
     var writeRequestText by rememberSaveable { mutableStateOf<String?>(null) }
+    var showDrafts by rememberSaveable { mutableStateOf(false) }
+    var preparingWrite by remember { mutableStateOf(false) }
     var scrollMinute by rememberSaveable { mutableDoubleStateOf(-1.0) }
     val preferencesFlow = remember(settings) { settings?.calendarPreferences ?: flowOf(CalendarPreferenceState.Loading) }
     val preferenceState by preferencesFlow.collectAsStateWithLifecycle(initialValue = CalendarPreferenceState.Loading)
@@ -119,13 +128,67 @@ internal fun LiveCalendarDay(
     val calendars = (metadata as? CalendarReadState.Ready)?.value.orEmpty()
     val writable = mutations != null && drafts != null
     val createDateAction: ((LocalDate) -> Unit)? = onCreateDate ?: if (writable) ({ date ->
-        writeRequestText = EventWriteRequest.create(date, now.zone, preferences.defaultCalendar).encode()
+        if (!preparingWrite) {
+            preparingWrite = true
+            scope.launch {
+                try {
+                    val requested = EventWriteRequest.create(date, now.zone, preferences.defaultCalendar)
+                    val calendar = calendars.firstOrNull { it.id == preferences.defaultCalendar && it.capabilities.createEvents == AccessDecision.ALLOWED }?.id
+                    val initial = EventDraft(calendar ?: CalendarId(0), EventTime.AllDay(CalendarDateRange.day(date)), null, "")
+                    val prepared = prepareNewDraft(initial, requested.draftId, calendar != null, requireNotNull(drafts), draftClock)
+                    if (prepared is DraftPreparationResult.Ready)
+                        writeRequestText = EventWriteRequest.fromLaunch(prepared.launch, date, now.zone).encode()
+                    else onDraftFailure()
+                } finally { preparingWrite = false }
+            }
+        }
     }) else null
+    fun beginEdit(ref: EventRef, delete: Boolean) {
+        if (!writable || preparingWrite) return
+        openedEvent = null
+        preparingWrite = true
+        scope.launch {
+            try {
+                val loaded = requireNotNull(mutations).loadForEdit(ref)
+                if (loaded is EditReadResult.Ready && loaded.event.details.occurrence.ref == ref) {
+                    val requested = EventWriteRequest.edit(ref, now.zone, delete)
+                    val prepared = prepareEditDraft(loaded.event.details.editorSeed(), loaded.event, requested.draftId, requireNotNull(drafts), draftClock)
+                    if (prepared is DraftPreparationResult.Ready)
+                        writeRequestText = EventWriteRequest.fromLaunch(prepared.launch, visibleDate, now.zone, delete).encode()
+                    else onDraftFailure()
+                } else onDraftFailure()
+            } finally { preparingWrite = false }
+        }
+    }
+    fun duplicate(details: EventDetails) {
+        if (!writable || preparingWrite) return
+        openedEvent = null
+        preparingWrite = true
+        scope.launch {
+            try {
+                val target = calendars.firstOrNull { it.id == details.occurrence.ref.calendarId && it.capabilities.createEvents == AccessDecision.ALLOWED }?.id
+                    ?: calendars.firstOrNull { it.id == preferences.defaultCalendar && it.capabilities.createEvents == AccessDecision.ALLOWED }?.id
+                val requested = EventWriteRequest.create(visibleDate, now.zone, target)
+                val prepared = prepareDuplicateDraft(details, target, requested.draftId, requireNotNull(drafts), clock = draftClock)
+                if (prepared is DraftPreparationResult.Ready)
+                    writeRequestText = EventWriteRequest.fromLaunch(prepared.launch, visibleDate, now.zone).encode()
+                else onDraftFailure()
+            } finally { preparingWrite = false }
+        }
+    }
     val canCreate = createDateAction != null && calendars.any { it.capabilities.createEvents == AccessDecision.ALLOWED }
     LaunchedEffect(metadata, settings) {
         if (metadata is CalendarReadState.Ready && settings?.reconcileCalendars(calendars) == false) onPreferenceFailure()
     }
     val drawer = rememberDrawerState(DrawerValue.Closed)
+    val drawerActions: @Composable ColumnScope.() -> Unit = {
+        if (writable) {
+            HorizontalDivider()
+            TextButton(onClick = { scope.launch { drawer.close(); showDrafts = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                Text(stringResource(R.string.events_drafts_title))
+            }
+        }
+    }
     val calendarsLabel = stringResource(R.string.navigation_calendars)
     val openCalendars: @Composable RowScope.() -> Unit = {
         if (settings != null) IconButton(onClick = { scope.launch { drawer.open() } },
@@ -149,10 +212,11 @@ internal fun LiveCalendarDay(
                 } },
                 onDefaultCalendarChanged = { id -> scope.launch {
                     if (settings?.setDefaultCalendar(id, calendars) == false) onPreferenceFailure()
-                } }, onDismiss = { scope.launch { drawer.close() } })
+                } }, onDismiss = { scope.launch { drawer.close() } }, footer = drawerActions)
             else -> ModalDrawerSheet {
                 CalendarReadNotice(metadata, reader::refresh)
                 TextButton(onClick = { scope.launch { drawer.close() } }) { Text(stringResource(R.string.calendar_close_events)) }
+                drawerActions()
             }
         }
     }) {
@@ -255,16 +319,22 @@ internal fun LiveCalendarDay(
         val state by key(details) { details.collectAsStateWithLifecycle(initialValue = CalendarReadState.Loading) }
         EventDetailsStateSheet(state, onDismiss = { openedEvent = null }, onRetry = reader::refresh,
             onOpenLink = onOpenLink, displayZone = now.zone, use24Hour = use24Hour,
-            onEdit = if (writable) ({ value -> openedEvent = null; writeRequestText = EventWriteRequest.edit(value, now.zone, false).encode() }) else null,
-            onDelete = if (writable) ({ value -> openedEvent = null; writeRequestText = EventWriteRequest.edit(value, now.zone, true).encode() }) else null)
+            onEdit = if (writable) ({ value -> beginEdit(value, false) }) else null,
+            onDelete = if (writable) ({ value -> beginEdit(value, true) }) else null,
+            onDuplicate = if (writable) ::duplicate else null)
     }
     if (mutations != null && drafts != null) writeRequestText?.let { raw ->
         val request = remember(raw) { EventWriteRequest.decode(raw) }
-        EventWriteWorkflow(request, mutations, drafts, calendars, use24Hour,
+        EventWriteWorkflow(request, mutations, drafts, calendars, use24Hour, clock = draftClock,
             onDismiss = { writeRequestText = null },
             onSaved = { writeRequestText = null; reader.refresh(); onLocalSaved() },
             onDeleted = { writeRequestText = null; reader.refresh(); onLocalDeleted() })
     }
+    if (showDrafts && drafts != null && writable) DraftBrowserSheet(drafts, onDismiss = { showDrafts = false },
+        onOpen = { launch ->
+            showDrafts = false
+            writeRequestText = EventWriteRequest.fromLaunch(launch, visibleDate, now.zone).encode()
+        }, displayZone = now.zone)
 }
 
 /** Locale week alignment is a navigation policy, independent of event/recurrence expansion. */

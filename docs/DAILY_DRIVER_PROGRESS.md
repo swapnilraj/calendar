@@ -95,8 +95,9 @@ gates pass. Do not turn the audit totals into a percentage-complete estimate.
   routes, and permission recovery pass synthetic tests. The integrated editor image was inspected.
 - Proven retry-safe recovery is separate from unknown outcomes; typed original commands survive
   restart without rebasing tokens or patches. Unknown/legacy/corrupt outcomes remain locked.
-- No invitation or recurrence write path is enabled yet. Draft discovery after lost navigation,
-  duplicate/drag/resize, editable availability/privacy/colour, and server verification remain pending.
+- No invitation or recurrence write path is enabled yet. Durable draft discovery/recovery, duplication
+  and availability/privacy editing now have focused integrated evidence; cross-calendar inherited
+  visibility review is being hardened. Drag/resize, colour and server verification remain pending.
 - Rich native context and explicit guest visibility now pass reader/UI tests; free/busy and writer
   eligibility preflights avoid restricted child reads. Reminder coordination/Android adapters have
   focused worker evidence; SQL ledger/source/background wiring remain pending.
@@ -108,3 +109,10 @@ merged remotely. PR #30 (multi-day component) and subsequent routing/hardening p
 in progress.
 Local save is not verified Google/Workspace sync. Draft discovery/recovery after lost navigation,
 recurrence provider execution, meetings, search/settings, background delivery and release gates remain.
+
+Draft integration follow-up: native workflow/live calendar focused tests passed after durable route
+preparation, missing-record restore protection, source-missing deletion recovery and duplication.
+The duplication journey proves explicit private/free metadata survives a read-only source copy and
+that only Save creates the new event. Updated create-editor and new draft-browser screenshots were
+recorded and inspected. These newer packets have not yet passed a full combined build checkpoint.
+PRs #30–#33 are merged into the remote integration branch; the product release remains pending.
