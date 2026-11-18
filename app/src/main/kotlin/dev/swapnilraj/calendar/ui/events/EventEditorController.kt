@@ -262,7 +262,8 @@ class EventEditorController(
             preserveTime = if (existing != null && !timeChanged(state.fields)) initial.time else null,
             preserveAlerts = if (existing != null && state.fields.alerts == original.alerts) initial.alertMinutes else null) }
         catch (invalid: InvalidInput) { state = state.copy(problem = invalid.problem); return }
-        if (normalized.recurrence != null) {
+        val authoredRecurrence = normalized.recurrence
+        if (authoredRecurrence != null) {
             if (existing != null || !recurringCreationSupported) { state = state.copy(problem = EditorProblem.RECURRENCE_UNSUPPORTED); return }
             val start = when (val time = normalized.time) {
                 is EventTime.AllDay -> RecurrenceStart.AllDay(time.dates.start)
@@ -273,7 +274,7 @@ class EventEditorController(
                     catch (_: Exception) { state = state.copy(problem = EditorProblem.RECURRENCE_INVALID); return }
                 }
             }
-            val compilation = RecurrenceCreation.compile(start, normalized.time, normalized.recurrence, previewLimit = 5)
+            val compilation = RecurrenceCreation.compile(start, normalized.time, authoredRecurrence, previewLimit = 5)
             if (compilation !is RecurrenceCreationResult.Ready) {
                 state = state.copy(recurrenceReview = null, problem = if (compilation is RecurrenceCreationResult.NeedsReview)
                     EditorProblem.RECURRENCE_REVIEW else EditorProblem.RECURRENCE_INVALID)
