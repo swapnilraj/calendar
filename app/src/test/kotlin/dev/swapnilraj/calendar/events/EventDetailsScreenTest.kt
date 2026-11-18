@@ -65,7 +65,7 @@ class EventDetailsScreenTest {
             EventDetailsStateSheet(CalendarReadState.PermissionRequired, {}, {}, {}, zone)
         } }
         compose.onNodeWithText("Calendar access is needed to read this event.").assertIsDisplayed()
-        compose.onNodeWithText("Edit").assertDoesNotExist()
+        compose.onNodeWithText("Edit event").assertDoesNotExist()
         compose.onNodeWithText("Retry").assertDoesNotExist()
     }
 
@@ -84,7 +84,25 @@ class EventDetailsScreenTest {
         val title = "A complete event title that wraps over several lines without disappearing behind a fixed height"
         show(details(title))
         compose.onNodeWithText(title).assertIsDisplayed()
-        compose.onNodeWithText("Edit").assertDoesNotExist()
+        compose.onNodeWithText("Edit event").assertDoesNotExist()
+    }
+
+    @Test fun editingActionRequiresBothProvenRightsAndAnExplicitCallback() {
+        var edited: EventRef? = null
+        val value = details().copy(canEdit = AccessDecision.ALLOWED)
+        compose.setContent { DaylightTheme {
+            Surface(Modifier.fillMaxSize()) { EventDetailsContent(value, {}, {}, zone, onEdit = { edited = it }) }
+        } }
+        compose.onNodeWithText("Edit event").performScrollTo().performClick()
+        assertEquals(value.occurrence.ref, edited)
+    }
+
+    @Test fun unknownRightsDoNotExposeProvidedEditCallbacks() {
+        compose.setContent { DaylightTheme {
+            Surface(Modifier.fillMaxSize()) { EventDetailsContent(details(), {}, {}, zone, onEdit = {}, onDelete = {}) }
+        } }
+        compose.onNodeWithText("Edit event").assertDoesNotExist()
+        compose.onNodeWithText("Delete event").assertDoesNotExist()
     }
 
     @Test fun emptyTitleUsesFallbackAndCloseIsAnAction() {
