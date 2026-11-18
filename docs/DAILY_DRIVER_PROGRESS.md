@@ -10,7 +10,7 @@ Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
   Wave 0 session.** The earlier two agents reviewed dependencies/ownership only.
 - Implementation branch: `codex/daily-driver`. Initial read-contract/module bootstrap and scope docs are implemented;
   mutation and persistence ports will be frozen before their dependent worker packets. A new module or contract alone does not establish native editing or new views.
-- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (972 tests), including
+- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (1,018 tests), including
   merged provider reads, native detail components, day fixes, reminder components and preferences. No device/cloud/beta result is claimed.
 
 ## Active implementation packets
@@ -48,7 +48,7 @@ wiring and integration; workers do not overwrite shared contracts or each other'
 | M6 recurrence | Partial: live scoped route, ALL non-temporal edits/delete, THIS exception edits/cancel and FOLLOWING delete tested; temporal/pattern/following edits pending | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
 | M7 meetings | Planned | Invitation/RSVP/reschedule/recurrence-change/cancellation observed in second account |
 | M8 search/Android entry points | Partial: live settings and filtered search routed; widget components tested; widget/intent/background wiring pending | Filtered ranged search, settings, agenda widget and safe occurrence-preserving intents |
-| M9 reminders | Partial: source/ledger/delivery/runtime components tested; app/background/device wiring pending | App-owned alerts/snooze and permission/background/Doze/reboot/timezone/upgrade recovery |
+| M9 reminders | Partial: application runtime/private recovery components wired and tested; setup/navigation/device acceptance pending | App-owned alerts/snooze and permission/background/Doze/reboot/timezone/upgrade recovery |
 | Seven-day beta | Not started | Work/personal week including weekend/offline/remote edits/recurrence/reminders/upgrade |
 | Durable APK release | Not started | Stable signed upgradeable APK, checksum, release notes and durable download |
 
@@ -100,10 +100,10 @@ gates pass. Do not turn the audit totals into a percentage-complete estimate.
   visibility now requires explicit calendar-specific approval. Drag/resize, colour and server verification remain pending.
 - Rich native context and explicit guest visibility now pass reader/UI tests; free/busy and writer
   eligibility preflights avoid restricted child reads. The real reminder source/SQL ledger/coordinator/adapters pass integrated restart, snooze and
-  stale-action tests; runtime components are tested but background app wiring remains pending.
+  stale-action tests; runtime components and Application/private recovery wiring pass local checks; reminder setup/navigation and device delivery remain pending.
 
-Latest local integration checkpoint: **972 tests**, debug APK and lint passed with
-`./gradlew test :app:assembleDebug :app:lintDebug` (174 core, 781 app, 17 weather; no failures/skips).
+Latest local integration checkpoint: **1,018 tests**, debug APK and lint passed with
+`./gradlew test :app:assembleDebug :app:lintDebug` (174 core, 827 app, 17 weather; no failures/skips).
 The live Settings route applies first weekday, weekends, declined filtering, display zone, theme,
 weather visibility/units and event defaults. Failed saves retain inputs; display-zone changes do not
 change device-location weather. Timed FAB and all-day date creation use independent reminder defaults.
@@ -128,16 +128,41 @@ checks pass and the namespace review screenshot was inspected; independent F20 r
 remaining bypass in these paths. This does not prove identity across an indistinguishable provider reset.
 
 Widget lifecycle receipts, queued-job ownership and configuration UI have component evidence. The
-actual durable FIFO configuration actor and host/bootstrap proof, application wiring and device checks
-remain pending. App-owned reminder delivery is likewise not enabled yet.
+durable FIFO actor now passes file-backed persistence/cancellation/corruption checks; concrete host/
+bootstrap proof, widget application wiring and device checks remain pending. No widget lifecycle
+verification is restored from a stored row alone. Custom host markers have public-platform/reboot
+limitations; they are not universal host-incarnation proof.
 
-PRs #30–#39 are merged remotely. #40 publishes weekday-only/Fahrenheit display components. Newer local
+PRs #30–#41 are merged remotely, including live settings and weekday/Fahrenheit presentation. Newer local
 packets are being published in bounded follow-ups. The APK is a debug build, not evidence of stable
 signing, Google/Workspace sync, device delivery or beta acceptance.
 
 Next implementation: row/cell/retained-payload bounds for normal reads, search and mutation source
-snapshots; full recurrence execution; widget and reminder configuration/runtime wiring; invitations/
-RSVP and drag/resize. F17 found that existing row limits alone do not bound large text/child/canonical
-payloads; this release blocker is not resolved by the namespace fix. F19 verified cache entries and
+snapshots (local enforcement now verified); full recurrence execution; widget host/bootstrap and
+reminder configuration/navigation; invitations/RSVP and drag/resize. F17's large text/child/canonical
+payload gaps are addressed by A16/A16a with bounds before materialization/token/journal and honest
+truncated search. F23 found no additional concrete bypass in reviewed paths. These are app-side bounds,
+not proof about the provider's first cell/CursorWindow allocation. F19 verified cache entries and
 replay are removed after the last subscriber; payload bounds are a separate issue. Required account/
 device, seven-day beta and release gates remain pending. Local save never means verified server sync.
+
+
+## Latest reliability and Android integration evidence
+
+The c0855c4 full checkpoint passed 1,018 tests, debug APK assembly and lint. It includes namespace-safe
+creation/recovery, normal/search/mutation/private-JSON budgets, reminder UID projection checks, captured
+series capability computation before token persistence, and the widget FIFO store. Two read-limit
+screens (day/light and search/large-font RTL) were recorded and inspected; old private payload removal
+passes native UI checks. The dedicated provider read budgets also cover reminder failure paths without
+turning incomplete reads into authoritative event deletion.
+
+The Application owns one reminder runtime/coordinator/ledger. Startup, resume and local changes use
+fresh reminder settings, with private alarm/action/recovery receivers and a signature-protected job
+service. Twenty focused runtime/pipeline/preference checks include the actual app job registration,
+READ permission loss and disable recovery, plus two deterministic stale-configuration ordering
+regressions. Setup remains disabled by default; reminder selection/permissions and notification-open
+routing are not yet connected, so this is not an enabled end-to-end alert workflow or device proof.
+
+Meeting API and atomic draft-store capability contracts have been added for subsequent RSVP work.
+Atomic SQLite implementation, meeting writer/UI, existing-editor CAS migration and real two-account
+propagation remain pending; an interface alone does not establish these capabilities.

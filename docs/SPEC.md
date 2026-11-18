@@ -80,8 +80,8 @@ only changes the calendar clock. Fahrenheit converts display values, leaving pur
 Celsius forecast data unchanged. Theme overrides apply consistently to the grid and weather substrate.
 The main Create action starts a timed draft using saved duration/reminder defaults; month/date-sheet
 creation starts an all-day draft with its separate reminder default. Existing unresolved reminders
-are never reinterpreted through these new-event defaults. Reminder setup remains separate pending
-runtime wiring.
+are never reinterpreted through these new-event defaults. Reminder calendar setup and notification
+opening remain separate pending workflows.
 
 Owned guest-free recurring details now use a separate native scoped route. Supported actions are
 issued by the provider adapter per scope; the picker never defaults a destructive scope or enables
