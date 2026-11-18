@@ -20,13 +20,14 @@ data class EventEditorFields(
 )
 
 enum class EditorProblem { INVALID_INPUT, AMBIGUOUS_TIME, NONEXISTENT_TIME, PERMISSION,
-    DENIED, CONFLICT, UNCERTAIN, UNAVAILABLE, DRAFT_UNAVAILABLE, UNSUPPORTED, DRAFT_VERSION, SAFE_TO_RETRY, RETRY_UNAVAILABLE }
+    DENIED, CONFLICT, UNCERTAIN, UNAVAILABLE, DRAFT_UNAVAILABLE, UNSUPPORTED, DRAFT_VERSION, SAFE_TO_RETRY, RETRY_UNAVAILABLE, VISIBILITY_REQUIRED }
 
 data class EventEditorState(
     val fields: EventEditorFields, val loading: Boolean = true, val saving: Boolean = false,
     val problem: EditorProblem? = null, val result: MutationResult? = null,
     val confirmDelete: Boolean = false, val recoveryRequired: Boolean = false, val reviewRequired: Boolean = false,
     val reviewLatest: EventDetails? = null, val draftReadFailed: Boolean = false, val retryReady: Boolean = false,
+    val notices: List<EditorNotice> = emptyList(),
 )
 
 /** Injected ports are the only write path. Dismissal and restoration never submit an event. */
@@ -48,6 +49,8 @@ class EventEditorController(
     }
     var state by mutableStateOf(EventEditorState(original))
         private set
+    val visibilityChoiceRequired: Boolean get() = existing == null && EditorNotice.VISIBILITY_REVIEW_REQUIRED in state.notices &&
+        state.fields.privacy.toIntOrNull() !in 0..3
     private var operationId = UUID.randomUUID().toString()
     val pendingOperationId: String get() = operationId
     private var operationKind = ""
@@ -104,7 +107,7 @@ class EventEditorController(
                     operationId = UUID.randomUUID().toString(); operationPayload = ""
                     frozenSubmission = null; retainedSubmission = null
                 }
-                state = state.copy(fields = decode(values), recoveryRequired = submitted,
+                state = state.copy(fields = decode(values), notices = EditorNoticeCodec.read(values), recoveryRequired = submitted,
                     reviewRequired = sourceChanged, reviewLatest = if (sourceChanged) existing?.details else null,
                     problem = if (submitted) EditorProblem.UNCERTAIN else if (sourceChanged) EditorProblem.CONFLICT else null)
             }
@@ -153,6 +156,7 @@ class EventEditorController(
         if (state.reviewRequired || state.draftReadFailed || state.problem == EditorProblem.DRAFT_VERSION) return false
         return try {
         val values = encode(state.fields).apply {
+            EditorNoticeCodec.write(this, state.notices)
             put("operationId", operationId); put("operationKind", operationKind)
             put("operationPayload", operationPayload); put("target", targetIdentity())
             put("sourceToken", existing?.token?.value.orEmpty())
@@ -168,6 +172,7 @@ class EventEditorController(
 
     fun save() {
         if (writesBlocked()) return
+        if (visibilityChoiceRequired) { state = state.copy(problem = EditorProblem.VISIBILITY_REQUIRED); return }
         val normalized = try { normalizedDraft(state.fields,
             preserveTime = if (existing != null && !timeChanged(state.fields)) initial.time else null,
             preserveAlerts = if (existing != null && state.fields.alerts == original.alerts) initial.alertMinutes else null) }
@@ -331,10 +336,11 @@ class EventEditorController(
 
         /** Explicit new-launch preparation only; restoration must require the existing record. */
         internal fun initialRecord(initial: EventDraft, existing: EditableEvent?, id: String,
-            selected: Boolean, clock: Clock): DraftRecord {
+            selected: Boolean, clock: Clock, notices: List<EditorNotice> = emptyList()): DraftRecord {
             require(id.isNotBlank())
             val fields = fieldsFor(initial).let { if (existing == null && !selected) it.copy(calendarId = "") else it }
             val payload = encode(fields).apply {
+                EditorNoticeCodec.write(this, notices)
                 put("operationId", UUID.randomUUID().toString()); put("operationKind", "")
                 put("operationPayload", ""); put("submitted", false)
                 put("target", editorDraftTarget(existing?.details?.occurrence?.ref))
