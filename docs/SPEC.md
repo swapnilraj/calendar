@@ -62,6 +62,11 @@ converts it using current density/zoom instead of persisting pixels. Old pixel s
    without copying anyone's branding, icons or fonts.
 6. **No accounts.** Calendar data comes from Android's calendar store. No sign-in, and no server of our own.
 
+Editor components retain durable draft identity, original raw inputs and submitted operation context.
+A draft browser can distinguish resumable edits, submitted recovery and unreadable/future formats;
+source-missing submitted operations remain recovery-only. Preparing a launch first persists and
+reads back its draft. App routing to these components is a separate integration change.
+
 ## Approved daily-driver target (18 November 2026)
 
 This target supersedes the original phase roadmap and its widget/notification exclusions below.
