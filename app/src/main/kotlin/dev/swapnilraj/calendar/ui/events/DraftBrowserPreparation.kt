@@ -28,20 +28,43 @@ suspend fun prepareEditDraft(
     clock: Clock = Clock.systemUTC(),
 ): DraftPreparationResult = prepareDraft(initial, existing, draftId, true, store, clock)
 
+/** Explicit grid/new-launch preparation with raw fields and an immutable original source baseline. */
+suspend fun prepareEditorFieldsDraft(
+    initial: EventDraft,
+    existing: EditableEvent?,
+    draftId: String,
+    initialCalendarSelected: Boolean,
+    fields: EventEditorFields,
+    store: AtomicDraftStore,
+    clock: Clock = Clock.systemUTC(),
+): DraftPreparationResult = prepareDraft(initial, existing, draftId, initialCalendarSelected, store, clock, rawFields = fields)
+
 private suspend fun prepareDraft(initial: EventDraft, existing: EditableEvent?, id: String, selected: Boolean,
-    store: DraftStore, clock: Clock, notices: List<EditorNotice> = emptyList(), defaultVisibilityCalendar: String = "", defaultVisibilityIdentity: CalendarIdentity? = null): DraftPreparationResult = try {
+    store: DraftStore, clock: Clock, notices: List<EditorNotice> = emptyList(), defaultVisibilityCalendar: String = "", defaultVisibilityIdentity: CalendarIdentity? = null, rawFields: EventEditorFields? = null): DraftPreparationResult = try {
     require(id.isNotBlank())
+    val atomic = store as? AtomicDraftStore ?: error("Atomic draft storage required")
     val old = store.load(id)
-    val record = if (old != null) old else EventEditorController.initialRecord(initial, existing, id, selected, clock, notices, defaultVisibilityCalendar, defaultVisibilityIdentity)
+    val record = old ?: EventEditorController.initialRecord(initial, existing, id, selected, clock, notices, defaultVisibilityCalendar, defaultVisibilityIdentity).let { candidate ->
+        if (rawFields == null) candidate else {
+            val doc = OrdinaryDraftDocument.decode(candidate)
+            // A raw grid edit may change dates/times, never the authority of its original calendar.
+            require(rawFields.calendarId == doc.fields.calendarId && rawFields.targetIdentity == doc.fields.targetIdentity)
+            doc.copy(fields = rawFields).record(clock.instant())
+        }
+    }
     val launch = DraftBrowserCodec.read(record).launch
     val expected = editorDraftTarget(existing?.details?.occurrence?.ref)
     if (launch == null || editorDraftTarget(launch.ref) != expected) DraftPreparationResult.Unavailable
+    else if (old != null) DraftPreparationResult.Ready(launch)
     else {
-        if (old == null) store.upsert(record)
-        // Establish durable identity before navigation; do not expose a route on ignored/failed writes.
+        val changed = try { atomic.compareAndSet(id, null, record) } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { DraftChangeResult.Unavailable }
         val durable = store.load(id)
-        if (durable != null && durable.version == record.version && durable.payload == record.payload) DraftPreparationResult.Ready(launch)
-        else DraftPreparationResult.Unavailable
+        if (changed != DraftChangeResult.Changed && durable == record) DraftPreparationResult.Ready(launch)
+        else if (changed == DraftChangeResult.Changed && durable != null) {
+            val collision = DraftBrowserCodec.read(durable).launch
+            if (collision != null && editorDraftTarget(collision.ref) == expected) DraftPreparationResult.Ready(collision) else DraftPreparationResult.Unavailable
+        } else DraftPreparationResult.Unavailable
     }
 } catch (cancelled: CancellationException) { throw cancelled }
 catch (_: Exception) { DraftPreparationResult.Unavailable }

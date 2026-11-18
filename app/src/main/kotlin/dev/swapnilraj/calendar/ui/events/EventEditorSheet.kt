@@ -25,11 +25,13 @@ fun EventEditorSheet(
     onDismiss: () -> Unit,
     onSaved: (EventRef) -> Unit,
     onDeleted: (EventRef) -> Unit,
-    onReviewExisting: (EditReadResult) -> Unit,
+    onReviewExisting: ((EditReadResult) -> Unit)? = null,
     use24Hour: Boolean = true,
+    onReplacedLaunch: ((EditorDraftLaunch) -> Unit)? = null,
+    onDiscarded: (() -> Unit)? = onDismiss,
 ) {
     val scope = rememberCoroutineScope()
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(confirmValueChange = { it != SheetValue.Hidden || !controller.state.saving })
     val result = controller.state.result
     LaunchedEffect(result) {
         when (result) {
@@ -46,8 +48,11 @@ fun EventEditorSheet(
     }
     ModalBottomSheet(onDismissRequest = ::close, sheetState = sheetState) {
         EventEditorContent(controller, writableCalendars, ::close,
-            onReviewExisting = { scope.launch { controller.reloadExisting()?.let(onReviewExisting) } },
-            onDiscardAndReload = { scope.launch { controller.discardAndReload()?.let(onReviewExisting) } }, use24Hour = use24Hour)
+            onReviewExisting = if (controller.canReviewLatest) ({ scope.launch { controller.reloadExisting()?.let { onReviewExisting?.invoke(it) } }; Unit }) else null,
+            onDiscardAndReload = null, use24Hour = use24Hour,
+            onUpgradeDraft = if (onReplacedLaunch != null) ({ scope.launch { controller.upgradeLegacyDraft()?.let(onReplacedLaunch) }; Unit }) else null,
+            onReplaceDraft = if (onReplacedLaunch != null) ({ scope.launch { controller.replaceDraft()?.let(onReplacedLaunch) }; Unit }) else null,
+            onDiscardDraft = if (onDiscarded != null) ({ scope.launch { if (controller.discardDraft()) onDiscarded() }; Unit }) else null)
     }
 }
 
@@ -58,23 +63,28 @@ fun EventEditorContent(
     controller: EventEditorController,
     writableCalendars: List<CalendarInfo>,
     onClose: () -> Unit,
-    onReviewExisting: () -> Unit,
-    onDiscardAndReload: () -> Unit,
+    onReviewExisting: (() -> Unit)? = null,
+    onDiscardAndReload: (() -> Unit)? = null,
     use24Hour: Boolean = true,
+    onUpgradeDraft: (() -> Unit)? = null,
+    onReplaceDraft: (() -> Unit)? = null,
+    onDiscardDraft: (() -> Unit)? = null,
 ) {
     val state = controller.state
     val fields = state.fields
     val existing = controller.existing
     val scroll = rememberScrollState()
+    val actionScope = rememberCoroutineScope()
     LaunchedEffect(state.problem) { if (state.problem != null) scroll.animateScrollTo(0) }
     var dateField by remember { mutableStateOf<String?>(null) }
     var timeField by remember { mutableStateOf<String?>(null) }
     var confirmDiscard by remember { mutableStateOf(false) }
+    var draftAction by remember { mutableStateOf<String?>(null) }
     var confirmRetryDelete by remember { mutableStateOf(false) }
     LaunchedEffect(controller, writableCalendars, state.loading, state.saving, state.recoveryRequired, state.retryReady) {
         controller.observeCalendars(writableCalendars)
     }
-    val blocked = controller.recoveryOnly || state.loading || state.saving || state.draftReadFailed || state.reviewRequired || state.recoveryRequired || state.retryReady || state.problem in setOf(EditorProblem.UNCERTAIN,
+    val blocked = state.legacy || controller.recoveryOnly || state.loading || state.saving || state.draftReadFailed || state.reviewRequired || state.recoveryRequired || state.retryReady || state.problem in setOf(EditorProblem.UNCERTAIN,
         EditorProblem.UNSUPPORTED, EditorProblem.DRAFT_VERSION, EditorProblem.DRAFT_RETIRED) || state.result is MutationResult.LocalSaved || state.result is MutationResult.LocalDeleted
     fun canEdit(field: EditableField) = !blocked && (existing == null || field in existing.allowedFields)
     Column(Modifier.fillMaxWidth().imePadding().verticalScroll(scroll).padding(24.dp),
@@ -104,14 +114,14 @@ fun EventEditorContent(
                     Text(stringResource(if (controller.pendingOperationKind == "delete") R.string.events_editor_retry_delete else R.string.events_editor_retry_save))
                 }
             }
-            if (problem == EditorProblem.CONFLICT && existing != null && !state.retryReady && !state.recoveryRequired) TextButton(onClick = onReviewExisting) {
+            if (problem == EditorProblem.CONFLICT && onReviewExisting != null && controller.canReviewLatest && !state.recoveryRequired) TextButton(onClick = onReviewExisting) {
                 Text(stringResource(R.string.events_editor_review))
             }
         }
         if (state.reviewRequired) {
             Text(stringResource(R.string.events_editor_stale_draft))
             state.reviewLatest?.let { latest -> LatestEventForReview(latest) }
-            TextButton(onClick = { confirmDiscard = true }, enabled = !state.saving) {
+            if (onDiscardAndReload != null) TextButton(onClick = { confirmDiscard = true }, enabled = !state.saving) {
                 Text(stringResource(R.string.events_editor_discard_reload))
             }
         }
@@ -195,6 +205,13 @@ fun EventEditorContent(
         if (existing != null && !controller.recoveryOnly) TextButton(onClick = controller::requestDelete, enabled = !blocked && !state.reviewRequired) {
             Text(stringResource(R.string.events_editor_delete))
         }
+        if (state.recoveryRequired || state.reviewRequired) Text(controller.boundCalendarIdentity?.account?.name ?: stringResource(R.string.editor_original_namespace_unknown))
+        if (state.localOutcome != null) Text(stringResource(R.string.editor_local_outcome_known))
+        if (controller.canAcknowledge) TextButton(onClick = { actionScope.launch { controller.acknowledgeLocalOutcome() } }) { Text(stringResource(R.string.editor_acknowledge_cleanup)) }
+        if (controller.canUpgrade && onUpgradeDraft != null) TextButton(onClick = onUpgradeDraft) { Text(stringResource(R.string.editor_upgrade_draft)) }
+        if (controller.canReplace && onReplaceDraft != null) TextButton(onClick = { draftAction = "replace" }) { Text(stringResource(R.string.editor_replace_draft)) }
+        if (controller.canDiscard && onDiscardDraft != null) TextButton(onClick = { draftAction = "discard" }) { Text(stringResource(if (controller.hasFrozenSubmission) R.string.editor_retire_discard else R.string.editor_discard_only)) }
+        if (controller.canInspectRetirement) TextButton(onClick = { actionScope.launch { controller.inspectRetirement() } }) { Text(stringResource(R.string.editor_inspect_retirement)) }
         TextButton(onClick = onClose, enabled = !state.saving, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.events_editor_cancel)) }
     }
     dateField?.let { target ->
@@ -225,6 +242,11 @@ fun EventEditorContent(
         fields.recurrence.normalized()?.let { spec -> RecurrenceCreationReview(plan, spec, fields.title,
             controller::confirmRecurringCreate, controller::dismissRecurrenceReview) }
     }
+    if (draftAction != null) AlertDialog(onDismissRequest = { draftAction = null },
+        title = { Text(stringResource(if (draftAction == "replace") R.string.editor_replace_draft else if (controller.hasFrozenSubmission) R.string.editor_retire_discard else R.string.editor_discard_only)) },
+        text = { Text(stringResource(if (draftAction == "replace") R.string.editor_replace_help else if (controller.hasFrozenSubmission) R.string.editor_retire_help else R.string.editor_discard_help)) },
+        confirmButton = { TextButton(enabled = !state.saving, onClick = { val chosen = draftAction; draftAction = null; if (chosen == "replace") onReplaceDraft?.invoke() else onDiscardDraft?.invoke() }) { Text(stringResource(R.string.editor_confirm_draft_action)) } },
+        dismissButton = { TextButton(onClick = { draftAction = null }) { Text(stringResource(R.string.events_editor_cancel)) } })
     if (confirmRetryDelete) AlertDialog(onDismissRequest = { confirmRetryDelete = false },
         title = { Text(stringResource(R.string.events_editor_retry_delete_confirm)) },
         text = { Text(stringResource(R.string.events_editor_retry_locked)) },
@@ -234,7 +256,7 @@ fun EventEditorContent(
     if (confirmDiscard) AlertDialog(onDismissRequest = { confirmDiscard = false },
         title = { Text(stringResource(R.string.events_editor_discard_confirm)) },
         text = { Text(stringResource(R.string.events_editor_discard_description)) },
-        confirmButton = { TextButton(onClick = { confirmDiscard = false; onDiscardAndReload() }) {
+        confirmButton = { TextButton(onClick = { confirmDiscard = false; onDiscardAndReload?.invoke() }) {
             Text(stringResource(R.string.events_editor_discard_reload)) } },
         dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.events_editor_cancel)) } })
     if (state.confirmDelete) AlertDialog(onDismissRequest = controller::cancelDelete,
@@ -295,6 +317,12 @@ private fun problemResource(problem: EditorProblem) = when (problem) {
     EditorProblem.UNAVAILABLE -> R.string.events_editor_unavailable
     EditorProblem.DRAFT_UNAVAILABLE -> R.string.events_editor_draft_unavailable
     EditorProblem.DRAFT_RETIRED -> R.string.events_editor_draft_retired
+    EditorProblem.DRAFT_UPGRADE_REQUIRED -> R.string.editor_upgrade_needed
+    EditorProblem.RETIRE_UNAVAILABLE -> R.string.editor_retirement_unavailable
+    EditorProblem.RETIRE_BLOCKED_DISPATCH -> R.string.editor_retirement_dispatched
+    EditorProblem.RETIRE_BLOCKED_COMMIT -> R.string.editor_retirement_committed
+    EditorProblem.RETIRE_CONFLICT -> R.string.editor_retirement_conflict
+    EditorProblem.RETIRE_UNSUPPORTED -> R.string.editor_retirement_unsupported
     EditorProblem.UNSUPPORTED -> R.string.events_editor_unsupported
     EditorProblem.DRAFT_VERSION -> R.string.events_editor_draft_version
     EditorProblem.SAFE_TO_RETRY -> R.string.events_editor_safe_retry

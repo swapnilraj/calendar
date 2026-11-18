@@ -21,6 +21,7 @@ data class EditorDraftLaunch internal constructor(
     private val normalizedSeed: EventDraft?,
     val notices: List<EditorNotice> = emptyList(),
     val targetIdentity: CalendarIdentity? = null,
+    val generation: String? = null,
 ) {
     /** A seed never replaces stored raw fields. No current-date fallback is implicit. */
     fun seed(fallbackDate: LocalDate, fallbackZone: ZoneId): EventDraft = normalizedSeed ?: EventDraft(
@@ -50,13 +51,14 @@ object DraftBrowserCodec {
             val launch = SeriesDraftCodec.describe(record)
             return DraftBrowserItem(record.id, record.updatedAt, null, if (launch == null) DraftReadIssue.UNREADABLE else null, launch)
         }
-        if (record.version !in setOf(EventEditorController.LEGACY_VERSION, EventEditorController.VERSION))
+        if (record.version !in setOf(EventEditorController.LEGACY_VERSION, EventEditorController.PREVIOUS_VERSION, EventEditorController.VERSION))
             return DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNSUPPORTED_VERSION)
         return try {
             require(record.id.isNotBlank())
             val raw = JSONObject(record.payload)
             require(record.version != EventEditorController.LEGACY_VERSION || !raw.has("recurrence"))
-            require(record.version != EventEditorController.VERSION || raw.has("recurrence"))
+            require(record.version == EventEditorController.LEGACY_VERSION || raw.has("recurrence"))
+            val generation = if (record.version == EventEditorController.VERSION) OrdinaryDraftEnvelope.generation(raw) else null
             val target = raw.getString("target")
             val kind = when {
                 target == "create" -> EditorDraftKind.CREATE
@@ -91,10 +93,10 @@ object DraftBrowserCodec {
             if (ref != null) require(raw.getString("calendarId") == ref.calendarId.value.toString())
             val seed = (frozen as? FrozenEditorSubmission.Create)?.draft ?: baseline?.let(::readSeed)
             val launch = EditorDraftLaunch(record.id, kind, ref,
-                submitted || retained != null && frozen == null,
+                submitted || retained != null || operationKind.isNotBlank() || raw.optString("operationPayload").isNotBlank(),
                 raw.optString("title"), raw.optString("startDate"),
                 fields.targetIdentity != null && fields.targetIdentity.calendarId.value.toString() == fields.calendarId &&
-                    fields.targetIdentity.account.name.isNotBlank() && fields.targetIdentity.account.type.isNotBlank(), seed, EditorNoticeCodec.read(raw), fields.targetIdentity)
+                    fields.targetIdentity.account.name.isNotBlank() && fields.targetIdentity.account.type.isNotBlank(), seed, EditorNoticeCodec.read(raw), fields.targetIdentity, generation)
             DraftBrowserItem(record.id, record.updatedAt, launch, null)
         } catch (_: Exception) { DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNREADABLE) }
     }

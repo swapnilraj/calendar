@@ -12,6 +12,11 @@ internal sealed interface FrozenEditorSubmission {
     val operationId: String
     val kind: String
     suspend fun execute(port: CalendarMutations): MutationResult
+    fun retirementRequest(): RetirableOperation = when (this) {
+        is Create -> RetirableOperation.Create(operationId, draft)
+        is Update -> RetirableOperation.Update(operationId, ref, token, patch)
+        is Delete -> RetirableOperation.Delete(operationId, ref, token)
+    }
     fun encode(): JSONObject
 
     data class Create(override val operationId: String, val draft: EventDraft) : FrozenEditorSubmission {
