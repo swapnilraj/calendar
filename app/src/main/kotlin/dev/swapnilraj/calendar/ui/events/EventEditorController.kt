@@ -106,7 +106,8 @@ class EventEditorController(
                 } catch (_: Exception) { null }
                 submitted = submitted || retainedSubmission != null && frozenSubmission == null
                 uncertain = submitted
-                val sourceChanged = !submitted && existing != null && values.optString("sourceBaseline") != sourceBaseline()
+                val sourceChanged = !submitted && existing != null &&
+                    (!sourceNamespaceMatches(values) || values.optString("sourceBaseline") != sourceBaseline())
                 if (!submitted && !sourceChanged && values.optString("sourceToken") != existing?.token?.value.orEmpty()) {
                     // Only identical canonical source values, identity and rights permit token adoption.
                     operationId = UUID.randomUUID().toString(); operationPayload = ""
@@ -397,6 +398,15 @@ class EventEditorController(
             fields.startOffset, fields.endOffset) != listOf(original.startDate, original.endDate,
             original.startTime, original.endTime, original.allDay, original.zone, original.startOffset, original.endOffset)
 
+    /** Source identity is durable authority, not a value inferred from a reused calendar/event ID. */
+    private fun sourceNamespaceMatches(values: JSONObject): Boolean = try {
+        val source = existing ?: return true
+        val expected = CalendarIdentityJson.optional(JSONObject(values.getString("sourceBaseline")), "sourceCalendarIdentity")
+        val current = source.details.calendar?.identity
+        expected != null && expected.account.name.isNotBlank() && expected.account.type.isNotBlank() &&
+            expected.calendarId == source.details.occurrence.ref.calendarId && expected == current
+    } catch (_: Exception) { false }
+
     private fun sourceBaseline(): String = sourceBaseline(initial, existing)
 
     private fun targetIdentity(): String = editorDraftTarget(existing?.details?.occurrence?.ref ?: if (recoveryOnly) recoveryRef else null)
@@ -433,6 +443,7 @@ class EventEditorController(
                 is EventTime.AllDay -> { put("kind", "allDay"); put("start", time.dates.start.toString()); put("end", time.dates.endExclusive.toString()) }
             }
             existing?.let { source ->
+                source.details.calendar?.identity?.let { put("sourceCalendarIdentity", CalendarIdentityJson.encode(it)) }
                 put("sourceTitle", source.details.occurrence.title)
                 put("sourceAvailability", source.details.availability ?: JSONObject.NULL)
                 put("sourcePrivacy", source.details.privacy ?: JSONObject.NULL)

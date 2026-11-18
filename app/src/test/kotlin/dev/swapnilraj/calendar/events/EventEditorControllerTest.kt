@@ -25,7 +25,7 @@ class EventEditorControllerTest {
             Clock.fixed(Instant.parse("2026-11-18T00:00:00Z"), ZoneOffset.UTC), initialCalendarSelected = selected)
     }
     @After fun cleanUp() { scopes.forEach { it.cancel() } }
-    private fun editable() = EditableEvent(EventDetails(EventOccurrence(ref, initial.time, initial.title, 1), null),
+    private fun editable() = EditableEvent(EventDetails(EventOccurrence(ref, initial.time, initial.title, 1), eventTestCalendar()),
         EditToken("source-version"), EditableField.entries.toSet())
 
     @Test fun openingFutureDatePreservesDateAndSixtyMinuteDuration() {
@@ -432,6 +432,49 @@ class EventEditorControllerTest {
     @Test fun explicitCalendarRequirementDoesNotClearExistingCalendar() {
         val editor = controller(existing = editable(), selected = false)
         assertEquals("2", editor.state.fields.calendarId)
+    }
+
+    @Test fun reusedCalendarAndEventIdsCannotAdoptANewNamespaceWithIdenticalFields() = runBlocking {
+        val originalCalendar = eventTestCalendar().copy(providerId = "namespace-a")
+        val oldSource = editable().copy(details = editable().details.copy(calendar = originalCalendar))
+        val replacements = listOf(originalCalendar.copy(account = originalCalendar.account.copy(name = "other@example.test")),
+            originalCalendar.copy(account = originalCalendar.account.copy(type = "OtherProvider")),
+            originalCalendar.copy(ownerAccount = "different-owner@example.test"),
+            originalCalendar.copy(providerId = "namespace-b"), originalCalendar.copy(providerId = null))
+        for (replacement in replacements) {
+            val store = Store(); val writer = Writer()
+            val original = controller(store, writer, oldSource)
+            original.change { it.copy(title = "Retain my unsaved title") }; assertTrue(original.flushDraft())
+            val record = store.records.getValue("draft-fixture")
+            val operation = original.pendingOperationId
+            val reused = oldSource.copy(token = EditToken("fresh-replacement-token"), details = oldSource.details.copy(calendar = replacement))
+            val restored = controller(store, writer, reused)
+            assertTrue(restored.state.reviewRequired); assertEquals(EditorProblem.CONFLICT, restored.state.problem)
+            assertEquals("Retain my unsaved title", restored.state.fields.title)
+            assertEquals(operation, restored.pendingOperationId)
+            restored.save(); restored.requestDelete(); restored.confirmDelete()
+            assertFalse(restored.flushDraft()); assertEquals(record, store.records.getValue("draft-fixture"))
+            assertEquals(0, writer.updates); assertEquals(0, writer.deletes)
+        }
+    }
+
+    @Test fun legacyMissingSourceNamespaceNeverAdoptsFreshTokenEvenForIdenticalFields() = runBlocking {
+        val store = Store(); val writer = Writer(); val original = controller(store, writer, editable())
+        original.change { it.copy(description = "Retain this draft") }; original.flushDraft()
+        val record = store.records.getValue("draft-fixture")
+        val raw = org.json.JSONObject(record.payload)
+        raw.put("sourceBaseline", org.json.JSONObject(raw.getString("sourceBaseline")).apply { remove("sourceCalendarIdentity") }.toString())
+        val legacy = record.copy(payload = raw.toString()); store.records[legacy.id] = legacy
+        val restored = controller(store, writer, editable().copy(token = EditToken("new-identical-source-token")))
+        assertTrue(restored.state.reviewRequired); assertEquals("Retain this draft", restored.state.fields.description)
+        restored.save(); restored.requestDelete(); restored.confirmDelete(); assertFalse(restored.flushDraft())
+        assertEquals(legacy, store.records[legacy.id]); assertEquals(0, writer.updates); assertEquals(0, writer.deletes)
+    }
+
+    @Test fun missingCurrentNamespaceCannotValidateAnOldEditDraft() = runBlocking {
+        val store = Store(); val writer = Writer(); controller(store, writer, editable()).flushDraft()
+        val restored = controller(store, writer, editable().copy(details = editable().details.copy(calendar = null)))
+        assertTrue(restored.state.reviewRequired); restored.save(); assertEquals(0, writer.updates)
     }
 
     class Store : DraftStore {
