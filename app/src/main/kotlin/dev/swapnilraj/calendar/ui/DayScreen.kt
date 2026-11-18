@@ -8,7 +8,10 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
@@ -43,10 +46,15 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
     var sharedScroll by rememberSaveable { mutableIntStateOf(-1) }
     val visibleDate = anchor.plusDays((pager.currentPage - MiddlePage).toLong())
     val locale = LocalLocale.current.platformLocale
+    val fontScale = LocalDensity.current.fontScale
     Surface(Modifier.fillMaxSize()) {
       Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(visibleDate.format(DateTimeFormatter.ofPattern("MMMM yyyy", locale)), style = MaterialTheme.typography.titleLarge,
+        Column {
+          if (fontScale > 1.3f) Text(visibleDate.format(DateTimeFormatter.ofPattern("MMMM yyyy", locale)),
+              style = MaterialTheme.typography.titleLarge, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+          Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.End) {
+            if (fontScale <= 1.3f) Text(visibleDate.format(DateTimeFormatter.ofPattern("MMMM yyyy", locale)), style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             actions()
             IconButton(onClick = { scope.launch { pager.animateScrollToPage((pager.currentPage - 1).coerceAtLeast(0)) } }) {
@@ -57,7 +65,7 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
                 scope.launch { pager.animateScrollToPage(target) }
             }, modifier = Modifier.semantics { contentDescription = "Go to today" }) {
                 val color = MaterialTheme.colorScheme.onSurface
-                Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size((28f * fontScale).dp.coerceAtMost(40.dp)), contentAlignment = Alignment.Center) {
                     Canvas(Modifier.matchParentSize()) {
                         drawRoundRect(color, Offset(2.dp.toPx(), 4.dp.toPx()), Size(size.width - 4.dp.toPx(), size.height - 6.dp.toPx()),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()), style = Stroke(1.5.dp.toPx()))
@@ -67,6 +75,7 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
                 }
             }
             IconButton(onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } }) { Chevron(true, "Next day") }
+        }
         }
         HorizontalPager(pager, modifier = Modifier.weight(1f), key = { it }) { page ->
             val date = anchor.plusDays((page - MiddlePage).toLong())
@@ -94,8 +103,9 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
 @Composable
 private fun Chevron(right: Boolean, description: String) {
     val color = MaterialTheme.colorScheme.onSurfaceVariant
+    val pointRight = right != (LocalLayoutDirection.current == LayoutDirection.Rtl)
     Canvas(Modifier.size(20.dp).semantics { contentDescription = description }) {
-        val tip = if (right) 0.65f else 0.35f
+        val tip = if (pointRight) 0.65f else 0.35f
         val other = 1 - tip
         drawLine(color, Offset(size.width * other, size.height * 0.25f), Offset(size.width * tip, size.height / 2), 1.5.dp.toPx(), StrokeCap.Round)
         drawLine(color, Offset(size.width * tip, size.height / 2), Offset(size.width * other, size.height * 0.75f), 1.5.dp.toPx(), StrokeCap.Round)
