@@ -167,7 +167,7 @@ class CalendarSeriesWriterTest {
             assertEquals(AccessDecision.ALLOWED, editable.scopes.getValue(RecurrenceScope.ALL).delete)
             assertFalse(EditableField.TIME in editable.scopes.getValue(RecurrenceScope.ALL).fields)
             assertFalse(EditableField.ZONE in editable.allowedFields)
-            assertEquals(SeriesActionLimitation.UNSUPPORTED, editable.scopes.getValue(RecurrenceScope.THIS).limitation)
+            assertEquals(SeriesActionLimitation.REVIEW_REQUIRED, editable.scopes.getValue(RecurrenceScope.THIS).limitation)
             assertEquals(AccessDecision.DENIED, editable.scopes.getValue(RecurrenceScope.FOLLOWING).delete)
             assertEquals(common(MutationResult.PermissionRequired), f.writer.mutate("no-write", selected, editable.token, whole(editable, EventPatch(title = FieldChange.Set("No write")))))
             assertEquals(0, f.provider.batchCount)
@@ -359,6 +359,222 @@ class CalendarSeriesWriterTest {
             f.provider.events[1]["_sync_id"] = "newly-assigned-cloud-id"
             f.provider.events[1]["uid2445"] = "newly-visible-provider-uid"
             assertEquals(result, f.writer.recover("enrichment"))
+            assertEquals(1, f.provider.batchCount)
+        }
+    }
+
+    private fun Fixture.nativeCloneReady() {
+        provider.reminders.forEach { it.remove("opaque_child") }
+    }
+
+    @Test fun newThisExceptionPreservesTemplateCloudIdentityAndClonedChildrenWithoutResettingUnknownMetadata() = runBlocking {
+        fixture { f ->
+            f.nativeCloneReady()
+            f.provider.events[0]["sync_data1"] = "Master sync metadata must not be copied"
+            f.provider.attendees += mutableMapOf("_id" to "71", "event_id" to "10", "attendeeEmail" to "owner@example.invalid", "attendeeName" to "Self",
+                "attendeeStatus" to "1", "attendeeRelationship" to "2", "attendeeType" to "1", "attendeeIdentity" to "self-identity", "attendeeIdNamespace" to "namespace")
+            f.provider.extendedProperties += mutableMapOf("_id" to "72", "event_id" to "10", "name" to "provider-value", "value" to "Retain private metadata")
+            val editable = f.editable()
+            assertEquals(AccessDecision.ALLOWED, editable.scopes.getValue(RecurrenceScope.THIS).edit)
+            val result = f.writer.mutate("new-this", selected, editable.token, SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Only this appointment")))) as SeriesMutationResult.LocalSaved
+            val ref = result.selected!!
+            assertNotEquals(10L, ref.eventId)
+            assertEquals(selected.copy(eventId = ref.eventId), ref)
+            val created = f.provider.events.single { it["_id"] == ref.eventId.toString() }
+            assertEquals("10", created["original_id"]); assertEquals("cloud-master-A", created["original_sync_id"])
+            assertNull(created["_sync_id"]); assertNull(created["sync_data1"])
+            assertNull(created["rrule"]); assertNull(created["duration"])
+            assertEquals("77", created["availability"]); assertEquals("2", created["accessLevel"])
+            assertEquals("Never rewrite this", created["future_private_column"])
+            assertEquals("Master", f.provider.events[0]["title"])
+            assertEquals("PT1H", f.provider.events[0]["duration"])
+            assertEquals(3, f.provider.reminders.count { it["event_id"] == ref.eventId.toString() })
+            assertEquals("self-identity", f.provider.attendees.single { it["event_id"] == ref.eventId.toString() }["attendeeIdentity"])
+            assertEquals("Retain private metadata", f.provider.extendedProperties.single { it["event_id"] == ref.eventId.toString() }["value"])
+            val raw = f.provider.rawTimes.getValue(ref.eventId.toString())
+            assertEquals(selected.instanceEnd.toEpochMilli().toString(), raw["dtend"])
+            assertTrue(raw.keys.containsAll(setOf("dtstart", "dtend", "eventTimezone", "allDay", "originalInstanceTime", "originalAllDay")))
+            assertEquals(4, f.provider.events.size)
+        }
+    }
+
+    @Test fun newThisCancellationSuppressesOriginalInstanceAndPreservesOtherOverrides() = runBlocking {
+        fixture { f ->
+            f.nativeCloneReady()
+            val editable = f.editable()
+            assertEquals(AccessDecision.ALLOWED, editable.scopes.getValue(RecurrenceScope.THIS).delete)
+            assertEquals(SeriesMutationResult.LocalDeleted(SeriesIdentity(CalendarId(2), 10), RecurrenceScope.THIS, selected),
+                f.writer.mutate("new-cancel", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.THIS)))
+            val newId = f.provider.insertedExceptions.single()
+            assertEquals("2", f.provider.events.single { it["_id"] == newId }["eventStatus"])
+            assertEquals("0", f.provider.events[0]["deleted"])
+            assertEquals("Explicit override 11", f.provider.events[1]["title"])
+            assertEquals(CalendarReadState.Unavailable, f.reader.readDetails(selected))
+            f.permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            assertTrue(f.writer.recover("new-cancel") is SeriesMutationResult.LocalDeleted)
+            assertEquals(1, f.provider.batchCount)
+        }
+    }
+
+    @Test fun newExceptionAlertReplacementPreservesNonLocalAndDefaultRowsWhileKeepRetainsSentinel() = runBlocking {
+        fixture { f ->
+            f.nativeCloneReady()
+            f.provider.reminders += mutableMapOf("_id" to "54", "event_id" to "10", "minutes" to "-1", "method" to "1")
+            val editable = f.editable()
+            val saved = f.writer.mutate("new-alerts", selected, editable.token, SeriesCommand.OccurrenceEdit(EventPatch(alertMinutes = FieldChange.Set(listOf(15, 45))))) as SeriesMutationResult.LocalSaved
+            val id = saved.selected!!.eventId.toString()
+            val rows = f.provider.reminders.filter { it["event_id"] == id }
+            assertEquals(setOf("15", "45"), rows.filter { it["method"] == "1" }.map { it["minutes"] }.toSet())
+            assertTrue(rows.any { it["method"] == "0" && it["minutes"] == "-1" })
+            assertTrue(rows.any { it["method"] == "2" && it["minutes"] == "30" })
+            assertEquals("-1", f.provider.reminders.single { it["_id"] == "54" }["minutes"])
+        }
+    }
+
+    @Test fun nativeExceptionModelRejectsInsertDtendAndDerivesEndFromDurationBeforeCorrection() = runBlocking {
+        fixture { f ->
+            val uri = android.content.ContentUris.withAppendedId(CalendarContract.Events.CONTENT_EXCEPTION_URI, 10)
+            val values = android.content.ContentValues().apply {
+                put("originalInstanceTime", selected.instanceStart.toEpochMilli()); put("dtstart", selected.instanceStart.toEpochMilli()); put("duration", "P1D")
+            }
+            val row = f.resolver.insert(uri, values)!!
+            val id = android.content.ContentUris.parseId(row)
+            assertEquals(selected.instanceStart.plusSeconds(86_400).toEpochMilli().toString(), f.provider.events.single { it["_id"] == id.toString() }["dtend"])
+            assertFalse(f.provider.rawTimes.containsKey(id.toString()))
+            values.put("dtend", selected.instanceEnd.toEpochMilli())
+            try { f.resolver.insert(uri, values); fail("Native exception whitelist must reject DTEND") } catch (_: IllegalArgumentException) { }
+            assertEquals(4, f.provider.events.size)
+        }
+    }
+
+    @Test fun emptyThisEditDoesNotCreateAnUnrequestedExplicitOverride() = runBlocking {
+        fixture { f ->
+            f.nativeCloneReady()
+            val editable = f.editable()
+            assertTrue(f.writer.mutate("empty-this", selected, editable.token, SeriesCommand.OccurrenceEdit(EventPatch())) is SeriesMutationResult.Unsupported)
+            assertEquals(0, f.provider.batchCount); assertEquals(3, f.provider.events.size)
+            assertNull(f.store.operation("empty-this"))
+        }
+    }
+
+    @Test fun observedDstBoundsArePreservedEvenWhenNominalMasterDurationDisagrees() = runBlocking {
+        val cases = listOf(
+            Triple("2026-03-07T15:00:00Z", 82_800L, "P1D"),
+            Triple("2026-03-07T15:00:00Z", 86_400L, "P1D"),
+            Triple("2026-10-31T14:00:00Z", 90_000L, "P1D"),
+            Triple("2026-10-31T14:00:00Z", 86_400L, "PT24H"))
+        for ((raw, seconds, duration) in cases) fixture { f ->
+            f.nativeCloneReady()
+            val instant = Instant.parse(raw)
+            val ref = EventRef(CalendarId(2), 10, instant, instant.plusSeconds(seconds), RecurrenceRef(10, instant))
+            f.provider.events.removeAll { it["_id"] != "10" }
+            f.provider.events[0].apply { put("dtstart", instant.toEpochMilli().toString()); put("duration", duration); put("eventTimezone", "America/New_York"); put("eventEndTimezone", "America/New_York") }
+            f.provider.instances.clear(); f.provider.instances += instance(ref, f.provider.events[0])
+            val editable = f.editable(ref)
+            val saved = f.writer.mutate("dst-$raw-$seconds", ref, editable.token, SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Preserve actual bounds")))) as SeriesMutationResult.LocalSaved
+            val created = f.provider.events.single { it["_id"] == saved.selected!!.eventId.toString() }
+            assertEquals(instant.toEpochMilli().toString(), created["dtstart"])
+            assertEquals(instant.plusSeconds(seconds).toEpochMilli().toString(), created["dtend"])
+            assertEquals(duration, f.provider.events[0]["duration"])
+            assertEquals("America/New_York", created["eventTimezone"])
+        }
+    }
+
+    @Test fun utcAllDayObservedDatesRemainExactAndLargeOrSubsecondBoundsNeverDispatch() = runBlocking {
+        fixture { f ->
+            f.nativeCloneReady()
+            val instant = Instant.parse("2026-11-17T00:00:00Z")
+            val ref = EventRef(CalendarId(2), 10, instant, instant.plusSeconds(3 * 86_400), RecurrenceRef(10, instant))
+            f.provider.events.removeAll { it["_id"] != "10" }
+            f.provider.events[0].apply { put("dtstart", instant.toEpochMilli().toString()); put("allDay", "1"); put("duration", "P1D"); put("eventTimezone", "UTC"); put("eventEndTimezone", "UTC") }
+            f.provider.instances.clear(); f.provider.instances += instance(ref, f.provider.events[0])
+            val editable = f.editable(ref)
+            val saved = f.writer.mutate("all-day-new", ref, editable.token, SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Three observed dates")))) as SeriesMutationResult.LocalSaved
+            assertEquals(ref.copy(eventId = saved.selected!!.eventId), saved.selected)
+            assertEquals("P1D", f.provider.events[0]["duration"])
+        }
+        for (ref in listOf(selected.copy(instanceEnd = selected.instanceStart.plusSeconds(Int.MAX_VALUE.toLong() + 1)),
+            selected.copy(instanceStart = selected.instanceStart.plusMillis(1), instanceEnd = selected.instanceEnd.plusMillis(1), recurrence = RecurrenceRef(10, selected.instanceStart.plusMillis(1))))) fixture { f ->
+            f.nativeCloneReady(); f.provider.instances.clear(); f.provider.instances += instance(ref, f.provider.events[0])
+            val editable = f.editable(ref)
+            assertEquals(SeriesActionLimitation.REVIEW_REQUIRED, editable.scopes.getValue(RecurrenceScope.THIS).limitation)
+            assertTrue(f.writer.mutate("invalid-new", ref, editable.token, SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("No coercion")))) is SeriesMutationResult.PlanningReview)
+            assertEquals(0, f.provider.batchCount); assertNull(f.store.operation("invalid-new"))
+        }
+    }
+
+    @Test fun unknownNonNullOemChildFieldsAndRdateOnlyTemplatesNeverStartNewInsert() = runBlocking {
+        for (table in listOf("reminders", "attendees", "extended")) fixture { f ->
+            f.nativeCloneReady()
+            when (table) {
+                "reminders" -> f.provider.reminders[0]["oem_extra"] = "Unknown"
+                "attendees" -> f.provider.attendees += mutableMapOf("_id" to "70", "event_id" to "10", "attendeeEmail" to "owner@example.invalid", "oem_extra" to "Unknown")
+                else -> f.provider.extendedProperties += mutableMapOf("_id" to "70", "event_id" to "10", "name" to "Known", "value" to "Known", "oem_extra" to "Unknown")
+            }
+            val editable = f.editable()
+            assertEquals(SeriesActionLimitation.REVIEW_REQUIRED, editable.scopes.getValue(RecurrenceScope.THIS).limitation)
+            assertTrue(f.writer.mutate("oem-$table", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.THIS)) is SeriesMutationResult.PlanningReview)
+            assertEquals(0, f.provider.batchCount); assertNull(f.store.operation("oem-$table"))
+        }
+        fixture { f ->
+            f.nativeCloneReady(); f.provider.events[0]["rrule"] = null; f.provider.events[0]["rdate"] = "20261118T090000Z"
+            val editable = f.editable()
+            assertEquals(SeriesActionLimitation.UNSUPPORTED, editable.scopes.getValue(RecurrenceScope.THIS).limitation)
+            assertTrue(f.writer.mutate("rdate-new", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.THIS)) is SeriesMutationResult.Unsupported)
+            assertEquals(0, f.provider.batchCount)
+        }
+    }
+
+    @Test fun correctiveUpdateAndFinalChildAssertionFailuresRollbackNewRowAndEveryClone() = runBlocking {
+        for (corruptChild in listOf(false, true)) fixture { f ->
+            f.nativeCloneReady()
+            f.provider.extendedProperties += mutableMapOf("_id" to "70", "event_id" to "10", "name" to "Known", "value" to "Original")
+            val editable = f.editable()
+            f.provider.failCorrection = !corruptChild; f.provider.corruptClonedReminder = corruptChild
+            val result = f.writer.mutate("rollback-new", selected, editable.token, SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Rollback"))))
+            assertEquals(common(MutationResult.Unavailable), result)
+            assertEquals(3, f.provider.events.size); assertEquals(4, f.provider.reminders.size); assertEquals(1, f.provider.extendedProperties.size)
+            assertTrue(f.provider.insertedExceptions.isEmpty()); assertTrue(f.provider.rawTimes.isEmpty())
+            assertEquals(common(MutationResult.SafeToRetry("rollback-new")), f.writer.recover("rollback-new"))
+            f.provider.failCorrection = false; f.provider.corruptClonedReminder = false
+            assertTrue(f.writer.mutate("rollback-new", selected, editable.token, SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Rollback")))) is SeriesMutationResult.LocalSaved)
+            assertEquals(4, f.provider.events.size)
+        }
+    }
+
+    @Test fun lostInsertAcknowledgementNeverSearchesForMatchingRowsOrCreatesAnotherException() = runBlocking {
+        fixture { f ->
+            f.nativeCloneReady()
+            val editable = f.editable()
+            val command = SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Possibly created")))
+            f.provider.lostAcknowledgement = true
+            assertTrue((f.writer.mutate("lost-insert", selected, editable.token, command) as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
+            assertEquals(4, f.provider.events.size); assertEquals("ATTEMPTED", f.store.operation("lost-insert")!!.phase)
+            f.provider.calls.clear()
+            assertEquals(common(MutationResult.Uncertain("lost-insert", null)), f.writer.recover("lost-insert"))
+            assertTrue(f.provider.calls.isEmpty())
+            assertTrue((f.writer.mutate("lost-insert", selected, editable.token, command) as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
+            assertEquals(1, f.provider.batchCount); assertEquals(4, f.provider.events.size)
+        }
+    }
+
+    @Test fun knownInsertedIdRecoversReadOnlyButWrongParentOrCorruptNewRefNeverClaimsSaved() = runBlocking {
+        fixture { f ->
+            f.nativeCloneReady()
+            val editable = f.editable()
+            f.provider.failReadsAfterCommit = true
+            assertTrue((f.writer.mutate("known-insert", selected, editable.token, SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Known created row")))) as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
+            assertEquals("COMMITTED", f.store.operation("known-insert")!!.phase)
+            f.provider.failReadsAfterCommit = false; f.permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            val saved = f.writer.recover("known-insert") as SeriesMutationResult.LocalSaved
+            val created = f.provider.events.single { it["_id"] == saved.selected!!.eventId.toString() }
+            created["original_id"] = "999"
+            assertTrue((f.writer.recover("known-insert") as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
+            created["original_id"] = "10"
+            val raw = f.store.operation("known-insert")!!.resultRef!!
+            val corrupted = JSONObject(raw).apply { getJSONObject("resultSelected").put("event", 10) }
+            f.store.writableDatabase.execSQL("UPDATE mutation_journal SET result_ref = ? WHERE id = ?", arrayOf(corrupted.toString(), "known-insert"))
+            assertTrue((f.writer.recover("known-insert") as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
             assertEquals(1, f.provider.batchCount)
         }
     }

@@ -152,6 +152,7 @@ class CalendarSeriesReader(
             if (!attendee[CalendarContract.Attendees.ATTENDEE_EMAIL].orEmpty().equals(calendar[CalendarContract.Calendars.ACCOUNT_NAME], ignoreCase = true))
                 throw SeriesSourceDenied(MutationDenial.INVITATION)
         }
+        val extendedProperties = children(CalendarContract.ExtendedProperties.CONTENT_URI, ids)
         ensureRead()
         val details = when (val read = reader.readDetails(selected)) {
             is CalendarReadState.Ready -> read.value
@@ -188,7 +189,7 @@ class CalendarSeriesReader(
         val allowed = EditableField.entries.toSet().let {
             if (calendar[CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE] == "1" && !masterAllDay) it else it - EditableField.ZONE
         }.let { if (knownAvailability(calendar)) it else it - EditableField.AVAILABILITY }
-        CalendarSeriesSource(calendar, master, exceptions, reminders, attendees, details, masterFields, snapshot, allowed)
+        CalendarSeriesSource(calendar, master, exceptions, reminders, attendees, details, masterFields, snapshot, allowed, extendedProperties)
     }
 
     private fun writable(calendar: Map<String, String?>) {
@@ -296,6 +297,7 @@ internal data class CalendarSeriesSource(
     val masterFields: SeriesMasterFields,
     val snapshot: RecurrenceSeriesSnapshot,
     val allowedFields: Set<EditableField>,
+    val extendedProperties: Map<Long, List<Map<String, String?>>> = emptyMap(),
 ) {
     fun canonical(): String {
         fun row(values: Map<String, String?>) = JSONObject().apply { values.toSortedMap().forEach { (key, value) -> put(key, value ?: JSONObject.NULL) } }
@@ -307,6 +309,7 @@ internal data class CalendarSeriesSource(
         return JSONObject().put("version", 1).put("calendar", row(calendar)).put("master", row(master))
             .put("exceptions", JSONArray(exceptions.sortedBy { it["_id"]?.toLongOrNull() }.map(::row)))
             .put("reminders", children(reminders)).put("attendees", children(attendees))
+            .put("extendedProperties", children(extendedProperties))
             .put("selection", JSONObject().put("calendar", ref.calendarId.value).put("event", ref.eventId)
                 .put("start", ref.instanceStart.toString()).put("end", ref.instanceEnd.toString())
                 .put("master", recurrence.masterEventId).put("original", recurrence.originalStart.toString())).toString()

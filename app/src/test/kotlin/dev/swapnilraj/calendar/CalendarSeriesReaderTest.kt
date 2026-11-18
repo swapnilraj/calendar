@@ -59,6 +59,7 @@ class CalendarSeriesReaderTest {
         val instances = mutableListOf<MutableMap<String, String?>>()
         val reminders = mutableListOf<MutableMap<String, String?>>()
         val attendees = mutableListOf<MutableMap<String, String?>>()
+        val extendedProperties = mutableListOf<MutableMap<String, String?>>()
         data class Call(val path: String, val fields: List<String>?, val selection: String?, val args: List<String>)
         val calls = mutableListOf<Call>()
         var partialPath: String? = null
@@ -77,6 +78,11 @@ class CalendarSeriesReaderTest {
         var committed = false
         var nextId = 900L
         var beforeBatch: (() -> Unit)? = null
+        val insertedExceptions = mutableSetOf<String>()
+        val rawTimes = mutableMapOf<String, Map<String, String?>>()
+        var failCorrection = false
+        var ignoreCorrectionEnd = false
+        var corruptClonedReminder = false
         override fun onCreate() = true
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?, cancellationSignal: CancellationSignal?): Cursor? {
             signal = cancellationSignal
@@ -92,30 +98,12 @@ class CalendarSeriesReaderTest {
             val id = uri.lastPathSegment?.toLongOrNull()
             val rows: List<Map<String, String?>> = when (path) {
                 "calendars" -> listOf(calendar).filter { id == null || it["_id"] == id.toString() }
-                "events" -> events.filter { row -> when {
-                    id != null -> row["_id"] == id.toString()
-                    selection?.startsWith("_id IN") == true -> row["_id"] in args.orEmpty()
-                    selection?.contains("_sync_id IN") == true -> row["calendar_id"] == args!![0] && row["_sync_id"] in args.drop(1)
-                    selection?.contains("original_id IS NULL") == true -> row["calendar_id"] == args!![0] && row["original_id"] == null && row["original_sync_id"] != null
-                    selection?.contains("original_id") == true -> {
-                        val scoped = selection.startsWith("calendar_id")
-                        val master = args!![if (scoped) 1 else 0]
-                        val sync = args.lastOrNull().takeIf { args.size == 4 }
-                        (row["_id"] == master || row["original_id"] == master || (sync != null && row["original_sync_id"] == sync && row["calendar_id"] == args[if (scoped) 0 else 2])) &&
-                            (!selection.contains("deleted = 0") || row["deleted"] == "0") &&
-                            (!scoped || row["calendar_id"] == args.first())
-                    }
-                    else -> true
-                } }
-                "instances" -> instances.filter { row ->
-                    events.any { it["_id"] == row["event_id"] && it["deleted"] != "1" && it["eventStatus"] != "2" } &&
-                    row["event_id"] == args!![0] && row["calendar_id"] == args[1] && row["begin"]!!.toLong() < uri.pathSegments[3].toLong() &&
-                        row["end"]!!.toLong() > uri.pathSegments[2].toLong()
-                }
-                "reminders", "attendees" -> (if (path == "reminders") reminders else attendees).filter { row ->
-                    if (id != null) row["_id"] == id.toString() else if (selection?.contains("method = ?") == true)
-                        row["event_id"] == args!![0] && row["method"] == args[1] else row["event_id"] in args.orEmpty()
-                }
+                "events" -> events.filter { (id == null || it["_id"] == id.toString()) && matches(it, selection, args) }
+                "instances" -> effectiveInstances().filter { row -> matches(row, selection, args) &&
+                    row["begin"]!!.toLong() < uri.pathSegments[3].toLong() && row["end"]!!.toLong() > uri.pathSegments[2].toLong() }
+                "reminders", "attendees", "extendedproperties" -> (when (path) { "reminders" -> reminders; "attendees" -> attendees; else -> extendedProperties })
+                    .filter { (id == null || it["_id"] == id.toString()) && matches(it, selection, args) }
+
                 else -> error("Unexpected table")
             }
             afterQuery?.invoke(path)
@@ -129,9 +117,95 @@ class CalendarSeriesReaderTest {
                 override fun close() { super.close(); closes++ }
             }.apply { rows.forEach { row -> addRow(fields.map { row[it] }.toTypedArray()) } }
         }
+        private fun matches(row: Map<String, String?>, sql: String?, arguments: Array<out String>?): Boolean {
+            if (sql == null) return true
+            val tokens = Regex("[A-Za-z_][A-Za-z_0-9]*|[0-9]+|[(),=?]").findAll(sql).map { it.value }.toList()
+            var at = 0; var parameter = 0
+            fun value(): String = tokens[at++].let { if (it == "?") arguments!![parameter++] else it }
+            lateinit var expression: () -> Boolean
+            fun atom(): Boolean {
+                if (tokens[at] == "(") { at++; val result = expression(); check(tokens[at++] == ")"); return result }
+                val column = tokens[at++]
+                return when (tokens[at++]) {
+                    "=" -> { val expected = value(); row[column] != null && row[column] == expected }
+                    "IS" -> { val not = tokens[at] == "NOT"; if (not) at++; check(tokens[at++] == "NULL"); (row[column] == null) != not }
+                    "IN" -> {
+                        check(tokens[at++] == "(")
+                        val values = mutableListOf(value())
+                        while (tokens[at] == ",") { at++; values += value() }
+                        check(tokens[at++] == ")"); row[column] != null && row[column] in values
+                    }
+                    else -> error("Unsupported synthetic predicate")
+                }
+            }
+            fun conjunction(): Boolean {
+                var result = atom()
+                while (at < tokens.size && tokens[at] == "AND") { at++; val next = atom(); result = result && next }
+                return result
+            }
+            expression = {
+                var result = conjunction()
+                while (at < tokens.size && tokens[at] == "OR") { at++; val next = conjunction(); result = result || next }
+                result
+            }
+            return expression().also { check(at == tokens.size && parameter == arguments.orEmpty().size) }
+        }
+        private fun effectiveInstances(): List<Map<String, String?>> {
+            val base = instances.filter { instance ->
+                val event = events.singleOrNull { it["_id"] == instance["event_id"] } ?: return@filter false
+                event["deleted"] != "1" && event["eventStatus"] != "2" && events.none { exception ->
+                    exception["deleted"] != "1" && exception["originalInstanceTime"] == instance["begin"] &&
+                        (exception["original_id"] == instance["event_id"] || (!event["_sync_id"].isNullOrBlank() && exception["original_sync_id"] == event["_sync_id"]))
+                }
+            }
+            return base + events.filter { it["_id"] in insertedExceptions && it["deleted"] != "1" && it["eventStatus"] != "2" }.map { event ->
+                event + mapOf("event_id" to event["_id"], "begin" to event["dtstart"], "end" to event["dtend"], "displayColor" to "123", "selfAttendeeStatus" to "0")
+            }
+        }
+        private fun insertNativeException(uri: Uri, supplied: ContentValues): Uri {
+            // Independent model of Android 16 provider77bed8f9: exception whitelist omits DTEND;
+            // full event payload is copied, own sync fields dropped, child subsets cloned.
+            val allowed = setOf("title", "eventLocation", "description", "eventColor", "eventColor_index", "eventStatus", "selfAttendeeStatus",
+                "dtstart", "eventTimezone", "eventEndTimezone", "duration", "allDay", "accessLevel", "availability", "hasAlarm", "hasExtendedProperties",
+                "rrule", "rdate", "exrule", "exdate", "original_sync_id", "originalInstanceTime", "hasAttendeeData", "guestsCanModify",
+                "guestsCanInviteOthers", "guestsCanSeeGuests", "organizer", "customAppPackage", "customAppUri", "uid2445", "_sync_id", "sync_data1", "sync_data3", "sync_data6", "sync_data7")
+            require(supplied.keySet().all { it in allowed })
+            require(!supplied.getAsString("originalInstanceTime").isNullOrBlank())
+            require(supplied.getAsString("rrule").isNullOrBlank()) { "Synthetic fixture does not implement unsafe native following split" }
+            val master = events.single { it["_id"] == uri.lastPathSegment }
+            require(!master["rrule"].isNullOrBlank())
+            val id = nextId++
+            val row = master.toMutableMap()
+            listOf("_sync_id", *(1..10).map { "sync_data$it" }.toTypedArray()).forEach { row.remove(it) }
+            supplied.keySet().forEach { row[it] = supplied.get(it)?.toString() }
+            row["_id"] = id.toString(); row["original_id"] = master["_id"]; row["original_sync_id"] = master["_sync_id"]; row["originalAllDay"] = master["allDay"]
+            val duration = row["duration"]!!
+            val seconds = when {
+                duration.matches(Regex("PT[0-9]+S")) -> duration.removePrefix("PT").removeSuffix("S").toInt()
+                duration.matches(Regex("P[0-9]+D")) -> duration.removePrefix("P").removeSuffix("D").toInt() * 86_400
+                else -> error("Synthetic Duration parser requires seconds or days")
+            }
+            val actualStart = supplied.getAsLong("dtstart") ?: supplied.getAsLong("originalInstanceTime")!!
+            row["dtstart"] = actualStart.toString(); row["dtend"] = (actualStart + seconds * 1000L).toString()
+            listOf("duration", "rrule", "rdate", "exrule", "exdate").forEach { row.remove(it) }
+            events += row; insertedExceptions += id.toString()
+            fun clone(table: MutableList<MutableMap<String, String?>>, columns: List<String>) {
+                table.filter { it["event_id"] == master["_id"] }.map { source ->
+                    columns.associateWith { source[it] }.toMutableMap().apply { put("_id", (nextId++).toString()); put("event_id", id.toString()) }
+                }.forEach { table += it }
+            }
+            clone(reminders, listOf("minutes", "method"))
+            clone(attendees, listOf("attendeeName", "attendeeEmail", "attendeeStatus", "attendeeRelationship", "attendeeType", "attendeeIdentity", "attendeeIdNamespace"))
+            clone(extendedProperties, listOf("name", "value"))
+            if (corruptClonedReminder) reminders.firstOrNull { it["event_id"] == id.toString() }?.set("minutes", "999")
+            return android.content.ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id)
+        }
+
         override fun getType(uri: Uri): String? = null
         override fun insert(uri: Uri, values: ContentValues?): Uri {
-            check(allowWrites && uri.pathSegments.first() == "reminders") { "No provider event insertion is supported" }
+            check(allowWrites)
+            if (uri.pathSegments.first() == "exception") return insertNativeException(uri, values!!)
+            check(uri.pathSegments.first() == "reminders")
             if (failReminder) throw android.content.OperationApplicationException("Synthetic atomic rollback")
             val id = nextId++
             reminders += mutableMapOf<String, String?>("_id" to id.toString()).apply { values!!.keySet().forEach { put(it, values.get(it)?.toString()) } }
@@ -140,19 +214,23 @@ class CalendarSeriesReaderTest {
         override fun delete(uri: Uri, selection: String?, args: Array<out String>?): Int {
             check(allowWrites)
             if (uri.pathSegments.first() == "events") {
-                val rows = events.filter { it["_id"] == uri.lastPathSegment }
+                val rows = events.filter { (uri.lastPathSegment?.toLongOrNull() == null || it["_id"] == uri.lastPathSegment) && matches(it, selection, args) }
                 rows.forEach { it["deleted"] = "1" }
                 return rows.size
             }
             check(uri.pathSegments.first() == "reminders")
-            val rows = reminders.filter { it["event_id"] == args!![0] && it["method"] == args[1] }.toSet()
+            val rows = reminders.filter { matches(it, selection, args) }.toSet()
             reminders.removeAll(rows)
             return rows.size
         }
         override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?): Int {
             check(allowWrites && uri.pathSegments.first() == "events")
-            val rows = events.filter { it["_id"] == uri.lastPathSegment }
-            rows.forEach { row -> values!!.keySet().forEach { row[it] = values.get(it)?.toString() } }
+            val rows = events.filter { (uri.lastPathSegment?.toLongOrNull() == null || it["_id"] == uri.lastPathSegment) && matches(it, selection, args) }
+            if (values!!.containsKey("dtend") && rows.any { it["_id"] in insertedExceptions }) {
+                if (failCorrection) throw android.content.OperationApplicationException("Synthetic correction rollback")
+                rows.forEach { rawTimes[it["_id"]!!] = values.keySet().associateWith { field -> values.get(field)?.toString() } }
+            }
+            rows.forEach { row -> values.keySet().forEach { if (!(ignoreCorrectionEnd && it == "dtend")) row[it] = values.get(it)?.toString() } }
             return rows.size
         }
         override fun applyBatch(operations: ArrayList<android.content.ContentProviderOperation>): Array<android.content.ContentProviderResult> {
@@ -162,10 +240,14 @@ class CalendarSeriesReaderTest {
             val originalEvents = events.map { it.toMutableMap() }
             val originalReminders = reminders.map { it.toMutableMap() }
             val originalAttendees = attendees.map { it.toMutableMap() }
+            val originalProperties = extendedProperties.map { it.toMutableMap() }
+            val originalInserted = insertedExceptions.toSet()
+            val originalRawTimes = rawTimes.toMap()
             val originalId = nextId
             val result = try { super.applyBatch(operations) } catch (failure: Exception) {
                 events.clear(); events.addAll(originalEvents); reminders.clear(); reminders.addAll(originalReminders)
-                attendees.clear(); attendees.addAll(originalAttendees); nextId = originalId
+                attendees.clear(); attendees.addAll(originalAttendees); extendedProperties.clear(); extendedProperties.addAll(originalProperties)
+                insertedExceptions.clear(); insertedExceptions.addAll(originalInserted); rawTimes.clear(); rawTimes.putAll(originalRawTimes); nextId = originalId
                 throw failure
             }
             committed = true
