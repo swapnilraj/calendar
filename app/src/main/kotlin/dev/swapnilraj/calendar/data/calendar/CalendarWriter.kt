@@ -533,6 +533,39 @@ class CalendarWriter(
         validate(draft, calendar, 0, initial = true)
         return values(draft).apply { remove(CalendarContract.Events.HAS_ALARM) }
     }
+    /** Pure sparse authoring for an owned meeting. No guest-free permission/token/provider path
+     * is reused. Unchanged NULL/unknown fields are never reconstructed into provider defaults. */
+    internal fun meetingOneOffPatchValues(calendarId: CalendarId, oldTime: EventTime, oldZone: java.time.ZoneId?,
+        event: Map<String, String?>, calendar: Map<String, String?>, reminders: List<Map<String, String?>>, patch: EventPatch): ContentValues {
+        val values = ContentValues()
+        (patch.title as? FieldChange.Set)?.let { values.put("title", it.value) }
+        (patch.location as? FieldChange.Set)?.let { values.put("eventLocation", it.value) }
+        (patch.description as? FieldChange.Set)?.let { values.put("description", it.value) }
+        val availability = (patch.availability as? FieldChange.Set)?.let { it.value ?: 0 }
+        val privacy = (patch.privacy as? FieldChange.Set)?.let { it.value ?: 0 }
+        validateMetadata(availability, privacy, calendar)
+        availability?.let { values.put("availability", it) }; privacy?.let { values.put("accessLevel", it) }
+        if (patch.time is FieldChange.Set || patch.eventZone is FieldChange.Set) {
+            val draft = EventDraft(calendarId, patch.time.resolve(oldTime), patch.eventZone.resolve(oldZone), "")
+            validateTime(draft, authored = true)
+            if (draft.time is EventTime.AllDay && patch.eventZone is FieldChange.Set && draft.eventZone?.let {
+                    !it.rules.isFixedOffset || it.rules.getOffset(java.time.Instant.EPOCH) != java.time.ZoneOffset.UTC
+                } == true) throw Invalid(setOf(InvalidEventField.ZONE))
+            val authoredZone = if (draft.time is EventTime.AllDay) "UTC" else draft.eventZone!!.id
+            if (authoredZone != event["eventTimezone"] && calendar["canModifyTimeZone"] != "1") throw Invalid(setOf(InvalidEventField.ZONE))
+            val ref = reference(calendarId, 0, draft.time)
+            if (ref.instanceStart != java.time.Instant.ofEpochMilli(ref.instanceStart.toEpochMilli()) ||
+                ref.instanceEnd != java.time.Instant.ofEpochMilli(ref.instanceEnd.toEpochMilli())) throw Invalid(setOf(InvalidEventField.TIME))
+            values.putAll(timeValues(draft))
+            if (authoredZone == event["eventTimezone"]) values.remove("eventEndTimezone")
+        }
+        (patch.alertMinutes as? FieldChange.Set)?.let {
+            if (it.value.any { minutes -> minutes < 0 }) throw Invalid(setOf(InvalidEventField.ALERTS))
+            validateAlerts(it.value, calendar, reminders.count { row -> row["method"] != "1" })
+        }
+        return values
+    }
+
     private fun values(draft: EventDraft) = timeValues(draft).apply {
         put(CalendarContract.Events.CALENDAR_ID, draft.calendarId.value); put(CalendarContract.Events.TITLE, draft.title)
         put(CalendarContract.Events.HAS_ALARM, if (draft.alertMinutes.isNotEmpty()) 1 else 0)

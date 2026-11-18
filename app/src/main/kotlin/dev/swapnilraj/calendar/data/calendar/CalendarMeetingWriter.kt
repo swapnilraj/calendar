@@ -33,6 +33,7 @@ class CalendarMeetingWriter(
     providerClonePolicy: ProviderClonePolicy = ProviderClonePolicy.Unverified,
 ) : CalendarMeetings {
     private val mutex = Mutex()
+    private val owned = CalendarOwnedMeetingWriter(resolver, reader, store, hasPermission, io, readBudgets)
     private val creation = CalendarMeetingCreateWriter(resolver, reader, store, hasPermission, io, readBudgets)
     private val series = CalendarMeetingSeriesWriter(resolver, reader, store, hasPermission, io, readBudgets, planningBudget, providerClonePolicy)
     private class Denied(val reason: MutationDenial) : Exception()
@@ -56,6 +57,7 @@ class CalendarMeetingWriter(
 
     override suspend fun loadForEdit(selected: EventRef): MeetingReadResult<EditableMeeting> = withContext(io + readBudgetContext(readBudgets.mutation)) {
         if (selected.recurrence != null) return@withContext series.loadForEdit(selected)
+        owned.discover(selected)?.let { return@withContext it }
         try {
             ensureRead()
             val before = source(selected)
@@ -86,6 +88,7 @@ class CalendarMeetingWriter(
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { return@withLock common(MutationResult.Unavailable) }
         if (selected.recurrence != null) return@withLock series.mutate(operationId, selected, token, command)
+        if (command is MeetingCommand.EditOwned || command is MeetingCommand.CancelOwned) return@withLock owned.mutate(operationId, selected, token, command)
         if (command !is MeetingCommand.Respond || command.scope != RecurrenceScope.THIS)
             return@withLock MeetingMutationResult.Unsupported("Only THIS response on a proven nonrecurring invitation is implemented")
         if (!permissions()) return@withLock common(MutationResult.PermissionRequired)
@@ -166,6 +169,7 @@ class CalendarMeetingWriter(
             store.operation(operationId)?.let { when {
                 CalendarMeetingCreateWriter.handles(it.kind) -> creation.recover(operationId)
                 CalendarMeetingSeriesWriter.handles(it.kind) -> series.recover(operationId)
+                CalendarOwnedMeetingWriter.handles(it.kind) -> owned.recover(operationId)
                 else -> recover(it, true)
             } } ?: common(MutationResult.Unavailable)
         } catch (_: SecurityException) { common(MutationResult.PermissionRequired) }
@@ -396,6 +400,8 @@ class CalendarMeetingWriter(
         private fun parseRef(value: JSONObject) = EventRef(CalendarId(value.getLong("calendar")), value.getLong("event"), Instant.parse(value.getString("start")), Instant.parse(value.getString("end")))
         internal fun retirementFingerprint(selected: EventRef, token: EditToken, command: MeetingCommand): Pair<String, String>? {
             if (selected.recurrence != null) return CalendarMeetingSeriesWriter.retirementFingerprint(selected, token, command)
+            if (command is MeetingCommand.EditOwned || command is MeetingCommand.CancelOwned)
+                return CalendarOwnedMeetingWriter.fingerprint(selected, token, command, 1024 * 1024)
             if (command !is MeetingCommand.Respond || command.scope != RecurrenceScope.THIS) return null
             return Kind to hash(CommandFeature + commandJson(selected, token, command.response).toString())
         }
