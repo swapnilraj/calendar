@@ -101,6 +101,7 @@ internal fun LiveCalendarDay(
     dateNavigation: CalendarDateNavigation? = null,
     onDateNavigationConsumed: (String) -> Unit = {},
     onLocalCancelled: () -> Unit = onLocalSaved,
+    onRetainedOwnedMeetingChanged: (Boolean) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -110,6 +111,9 @@ internal fun LiveCalendarDay(
     var meetingWriteText by rememberSaveable { mutableStateOf<String?>(null) }
     var meetingCreationText by rememberSaveable { mutableStateOf<String?>(null) }
     var ownedMeetingText by rememberSaveable { mutableStateOf<String?>(null) }
+    val retainedOwnedMeetingChanged by rememberUpdatedState(onRetainedOwnedMeetingChanged)
+    SideEffect { retainedOwnedMeetingChanged(ownedMeetingText != null) }
+    DisposableEffect(Unit) { onDispose { retainedOwnedMeetingChanged(false) } }
     var seriesWriteText by rememberSaveable { mutableStateOf<String?>(null) }
     var showDrafts by rememberSaveable { mutableStateOf(false) }
     var showSearch by rememberSaveable { mutableStateOf(false) }
@@ -768,7 +772,7 @@ internal fun LiveCalendarDay(
             confirmButton = { TextButton(onClick = { ownedMeetingText = null }) { Text(stringResource(R.string.events_close)) } })
         else OwnedMeetingWorkflow(route, requireNotNull(meetings), requireNotNull(atomicDrafts),
             operationRetirement, requireNotNull(requestMeetingWritePermission), use24Hour,
-            presentationVisible = snapshot != CalendarReadState.PermissionRequired && metadata != CalendarReadState.PermissionRequired,
+            presentationVisible = LocalCalendarReadAccess.current && snapshot != CalendarReadState.PermissionRequired && metadata != CalendarReadState.PermissionRequired,
             onDismiss = { ownedMeetingText = null },
             onSaved = { ownedMeetingText = null; reader.refresh(); onLocalSaved() },
             onCancelled = { ownedMeetingText = null; reader.refresh(); onLocalCancelled() }, clock = draftClock)

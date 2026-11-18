@@ -72,6 +72,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
     val draftUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_draft_unavailable)
     val scope = rememberCoroutineScope()
     var remindersOpen by rememberSaveable { mutableStateOf(false) }
+    var retainMaskedMeeting by remember { mutableStateOf(false) }
     var deviceNow by remember { mutableStateOf(ZonedDateTime.now()) }
     val now = when (val zone = options.displayZone) {
         DisplayZoneOption.Device -> deviceNow
@@ -114,7 +115,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
     }
     Surface(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
-        PermissionGate {
+        PermissionGate(retainMaskedWorkflow = retainMaskedMeeting) {
             LaunchedEffect(deviceNow.zone, locationAllowed, weatherVisible) {
                 if (!weatherVisible) return@LaunchedEffect
                 var changedPermission = lastWeatherPermission != null && lastWeatherPermission != locationAllowed
@@ -167,6 +168,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
                         onLocalSaved = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localSaved) } },
                         onLocalDeleted = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localDeleted) } },
                         onLocalCancelled = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localCancelled) } },
+                        onRetainedOwnedMeetingChanged = { retainMaskedMeeting = it },
                         onDraftFailure = { scope.launch { snackbar.showSnackbar(draftUnavailable) } },
                         onPreferenceFailure = { scope.launch { snackbar.showSnackbar(preferencesUnavailable) } },
                         background = { date ->
