@@ -32,3 +32,12 @@ internal fun eventTimeLabel(event: CalEvent, zone: ZoneId, use24Hour: Boolean, l
     // layout is RTL while the formatting locale is English.
     return "\u202a${value(start)} – ${value(end)}\u202c"
 }
+
+/** Each fragment's end uses its own offset, even when that instant changes the local clock. */
+internal fun eventSegmentTimeLabel(timed: TimedEvent, use24Hour: Boolean, locale: Locale): String {
+    val segment = requireNotNull(timed.segment)
+    val formatter = DateTimeFormatter.ofPattern(if (use24Hour) "HH:mm" else "h:mm a", locale)
+    val begin = segment.start.atOffset(segment.offset).format(formatter)
+    val end = segment.end.atOffset(segment.offset).format(formatter)
+    return "\u202a$begin – $end ${segment.offsetLabel}\u202c"
+}
