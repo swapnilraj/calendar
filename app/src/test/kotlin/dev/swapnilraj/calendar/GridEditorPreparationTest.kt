@@ -71,7 +71,7 @@ class GridEditorPreparationTest {
         assertEquals("10:00", raw.getString("startTime"))
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
-            val controller = EventEditorController(port.source.details.editorSeed(), port.source, prepared.launch.draftId, port, store, scope, clock, requireStoredDraft = true)
+            val controller = EventEditorController(port.source.details.editorSeed(), port.source, prepared.launch.draftId, port, store, scope, clock, requireStoredDraft = true, expectedGeneration = prepared.launch.generation, requestWritePermission = { true })
             assertFalse(controller.state.reviewRequired)
             assertNull(controller.state.problem)
             assertEquals("10:00", controller.state.fields.startTime)
@@ -125,14 +125,70 @@ class GridEditorPreparationTest {
     }
     @Test fun contextChangeDuringDurableWriteNeverExposesItsRoute() = runBlocking {
         val context = context(); var current = context; val port = Port(source()); val records = mutableMapOf<String, DraftRecord>()
-        val store = object : DraftStore {
+        val store = object : AtomicDraftStore {
             override suspend fun load(id: String) = records[id]
             override suspend fun list() = records.values.toList()
-            override suspend fun upsert(record: DraftRecord) { records[record.id] = record; current = context.copy(blocked = true) }
-            override suspend fun delete(id: String) { records.remove(id) }
+            override suspend fun upsert(record: DraftRecord) = error("CAS only")
+            override suspend fun delete(id: String) = error("CAS only")
+            override suspend fun compareAndSet(id: String, expected: DraftRecord?, replacement: DraftRecord?): DraftChangeResult = synchronized(records) {
+                if (records[id] != expected) DraftChangeResult.Changed else {
+                    if (replacement == null) records.remove(id) else records[id] = replacement
+                    current = context.copy(blocked = true)
+                    DraftChangeResult.Applied
+                }
+            }
         }
         assertEquals(GridEditorPreparation.Stale, prepareGridEditor(context, edit(context), port, store, now, { current }, clock))
-        assertEquals(1, records.size); assertEquals(0, port.writes)
+        assertTrue(records.isEmpty()); assertEquals(0, port.writes)
+    }
+    @Test fun stalePreparationCleansOnlyItsExactAcknowledgedRecordAndKeepsAnotherOwnersAdoptedRaw() = runBlocking {
+        val context = context(); val port = Port(source()); val records = mutableMapOf<String, DraftRecord>()
+        var created: DraftRecord? = null; var acked = false; var adopted: DraftRecord? = null; var cleanups = 0
+        val store = object : AtomicDraftStore {
+            override suspend fun load(id: String): DraftRecord? = records[id].also { if (it != null && it == created) acked = true }
+            override suspend fun list() = records.values.toList()
+            override suspend fun upsert(record: DraftRecord) = error("CAS only")
+            override suspend fun delete(id: String) = error("CAS only")
+            override suspend fun compareAndSet(id: String, expected: DraftRecord?, replacement: DraftRecord?): DraftChangeResult = synchronized(records) {
+                if (replacement == null) { cleanups++; assertEquals(created, expected) }
+                if (records[id] != expected) DraftChangeResult.Changed else {
+                    if (replacement == null) records.remove(id) else { records[id] = replacement; created = replacement }
+                    DraftChangeResult.Applied
+                }
+            }
+        }
+        val current = {
+            if (acked) {
+                if (adopted == null) {
+                    val owned = requireNotNull(created)
+                    val doc = dev.swapnilraj.calendar.ui.events.OrdinaryDraftDocument.decode(owned)
+                    adopted = doc.copy(fields = doc.fields.copy(description = "Another owner's pending raw notes")).record(clock.instant().plusSeconds(1))
+                    records[owned.id] = requireNotNull(adopted)
+                }
+                context.copy(blocked = true)
+            } else context
+        }
+        assertEquals(GridEditorPreparation.Stale, prepareGridEditor(context, create(context, 645.0), port, store, now, current, clock))
+        assertEquals(1, cleanups); assertEquals(adopted, records.values.single())
+        assertEquals("Another owner's pending raw notes", JSONObject(records.values.single().payload).getString("description"))
+        assertEquals(0, port.writes)
+    }
+    @Test fun unavailableStaleCleanupRetainsTheAcknowledgedUnsentRawAndNeverReturnsARoute() = runBlocking {
+        val context = context(); val port = Port(source()); val records = mutableMapOf<String, DraftRecord>()
+        var created: DraftRecord? = null; var acked = false; var cleanups = 0
+        val store = object : AtomicDraftStore {
+            override suspend fun load(id: String): DraftRecord? = records[id].also { if (it != null && it == created) acked = true }
+            override suspend fun list() = records.values.toList()
+            override suspend fun upsert(record: DraftRecord) = error("CAS only")
+            override suspend fun delete(id: String) = error("CAS only")
+            override suspend fun compareAndSet(id: String, expected: DraftRecord?, replacement: DraftRecord?): DraftChangeResult = synchronized(records) {
+                if (replacement == null) { cleanups++; assertEquals(created, expected); DraftChangeResult.Unavailable }
+                else if (records[id] != expected) DraftChangeResult.Changed else { records[id] = replacement; created = replacement; DraftChangeResult.Applied }
+            }
+        }
+        assertEquals(GridEditorPreparation.Stale, prepareGridEditor(context, create(context, 645.0), port, store, now,
+            { if (acked) context.copy(blocked = true) else context }, clock))
+        assertEquals(1, cleanups); assertEquals(created, records.values.single()); assertEquals(0, port.writes)
     }
     @Test fun overlapRequiresExplicitChoiceAndChosenOffsetSurvivesEditorRestore() = runBlocking {
         val day = LocalDate.of(2026, 10, 25); val event = occurrence(day, 180)
@@ -164,7 +220,7 @@ class GridEditorPreparationTest {
         port.source = port.source.copy(details = port.source.details.copy(location = "Changed room"), token = EditToken("token-b"))
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
-            val controller = EventEditorController(port.source.details.editorSeed(), port.source, result.launch.draftId, port, store, scope, clock, requireStoredDraft = true)
+            val controller = EventEditorController(port.source.details.editorSeed(), port.source, result.launch.draftId, port, store, scope, clock, requireStoredDraft = true, expectedGeneration = result.launch.generation, requestWritePermission = { true })
             assertTrue(controller.state.reviewRequired)
             assertEquals("10:00", controller.state.fields.startTime)
             assertEquals("Room", controller.state.fields.location)
@@ -195,7 +251,7 @@ class GridEditorPreparationTest {
         val result = prepareGridEditor(context, edit(context), port, store, now, { context }, clock, editorAlternative = true) as GridEditorPreparation.Ready
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
-            val controller = EventEditorController(unknown.details.editorSeed(), unknown, result.launch.draftId, port, store, scope, clock, requireStoredDraft = true)
+            val controller = EventEditorController(unknown.details.editorSeed(), unknown, result.launch.draftId, port, store, scope, clock, requireStoredDraft = true, expectedGeneration = result.launch.generation, requestWritePermission = { true })
             controller.change { it.copy(title = "Edited title") }
             controller.save()
             assertEquals(1, port.writes)

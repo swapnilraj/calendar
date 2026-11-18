@@ -69,7 +69,7 @@ class GridEditorIntegrationTest {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, font),
                 LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                 LiveCalendarDay(reader, CalendarSelection.ProviderVisible, selectedDay.atTime(if (selectedDay == day) 9 else 2, 20).atZone(zone), true, 64f,
-                    {}, {}, mutations = mutations, drafts = store)
+                    {}, {}, mutations = mutations, drafts = store, requestMeetingWritePermission = { true })
             }
         } }
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("timed_grid_viewport_$selectedDay").fetchSemanticsNodes().isNotEmpty() }
@@ -90,6 +90,9 @@ class GridEditorIntegrationTest {
     private fun awaitEditor(title: String) {
         compose.waitUntil(10_000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(title).assertIsDisplayed()
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasSetTextAction() and hasText("Title") and isEnabled()).fetchSemanticsNodes().size == 1
+        }
     }
     @Test fun nativeEmptySlotCreatesDurableTimedDraftAndWaitsForExplicitSave() {
         show()
@@ -179,12 +182,12 @@ class GridEditorIntegrationTest {
         val view = compose.onNodeWithTag("timed_grid_viewport_$date")
         hold(view, Offset(280f, 96f)); drop(view)
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Choose the clock occurrence").fetchSemanticsNodes().isNotEmpty() }
-        val gate = CompletableDeferred<Unit>()
-        store.beforeLoad = gate
+        val gate = CompletableDeferred<Unit>(); val entered = CompletableDeferred<Unit>()
+        store.beforeCas = { _, _, _ -> entered.complete(Unit); gate.await() }
         compose.onNodeWithText("Second occurrence (Z)").performClick()
-        compose.waitForIdle()
+        compose.waitUntil(10_000) { compose.waitForIdle(); entered.isCompleted }
         compose.onNodeWithText("Cancel").performClick()
-        store.beforeLoad = null
+        store.beforeCas = null
         gate.complete(Unit)
         compose.waitForIdle()
         compose.onNodeWithText("New event").assertDoesNotExist()
@@ -195,13 +198,14 @@ class GridEditorIntegrationTest {
         replaceNamespaceAtEditorRestore = true
         show()
         val node = compose.onNodeWithText("Fixture meeting")
-        hold(node); drop(node, Offset(0f, 64f)); awaitEditor("Edit event")
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Discard draft and load latest").fetchSemanticsNodes().isNotEmpty() }
+        hold(node); drop(node, Offset(0f, 64f))
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Replace with a new draft").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Edit event").assertExists()
         assertTrue(reads >= 3)
         val raw = JSONObject(store.records.values.single().payload)
         assertEquals("10:00", raw.getString("startTime"))
         compose.onNodeWithText("Save").assertIsNotEnabled()
-        compose.onNodeWithText("Delete event").assertIsNotEnabled()
+        compose.onNodeWithText("Delete event").assertDoesNotExist()
         assertEquals(0, writes)
     }
     private class Provider(val start: Instant, val end: Instant) : ContentProvider() {

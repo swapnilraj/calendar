@@ -63,9 +63,10 @@ class NativeMultiDayEditJourneyTest {
         val retained = runBlocking { f.app.calendarLocalStore.list() }.single()
         f.provider.setCalendar("_sync_id", "replacement-calendar-B")
         compose.runOnUiThread { f.activity.recreate() }
-        shown("Discard draft and load latest")
+        shown("Replace with a new draft")
+        compose.onNodeWithText("Edit event").assertExists(); compose.onNodeWithText("New event").assertDoesNotExist()
         compose.onNodeWithText("Save").assertIsNotEnabled()
-        compose.onNodeWithText("Delete event").assertIsNotEnabled()
+        compose.onNodeWithText("Delete event").assertDoesNotExist()
         assertEquals(retained.payload, runBlocking { f.app.calendarLocalStore.load(retained.id) }!!.payload)
         assertEquals(f.beforeEvents, f.provider.snapshot("events"))
         assertEquals(f.beforeReminders, f.provider.snapshot("reminders"))

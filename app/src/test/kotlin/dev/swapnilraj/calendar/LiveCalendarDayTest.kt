@@ -257,7 +257,7 @@ class LiveCalendarDayTest {
             compose.setContent { DaylightTheme {
                 LiveCalendarDay(reader, CalendarSelection.ProviderVisible,
                     ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"), true, 64f, {}, {},
-                    mutations = writer, drafts = store)
+                    mutations = writer, drafts = store, requestMeetingWritePermission = { true })
             } }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Create event").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Create event").performClick()
@@ -343,7 +343,7 @@ class LiveCalendarDayTest {
             val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
             compose.setContent { DaylightTheme {
                 LiveCalendarDay(reader, CalendarSelection.ProviderVisible,
-                    ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"), true, 64f, {}, {}, mutations = writer, drafts = store)
+                    ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"), true, 64f, {}, {}, mutations = writer, drafts = store, requestMeetingWritePermission = { true })
             } }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Fixture meeting").performClick()
@@ -383,7 +383,7 @@ class LiveCalendarDayTest {
             val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
             compose.setContent { DaylightTheme {
                 LiveCalendarDay(reader, CalendarSelection.ProviderVisible, ZonedDateTime.now(clock), true, 64f, {}, {},
-                    settings = settings, mutations = writer, drafts = store, draftClock = clock)
+                    settings = settings, mutations = writer, drafts = store, draftClock = clock, requestMeetingWritePermission = { true })
             } }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Create event").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Create event").performClick()
@@ -422,7 +422,9 @@ class LiveCalendarDayTest {
         val store = dev.swapnilraj.calendar.events.EventEditorControllerTest.Store()
         val ref = EventRef(CalendarId(3), 7, Instant.parse("2026-11-17T09:00:00Z"), Instant.parse("2026-11-17T10:00:00Z"))
         val initial = EventDraft(ref.calendarId, EventTime.Timed(ref.instanceStart, ref.instanceEnd), java.time.ZoneOffset.UTC, "Pending deletion fixture")
-        val existing = EditableEvent(EventDetails(EventOccurrence(ref, initial.time, initial.title, 1), null, eventZone = initial.eventZone),
+        val originalCalendar = CalendarInfo(ref.calendarId, "Fixture calendar", 1, CalendarAccount("owner@example.invalid", "com.google"),
+            "owner@example.invalid", java.time.ZoneOffset.UTC, 700, true, true)
+        val existing = EditableEvent(EventDetails(EventOccurrence(ref, initial.time, initial.title, 1), originalCalendar, eventZone = initial.eventZone),
             EditToken("fixture-original-token"), EditableField.entries.toSet())
         var deletes = 0
         var recoveries = 0
@@ -436,15 +438,19 @@ class LiveCalendarDayTest {
             }
             override suspend fun recover(operationId: String): MutationResult { recoveries++; return MutationResult.LocalDeleted(ref) }
         }
-        val controller = dev.swapnilraj.calendar.ui.events.EventEditorController(initial, existing, "pending-delete", writer, store, preparationScope)
+        val prepared = runBlocking { dev.swapnilraj.calendar.ui.events.prepareEditDraft(initial, existing, "pending-delete", store) } as dev.swapnilraj.calendar.ui.events.DraftPreparationResult.Ready
+        val controller = dev.swapnilraj.calendar.ui.events.EventEditorController(initial, existing, "pending-delete", writer, store, preparationScope,
+            expectedGeneration = prepared.launch.generation, requestWritePermission = { true })
         controller.requestDelete(); controller.confirmDelete()
-        runBlocking { assertTrue(controller.flushDraft()) }
         assertEquals(1, deletes)
+        val frozen = dev.swapnilraj.calendar.ui.events.OrdinaryDraftDocument.decode(store.records.getValue("pending-delete"))
+        assertTrue(frozen.submitted); assertEquals("delete", frozen.operationKind)
+        assertTrue(frozen.frozen is dev.swapnilraj.calendar.ui.events.FrozenEditorSubmission.Delete)
         try {
             val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
             compose.setContent { DaylightTheme {
                 LiveCalendarDay(reader, CalendarSelection.ProviderVisible, ZonedDateTime.parse("2026-11-17T09:20:00Z"), true, 64f, {}, {},
-                    settings = settings, mutations = writer, drafts = store)
+                    settings = settings, mutations = writer, drafts = store, requestMeetingWritePermission = { true })
             } }
             compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Calendars").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithContentDescription("Calendars").performClick()
@@ -489,7 +495,7 @@ class LiveCalendarDayTest {
             compose.setContent { DaylightTheme {
                 LiveCalendarDay(reader, CalendarSelection.ProviderVisible,
                     ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"), true, 64f, {}, {},
-                    mutations = writer, drafts = store)
+                    mutations = writer, drafts = store, requestMeetingWritePermission = { true })
             } }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Fixture meeting").performClick()
