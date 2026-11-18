@@ -12,6 +12,7 @@ import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.search.*
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
 import java.time.*
+import java.util.Locale
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -67,6 +68,32 @@ class SearchSheetTest {
         assertEquals(recurring, opened)
         compose.onNodeWithText("Meeting room").assertExists()
         compose.onNodeWithText("Review the milestones and upcoming work.").assertExists()
+    }
+    @Test fun sameDayTimedHitsAlwaysIdentifyTheirDateAndYear() {
+        val day = LocalDate.of(2027, 1, 1)
+        val start = day.atTime(9, 0).atZone(calendar.displayZone).toInstant()
+        val event = EventOccurrence(recurring.copy(instanceStart = start, instanceEnd = start.plusSeconds(3600)),
+            EventTime.Timed(start, start.plusSeconds(3600)), "New year review", 0xff526e9e.toInt())
+        val label = searchTimeLabel(event, calendar.displayZone, true, Locale.US)
+        assertEquals("\u202aJan 1, 2027 · 09:00 – 10:00\u202c", label)
+        val state = ready()
+        show(state = state.copy(snapshot = state.snapshot!!.copy(hits = listOf(CalendarSearchHit(event)))))
+        resultNode("search_hit_1_7").assertIsDisplayed()
+        compose.onNodeWithText("Jan 1, 2027", substring = true).assertIsDisplayed()
+    }
+    @Test fun crossDayTimedHitsKeepBothDatesWithoutDuplicatePrefix() {
+        val first = LocalDate.of(2026, 12, 31).atTime(23, 0).atZone(calendar.displayZone).toInstant()
+        val last = LocalDate.of(2027, 1, 1).atTime(1, 0).atZone(calendar.displayZone).toInstant()
+        val event = EventOccurrence(recurring.copy(instanceStart = first, instanceEnd = last), EventTime.Timed(first, last), "Overnight", 0)
+        val label = searchTimeLabel(event, calendar.displayZone, true, Locale.US)
+        assertEquals("\u202aDec 31, 2026 23:00 – Jan 1, 2027 01:00\u202c", label)
+    }
+    @Test fun repeatedHourKeepsDateYearOffsetsAndBidiOrdering() {
+        val zone = ZoneId.of("Europe/London")
+        val start = Instant.parse("2026-10-25T00:45:00Z")
+        val end = Instant.parse("2026-10-25T01:15:00Z")
+        val event = EventOccurrence(recurring.copy(instanceStart = start, instanceEnd = end), EventTime.Timed(start, end), "Clock review", 0)
+        assertEquals("\u202aOct 25, 2026 · 01:45 UTC+01:00 – 01:15 UTC+00:00\u202c", searchTimeLabel(event, zone, true, Locale.US))
     }
     @Test fun allDaySearchResultUsesUtcDatesAndDescriptionIsNonexecutingPlainText() {
         val state = ready()

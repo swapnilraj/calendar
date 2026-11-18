@@ -26,6 +26,7 @@ import dev.swapnilraj.calendar.ui.agenda.agendaTimeLabel
 import java.time.*
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import java.util.Locale
 
 /** Stateless ready-state presentation; callbacks never query providers or mutate events. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -124,7 +125,7 @@ fun SearchSheet(
                         items(state.hits, key = { "hit:${it.occurrence.ref}" }) { hit ->
                             val event = hit.occurrence
                             val calendar = calendarsById[event.ref.calendarId]
-                            val time = agendaTimeLabel(event, state.calendar.displayZone, use24Hour, locale)
+                            val time = searchTimeLabel(event, state.calendar.displayZone, use24Hour, locale)
                             val details = buildList {
                                 add(if (event.time is EventTime.AllDay) "${stringResource(R.string.search_all_day)} · $time" else time)
                                 calendar?.let { add(stringResource(R.string.search_calendar, it.displayName, it.account.name)) }
@@ -167,4 +168,14 @@ fun SearchSheet(
             if (chosen != null && !validSearchRange(chosen)) Text(stringResource(R.string.search_range_error), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
         }
     }
+}
+
+/** Ungrouped search rows always identify their local date; agenda groups supply that context separately. */
+internal fun searchTimeLabel(event: EventOccurrence, zone: ZoneId, use24Hour: Boolean, locale: Locale): String {
+    val label = agendaTimeLabel(event, zone, use24Hour, locale)
+    val timed = event.time as? EventTime.Timed ?: return label
+    val date = timed.start.atZone(zone).toLocalDate()
+    if (date != timed.end.atZone(zone).toLocalDate()) return label
+    val dateLabel = date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
+    return "\u202a$dateLabel · ${label.removeSurrounding("\u202a", "\u202c")}\u202c"
 }
