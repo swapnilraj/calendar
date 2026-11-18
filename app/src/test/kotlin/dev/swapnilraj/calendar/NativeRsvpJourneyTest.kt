@@ -95,7 +95,7 @@ class NativeRsvpJourneyTest {
         compose.onNode(hasText("Close") and hasClickAction() and hasAnyAncestor(isRoot() and hasAnyDescendant(hasText("Respond to invitation")))).performScrollTo().performClick()
         f.provider.failAfterCommit = false
         shadowOf(f.app).denyPermissions(Manifest.permission.WRITE_CALENDAR)
-        compose.onNodeWithContentDescription("Calendars").performClick()
+        compose.onNodeWithContentDescription("Open navigation menu").performClick()
         compose.onNodeWithText("Drafts").performClick()
         shown("Invitation response draft")
         compose.onNodeWithText("Recover operation").performClick()

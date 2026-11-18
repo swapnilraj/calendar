@@ -36,6 +36,13 @@ import org.robolectric.shadows.ShadowContentResolver
 class LiveCalendarDayTest {
     @get:Rule val compose = createComposeRule()
 
+    private fun navigatePhoneDate(dateText: String) {
+        val date = java.time.LocalDate.parse(dateText)
+        compose.onNodeWithTag("calendar_phone_month").performClick()
+        if (date.monthValue == 12) compose.onNodeWithContentDescription("Next month").performClick()
+        compose.onNodeWithTag("calendar_month_date_${java.time.YearMonth.from(date)}_$date").performClick()
+    }
+
     @Test fun providerEventOpensNativeDetailsAndKeepsItsMeetingLink() {
         val provider = FixtureProvider()
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
@@ -110,7 +117,7 @@ class LiveCalendarDayTest {
                 }
             }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.onNodeWithContentDescription("Open navigation menu").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Select none").fetchSemanticsNodes().isNotEmpty() }
             compose.waitForIdle()
             compose.onRoot().captureRoboImage("src/test/screenshots/integration_calendar_drawer.png")
@@ -118,11 +125,11 @@ class LiveCalendarDayTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isEmpty() }
             assertEquals(CalendarSelection.Explicit(emptySet()), runBlocking { settings.calendarSelection.first() })
             compose.onNodeWithText("Close").performClick()
-            compose.onNodeWithContentDescription("Change view. Current view: Day").performClick()
-            compose.onNodeWithText("Month").performClick()
+            compose.onNodeWithContentDescription("Open navigation menu").performClick()
+            compose.onNodeWithTag("calendar_drawer_view_MONTH").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("month_grid").fetchSemanticsNodes().isNotEmpty() }
             assertEquals("MONTH", runBlocking { settings.calendarView.first() })
-            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.onNodeWithContentDescription("Open navigation menu").performClick()
             compose.onNodeWithText("Select all").performClick()
             compose.onNodeWithText("Close").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
@@ -132,13 +139,13 @@ class LiveCalendarDayTest {
             compose.onNodeWithTag("month_date_2026-11-18").performSemanticsAction(SemanticsActions.OnClick) { it() }
             val dateDialog = isRoot() and hasAnyDescendant(hasTestTag("month_day_events"))
             compose.onNode(hasText("Close") and hasAnyAncestor(dateDialog)).performClick()
-            compose.onNodeWithText("Today").performClick()
+            compose.onNodeWithTag("calendar_phone_today").performClick()
             compose.onNodeWithTag("month_date_2026-11-17").assertIsSelected()
             compose.onNodeWithTag("month_date_2026-12-01").performSemanticsAction(SemanticsActions.OnClick) { it() }
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("month_day_events").fetchSemanticsNodes().isNotEmpty() }
             compose.onNode(hasText("December 1, 2026", substring = true) and hasAnyAncestor(dateDialog)).assertIsDisplayed()
             compose.onNode(hasText("Close") and hasAnyAncestor(dateDialog)).performClick()
-            compose.onNodeWithText("Today").performClick()
+            compose.onNodeWithTag("calendar_phone_today").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("month_date_2026-11-17").performSemanticsAction(SemanticsActions.OnClick) { it() }
             compose.onNode(hasText("Fixture meeting") and hasAnyAncestor(hasTestTag("month_day_events"))).performClick()
@@ -184,7 +191,7 @@ class LiveCalendarDayTest {
                 restored.value = true
             }
             compose.onNodeWithText("Retry").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Calendars").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Open navigation menu").fetchSemanticsNodes().isNotEmpty() }
             compose.waitForIdle()
             compose.onNodeWithText("Fixture meeting").assertDoesNotExist()
             assertEquals(CalendarSelection.Explicit(emptySet()), runBlocking { settings.calendarSelection.first() })
@@ -216,13 +223,13 @@ class LiveCalendarDayTest {
             assertEquals(1, provider.rangeQueries) // Selecting November17 must not slide the November16 window.
             val detailsRoot = isRoot() and hasAnyDescendant(hasText("Join meeting"))
             compose.onNode(hasText("Close") and hasAnyAncestor(detailsRoot)).performScrollTo().performClick()
-            compose.onNodeWithText("Later").performClick()
+            navigatePhoneDate("2026-12-17")
             compose.waitUntil(10_000) { compose.onAllNodesWithText("No events in the displayed range.").fetchSemanticsNodes().isNotEmpty() }
             assertEquals(2, provider.rangeQueries)
-            compose.onNodeWithContentDescription("Go to today").performClick()
+            compose.onNodeWithTag("calendar_phone_today").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
             assertEquals(3, provider.rangeQueries)
-            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.onNodeWithContentDescription("Open navigation menu").performClick()
             compose.onNodeWithText("Select none").performClick()
             compose.onNodeWithText("Close").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isEmpty() }
@@ -297,17 +304,17 @@ class LiveCalendarDayTest {
             compose.onNode(hasText("Close") and hasAnyAncestor(detailsRoot)).performScrollTo().performClick()
             compose.waitForIdle()
             compose.onRoot().captureRoboImage("src/test/screenshots/integration_live_three_day.png")
-            compose.onNodeWithContentDescription("Change view. Current view: 3 days").performClick()
-            compose.onNodeWithText("Week").performClick()
+            compose.onNodeWithContentDescription("Open navigation menu").performClick()
+            compose.onNodeWithTag("calendar_drawer_view_WEEK").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("multiday_header_2026-11-15").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("multiday_header_2026-11-21").assertExists()
             assertEquals(2, provider.rangeQueries)
             compose.waitForIdle()
             compose.onRoot().captureRoboImage("src/test/screenshots/integration_live_week.png")
-            compose.onNodeWithText("Later").performClick()
+            navigatePhoneDate("2026-11-22")
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("multiday_header_2026-11-22").fetchSemanticsNodes().isNotEmpty() }
             assertEquals(3, provider.rangeQueries)
-            compose.onNodeWithText("Today").performClick()
+            compose.onNodeWithTag("calendar_phone_today").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
             assertEquals(4, provider.rangeQueries)
             assertEquals("WEEK", runBlocking { settings.calendarView.first() })
@@ -393,7 +400,7 @@ class LiveCalendarDayTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithText("New event").fetchSemanticsNodes().isEmpty() }
             compose.runOnIdle { provider.failCalendars = true; reader.refresh() }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Calendars couldn’t be read").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.onNodeWithContentDescription("Open navigation menu").performClick()
             compose.onNodeWithText("Drafts").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Retained fixture draft").fetchSemanticsNodes().isNotEmpty() }
             compose.waitForIdle()
@@ -452,8 +459,8 @@ class LiveCalendarDayTest {
                 LiveCalendarDay(reader, CalendarSelection.ProviderVisible, ZonedDateTime.parse("2026-11-17T09:20:00Z"), true, 64f, {}, {},
                     settings = settings, mutations = writer, drafts = store, requestMeetingWritePermission = { true })
             } }
-            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Calendars").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Open navigation menu").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("Open navigation menu").performClick()
             compose.onNodeWithText("Drafts").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Recover operation").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Recover operation").performClick()
@@ -545,7 +552,7 @@ class LiveCalendarDayTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("multiday_header_2026-11-16").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("multiday_header_2026-11-21").assertDoesNotExist()
             compose.onNodeWithText("Fixture meeting").assertDoesNotExist()
-            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.onNodeWithContentDescription("Open navigation menu").performClick()
             compose.onNodeWithText("Settings").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings_duration").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("settings_duration").performTextReplacement("75")
@@ -674,9 +681,9 @@ class LiveCalendarDayTest {
                 LiveCalendarDay(reader, CalendarSelection.ProviderVisible, ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"), true, 64f, {}, {},
                     settings = settings, search = search)
             } }
-            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Calendars").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Open navigation menu").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Fixture meeting").assertDoesNotExist()
-            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.onNodeWithContentDescription("Open navigation menu").performClick()
             compose.onNodeWithText("Search events").performClick()
             compose.onNodeWithTag("search_query").performTextReplacement("Fixture")
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
@@ -721,8 +728,8 @@ class LiveCalendarDayTest {
             compose.setContent { DaylightTheme {
                 LiveCalendarDay(reader, CalendarSelection.ProviderVisible, ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"), true, 64f, {}, {}, settings = settings, search = search)
             } }
-            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Calendars").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithContentDescription("Calendars").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Open navigation menu").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("Open navigation menu").performClick()
             compose.onNodeWithText("Search events").performClick()
             compose.onNodeWithTag("search_query").performTextReplacement("Fixture")
             compose.waitUntil(10_000) { calls.get() > 0 }

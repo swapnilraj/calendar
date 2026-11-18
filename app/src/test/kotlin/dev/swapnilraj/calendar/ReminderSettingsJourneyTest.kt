@@ -112,8 +112,8 @@ class ReminderSettingsJourneyTest {
     }
 
     private fun openSettings() {
-        compose.waitUntil(15_000) { compose.onAllNodesWithContentDescription("Calendars").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithContentDescription("Calendars").performClick()
+        compose.waitUntil(15_000) { compose.onAllNodesWithContentDescription("Open navigation menu").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Open navigation menu").performClick()
         compose.onNodeWithText("Event reminders").performClick()
         shownTag("reminder_calendars_save")
         compose.waitUntil(15_000) { compose.onAllNodesWithTag("reminder_calendar_3").fetchSemanticsNodes().isNotEmpty() }
