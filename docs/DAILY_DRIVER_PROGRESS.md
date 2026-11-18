@@ -11,6 +11,12 @@ and five actual app whole-series temporal/rule journeys through the SQLite/nativ
 Guest-creation UI and public incoming-link activation remain pending; local writes do not prove
 invitation delivery. Log: `/tmp/daylight-meeting-integrated-full.log` (3m26s).
 
+Later focused packets: the following-series rule helper passed all232 core tests, and the incoming
+link resolver/session/Activity shell passed73 focused checks plus lint. The shell is not registered
+or connected to native seed review yet. Ordinary-editor generation/retirement composition compiles
+in the isolated `codex/dd-ordinary-host` branch; behavior/fixture migration is still in progress and
+that branch is not part of the green app checkpoint above.
+
 Earlier, at `5bd64d4`, the complete required gate passed: **1,340 tests** (core189, app1,134,
 weather17), debug APK assembly and lint; no failures, errors or skipped tests. This includes real
 app journeys for widget setup/click/permission/draft isolation, recurring creation/recovery and
