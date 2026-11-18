@@ -569,11 +569,14 @@ class LiveCalendarDayTest {
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, FixtureProvider().apply { recurring = true })
         val context = RuntimeEnvironment.getApplication()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val store = dev.swapnilraj.calendar.events.EventEditorControllerTest.Store()
+        val store = dev.swapnilraj.calendar.events.SeriesAtomicStore()
         val start = Instant.parse("2026-11-17T09:00:00Z")
         val ref = EventRef(CalendarId(3), 7, start, start.plusSeconds(3600), RecurrenceRef(7, start))
         val fields = setOf(EditableField.TITLE, EditableField.LOCATION, EditableField.DESCRIPTION, EditableField.ALERTS, EditableField.AVAILABILITY, EditableField.PRIVACY)
-        val source = EditableSeries(EventDetails(EventOccurrence(ref, EventTime.Timed(ref.instanceStart, ref.instanceEnd), "Fixture meeting", 1), null,
+        val source = EditableSeries(EventDetails(EventOccurrence(ref, EventTime.Timed(ref.instanceStart, ref.instanceEnd), "Fixture meeting", 1),
+            CalendarInfo(CalendarId(3), "Fixture calendar", 0xff397d70.toInt(), CalendarAccount("owner@example.invalid", "com.google"),
+                "owner@example.invalid", java.time.ZoneId.of("Europe/London"), CalendarContract.Calendars.CAL_ACCESS_OWNER, true, true,
+                CalendarCapabilities(AccessDecision.ALLOWED, AccessDecision.ALLOWED, AccessDecision.ALLOWED, AccessDecision.ALLOWED)),
             eventZone = java.time.ZoneId.of("Europe/London")), SeriesMasterFields("Weekly template", privacy = 2),
             RecurrenceSeriesSnapshot(SeriesIdentity(ref.calendarId, 7), RecurrenceStart.Timed(java.time.LocalDateTime.parse("2026-11-17T09:00:00"), java.time.ZoneId.of("Europe/London"), java.time.ZoneOffset.UTC),
                 "FREQ=WEEKLY", durationRaw = "PT1H", coverage = SeriesCoverage.COMPLETE, validatedSelection = ref), EditToken("series-source-token"), fields,
@@ -599,7 +602,7 @@ class LiveCalendarDayTest {
             val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
             compose.setContent { DaylightTheme {
                 LiveCalendarDay(reader, CalendarSelection.ProviderVisible, ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"), true, 64f, {}, {},
-                    mutations = ordinary, seriesMutations = series, drafts = store)
+                    mutations = ordinary, seriesMutations = series, drafts = store, requestMeetingWritePermission = { true })
             } }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Fixture meeting").performClick()
@@ -624,6 +627,7 @@ class LiveCalendarDayTest {
             assertEquals(FieldChange.Keep, command.intent.fields.time)
             assertEquals(FieldChange.Keep, command.intent.fields.eventZone)
             assertTrue(reads >= 3)
+            assertEquals(0, store.legacyCalls)
         } finally { scope.cancel() }
     }
 
