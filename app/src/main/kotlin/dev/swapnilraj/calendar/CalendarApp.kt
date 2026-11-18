@@ -11,6 +11,7 @@ import dev.swapnilraj.calendar.data.calendar.CalendarLocalStore
 import dev.swapnilraj.calendar.data.calendar.CalendarWriter
 import dev.swapnilraj.calendar.data.calendar.CalendarSeriesReader
 import dev.swapnilraj.calendar.data.calendar.CalendarSeriesWriter
+import dev.swapnilraj.calendar.data.calendar.CalendarMeetingWriter
 import dev.swapnilraj.calendar.data.calendar.CalendarSearchReader
 import dev.swapnilraj.calendar.data.calendar.CalendarReminderSource
 import dev.swapnilraj.calendar.data.calendar.SqliteReminderLedger
@@ -44,6 +45,8 @@ class CalendarApp : Application(), ReminderRuntimeOwner {
     val calendarSeriesReader by lazy { CalendarSeriesReader(contentResolver, calendarReader, calendarLocalStore,
         { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
     val calendarSeriesWriter by lazy { CalendarSeriesWriter(contentResolver, calendarSeriesReader, calendarLocalStore,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
+    val calendarMeetings by lazy { CalendarMeetingWriter(contentResolver, calendarReader, calendarLocalStore,
         { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
     val calendarSearch by lazy { CalendarSearchReader(contentResolver, calendarReader,
         { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }

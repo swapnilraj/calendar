@@ -44,9 +44,10 @@ fun EventDetailsStateSheet(
     onEdit: ((EventRef) -> Unit)? = null,
     onDelete: ((EventRef) -> Unit)? = null,
     onDuplicate: ((EventDetails) -> Unit)? = null,
+    onRespond: ((EventRef) -> Unit)? = null,
 ) {
     if (state is CalendarReadState.Ready) {
-        EventDetailsSheet(state.value, onDismiss, onOpenLink, displayZone, use24Hour, onEdit, onDelete, onDuplicate)
+        EventDetailsSheet(state.value, onDismiss, onOpenLink, displayZone, use24Hour, onEdit, onDelete, onDuplicate, onRespond)
     } else {
         ModalBottomSheet(onDismissRequest = onDismiss) {
             Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -85,9 +86,10 @@ fun EventDetailsSheet(
     onEdit: ((EventRef) -> Unit)? = null,
     onDelete: ((EventRef) -> Unit)? = null,
     onDuplicate: ((EventDetails) -> Unit)? = null,
+    onRespond: ((EventRef) -> Unit)? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        EventDetailsContent(details, onDismiss, onOpenLink, displayZone, use24Hour, onEdit, onDelete, onDuplicate)
+        EventDetailsContent(details, onDismiss, onOpenLink, displayZone, use24Hour, onEdit, onDelete, onDuplicate, onRespond)
     }
 }
 
@@ -101,6 +103,7 @@ fun EventDetailsContent(
     onEdit: ((EventRef) -> Unit)? = null,
     onDelete: ((EventRef) -> Unit)? = null,
     onDuplicate: ((EventDetails) -> Unit)? = null,
+    onRespond: ((EventRef) -> Unit)? = null,
 ) {
     val locale = LocalLocale.current.platformLocale
     val links = remember(details.description, details.location) {
@@ -236,6 +239,11 @@ fun EventDetailsContent(
                 }
                 Text(stringResource(R.string.events_reminder_item, method, timing))
             }
+        }
+        if (details.canRespond == AccessDecision.ALLOWED && !cancelled) {
+            onRespond?.let { action -> Button(onClick = { action(details.occurrence.ref) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.meeting_response_title))
+            } }
         }
         if (details.canEdit == AccessDecision.ALLOWED && !cancelled) {
             onEdit?.let { action -> Button(onClick = { action(details.occurrence.ref) }, modifier = Modifier.heightIn(min = 48.dp)) {

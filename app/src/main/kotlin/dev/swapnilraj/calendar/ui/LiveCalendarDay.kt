@@ -27,6 +27,7 @@ import dev.swapnilraj.calendar.ui.multiday.MultiDayView
 import dev.swapnilraj.calendar.ui.multiday.multiDayWindow
 import dev.swapnilraj.calendar.ui.multiday.MultiDayMinDate
 import dev.swapnilraj.calendar.ui.multiday.MultiDayMaxDate
+import dev.swapnilraj.calendar.ui.events.meetings.*
 import dev.swapnilraj.calendar.ui.events.EventDetailsStateSheet
 import dev.swapnilraj.calendar.ui.events.SeriesEditorAction
 import dev.swapnilraj.calendar.ui.events.canPrepareSeriesScope
@@ -53,7 +54,7 @@ private data class OpenedEvent(
     val selection: CalendarSelection, val zone: ZoneId,
 )
 
-private data class NativeDetails(val details: EventDetails, val series: EditableSeries? = null)
+private data class NativeDetails(val details: EventDetails, val series: EditableSeries? = null, val meeting: EditableMeeting? = null)
 
 /** A shared date window drives the active view and selected details; filters belong to this app. */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, ExperimentalMaterial3Api::class)
@@ -82,11 +83,14 @@ internal fun LiveCalendarDay(
     seriesMutations: CalendarSeriesMutations? = null,
     search: CalendarSearch? = null,
     onOpenReminders: (() -> Unit)? = null,
+    meetings: CalendarMeetings? = null,
+    requestMeetingWritePermission: (suspend () -> Boolean)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val selectedDateState = rememberSaveable { mutableStateOf<String?>(null) }
     var writeRequestText by rememberSaveable { mutableStateOf<String?>(null) }
     var seriesScopeText by rememberSaveable { mutableStateOf<String?>(null) }
+    var meetingWriteText by rememberSaveable { mutableStateOf<String?>(null) }
     var seriesWriteText by rememberSaveable { mutableStateOf<String?>(null) }
     var showDrafts by rememberSaveable { mutableStateOf(false) }
     var showSearch by rememberSaveable { mutableStateOf(false) }
@@ -165,6 +169,28 @@ internal fun LiveCalendarDay(
     val verifiedDefault = verifiedCreationCalendar(preferences, calendars)
     val writable = mutations != null && drafts != null
     val seriesWritable = seriesMutations != null && drafts != null
+    val atomicDrafts = drafts as? AtomicDraftStore
+    val meetingWritable = meetings != null && atomicDrafts != null && requestMeetingWritePermission != null
+    fun beginRespond(source: EditableMeeting) {
+        if (!meetingWritable || preparingWrite || selected != source.details.occurrence.ref) return
+        val context = openedEvent
+        preparingWrite = true
+        scope.launch {
+            try {
+                // A stable per-occurrence ID retains any frozen response instead of bypassing it.
+                val ref = source.details.occurrence.ref
+                val id = java.util.UUID.nameUUIDFromBytes(("meeting-response-v1|" + ref.toString())
+                    .toByteArray(Charsets.UTF_8)).toString()
+                val prepared = prepareMeetingResponseDraft(source, id, requireNotNull(atomicDrafts), draftClock)
+                if (prepared is MeetingResponsePreparation.Ready) {
+                    if (openedEvent == context) {
+                        openedEvent = null
+                        meetingWriteText = MeetingResponseRouteCodec.encode(prepared.launch)
+                    }
+                } else onDraftFailure()
+            } finally { preparingWrite = false }
+        }
+    }
     fun beginCreate(date: LocalDate, allDay: Boolean) {
         if (writable && !preparingWrite) {
             preparingWrite = true
@@ -242,7 +268,7 @@ internal fun LiveCalendarDay(
         if (onOpenReminders != null) TextButton(onClick = { scope.launch { drawer.close(); onOpenReminders() } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Text(stringResource(R.string.reminders_setup_title))
         }
-        if (writable || seriesWritable) {
+        if (writable || seriesWritable || meetingWritable) {
             HorizontalDivider()
             TextButton(onClick = { scope.launch { drawer.close(); showDrafts = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
                 Text(stringResource(R.string.events_drafts_title))
@@ -399,7 +425,26 @@ internal fun LiveCalendarDay(
                 })
             }
         }
-        val state by key(details) { details.collectAsStateWithLifecycle(initialValue = CalendarReadState.Loading) }
+        val responseDetails = remember(details, meetings, meetingWritable) {
+            details.mapLatest { state ->
+                if (!meetingWritable || state !is CalendarReadState.Ready ||
+                    state.value.details.isOrganizer != false ||
+                    state.value.details.calendar?.capabilities?.respondToInvitations == AccessDecision.DENIED) state
+                else when (val response = requireNotNull(meetings).loadForEdit(ref)) {
+                    is MeetingReadResult.Ready -> {
+                        val source = response.value
+                        val identity = state.value.details.calendar?.identity
+                        if (source.details.occurrence.ref == ref && identity != null && source.details.calendar?.identity == identity)
+                            CalendarReadState.Ready(state.value.copy(details = source.details.copy(canEdit = state.value.details.canEdit), meeting = source))
+                        else CalendarReadState.Unavailable
+                    }
+                    MeetingReadResult.PermissionRequired -> CalendarReadState.PermissionRequired
+                    else -> CalendarReadState.Ready(state.value.copy(details = state.value.details.copy(canRespond = AccessDecision.DENIED)))
+                }
+            }
+        }
+        val state by key(responseDetails) { responseDetails.collectAsStateWithLifecycle(initialValue = CalendarReadState.Loading) }
+        val meetingSource = (state as? CalendarReadState.Ready)?.value?.meeting
         val source = (state as? CalendarReadState.Ready)?.value?.series
         fun allowed(action: SeriesEditorAction): Boolean = if (ref.recurrence == null) writable else
             seriesWritable && source != null && RecurrenceScope.entries.any { canPrepareSeriesScope(source, it, action) }
@@ -414,7 +459,9 @@ internal fun LiveCalendarDay(
             onOpenLink = onOpenLink, displayZone = displayNow.zone, use24Hour = use24Hour,
             onEdit = if (allowed(SeriesEditorAction.EDIT)) ({ value -> beginEdit(value, false) }) else null,
             onDelete = if (allowed(SeriesEditorAction.DELETE)) ({ value -> beginEdit(value, true) }) else null,
-            onDuplicate = if (writable) ::duplicate else null)
+            onDuplicate = if (writable) ::duplicate else null,
+            onRespond = if (meetingWritable && meetingSource != null && meetingSource.scopes.values.any { it.respond == AccessDecision.ALLOWED })
+                ({ value -> if (value == meetingSource.details.occurrence.ref) beginRespond(meetingSource) }) else null)
     }
     if (mutations != null && drafts != null) writeRequestText?.let { raw ->
         val request = remember(raw) { EventWriteRequest.decode(raw) }
@@ -459,6 +506,17 @@ internal fun LiveCalendarDay(
                 onDeleted = { seriesWriteText = null; reader.refresh(); onLocalDeleted() }, clock = draftClock)
         }
     }
+    if (meetingWritable) meetingWriteText?.let { raw ->
+        val launch = remember(raw) { MeetingResponseRouteCodec.decode(raw) }
+        if (launch != null) MeetingResponseWorkflow(launch, requireNotNull(meetings), requireNotNull(atomicDrafts),
+            requireNotNull(requestMeetingWritePermission), onDismiss = { meetingWriteText = null },
+            onLocalSaved = { meetingWriteText = null; reader.refresh(); onLocalSaved() },
+            onReplacedLaunch = { meetingWriteText = MeetingResponseRouteCodec.encode(it) }, displayZone = displayNow.zone)
+        else ModalBottomSheet(onDismissRequest = { meetingWriteText = null }) {
+            Text(stringResource(R.string.meeting_response_draft_review), Modifier.padding(24.dp))
+            TextButton(onClick = { meetingWriteText = null }) { Text(stringResource(R.string.events_close)) }
+        }
+    }
     if (showSettings && settings != null) SettingsSheet(options, availableViews,
         onSave = { updated ->
             if (!savingSettings) scope.launch {
@@ -487,13 +545,16 @@ internal fun LiveCalendarDay(
             } else item { CalendarReadNotice(metadata, reader::refresh) }
         } },
         confirmButton = { TextButton(onClick = { showDefaultCalendar = false }) { Text(stringResource(R.string.calendars_close)) } })
-    if (showDrafts && drafts != null && (writable || seriesWritable)) DraftBrowserSheet(drafts, onDismiss = { showDrafts = false },
+    if (showDrafts && drafts != null && (writable || seriesWritable || meetingWritable)) DraftBrowserSheet(drafts, onDismiss = { showDrafts = false },
         onOpen = { launch ->
             showDrafts = false
             writeRequestText = EventWriteRequest.fromLaunch(launch, visibleDate, displayNow.zone).encode()
         }, displayZone = displayNow.zone, onOpenSeries = if (seriesWritable) ({ launch ->
             showDrafts = false
             seriesWriteText = SeriesWriteRequest.from(launch).encode()
+        }) else null, onOpenMeeting = if (meetingWritable) ({ launch ->
+            showDrafts = false
+            meetingWriteText = MeetingResponseRouteCodec.encode(launch)
         }) else null)
 }
 

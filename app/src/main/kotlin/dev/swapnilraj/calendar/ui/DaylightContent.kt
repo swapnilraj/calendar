@@ -151,6 +151,11 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState)
                         mutations = mutations,
                         seriesMutations = seriesMutations,
                         search = app.calendarSearch,
+                        meetings = app.calendarMeetings,
+                        requestMeetingWritePermission = {
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED) true
+                            else { writeRequest.launch(Manifest.permission.WRITE_CALENDAR); false }
+                        },
                         onOpenReminders = { remindersOpen = true },
                         drafts = app.calendarLocalStore,
                         onLocalSaved = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localSaved) } },

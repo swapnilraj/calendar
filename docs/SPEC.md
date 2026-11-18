@@ -5,6 +5,13 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+Native invitation details expose Respond only after the meeting writer issues response rights for
+that exact occurrence and calendar namespace. Opening a response creates or reopens a durable draft;
+choosing a response and scope never writes until Save. A calendar permission prompt returns without
+submitting, so granting access requires another explicit Save. The draft browser restores the same
+response request; frozen or uncertain requests are recovered without creating another operation.
+A local save refreshes the calendar and does not claim delivery to the organizer.
+
 Implementation checkpoint (18 November 2026): the live day pager now reads a shared three-day window
 and opens native details, including existing meeting links. Changing its calendar selection or date
 context closes old details. These automated read workflows do not establish real Google sync, native
