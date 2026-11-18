@@ -276,4 +276,78 @@ class RecurrenceEditingTest {
         assertTrue(RecurrenceEditing.plan(snapshot(), ref(3), intent) is RecurrencePlanningResult.NeedsReview)
         assertEquals(plan(snapshot(), ref(3), intent), plan(snapshot(), ref(3), intent))
     }
+
+    @Test fun followingMetadataChangesReachSelectedOverrideIncludingExplicitNull() {
+        val moved = SeriesException(ref(3, 23, 0), key(3))
+        val source = snapshot().copy(exceptions = listOf(moved))
+        for (availability in listOf<Int?>(null, 0, 1, 2)) for (privacy in listOf<Int?>(null, 0, 2, 3)) {
+            val patch = EventPatch(availability = FieldChange.Set(availability), privacy = FieldChange.Set(privacy))
+            val intent = RecurrenceEditIntent.FollowingSeriesEdit(key(3), patch,
+                rule = RecurrenceRuleChanges(interval = FieldChange.Set(2)))
+            val actions = ready(plan(source, moved.ref, intent))
+            assertEquals(patch, (actions[1] as RecurrencePlanAction.InsertTail).patch)
+            val selected = actions.filterIsInstance<RecurrencePlanAction.RemapException>().single()
+            assertEquals(patch, selected.selectedPatch)
+            assertEquals(moved, selected.exception)
+            val prefix = actions[0] as RecurrencePlanAction.UpdateMaster
+            assertEquals(FieldChange.Keep, prefix.patch.availability)
+            assertEquals(FieldChange.Keep, prefix.patch.privacy)
+        }
+    }
+
+    @Test fun overrideOnlyMetadataDoesNotAlterOtherFutureOccurrences() {
+        val moved = SeriesException(ref(3, 23, 0), key(3))
+        val source = snapshot().copy(exceptions = listOf(moved))
+        for (availability in listOf<Int?>(null, 0, 1)) for (privacy in listOf<Int?>(null, 0, 2)) {
+            val patch = EventPatch(availability = FieldChange.Set(availability), privacy = FieldChange.Set(privacy))
+            val intent = RecurrenceEditIntent.FollowingSeriesEdit(key(3),
+                rule = RecurrenceRuleChanges(interval = FieldChange.Set(2)), selectedExceptionPatch = patch)
+            val actions = ready(plan(source, moved.ref, intent))
+            assertEquals(EventPatch(), (actions[1] as RecurrencePlanAction.InsertTail).patch)
+            assertEquals(patch, actions.filterIsInstance<RecurrencePlanAction.RemapException>().single().selectedPatch)
+        }
+    }
+
+    @Test fun metadataKeepCombinesWithExplicitValuesWithoutLosingEitherField() {
+        val moved = SeriesException(ref(3, 23, 0), key(3))
+        val source = snapshot().copy(exceptions = listOf(moved))
+        val shared = EventPatch(availability = FieldChange.Set(1))
+        val extra = EventPatch(privacy = FieldChange.Set<Int?>(null))
+        val intent = RecurrenceEditIntent.FollowingSeriesEdit(key(3), shared,
+            rule = RecurrenceRuleChanges(interval = FieldChange.Set(2)), selectedExceptionPatch = extra)
+        val selected = ready(plan(source, moved.ref, intent)).filterIsInstance<RecurrencePlanAction.RemapException>().single()
+        assertEquals(shared.availability, selected.selectedPatch.availability)
+        assertEquals(extra.privacy, selected.selectedPatch.privacy)
+        val identical = intent.copy(selectedExceptionPatch = shared)
+        assertTrue(plan(source, moved.ref, identical) is RecurrencePlanningResult.Ready)
+    }
+
+    @Test fun conflictingNullableMetadataNeverProducesAnExecutablePlan() {
+        val moved = SeriesException(ref(3, 23, 0), key(3))
+        val source = snapshot().copy(exceptions = listOf(moved))
+        for ((shared, extra) in listOf<Int?>(null, 0, 1).flatMap { a -> listOf<Int?>(null, 0, 1).map { b -> a to b } }.filter { it.first != it.second }) {
+            val availabilityConflict = RecurrenceEditIntent.FollowingSeriesEdit(key(3),
+                fields = EventPatch(availability = FieldChange.Set(shared)),
+                rule = RecurrenceRuleChanges(interval = FieldChange.Set(2)),
+                selectedExceptionPatch = EventPatch(availability = FieldChange.Set(extra)))
+            assertTrue(plan(source, moved.ref, availabilityConflict) is RecurrencePlanningResult.Invalid)
+            val privacyConflict = availabilityConflict.copy(fields = EventPatch(privacy = FieldChange.Set(shared)),
+                selectedExceptionPatch = EventPatch(privacy = FieldChange.Set(extra)))
+            assertTrue(plan(source, moved.ref, privacyConflict) is RecurrencePlanningResult.Invalid)
+        }
+    }
+
+    @Test fun allSeriesMetadataEditsRetainEveryExplicitOverride() {
+        val moved = SeriesException(ref(3, 23, 0), key(3))
+        val other = SeriesException(ref(4, 24, 1), key(4))
+        val source = snapshot().copy(exceptions = listOf(moved, other))
+        val patch = EventPatch(availability = FieldChange.Set(0), privacy = FieldChange.Set<Int?>(null))
+        val intent = RecurrenceEditIntent.WholeSeriesEdit(start, patch,
+            rule = RecurrenceRuleChanges(interval = FieldChange.Set(2)))
+        val actions = ready(plan(source, moved.ref, intent))
+        assertEquals(patch, (actions.first() as RecurrencePlanAction.UpdateMaster).patch)
+        val remaps = actions.filterIsInstance<RecurrencePlanAction.RemapException>()
+        assertEquals(listOf(moved, other), remaps.map { it.exception })
+        assertTrue(remaps.all { it.selectedPatch == EventPatch() })
+    }
 }

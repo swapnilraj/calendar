@@ -1,5 +1,6 @@
 package dev.swapnilraj.calendar.ui.events
 
+import android.provider.CalendarContract
 import dev.swapnilraj.calendar.core.*
 import java.time.Clock
 import kotlinx.coroutines.CancellationException
@@ -28,10 +29,10 @@ suspend fun prepareEditDraft(
 ): DraftPreparationResult = prepareDraft(initial, existing, draftId, true, store, clock)
 
 private suspend fun prepareDraft(initial: EventDraft, existing: EditableEvent?, id: String, selected: Boolean,
-    store: DraftStore, clock: Clock): DraftPreparationResult = try {
+    store: DraftStore, clock: Clock, notices: List<EditorNotice> = emptyList(), defaultVisibilityCalendar: String = ""): DraftPreparationResult = try {
     require(id.isNotBlank())
     val old = store.load(id)
-    val record = if (old != null) old else EventEditorController.initialRecord(initial, existing, id, selected, clock)
+    val record = if (old != null) old else EventEditorController.initialRecord(initial, existing, id, selected, clock, notices, defaultVisibilityCalendar)
     val launch = DraftBrowserCodec.read(record).launch
     val expected = editorDraftTarget(existing?.details?.occurrence?.ref)
     if (launch == null || editorDraftTarget(launch.ref) != expected) DraftPreparationResult.Unavailable
@@ -44,3 +45,39 @@ private suspend fun prepareDraft(initial: EventDraft, existing: EditableEvent?, 
     }
 } catch (cancelled: CancellationException) { throw cancelled }
 catch (_: Exception) { DraftPreparationResult.Unavailable }
+
+/** Copies one displayed occurrence into a durable new-event draft; never mutates the source. */
+suspend fun prepareDuplicateDraft(
+    details: EventDetails,
+    targetCalendar: CalendarId?,
+    draftId: String,
+    store: DraftStore,
+    defaultTimedMinutes: Int? = null,
+    defaultAllDayMinutes: Int? = null,
+    clock: Clock = Clock.systemUTC(),
+): DraftPreparationResult {
+    val notices = linkedSetOf(EditorNotice.DUPLICATE_AS_ONE_OFF, EditorNotice.GUESTS_NOT_COPIED)
+    if (!details.recurrenceRule.isNullOrBlank() || details.occurrence.ref.recurrence != null)
+        notices += EditorNotice.RECURRENCE_NOT_COPIED
+    val defaults = if (details.occurrence.time is EventTime.AllDay) defaultAllDayMinutes else defaultTimedMinutes
+    val alerts = details.reminders.mapNotNull { reminder ->
+        if (reminder.method != CalendarContract.Reminders.METHOD_ALERT) {
+            notices += EditorNotice.REMINDERS_NOT_COPIED; null
+        } else if (reminder.minutesBefore != CalendarContract.Reminders.MINUTES_DEFAULT) reminder.minutesBefore
+        else defaults?.takeUnless { it == CalendarContract.Reminders.MINUTES_DEFAULT } ?: run {
+            notices += EditorNotice.DEFAULT_REMINDERS_UNRESOLVED; null
+        }
+    }.distinct()
+    var privacy = details.privacy?.takeIf { it in 0..3 }
+    if (privacy == null) notices += EditorNotice.VISIBILITY_REVIEW_REQUIRED
+    if (privacy == CalendarContract.Events.ACCESS_DEFAULT && targetCalendar != details.occurrence.ref.calendarId) {
+        privacy = null
+        notices += EditorNotice.CALENDAR_VISIBILITY_REVIEW_REQUIRED
+    }
+    val availability = details.availability?.takeIf { it in 0..2 }
+    if (availability == null) notices += EditorNotice.AVAILABILITY_REVIEW
+    val draft = EventDraft(targetCalendar ?: CalendarId(0), details.occurrence.time, details.eventZone,
+        details.occurrence.title, details.location, details.description, alerts, availability, privacy)
+    return prepareDraft(draft, null, draftId, targetCalendar != null, store, clock, notices.toList(),
+        if (privacy == CalendarContract.Events.ACCESS_DEFAULT) targetCalendar?.value?.toString().orEmpty() else "")
+}

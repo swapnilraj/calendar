@@ -121,4 +121,5 @@
     <string name="events_google_account">Google account</string>
     <string name="events_device_account">On this device</string>
     <string name="events_calendar_account">Calendar account</string>
+    <string name="events_editor_metadata_unknown">Unknown (preserved until changed)</string>
 </resources>

@@ -48,6 +48,8 @@ class CalendarWriter(
             store.saveEdit(token.value, before.encode())
             EditReadResult.Ready(EditableEvent(details, token, EditableField.entries.toSet().let {
                 if (before.calendar[CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE] == "0") it - EditableField.ZONE else it
+            }.let {
+                if (allowedAvailability(before.calendar).isNullOrEmpty()) it - EditableField.AVAILABILITY else it
             }))
         } catch (_: SecurityException) { EditReadResult.PermissionRequired }
         catch (denied: Denial) { EditReadResult.Denied(denied.reason) }
@@ -87,6 +89,11 @@ class CalendarWriter(
             (patch.title as? FieldChange.Set)?.let { changes.put(CalendarContract.Events.TITLE, it.value) }
             (patch.location as? FieldChange.Set)?.let { changes.put(CalendarContract.Events.EVENT_LOCATION, it.value) }
             (patch.description as? FieldChange.Set)?.let { changes.put(CalendarContract.Events.DESCRIPTION, it.value) }
+            val authoredAvailability = (patch.availability as? FieldChange.Set)?.let { it.value ?: 0 }
+            val authoredPrivacy = (patch.privacy as? FieldChange.Set)?.let { it.value ?: 0 }
+            validateMetadata(authoredAvailability, authoredPrivacy, source.calendar)
+            authoredAvailability?.let { changes.put(CalendarContract.Events.AVAILABILITY, it) }
+            authoredPrivacy?.let { changes.put(CalendarContract.Events.ACCESS_LEVEL, it) }
             if (patch.time is FieldChange.Set || patch.eventZone is FieldChange.Set) {
                 validateTime(draft)
                 if (source.calendar[CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE] == "0" &&
@@ -278,6 +285,7 @@ class CalendarWriter(
     }
     private fun validate(draft: EventDraft, calendar: Map<String, String?>, preservedReminderCount: Int, initial: Boolean = false) {
         validateTime(draft)
+        validateMetadata(draft.availability, draft.privacy, calendar)
         if (initial && calendar[CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE] == "0" && draft.time is EventTime.Timed &&
             draft.eventZone?.id != calendar[CalendarContract.Calendars.CALENDAR_TIME_ZONE]) throw Invalid(setOf(InvalidEventField.ZONE))
         if (draft.alertMinutes.any { it == CalendarContract.Reminders.MINUTES_DEFAULT } || draft.alertMinutes.distinct().size != draft.alertMinutes.size)
@@ -290,10 +298,27 @@ class CalendarWriter(
         }
     }
 
+    private fun allowedAvailability(calendar: Map<String, String?>): Set<Int>? {
+        val raw = calendar[CalendarContract.Calendars.ALLOWED_AVAILABILITY]?.takeIf { it.isNotBlank() } ?: return null
+        val values = raw.split(',').map { it.trim().toIntOrNull() ?: return null }
+        if (values.any { it !in 0..2 }) return null
+        return values.toSet()
+    }
+
+    private fun validateMetadata(availability: Int?, privacy: Int?, calendar: Map<String, String?>) {
+        val invalid = mutableSetOf<InvalidEventField>()
+        if (availability != null && (availability !in 0..2 || allowedAvailability(calendar)?.contains(availability) != true))
+            invalid += InvalidEventField.AVAILABILITY
+        if (privacy != null && privacy !in 0..3) invalid += InvalidEventField.PRIVACY
+        if (invalid.isNotEmpty()) throw Invalid(invalid)
+    }
+
     private fun values(draft: EventDraft) = timeValues(draft).apply {
         put(CalendarContract.Events.CALENDAR_ID, draft.calendarId.value); put(CalendarContract.Events.TITLE, draft.title)
         put(CalendarContract.Events.HAS_ALARM, if (draft.alertMinutes.isNotEmpty()) 1 else 0)
         put(CalendarContract.Events.EVENT_LOCATION, draft.location); put(CalendarContract.Events.DESCRIPTION, draft.description)
+        draft.availability?.let { put(CalendarContract.Events.AVAILABILITY, it) }
+        draft.privacy?.let { put(CalendarContract.Events.ACCESS_LEVEL, it) }
     }
     private fun timeValues(draft: EventDraft) = ContentValues().apply {
         val ref = reference(draft.calendarId, 0, draft.time)
@@ -345,10 +370,15 @@ class CalendarWriter(
         private fun draftJson(draft: EventDraft): JSONObject = refJson(reference(draft.calendarId, 0, draft.time))
             .put("allDay", draft.time is EventTime.AllDay).put("zone", draft.eventZone?.id ?: JSONObject.NULL)
             .put("title", draft.title).put("location", draft.location).put("description", draft.description).put("alerts", JSONArray(draft.alertMinutes))
+            .apply {
+                draft.availability?.let { put("availability", it) }
+                draft.privacy?.let { put("privacy", it) }
+            }
         private fun patchJson(ref: EventRef, token: EditToken, patch: EventPatch): JSONObject = refJson(ref).put("token", token.value).apply {
             fun change(name: String, change: FieldChange<*>) { if (change is FieldChange.Set) put(name, change.value?.toString() ?: JSONObject.NULL) }
             change("title", patch.title); change("time", patch.time); change("zone", patch.eventZone)
             change("location", patch.location); change("description", patch.description); change("alerts", patch.alertMinutes)
+            change("availability", patch.availability); change("privacy", patch.privacy)
         }
         private fun signature(kind: String, payload: JSONObject): String = MessageDigest.getInstance("SHA-256")
             .digest((kind + payload.toString()).toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
@@ -359,10 +389,12 @@ class CalendarWriter(
             CalendarContract.Events.RRULE, CalendarContract.Events.RDATE, CalendarContract.Events.EXRULE, CalendarContract.Events.EXDATE,
             CalendarContract.Events.ORIGINAL_ID, CalendarContract.Events.ORIGINAL_INSTANCE_TIME, CalendarContract.Events.ORIGINAL_SYNC_ID, CalendarContract.Events.STATUS, CalendarContract.Events.DELETED,
             CalendarContract.Events.ORGANIZER, CalendarContract.Events.IS_ORGANIZER, CalendarContract.Events.HAS_ATTENDEE_DATA,
-            CalendarContract.Events.GUESTS_CAN_SEE_GUESTS, CalendarContract.Events.CUSTOM_APP_PACKAGE)
+            CalendarContract.Events.GUESTS_CAN_SEE_GUESTS, CalendarContract.Events.CUSTOM_APP_PACKAGE,
+            CalendarContract.Events.AVAILABILITY, CalendarContract.Events.ACCESS_LEVEL)
         private val calendarFields = arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.ACCOUNT_NAME, CalendarContract.Calendars.ACCOUNT_TYPE,
             CalendarContract.Calendars.OWNER_ACCOUNT, CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL, CalendarContract.Calendars.ALLOWED_REMINDERS,
-            CalendarContract.Calendars.MAX_REMINDERS, CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE, CalendarContract.Calendars.CALENDAR_TIME_ZONE)
+            CalendarContract.Calendars.MAX_REMINDERS, CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE, CalendarContract.Calendars.CALENDAR_TIME_ZONE,
+            CalendarContract.Calendars.ALLOWED_AVAILABILITY)
         private val reminderFields = arrayOf(CalendarContract.Reminders._ID, CalendarContract.Reminders.EVENT_ID, CalendarContract.Reminders.MINUTES, CalendarContract.Reminders.METHOD)
         private val attendeeFields = arrayOf(CalendarContract.Attendees._ID, CalendarContract.Attendees.EVENT_ID, CalendarContract.Attendees.ATTENDEE_EMAIL,
             CalendarContract.Attendees.ATTENDEE_RELATIONSHIP, CalendarContract.Attendees.ATTENDEE_STATUS, CalendarContract.Attendees.ATTENDEE_TYPE)

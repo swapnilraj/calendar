@@ -101,7 +101,8 @@ internal fun EventWriteWorkflow(
     val initial = remember(request, existing) {
         existing?.details?.let { details -> EventDraft(details.occurrence.ref.calendarId, details.occurrence.time, details.eventZone,
             details.occurrence.title, details.location, details.description,
-            details.reminders.filter { it.method == android.provider.CalendarContract.Reminders.METHOD_ALERT }.map { it.minutesBefore }) }
+            details.reminders.filter { it.method == android.provider.CalendarContract.Reminders.METHOD_ALERT }.map { it.minutesBefore },
+            availability = details.availability, privacy = details.privacy) }
             ?: EventDraft(eligibleDefault ?: CalendarId(0), EventTime.AllDay(CalendarDateRange.day(request.date)), null, "")
     }
     val scope = rememberCoroutineScope()

@@ -67,6 +67,12 @@ A draft browser can distinguish resumable edits, submitted recovery and unreadab
 source-missing submitted operations remain recovery-only. Preparing a launch first persists and
 reads back its draft. App routing to these components is a separate integration change.
 
+Native editing retains known visibility and availability and distinguishes unchanged fields from an
+explicit clear. Unknown source metadata is preserved. Duplicate-draft components copy one occurrence
+without guests/recurrence, retaining explicit Private/Public/Confidential choices. Inherited Calendar
+default visibility needs target-calendar-specific approval when its calendar changes; unproven frozen
+legacy commands stay recovery-only. The app duplication action is a separate routing packet.
+
 ## Approved daily-driver target (18 November 2026)
 
 This target supersedes the original phase roadmap and its widget/notification exclusions below.
