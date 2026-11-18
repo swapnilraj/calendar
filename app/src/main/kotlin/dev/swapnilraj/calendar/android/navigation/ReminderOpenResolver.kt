@@ -16,7 +16,7 @@ class ReminderOpenResolver(
     suspend fun resolve(post: ReminderPostIdentity): CalendarReadState<EventDetails> = try {
         val config = configuration()
         val record = ledger.findByAlias(post.alias)
-        if (record == null || record.postIdentity != post || record.state != ReminderDeliveryState.POSTED ||
+        if (record == null || record.postIdentity != post || record.state !in OpenStates ||
             !config.enabled || record.key.calendarId !in config.enabledCalendars ||
             config.expectedCalendarIdentities[record.key.calendarId] != record.sourceCalendarIdentity) {
             CalendarReadState.Unavailable
@@ -43,4 +43,10 @@ class ReminderOpenResolver(
     } catch (cancelled: CancellationException) { throw cancelled }
     catch (_: SecurityException) { CalendarReadState.PermissionRequired }
     catch (_: Exception) { CalendarReadState.Unavailable }
+
+    private companion object {
+        // A private nonce-bearing tap may arrive after a post accepted by Android lost its ACK.
+        // Opening is read-only and does not assert delivery success or change its uncertain state.
+        val OpenStates = setOf(ReminderDeliveryState.POSTED, ReminderDeliveryState.POSTING, ReminderDeliveryState.UNCERTAIN)
+    }
 }

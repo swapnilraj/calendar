@@ -24,6 +24,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".ReminderOpenActivity" android:exported="false" android:launchMode="singleTop" />
         <receiver android:name=".android.reminders.ReminderAlarmReceiver" android:exported="false" />
         <receiver android:name=".android.reminders.ReminderActionReceiver" android:exported="false" />
         <receiver android:name=".android.reminders.ReminderRecoveryReceiver" android:exported="false">

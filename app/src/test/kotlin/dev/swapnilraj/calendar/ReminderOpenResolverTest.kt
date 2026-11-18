@@ -45,12 +45,12 @@ class ReminderOpenResolverTest {
                 time = EventTime.Timed(selected.instanceStart, selected.instanceEnd)), calendar))
         }
         val resolver = ReminderOpenResolver(source, ledger, { config }, { details(it) })
-        suspend fun posted(): ReminderPostIdentity {
+        suspend fun posted(acknowledge: Boolean = true): ReminderPostIdentity {
             val window = InstantBounds(now.minusSeconds(1), now.plusSeconds(1))
             ledger.reconcile(ReminderSourceSnapshot(window, listOf(candidate), setOf(calendar.id), mapOf(calendar.id to identity)),
                 setOf(calendar.id), mapOf(candidate.key to ReminderResolution.Eligible(candidate)), now)
             val claim = ledger.claimDue(now, 1).single()
-            assertTrue(ledger.acknowledge(claim, ReminderDeliveryOutcome.Posted(now)))
+            if (acknowledge) assertTrue(ledger.acknowledge(claim, ReminderDeliveryOutcome.Posted(now)))
             return requireNotNull(claim.record.postIdentity)
         }
         override fun close() { store.close(); context.deleteDatabase(database) }
@@ -76,6 +76,13 @@ class ReminderOpenResolverTest {
             f.source.result = ReminderResolutionResult.Ready(mapOf(candidate.key to ReminderResolution.Eligible(replacement)))
             assertEquals(CalendarReadState.Unavailable, f.resolver.resolve(post))
             assertEquals(0, f.detailReads)
+        }
+    }
+    @Test fun aMatchingInterruptedPostCanOpenWithoutInventingADeliveryAcknowledgement() = runBlocking {
+        Fixture().use { f ->
+            val post = f.posted(acknowledge = false)
+            assertTrue(f.resolver.resolve(post) is CalendarReadState.Ready)
+            assertEquals(ReminderDeliveryState.POSTING, f.ledger.findByAlias(post.alias)?.state)
         }
     }
     @Test fun currentDetailsNamespaceAndChangedConfigurationAreRecheckedBeforePublication() = runBlocking {

@@ -12,6 +12,9 @@ import dev.swapnilraj.calendar.data.calendar.CalendarWriter
 import dev.swapnilraj.calendar.data.calendar.CalendarSeriesReader
 import dev.swapnilraj.calendar.data.calendar.CalendarSeriesWriter
 import dev.swapnilraj.calendar.data.calendar.CalendarSearchReader
+import dev.swapnilraj.calendar.data.calendar.CalendarReminderSource
+import dev.swapnilraj.calendar.data.calendar.SqliteReminderLedger
+import dev.swapnilraj.calendar.android.navigation.ReminderOpenResolver
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +27,11 @@ class CalendarApp : Application(), ReminderRuntimeOwner {
     private val calendarScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     private val reminderScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
     override val reminderRuntime: ReminderRuntime by lazy { createReminderRuntime(reminderScope) }
+    internal val reminderSource by lazy { CalendarReminderSource(contentResolver,
+        { permission -> checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED }) }
+    internal val reminderLedger by lazy { SqliteReminderLedger(calendarLocalStore) }
+    internal val reminderOpenResolver by lazy { ReminderOpenResolver(reminderSource, reminderLedger,
+        { settings.readReminderSettings().toConfiguration(java.time.ZoneId.systemDefault()) }, calendarReader::readDetails) }
 
     override fun onCreate() {
         super.onCreate()

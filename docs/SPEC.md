@@ -143,7 +143,11 @@ resolver verifies the persisted post/token, current enabled namespace and freshl
 occurrence key before fetching details. It follows moved exceptions instead of trusting an old event
 number, then rechecks detail namespace, configuration and persisted post before publishing. Stale,
 retired, replaced or unverifiable posts expose no private details. Activity presentation remains a
-separate integration step; these resolver tests alone do not establish notification navigation.
+separate private Activity that uses native read-only details without changing filters or interrupting
+an editor. It drops old rows when its post/context changes, observes while started, and clears details
+when observation stops. A matching interrupted post can open without changing its delivery state or
+inventing an acknowledgement. Resolver tests do not establish physical notification navigation;
+integrated Activity and device acceptance remain separate evidence.
 
 ## Approved daily-driver target (18 November 2026)
 
