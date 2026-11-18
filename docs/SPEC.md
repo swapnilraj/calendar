@@ -124,6 +124,21 @@ A bounded discovery absence never proves a tracked event disappeared; tracked ke
 separately. Private SQLite delivery history retains generation/post identity and rejects stale action
 tokens after snooze reposts. Background app delivery is not enabled by these components alone.
 
+Reminder preferences have a separate DataStore read state within the app preference store. Missing
+settings start disabled; corrupt or unavailable settings never substitute disabled configuration or
+overwrite the stored value. Background configuration suppliers perform a fresh read. Setup saves use
+an atomic expected-snapshot comparison, so delayed setup or namespace strengthening cannot overwrite
+newer choices. A lost acknowledgement requires readback/review. Display filters and event defaults do
+not select reminder calendars. These persistence seams do not themselves enable reminder setup.
+
+Notification-open decoding requires canonical app data and a complete post identity. The read-only
+resolver verifies the persisted post/token, current enabled namespace and freshly resolved original
+occurrence key before fetching details. It follows moved exceptions instead of trusting an old event
+number, then rechecks detail namespace, configuration and persisted post before publishing. Stale,
+retired, replaced or unverifiable posts expose no private details. A matching interrupted post can open without changing its delivery state or inventing an
+acknowledgement. Resolver tests do not establish physical notification navigation; Activity/runtime
+activation and device acceptance remain separate evidence.
+
 Native editing retains known visibility and availability and distinguishes unchanged fields from an
 explicit clear. Unknown source metadata is preserved. Duplicate-draft components copy one occurrence
 without guests/recurrence, retaining explicit Private/Public/Confidential choices. Inherited Calendar
