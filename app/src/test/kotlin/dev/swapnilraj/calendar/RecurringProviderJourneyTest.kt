@@ -43,6 +43,7 @@ class RecurringProviderJourneyTest {
         compose.onNode(hasText("Synthetic template") and hasSetTextAction()).performTextReplacement("Updated synthetic template")
         compose.onNodeWithText("Save").performScrollTo().performClick()
         compose.waitUntil(15_000) { f.saved == 1 }
+        assertEquals(1, f.permissionChecks)
         assertEquals(1, f.provider.rows.batchCount)
         assertEquals("Updated synthetic template", f.provider.rows.events[0]["title"])
         assertEquals(f.originalException, f.provider.rows.events[1])
@@ -73,6 +74,7 @@ class RecurringProviderJourneyTest {
         assertEquals(0, f.provider.rows.batchCount)
         compose.onNodeWithText("Delete", useUnmergedTree = true).performClick()
         compose.waitUntil(15_000) { f.deleted == 1 }
+        assertEquals(1, f.permissionChecks)
         assertEquals(1, f.provider.rows.batchCount)
         assertEquals(masterBefore, f.provider.rows.events[0])
         val changed = f.provider.rows.events[1].toMap()
@@ -95,6 +97,7 @@ class RecurringProviderJourneyTest {
 
     private class Fixture(val context: Context, val provider: ProjectionProvider, val reader: CalendarReader,
         val store: CalendarLocalStore, val database: String, val originalException: Map<String, String?>) {
+        @Volatile var permissionChecks = 0
         @Volatile var saved = 0
         @Volatile var deleted = 0
     }
@@ -123,7 +126,8 @@ class RecurringProviderJourneyTest {
             compose.setContent { DaylightTheme {
                 LiveCalendarDay(reader, CalendarSelection.ProviderVisible, initial.instanceStart.atZone(ZoneId.of("Europe/London")).plusMinutes(20),
                     true, 64f, {}, {}, drafts = store, seriesMutations = writer,
-                    onLocalSaved = { f.saved++ }, onLocalDeleted = { f.deleted++ })
+                    onLocalSaved = { f.saved++ }, onLocalDeleted = { f.deleted++ },
+                    requestMeetingWritePermission = { f.permissionChecks++; true })
             } }
             block(f)
         } finally { scope.cancel(); runBlocking { scope.coroutineContext[Job]!!.join() }; store.close(); context.deleteDatabase(database) }
