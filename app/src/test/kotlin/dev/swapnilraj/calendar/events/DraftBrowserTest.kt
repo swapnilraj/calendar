@@ -23,7 +23,7 @@ class DraftBrowserTest {
     private val fixture = EventEditorControllerTest()
     private val writer = fixture.Writer()
     private fun editor(source: EditableEvent? = null, recovery: Boolean = false, target: EventRef? = ref, required: Boolean = false, seed: EventDraft = initial) =
-        EventEditorController(seed, source, "draft", writer, store, scope, recoveryOnly = recovery, recoveryRef = target, requireStoredDraft = required)
+        preparedEditor(seed, source, "draft", writer, store, scope, recoveryOnly = recovery, recoveryRef = target, requireStoredDraft = required)
     private suspend fun prepare(edit: Boolean = false, selected: Boolean = true): EditorDraftLaunch =
         ((if (edit) prepareEditDraft(initial, existing, "draft", store) else prepareNewDraft(initial, "draft", selected, store)) as DraftPreparationResult.Ready).launch
     @After fun stop() { scope.cancel() }
@@ -110,7 +110,8 @@ class DraftBrowserTest {
         writer.safeRecovery = true; recovered.recover(); assertTrue(recovered.state.retryReady)
         writer.deleteResult = MutationResult.PermissionRequired; recovered.retryOriginal()
         recovered.change { it.copy(title = "Unsafe") }; recovered.save(); recovered.requestDelete(); recovered.confirmDelete()
-        assertEquals(2, writer.deletes); assertTrue(recovered.state.retryReady)
+        assertEquals(2, writer.deletes); assertFalse(recovered.state.retryReady)
+        recovered.recover(); assertTrue(recovered.state.retryReady)
         assertEquals(1, writer.ids.distinct().size); assertEquals(ref to existing.token, writer.deletedCommands.last())
         assertEquals(original, store.records.getValue("draft"))
     }
@@ -126,7 +127,7 @@ class DraftBrowserTest {
     @Test fun legacyPendingDeleteCanRecoverWithoutLosingCanonicalReference() = runBlocking {
         pendingDelete(); val record = store.records.getValue("draft")
         val raw = JSONObject(record.payload).apply { remove("submission") }
-        store.records["draft"] = record.copy(payload = raw.toString())
+        store.records["draft"] = record.copy(version = 4, payload = raw.toString())
         val launch = DraftBrowserCodec.read(store.records.getValue("draft")).launch!!
         assertEquals(ref, launch.ref); assertTrue(launch.needsRecovery)
         val recovered = editor(recovery = true, required = true); writer.safeRecovery = true; recovered.recover(); recovered.retryOriginal()

@@ -42,11 +42,11 @@ class ReviewNamespaceContinuityTest {
             for (replacement in listOf(calendar.copy(providerId = "calendar-B"), calendar.copy(account = CalendarAccount("other@example.invalid", "fixture")),
                 calendar.copy(owner = "other@example.invalid"), calendar.copy(providerId = null))) {
                 val store = EventEditorControllerTest.Store(); val writer = Writer()
-                val old = EventEditorController(initial, source, "original", writer, store, scope)
+                val old = preparedEditor(initial, source, "original", writer, store, scope)
                 old.change { it.copy(title = "Retain original raw edit", startTime = "partial-") }; assertTrue(old.flushDraft())
                 val record = store.records.getValue("original")
                 val foreign = source.copy(details = source.details.copy(calendar = replacement), token = EditToken("token-B"))
-                val restored = EventEditorController(initial, foreign, "original", writer, store, scope)
+                val restored = preparedEditor(initial, foreign, "original", writer, store, scope)
                 assertTrue(restored.state.reviewRequired); assertNull(restored.state.reviewLatest)
                 writer.editRead = EditReadResult.Ready(foreign)
                 assertEquals(EditReadResult.Unavailable, restored.reloadExisting())
@@ -63,13 +63,13 @@ class ReviewNamespaceContinuityTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
             val store = EventEditorControllerTest.Store(); val writer = Writer()
-            val old = EventEditorController(initial, source, "legacy", writer, store, scope)
+            val old = preparedEditor(initial, source, "legacy", writer, store, scope)
             old.change { it.copy(description = "Keep legacy raw notes") }; assertTrue(old.flushDraft())
             val original = store.records.getValue("legacy")
             val raw = JSONObject(original.payload)
             raw.put("sourceBaseline", JSONObject(raw.getString("sourceBaseline")).apply { remove("sourceCalendarIdentity") }.toString())
             val legacy = original.copy(payload = raw.toString()); store.records[legacy.id] = legacy
-            val restored = EventEditorController(initial, source, "legacy", writer, store, scope)
+            val restored = preparedEditor(initial, source, "legacy", writer, store, scope)
             assertTrue(restored.state.reviewRequired)
             writer.editRead = EditReadResult.Ready(source)
             assertEquals(EditReadResult.Unavailable, restored.reloadExisting())
@@ -77,26 +77,20 @@ class ReviewNamespaceContinuityTest {
             assertEquals(legacy, store.records.getValue(legacy.id)); assertEquals(0, writer.updates)
         } finally { scope.cancel() }
     }
-    @Test fun freshPersistedProofSurvivesSqlTimestampNormalizationButNotAnIgnoredWrite() = runBlocking {
+    @Test fun legacyDraftStoreAdaptersCannotAuthorizeNewPreparationOrMutation() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
             val backing = EventEditorControllerTest.Store()
-            val normalized = object : DraftStore by backing {
+            for (adapter in listOf(object : DraftStore by backing {
                 override suspend fun upsert(record: DraftRecord) = backing.upsert(record.copy(updatedAt = record.updatedAt.truncatedTo(java.time.temporal.ChronoUnit.MILLIS)))
+            }, object : DraftStore by backing { override suspend fun upsert(record: DraftRecord) = Unit })) {
+                val writer = Writer()
+                assertEquals(DraftPreparationResult.Unavailable, prepareEditDraft(initial, source, "adapter", adapter))
+                val controller = EventEditorController(initial, source, "adapter", writer, adapter, scope)
+                assertTrue(controller.state.draftReadFailed); controller.change { it.copy(description = "Never persisted") }
+                assertFalse(controller.flushDraft()); controller.save(); controller.confirmDelete()
+                assertTrue(backing.records.isEmpty()); assertEquals(0, writer.updates); assertEquals(0, writer.deletes)
             }
-            val writer = Writer().apply { editRead = EditReadResult.Ready(source.copy(token = EditToken("fresh-same-namespace"))) }
-            val clock = Clock.fixed(Instant.parse("2026-11-18T00:00:00.123456789Z"), ZoneOffset.UTC)
-            val controller = EventEditorController(initial, source, "normalized", writer, normalized, scope, clock)
-            controller.change { it.copy(description = "Persisted raw text") }; assertTrue(controller.flushDraft())
-            assertEquals(Instant.parse("2026-11-18T00:00:00.123Z"), backing.records.getValue("normalized").updatedAt)
-            assertTrue(controller.reloadExisting() is EditReadResult.Ready)
-            assertTrue(controller.discardAndReload() is EditReadResult.Ready); assertTrue(backing.records.isEmpty())
-            val ignored = object : DraftStore by backing { override suspend fun upsert(record: DraftRecord) = Unit }
-            val unproven = EventEditorController(initial, source, "ignored", writer, ignored, scope)
-            unproven.change { it.copy(description = "Never persisted") }; unproven.flushDraft()
-            assertEquals(EditReadResult.Unavailable, unproven.reloadExisting())
-            assertTrue(backing.records.isEmpty()); assertEquals(0, writer.updates); assertEquals(0, writer.deletes)
         } finally { scope.cancel() }
     }
-
 }

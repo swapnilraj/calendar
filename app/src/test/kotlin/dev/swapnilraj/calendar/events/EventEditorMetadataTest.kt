@@ -24,7 +24,7 @@ class EventEditorMetadataTest {
     private val writer = fixture.Writer()
     private fun source(draft: EventDraft = initial) = EditableEvent(EventDetails(EventOccurrence(ref, draft.time, draft.title, 1), eventTestCalendar(),
         availability = draft.availability, privacy = draft.privacy), EditToken("source"), EditableField.entries.toSet())
-    private fun editor(draft: EventDraft = initial, existing: EditableEvent? = null) = EventEditorController(draft, existing, "metadata", writer, store, scope)
+    private fun editor(draft: EventDraft = initial, existing: EditableEvent? = null) = preparedEditor(draft, existing, "metadata", writer, store, scope)
     @After fun stop() { scope.cancel() }
     @Test fun privateCreateAndBrowserSeedPreserveTypedMetadata() = runBlocking {
         val launch = (prepareNewDraft(initial, "metadata", true, store) as DraftPreparationResult.Ready).launch
@@ -62,7 +62,7 @@ class EventEditorMetadataTest {
         val baseline = JSONObject(raw.getString("sourceBaseline"))
         listOf("availability", "privacy", "sourceAvailability", "sourcePrivacy").forEach(baseline::remove)
         raw.put("sourceBaseline", baseline.toString()); raw.remove("privacy"); raw.remove("availability")
-        store.records["metadata"] = record.copy(payload = raw.toString())
+        store.records["metadata"] = record.copy(version = 4, payload = raw.toString())
         val restored = editor(existing = source())
         assertTrue(restored.state.reviewRequired); assertEquals("", restored.state.fields.privacy)
         restored.save(); assertEquals(0, writer.updates)

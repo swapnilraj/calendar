@@ -31,7 +31,7 @@ class RecurringCreateEditorTest {
         override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult = error("not a deletion")
         override suspend fun recover(operationId: String): MutationResult = if (safe) MutationResult.SafeToRetry(operationId) else next
     }
-    private fun editor(enabled: Boolean = true) = EventEditorController(initial, null, "recurring", writer, store, scope,
+    private fun editor(enabled: Boolean = true) = preparedEditor(initial, null, "recurring", writer, store, scope,
         Clock.fixed(Instant.parse("2026-11-18T00:00:00Z"), ZoneOffset.UTC), recurringCreationSupported = enabled)
     private fun repeat(editor: EventEditorController, raw: RecurrenceEditorFields = RecurrenceEditorFields(frequency = "DAILY")) {
         editor.change { it.copy(recurrence = raw) }
@@ -41,7 +41,7 @@ class RecurringCreateEditorTest {
     @Test fun partialRepeatFieldsSurviveProcessReopenAndBrowserWithoutWrite() = runBlocking {
         val first = editor(); val raw = RecurrenceEditorFields(frequency = "WEEKLY", interval = "", weekdays = emptyList(), endMode = "DATE", throughDate = "2028-")
         repeat(first, raw); assertTrue(first.flushDraft())
-        val record = store.records.getValue("recurring"); assertEquals(4, record.version)
+        val record = store.records.getValue("recurring"); assertEquals(EventEditorController.VERSION, record.version)
         val launch = DraftBrowserCodec.read(record).launch!!
         val restored = editor(); assertEquals(raw, restored.state.fields.recurrence); assertEquals("recurring", launch.draftId)
         restored.save(); assertEquals(EditorProblem.RECURRENCE_INVALID, restored.state.problem); assertTrue(calls.isEmpty())
@@ -53,7 +53,9 @@ class RecurringCreateEditorTest {
         store.records["recurring"] = old
         assertNotNull(DraftBrowserCodec.read(old).launch)
         val restored = editor(); assertFalse(restored.state.draftReadFailed); assertNull(restored.state.fields.recurrence.normalized())
-        restored.save(); assertEquals(1, calls.size)
+        restored.save(); assertTrue(calls.isEmpty()); assertTrue(restored.canUpgrade)
+        assertNotNull(restored.upgradeLegacyDraft())
+        editor().save(); assertEquals(1, calls.size)
         val frozen = JSONObject(store.records.getValue("recurring").payload).getJSONObject("submission")
         assertEquals(1, frozen.getInt("version")); assertFalse(frozen.getJSONObject("draft").has("recurrence"))
         assertEquals(initial, (FrozenEditorSubmission.decode(frozen) as FrozenEditorSubmission.Create).draft)

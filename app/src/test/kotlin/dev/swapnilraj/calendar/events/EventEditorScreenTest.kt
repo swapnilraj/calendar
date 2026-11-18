@@ -41,7 +41,7 @@ class EventEditorScreenTest {
         override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult { writes++; return writeResult ?: MutationResult.LocalDeleted(ref) }
         override suspend fun recover(operationId: String): MutationResult = if (proveSafe) MutationResult.SafeToRetry(operationId) else MutationResult.Uncertain(operationId, null)
     }
-    private fun controller() = EventEditorController(draft, null, "fixture-draft", writer, EventEditorControllerTest.Store(), scope)
+    private fun controller() = preparedEditor(draft, null, "fixture-draft", writer, EventEditorControllerTest.Store(), scope)
     private fun show(controller: EventEditorController, close: () -> Unit = {}) {
         compose.setContent { DaylightTheme { Surface(Modifier.fillMaxSize()) {
             EventEditorContent(controller, listOf(calendar), close, {}, {})
@@ -51,7 +51,7 @@ class EventEditorScreenTest {
     @After fun stop() { scope.cancel() }
     @Test fun failedFlushKeepsModalOpenUntilStorageRecovers() {
         val store = EventEditorControllerTest.Store().apply { failWrites = true }
-        val controller = EventEditorController(draft, null, "fixture-draft", writer, store, scope)
+        val controller = preparedEditor(draft, null, "fixture-draft", writer, store, scope)
         var closed = false
         compose.setContent { DaylightTheme {
             EventEditorSheet(controller, listOf(calendar), { closed = true }, {}, {}, {})
@@ -72,10 +72,10 @@ class EventEditorScreenTest {
         val oldDraft = draft.copy(location = "Original location")
         val oldSource = EditableEvent(EventDetails(EventOccurrence(ref, draft.time, draft.title, 1), calendar,
             location = "Original location"), EditToken("old-source"), EditableField.entries.toSet())
-        val old = EventEditorController(oldDraft, oldSource, "fixture-draft", writer, store, scope)
+        val old = preparedEditor(oldDraft, oldSource, "fixture-draft", writer, store, scope)
         old.change { it.copy(title = "My draft title") }; old.flushDraft()
         val fresh = oldSource.copy(details = oldSource.details.copy(location = "Remote location"), token = EditToken("fresh-source"))
-        val restored = EventEditorController(draft.copy(location = "Remote location"), fresh, "fixture-draft", writer, store, scope)
+        val restored = preparedEditor(draft.copy(location = "Remote location"), fresh, "fixture-draft", writer, store, scope)
         show(restored)
         compose.onNodeWithText("Location: Remote location").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("My draft title").performScrollTo().assertIsDisplayed()
@@ -125,7 +125,7 @@ class EventEditorScreenTest {
     @Test fun originalDeletionRetryRequiresASecondExplicitConfirmation() {
         val source = EditableEvent(EventDetails(EventOccurrence(ref, draft.time, draft.title, 1), calendar),
             EditToken("original-token"), EditableField.entries.toSet())
-        val editor = EventEditorController(draft, source, "fixture-delete", writer, EventEditorControllerTest.Store(), scope)
+        val editor = preparedEditor(draft, source, "fixture-delete", writer, EventEditorControllerTest.Store(), scope)
         writeResult = MutationResult.Uncertain("fixture", null)
         editor.requestDelete(); editor.confirmDelete(); proveSafe = true; editor.recover(); show(editor)
         assertEquals(1, writes)
@@ -137,7 +137,7 @@ class EventEditorScreenTest {
         assertEquals(2, writes)
     }
     @Test fun askEachTimeDoesNotSelectFirstCalendarImplicitly() {
-        val editor = EventEditorController(draft.copy(calendarId = CalendarId(0)), null, "fixture-no-calendar", writer,
+        val editor = preparedEditor(draft.copy(calendarId = CalendarId(0)), null, "fixture-no-calendar", writer,
             EventEditorControllerTest.Store(), scope, initialCalendarSelected = false)
         show(editor)
         compose.onNodeWithText("Save").performScrollTo().assertIsNotEnabled()

@@ -29,7 +29,7 @@ class DuplicateDraftTest {
     private val fixture = EventEditorControllerTest(); private val writer = fixture.Writer()
     private suspend fun prepare(source: EventDetails = details, target: CalendarId? = CalendarId(8), timedDefault: Int? = null, allDayDefault: Int? = null): EditorDraftLaunch =
         (prepareDuplicateDraft(source, target, "copy", store, timedDefault, allDayDefault, targetIdentity = target?.let { eventTestIdentity(it.value) }) as DraftPreparationResult.Ready).launch
-    private fun editor(launch: EditorDraftLaunch) = EventEditorController(launch.seed(LocalDate.parse("2040-01-01"), ZoneOffset.UTC), null,
+    private fun editor(launch: EditorDraftLaunch) = preparedEditor(launch.seed(LocalDate.parse("2040-01-01"), ZoneOffset.UTC), null,
         launch.draftId, writer, store, scope, initialCalendarSelected = launch.calendarSelected, requireStoredDraft = true)
     @After fun stop() { scope.cancel() }
     @Test fun duplicatesOneOccurrenceAndCopiesKnownPrivateMetadataWithoutSourceIdentity() = runBlocking {

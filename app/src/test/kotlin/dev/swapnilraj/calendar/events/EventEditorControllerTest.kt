@@ -21,7 +21,7 @@ class EventEditorControllerTest {
     private fun controller(store: Store = Store(), writer: Writer = Writer(), existing: EditableEvent? = null,
         draft: EventDraft = initial, selected: Boolean = true): EventEditorController {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined).also(scopes::add)
-        return EventEditorController(draft, existing, "draft-fixture", writer, store, scope,
+        return preparedEditor(draft, existing, "draft-fixture", writer, store, scope,
             Clock.fixed(Instant.parse("2026-11-18T00:00:00Z"), ZoneOffset.UTC), initialCalendarSelected = selected)
     }
     @After fun cleanUp() { scopes.forEach { it.cancel() } }
@@ -127,10 +127,12 @@ class EventEditorControllerTest {
         assertEquals(initial.title, controller.state.fields.title)
         assertTrue(store.records.isNotEmpty())
         controller.save()
+        assertEquals(listOf(id), writer.ids)
+        writer.safeRecovery = true; controller.recover(); controller.retryOriginal()
         assertEquals(listOf(id, id), writer.ids)
         controller.change { it.copy(title = "A deliberate revision") }
         controller.save()
-        assertNotEquals(id, writer.ids.last())
+        assertEquals(id, writer.ids.last()); assertEquals(initial.title, controller.state.fields.title)
     }
     @Test fun uncertainCreateRestoresLockedAndRecoveryNeverResubmits() {
         val store = Store(); val writer = Writer().apply { next = MutationResult.Uncertain("fixture-op", null) }
@@ -161,8 +163,8 @@ class EventEditorControllerTest {
         controller.save()
         assertEquals(EditorProblem.PERMISSION, controller.state.problem)
         assertTrue(store.records.isNotEmpty())
-        writer.throwOnCreate = true
-        controller.save()
+        writer.throwOnCreate = true; writer.safeRecovery = true
+        controller.recover(); controller.retryOriginal()
         assertEquals(EditorProblem.UNCERTAIN, controller.state.problem)
         assertTrue(controller.state.recoveryRequired)
     }
@@ -214,12 +216,13 @@ class EventEditorControllerTest {
         assertEquals("Original location", restored.state.fields.location)
         restored.change { it.copy(title = "Cannot modify locked review") }; restored.save()
         assertEquals(0, writer.updates)
-        assertTrue(restored.prepareDismiss())
         assertEquals(retainedPayload, store.records.getValue("draft-fixture").payload)
         writer.editRead = EditReadResult.Ready(fresh)
-        assertEquals(EditReadResult.Ready(fresh), restored.discardAndReload())
-        assertTrue(store.records.isEmpty())
-        val freshEditor = controller(store, writer, fresh, initial.copy(location = "Remote location"))
+        assertEquals(EditReadResult.Ready(fresh), restored.reloadExisting())
+        val replacement = requireNotNull(restored.replaceDraft())
+        assertFalse(store.records.containsKey("draft-fixture"))
+        val freshEditor = preparedEditor(replacement.seed(LocalDate.parse("2040-01-01"), ZoneOffset.UTC), fresh, replacement.draftId, writer, store,
+            CoroutineScope(SupervisorJob() + Dispatchers.Unconfined).also(scopes::add), requireStoredDraft = true)
         freshEditor.change { it.copy(title = "A newly reviewed edit") }; freshEditor.save()
         assertEquals(1, writer.updates)
         assertEquals(FieldChange.Keep, writer.patch?.location)
@@ -252,7 +255,7 @@ class EventEditorControllerTest {
         val changedIdentity = editable().copy(token = EditToken("fresh"), details = editable().details.copy(
             occurrence = editable().details.occurrence.copy(ref = movedRef)))
         val moved = controller(store, writer, changedIdentity)
-        assertTrue(moved.state.reviewRequired); moved.save()
+        assertTrue(moved.state.draftReadFailed); moved.save()
         assertEquals(0, writer.updates)
         assertEquals(payload, store.records.getValue("draft-fixture").payload)
     }
@@ -376,8 +379,8 @@ class EventEditorControllerTest {
             store.records[record.id] = record.copy(payload = payload.toString())
             val restored = controller(store, writer); restored.recover(); restored.retryOriginal(); restored.save()
             assertEquals(1, writer.creates)
-            assertFalse(restored.state.retryReady); assertTrue(restored.state.recoveryRequired)
-            assertEquals(EditorProblem.RETRY_UNAVAILABLE, restored.state.problem)
+            assertFalse(restored.state.retryReady); assertTrue(restored.state.draftReadFailed)
+            assertEquals(EditorProblem.DRAFT_UNAVAILABLE, restored.state.problem)
             if (bad == "version") assertEquals(999, org.json.JSONObject(store.records.getValue(record.id).payload)
                 .getJSONObject("submission").getInt("version"))
         }
@@ -397,8 +400,8 @@ class EventEditorControllerTest {
         writer.next = MutationResult.PermissionRequired; editor.retryOriginal()
         editor.change { it.copy(title = "Unsafe replacement") }; editor.save()
         assertEquals(initial.title, editor.state.fields.title)
-        assertTrue(editor.state.retryReady); assertEquals(2, writer.creates)
-        editor.retryOriginal()
+        assertFalse(editor.state.retryReady); assertEquals(2, writer.creates)
+        editor.recover(); editor.retryOriginal()
         assertEquals(1, writer.ids.distinct().size)
         assertEquals(3, writer.creates)
     }
@@ -440,17 +443,16 @@ class EventEditorControllerTest {
         editor.confirmDelete(); assertEquals(0, writer.deletes)
     }
 
-    @Test fun tokenAdoptionDiscardsObsoleteFailedCommandWithoutLockingDraft() = runBlocking {
+    @Test fun failedFrozenCommandCannotBeDiscardedByTokenAdoption() = runBlocking {
         val store = Store(); val writer = Writer().apply { next = MutationResult.PermissionRequired }
         controller(store, writer, editable()).save()
+        val original = store.records.getValue("draft-fixture")
         val fresh = editable().copy(token = EditToken("fresh-identical-source"))
-        val adopted = controller(store, writer, fresh)
-        assertFalse(adopted.state.recoveryRequired); assertTrue(adopted.flushDraft())
-        assertFalse(org.json.JSONObject(store.records.getValue("draft-fixture").payload).has("submission"))
         val restored = controller(store, writer, fresh)
-        assertFalse(restored.state.recoveryRequired); assertFalse(restored.state.reviewRequired)
-        restored.change { it.copy(title = "Still editable") }
-        assertEquals("Still editable", restored.state.fields.title)
+        assertTrue(restored.state.recoveryRequired); assertTrue(restored.flushDraft())
+        restored.change { it.copy(title = "Must remain immutable") }; restored.save()
+        assertEquals(original, store.records["draft-fixture"]); assertEquals(1, writer.updates)
+        assertTrue(org.json.JSONObject(original.payload).has("submission"))
     }
 
     @Test fun explicitCalendarRequirementDoesNotClearExistingCalendar() {
@@ -516,7 +518,7 @@ class EventEditorControllerTest {
         assertEquals(listOf(operation, operation), writer.ids)
     }
 
-    class Store : DraftStore {
+    class Store : AtomicDraftStore {
         val records = mutableMapOf<String, DraftRecord>(); var failWrites = false; var failReads = false
         var beforeLoad: CompletableDeferred<Unit>? = null
         override suspend fun load(id: String): DraftRecord? {
@@ -525,6 +527,19 @@ class EventEditorControllerTest {
         override suspend fun list() = records.values.toList()
         override suspend fun upsert(record: DraftRecord) { if (failWrites) error("fixture storage failure"); records[record.id] = record }
         override suspend fun delete(id: String) { records.remove(id) }
+        var beforeCas: (suspend (String, DraftRecord?, DraftRecord?) -> Unit)? = null
+        var unknownAcknowledgment = false
+        override suspend fun compareAndSet(id: String, expected: DraftRecord?, replacement: DraftRecord?): DraftChangeResult {
+            beforeCas?.invoke(id, expected, replacement)
+            if (failWrites) return DraftChangeResult.Unavailable
+            return synchronized(records) {
+                if (records[id] != expected) DraftChangeResult.Changed
+                else {
+                    if (replacement == null) records.remove(id) else records[id] = replacement
+                    if (unknownAcknowledgment) DraftChangeResult.Unavailable else DraftChangeResult.Applied
+                }
+            }
+        }
     }
     inner class Writer : CalendarMutations {
         var creates = 0; var updates = 0; var deletes = 0; var throwOnCreate = false

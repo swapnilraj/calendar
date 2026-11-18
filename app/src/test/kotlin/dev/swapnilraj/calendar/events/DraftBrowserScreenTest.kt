@@ -52,9 +52,9 @@ class DraftBrowserScreenTest {
             val source = EditableEvent(EventDetails(EventOccurrence(ref, initial.time, initial.title, 1), eventTestCalendar(initial.calendarId.value)), EditToken("original"), EditableField.entries.toSet())
             prepareEditDraft(initial, source, "recover", store)
             writer.deleteResult = MutationResult.Uncertain("ignored", ref.eventId)
-            EventEditorController(initial, source, "recover", writer, store, scope, requireStoredDraft = true)
+            preparedEditor(initial, source, "recover", writer, store, scope, requireStoredDraft = true)
                 .apply { requestDelete(); confirmDelete() }
-            val controller = EventEditorController(initial, null, "recover", writer, store, scope,
+            val controller = preparedEditor(initial, null, "recover", writer, store, scope,
                 recoveryOnly = true, recoveryRef = ref, requireStoredDraft = true)
             compose.setContent { DaylightTheme { Surface(Modifier.fillMaxSize()) {
                 EventEditorContent(controller, emptyList(), {}, {}, {})

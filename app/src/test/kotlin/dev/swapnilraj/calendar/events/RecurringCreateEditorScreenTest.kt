@@ -30,7 +30,7 @@ class RecurringCreateEditorScreenTest {
     private val writer = EventEditorControllerTest().Writer()
     private val initial = EventDraft(CalendarId(2), EventTime.Timed(Instant.parse("2028-06-15T09:00:00Z"), Instant.parse("2028-06-15T10:00:00Z")),
         ZoneOffset.UTC, "Recurring fixture", targetIdentity = eventTestIdentity())
-    private fun editor(enabled: Boolean) = EventEditorController(initial, null, "recurring", writer, store, scope,
+    private fun editor(enabled: Boolean) = preparedEditor(initial, null, "recurring", writer, store, scope,
         Clock.fixed(Instant.parse("2026-11-18T00:00:00Z"), ZoneOffset.UTC), recurringCreationSupported = enabled)
     private fun show(controller: EventEditorController) {
         compose.setContent { DaylightTheme { Surface(Modifier.fillMaxSize()) {
