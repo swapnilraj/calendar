@@ -53,6 +53,9 @@ import org.json.JSONObject
  *
  * No shell-identity adoption, AccountManager, permission grants, network, direct provider database,
  * global calendar reads, provider restarts, cache resets, or retries of a mutation occur here.
+ * The 15-minute suite deadline is cooperative. Direct queries receive a 30-second cancellation
+ * signal; SDK applyBatch has no cancellation API and may outlive that deadline. The host must
+ * monitor safe phase progress; this runner never kills/restarts a provider to enforce a timeout.
  */
 class NativeCalendarProviderProbe : Instrumentation() {
     private var arguments = Bundle()
@@ -72,6 +75,9 @@ class NativeCalendarProviderProbe : Instrumentation() {
         super.onStart()
         val report = JSONObject().put("schema", 1).put("scope", "native-local-provider-only")
             .put("googleWorkspaceRoundTrip", "NOT_RUN").put("productionProfileActivation", "NONE")
+            .put("deadlineKind", "cooperative").put("queryTimeoutSeconds", 30)
+            .put("directQueryCap", 320).put("batchAssertionCap", 128)
+            .put("batchAssertionCountKind", "operations-in-attempted-batches")
         val probe = Probe(targetContext, arguments) { phase ->
             sendStatus(0, Bundle().apply { putString("probe_phase", phase) })
         }
@@ -128,7 +134,8 @@ class NativeCalendarProviderProbe : Instrumentation() {
         private var creationAttempted = false
         private var preflightAbsent = false
         private var inCleanup = false
-        private var queries = 0
+        private var directQueries = 0
+        private var batchAssertions = 0
         private val began = SystemClock.elapsedRealtime()
         private val knownEventIds = linkedSetOf<Long>()
         private val knownUids = linkedMapOf<Long, String>()
@@ -177,7 +184,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
                 Seed("utc-date-two-day", LocalDate.of(2028, 3, 10), ZoneId.of("UTC"), true),
             )
             for (seed in seeds) for (limit in Limit.entries) for (variant in Variant.entries) runCase(seed, limit, variant)
-            report.put("queryCountBeforeCleanup", queries)
+            report.put("directQueryCountBeforeCleanup", directQueries).put("batchAssertionCountBeforeCleanup", batchAssertions)
             requireCondition(cases.length() == 18, "CASE_COUNT")
         }
 
@@ -188,24 +195,27 @@ class NativeCalendarProviderProbe : Instrumentation() {
             val uid = UUID.randomUUID().toString()
             requireCondition(eventsByUid(uid).isEmpty(), "NEW_EVENT_UID_COLLISION")
             val originalRule = rule(seed, limit, 8, 7)
-            val initial = eventValues(seed, uid, originalRule, 0, if (!seed.allDay && endZoneMode == "distinct") "Pacific/Honolulu" else null)
-            val created = resolver.applyBatch(CalendarContract.AUTHORITY, arrayListOf(calendarAssertion(),
+            val requestedEndZone = if (!seed.allDay && endZoneMode == "distinct") "Pacific/Honolulu" else null
+            val initial = eventValues(seed, uid, originalRule, 0, requestedEndZone)
+            val created = applyBatch(arrayListOf(calendarAssertion(),
                 ContentProviderOperation.newInsert(E.CONTENT_URI).withValues(initial).withYieldAllowed(false).build()))
             val master = idFrom(created.getOrNull(1)?.uri ?: throw Failure("MASTER_INSERT_ACK_MISSING"), "events")
             knownEventIds += master; knownUids[master] = uid
             requireCondition(created.size == 2 && created[0].count == 1, "MASTER_INSERT_ACK_SHAPE")
             val source = readEvent(master, uid)
+            val result = JSONObject().put("seed", seed.label).put("limit", limit.name).put("variant", variant.name)
+                .put("duration", seed.duration).put("originalRule", originalRule)
+                .put("requestedEndZone", requestedEndZone ?: JSONObject.NULL)
+                .put("storedEndZone", source[E.EVENT_END_TIMEZONE] ?: JSONObject.NULL)
+            cases.put(result)
+            requireCondition(source[E.EVENT_END_TIMEZONE] == requestedEndZone, "MASTER_END_ZONE_CHANGED_ON_INSERT")
             requireCondition(source[E.DTSTART] == seed.start(0).toEpochMilli().toString() && source[E.DTEND] == null &&
                 source[E.DURATION] == seed.duration && source[E.RRULE] == originalRule && source[E.ALL_DAY] == if (seed.allDay) "1" else "0", "MASTER_CONTEXT")
             requireCondition(source[E.EVENT_TIMEZONE] == seed.zone.id && source[E.ORIGINAL_ID] == null &&
                 source[E.ORIGINAL_SYNC_ID] == null && source[E.ORIGINAL_INSTANCE_TIME] == null && source[E.ORIGINAL_ALL_DAY] == null, "MASTER_SOURCE_LINK")
             val before = instances(seed, listOf(master))
             requireExact(before, seed.expected(), "WARM_INSTANCE_BOUNDS")
-            val result = JSONObject().put("seed", seed.label).put("limit", limit.name).put("variant", variant.name)
-                .put("duration", seed.duration).put("originalRule", originalRule)
-                .put("storedEndZone", source[E.EVENT_END_TIMEZONE] ?: JSONObject.NULL)
-                .put("before", summary(before, seed.expected()))
-            cases.put(result)
+            result.put("before", summary(before, seed.expected()))
             val prefixRule = rule(seed, limit, 3, 2)
             val tailRule = rule(seed, limit, 5, 7)
             val tailUid = UUID.randomUUID().toString()
@@ -237,7 +247,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
                     .withSelection("${E.CALENDAR_ID}=? AND ${E.UID_2445}=?", arrayOf(calendar().toString(), tailUid))
                     .withExpectedCount(0).withYieldAllowed(false).build()
                 var finalAssertionFailed = false
-                try { resolver.applyBatch(CalendarContract.AUTHORITY, operations) }
+                try { applyBatch(operations) }
                 catch (failure: OperationApplicationException) {
                     finalAssertionFailed = failure.message?.contains("Expected 0 rows but actual 1") == true
                 }
@@ -248,7 +258,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
                 requireExact(after, seed.expected(), "ROLLBACK_WARM_INSTANCE_BOUNDS")
                 result.put("after", summary(after, seed.expected())).put("rollback", "VERIFIED_FINAL_ASSERTION")
             } else {
-                val acknowledgments = resolver.applyBatch(CalendarContract.AUTHORITY, operations)
+                val acknowledgments = applyBatch(operations)
                 val tail = acknowledgedTail(acknowledgments, tailUid)
                 requireCondition(readEvent(master, uid) == expectedPrefix, "PREFIX_CONTEXT_CHANGED")
                 val tailSource = readEvent(tail, tailUid)
@@ -348,7 +358,11 @@ class NativeCalendarProviderProbe : Instrumentation() {
         fun cleanup(report: JSONObject): Boolean {
             val result = JSONObject(); report.put("cleanup", result)
             inCleanup = true
-            if (!creationAttempted) { result.put("status", "NO_CREATION_ATTEMPTED"); return true }
+            if (!creationAttempted) {
+                result.put("status", "NO_CREATION_ATTEMPTED")
+                    .put("directQueryCount", directQueries).put("batchAssertionCount", batchAssertions)
+                return true
+            }
             return try {
                 step("cleanup-owned-local-calendar")
                 requireCondition(preflightAbsent && account != null && owner != null, "CLEANUP_NAMESPACE_NOT_PROVEN")
@@ -371,7 +385,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
                     guardCalendar()
                     var acknowledged = false
                     try {
-                        val deleted = resolver.applyBatch(CalendarContract.AUTHORITY, arrayListOf(calendarAssertion(),
+                        val deleted = applyBatch(arrayListOf(calendarAssertion(),
                             ContentProviderOperation.newDelete(localCalendarUri()).withSelection(calendarSelection(), calendarArgs())
                                 .withExpectedCount(1).withYieldAllowed(false).build()))
                         acknowledged = deleted.size == 2 && deleted[1].count == 1
@@ -385,16 +399,26 @@ class NativeCalendarProviderProbe : Instrumentation() {
                         (listOf(calendar().toString()) + knownEventIds.map(Long::toString)).toTypedArray())
                     requireCondition(leftover.isEmpty(), "CLEANUP_TRACKED_EVENTS_REMAINED")
                 }
-                result.put("status", "VERIFIED_CALENDAR_AND_TRACKED_IDS_ABSENT").put("trackedEventCount", knownEventIds.size).put("queryCount", queries)
+                result.put("status", "VERIFIED_CALENDAR_AND_TRACKED_IDS_ABSENT").put("trackedEventCount", knownEventIds.size)
+                    .put("directQueryCount", directQueries).put("batchAssertionCount", batchAssertions)
                 true
             } catch (failure: Exception) {
                 result.put("status", "BLOCKED_NO_BLIND_DELETE").put("failure", safeFailure(failure))
+                    .put("directQueryCount", directQueries).put("batchAssertionCount", batchAssertions)
                 false
             }
         }
 
+        private fun applyBatch(operations: ArrayList<ContentProviderOperation>): Array<ContentProviderResult> {
+            if (!inCleanup) deadline()
+            val assertions = operations.count { it.isAssertQuery }
+            requireCondition(batchAssertions + assertions <= 128, "BATCH_ASSERTION_BUDGET")
+            batchAssertions += assertions
+            return resolver.applyBatch(CalendarContract.AUTHORITY, operations)
+        }
+
         private fun query(uri: Uri, projection: Array<String>, selection: String, args: Array<String>): List<Map<String, String?>> {
-            requireCondition(++queries <= 320 && (inCleanup || queries <= 300), "QUERY_BUDGET")
+            requireCondition(++directQueries <= 320 && (inCleanup || directQueries <= 300), "DIRECT_QUERY_BUDGET")
             if (!inCleanup) deadline()
             val cancellation = CancellationSignal()
             val timeout = watchdog.schedule({ cancellation.cancel() }, 30, TimeUnit.SECONDS)
