@@ -12,7 +12,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-internal fun SeriesEditorFixture.followingSource(rule: String = "FREQ=WEEKLY;BYDAY=MO;COUNT=8") = temporalSource(rule).let {
+internal fun SeriesEditorFixture.followingEditSource(rule: String = "FREQ=WEEKLY;BYDAY=MO;COUNT=8") = temporalSource(rule).let {
     it.copy(scopes = it.scopes + (RecurrenceScope.FOLLOWING to it.scopes.getValue(RecurrenceScope.ALL)))
 }
 
@@ -21,14 +21,18 @@ internal fun SeriesEditorFixture.followingSource(rule: String = "FREQ=WEEKLY;BYD
 class SeriesFollowingEditorTest {
     private val f = SeriesEditorFixture()
     @After fun stop() { f.scope.cancel() }
-    private suspend fun editor(source: EditableSeries = f.followingSource(), permission: (suspend () -> Boolean)? = { true }): SeriesEventEditorController {
+    private suspend fun editor(source: EditableSeries = f.followingEditSource(), permission: (suspend () -> Boolean)? = { true }): SeriesEventEditorController {
         val launch = f.prepare(RecurrenceScope.FOLLOWING, source = source)
         return SeriesEventEditorController(launch, source, f.port, f.store, f.scope, requestWritePermission = permission)
     }
 
     @Test fun onlyBackendAllowedFollowingGraphsExposeControls() {
-        val source = f.followingSource()
-        assertTrue(canPrepareSeriesScope(source, RecurrenceScope.FOLLOWING, SeriesEditorAction.EDIT))
+        val source = f.followingEditSource()
+        val context = SeriesMasterContext.from(source)
+        assertNotNull("Source rule", context.parsed)
+        assertNotNull("Nominal tail", context.nominalTail(source.selectedDetails.occurrence.ref))
+        assertNotNull("Nominal duration", context.nominalTail(source.selectedDetails.occurrence.ref)?.template)
+        assertTrue("snapshot=${source.snapshot}, rights=${source.scopes}, allowed=${source.allowedFields}", canPrepareSeriesScope(source, RecurrenceScope.FOLLOWING, SeriesEditorAction.EDIT))
         for (denied in listOf(source.copy(scopes = emptyMap()), source.copy(scopes = mapOf(RecurrenceScope.FOLLOWING to f.rights.copy(edit = AccessDecision.UNKNOWN))),
             source.copy(snapshot = source.snapshot.copy(exceptions = f.source.snapshot.exceptions)),
             source.copy(snapshot = source.snapshot.copy(rDatesRaw = "20280626T090000Z")),
@@ -41,7 +45,7 @@ class SeriesFollowingEditorTest {
         val zone = ZoneId.of("America/Los_Angeles")
         val original = Instant.parse("2028-06-19T16:00:00Z")
         val actual = Instant.parse("2028-06-20T13:00:00Z")
-        val base = f.followingSource()
+        val base = f.followingEditSource()
         val ref = base.selectedDetails.occurrence.ref.copy(instanceStart = actual, instanceEnd = actual.plusSeconds(3600), recurrence = RecurrenceRef(41, original))
         val source = base.copy(snapshot = base.snapshot.copy(start = RecurrenceStart.Timed(LocalDateTime.parse("2028-06-05T09:00"), zone), validatedSelection = ref),
             selectedDetails = base.selectedDetails.copy(occurrence = base.selectedDetails.occurrence.copy(ref = ref, time = EventTime.Timed(actual, actual.plusSeconds(3600))), eventZone = ZoneId.of("Asia/Tokyo")))
@@ -75,7 +79,7 @@ class SeriesFollowingEditorTest {
     @Test fun changedPatternKeepsCountAndExactUntilUntilExplicitlyChanged() = runBlocking {
         for (rule in listOf("FREQ=WEEKLY;BYDAY=MO;COUNT=8", "FREQ=WEEKLY;BYDAY=MO;UNTIL=20280801T160045Z")) {
             f.store.records.clear()
-            val editor = editor(f.followingSource(rule))
+            val editor = editor(f.followingEditSource(rule))
             editor.changeRule(editor.state.fields.recurrence!!.values.copy(frequency = "DAILY")); editor.save()
             val review = editor.state.followingReview!!
             assertEquals(FieldChange.Keep, review.command.intent.rule.end)
@@ -109,7 +113,7 @@ class SeriesFollowingEditorTest {
     }
 
     @Test fun allDayTailUsesUtcOriginalDatesIndependentOfEventDisplayZone() = runBlocking {
-        val base = f.followingSource()
+        val base = f.followingEditSource()
         val midnight = Instant.parse("2028-06-19T00:00:00Z")
         val ref = base.selectedDetails.occurrence.ref.copy(instanceStart = midnight, instanceEnd = midnight.plusSeconds(172800), recurrence = RecurrenceRef(41, midnight))
         val source = base.copy(snapshot = base.snapshot.copy(start = RecurrenceStart.AllDay(LocalDate.of(2028, 6, 5)), durationRaw = "P2D", validatedSelection = ref),
@@ -125,7 +129,7 @@ class SeriesFollowingEditorTest {
     }
 
     @Test fun rawPartialFollowingDraftRestoresThroughBrowserWithSameGeneration() = runBlocking {
-        val source = f.followingSource(); val first = editor(source)
+        val source = f.followingEditSource(); val first = editor(source)
         first.change { it.copy(temporal = it.temporal!!.copy(startDate = "2028-")) }
         assertTrue(first.flushDraft())
         val record = f.store.records.getValue("series")
@@ -175,7 +179,7 @@ class SeriesFollowingEditorTest {
     }
 
     @Test fun changedNamespaceAndOldGenerationCannotAdoptFollowingDraft() = runBlocking {
-        val source = f.followingSource(); val editor = editor(source)
+        val source = f.followingEditSource(); val editor = editor(source)
         editor.change { it.copy(title = "Retained") }; editor.flushDraft()
         val replaced = source.copy(selectedDetails = source.selectedDetails.copy(calendar = source.selectedDetails.calendar!!.copy(providerId = "different-account")))
         val restored = f.controller(editor.launch, replaced)
@@ -188,7 +192,7 @@ class SeriesFollowingEditorTest {
     }
 
     @Test fun staleReviewCannotFreezeAfterOtherHostChangesRevision() = runBlocking {
-        val source = f.followingSource(); val first = editor(source)
+        val source = f.followingEditSource(); val first = editor(source)
         first.change { it.copy(title = "First") }; first.save(); assertNotNull(first.state.followingReview)
         val newer = f.controller(first.launch, source)
         newer.change { it.copy(title = "Newer") }; newer.flushDraft()
@@ -198,7 +202,7 @@ class SeriesFollowingEditorTest {
     }
 
     @Test fun firstOccurrenceReviewMakesWholeScopeExplicitWithoutInventingTail() = runBlocking {
-        val base = f.followingSource(); val start = (base.snapshot.start as RecurrenceStart.Timed).instant
+        val base = f.followingEditSource(); val start = (base.snapshot.start as RecurrenceStart.Timed).instant
         val ref = EventRef(CalendarId(2), 41, start, start.plusSeconds(3600), RecurrenceRef(41, start))
         val source = base.copy(snapshot = base.snapshot.copy(validatedSelection = ref), selectedDetails = base.selectedDetails.copy(
             occurrence = base.selectedDetails.occurrence.copy(ref = ref, time = EventTime.Timed(start, start.plusSeconds(3600)))))

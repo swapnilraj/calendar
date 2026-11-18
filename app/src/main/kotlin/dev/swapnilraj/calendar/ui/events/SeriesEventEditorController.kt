@@ -27,7 +27,7 @@ data class SeriesEventEditorState(val fields: SeriesEditorFields = SeriesEditorF
     val wholeReview: SeriesWholeReview? = null, val localOutcome: SeriesMutationResult? = null,
     val followingReview: SeriesFollowingReview? = null)
 
-/** Every schema2 change uses an exact record CAS. Submitted operations are never retired/reissued. */
+/** Current series drafts use exact record CAS. Submitted operations are never retired/reissued. */
 class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: EditableSeries?,
     private val mutations: CalendarSeriesMutations, private val drafts: DraftStore, private val scope: CoroutineScope,
     val recoveryOnly: Boolean = source == null, private val clock: Clock = Clock.systemUTC(),

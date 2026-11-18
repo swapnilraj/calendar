@@ -21,9 +21,10 @@ class SeriesTemporalCasTest {
     @After fun stop() { f.scope.cancel() }
     private suspend fun editor() = f.controller(f.prepare(source = source), source)
     @Test fun factoryRequiresAtomicPortAndNeverFallsBackToBlindUpsert() = runBlocking {
-        val plain = EventEditorControllerTest.Store()
+        val backing = EventEditorControllerTest.Store()
+        val plain = object : DraftStore by backing {}
         assertEquals(SeriesDraftPreparationResult.Unavailable, prepareSeriesDraft(source, RecurrenceScope.ALL, SeriesEditorAction.EDIT, "series", plain))
-        assertTrue(plain.records.isEmpty())
+        assertTrue(backing.records.isEmpty())
         f.store.unavailableAfter = true
         assertTrue(prepareSeriesDraft(source, RecurrenceScope.ALL, SeriesEditorAction.EDIT, "series", f.store) is SeriesDraftPreparationResult.Ready)
         assertEquals(0, f.store.legacyCalls)

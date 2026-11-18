@@ -32,14 +32,14 @@ class SeriesFollowingScreenTest {
 
     @Test fun backendFollowingCapabilitySelectsActualFollowingScope() {
         var selected: RecurrenceScope? = null
-        compose.setContent { DaylightTheme { SeriesScopeContent(f.followingSource(), SeriesEditorAction.EDIT, {}, { selected = it }) } }
+        compose.setContent { DaylightTheme { SeriesScopeContent(f.followingEditSource(), SeriesEditorAction.EDIT, {}, { selected = it }) } }
         compose.onNodeWithText("This and following occurrences").assertIsEnabled().performClick()
         assertEquals(RecurrenceScope.FOLLOWING, selected)
         assertTrue(f.calls.isEmpty())
     }
 
     @Test fun temporalAndRepeatControlsAreWiredForFollowing() = runBlocking<Unit> {
-        val source = f.followingSource()
+        val source = f.followingEditSource()
         val controller = f.controller(f.prepare(RecurrenceScope.FOLLOWING, source = source), source)
         show(controller)
         compose.onNodeWithText("Selected and following event times").assertExists()
@@ -53,7 +53,7 @@ class SeriesFollowingScreenTest {
     }
 
     @Test fun cancelReviewRetainsRawDraftWithoutProviderMutation() = runBlocking<Unit> {
-        val source = f.followingSource()
+        val source = f.followingEditSource()
         val controller = f.controller(f.prepare(RecurrenceScope.FOLLOWING, source = source), source)
         controller.change { it.copy(title = "Pending tail") }; controller.save(); show(controller)
         compose.onNodeWithText("Review this and following events").assertIsDisplayed()
@@ -63,7 +63,7 @@ class SeriesFollowingScreenTest {
     }
 
     @Test @Config(qualifiers = "+notnight") fun followingReviewLight() = runBlocking<Unit> {
-        val source = f.followingSource()
+        val source = f.followingEditSource()
         val controller = f.controller(f.prepare(RecurrenceScope.FOLLOWING, source = source), source)
         controller.change { it.copy(title = "Planning from this week") }; controller.save(); show(controller)
         compose.onNodeWithText("Review this and following events").assertIsDisplayed()

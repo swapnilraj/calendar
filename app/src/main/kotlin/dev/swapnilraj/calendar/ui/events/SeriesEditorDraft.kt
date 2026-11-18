@@ -33,7 +33,13 @@ fun canPrepareSeriesScope(source: EditableSeries, scope: RecurrenceScope, action
     if (scope == RecurrenceScope.FOLLOWING && action == SeriesEditorAction.EDIT &&
         (source.snapshot.coverage != SeriesCoverage.COMPLETE || source.snapshot.exceptions.isNotEmpty() || source.snapshot.exDates.isNotEmpty() ||
             listOf(source.snapshot.exDatesRaw, source.snapshot.rDatesRaw, source.snapshot.exRuleRaw).any { !it.isNullOrBlank() })) return false
-    if (scope == RecurrenceScope.FOLLOWING && action == SeriesEditorAction.EDIT && runCatching { SeriesMasterContext.from(source).nominalTail(source.selectedDetails.occurrence.ref)?.template }.getOrNull() == null) return false
+    if (scope == RecurrenceScope.FOLLOWING && action == SeriesEditorAction.EDIT) {
+        val supported = runCatching {
+            val context = SeriesMasterContext.from(source)
+            context.parsed != null && context.nominalTail(source.selectedDetails.occurrence.ref)?.template != null
+        }.getOrDefault(false)
+        if (!supported) return false
+    }
     val rights = source.scopes[scope] ?: return false
     return when (action) {
         SeriesEditorAction.EDIT -> rights.edit == AccessDecision.ALLOWED &&
