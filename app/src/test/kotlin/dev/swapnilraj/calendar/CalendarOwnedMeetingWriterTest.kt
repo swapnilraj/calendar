@@ -23,7 +23,7 @@ class CalendarOwnedMeetingWriterTest {
     private val identity=CalendarIdentity(CalendarId(2),CalendarAccount("owner@example.invalid","com.google"),"owner@example.invalid","calendar-A")
     private val draft=EventDraft(CalendarId(2),EventTime.Timed(start,start.plusSeconds(3600)),ZoneId.of("Europe/London"),"Synthetic owned meeting","Room","Notes",listOf(10),1,2,identity)
     private val inputs=listOf(MeetingGuestInput("required@example.invalid",MeetingGuestType.REQUIRED,"Required"),MeetingGuestInput("optional@example.invalid",MeetingGuestType.OPTIONAL))
-    private class Provider:ContentProvider(){
+    internal class Provider:ContentProvider(){
         val base=CalendarRecurringCreateTest.Provider().apply{nativeMeetingMode=true}
         val db get()=base.db
         data class Write(val path:String,val values:Set<String>,val selection:String?)
@@ -84,8 +84,8 @@ class CalendarOwnedMeetingWriterTest {
         fun value(table:String,key:String,id:Long)=db.query(table,arrayOf(key),"_id=?",arrayOf(id.toString()),null,null,null).use{check(it.moveToFirst());it.getString(0)}
         fun count(table:String)=db.rawQuery("SELECT COUNT(*) FROM $table",null).use{it.moveToFirst();it.getInt(0)}
     }
-    private data class Fixture(val p:Provider,val writer:CalendarMeetingWriter,val reader:CalendarReader,val store:CalendarLocalStore,val grants:MutableSet<String>,val selected:EventRef)
-    private suspend fun fixture(block:suspend(Fixture)->Unit){
+    internal data class Fixture(val p:Provider,val writer:CalendarMeetingWriter,val reader:CalendarReader,val store:CalendarLocalStore,val grants:MutableSet<String>,val selected:EventRef)
+    internal suspend fun fixture(block:suspend(Fixture)->Unit){
         val context=RuntimeEnvironment.getApplication();val p=Provider();org.robolectric.shadows.ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY,p)
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default);val store=CalendarLocalStore(context,"owned-meeting-${UUID.randomUUID()}.db")
         val grants=mutableSetOf(Manifest.permission.READ_CALENDAR,Manifest.permission.WRITE_CALENDAR);val reader=CalendarReader(context.contentResolver,scope,stopTimeoutMillis=0)
@@ -101,7 +101,7 @@ class CalendarOwnedMeetingWriterTest {
             block(Fixture(p,writer,reader,store,grants,seed.selected))
         }finally{scope.cancel();scope.coroutineContext[Job]!!.join();store.close();p.db.close();context.deleteDatabase(store.databaseName)}
     }
-    private suspend fun Fixture.edit():EditableMeeting{val r=writer.loadForEdit(selected);assertTrue(r.toString(),r is MeetingReadResult.Ready);return(r as MeetingReadResult.Ready).value}
+    internal suspend fun Fixture.edit():EditableMeeting{val r=writer.loadForEdit(selected);assertTrue(r.toString(),r is MeetingReadResult.Ready);return(r as MeetingReadResult.Ready).value}
     private fun edit(patch:EventPatch=EventPatch(),guests:List<MeetingGuestChange> = emptyList())=MeetingCommand.EditOwned(RecurrenceScope.THIS,patch,guests)
     private fun common(result:MutationResult)=MeetingMutationResult.Common(result)
     private fun Fixture.rows()=p.db.rawQuery("SELECT _id,attendeeEmail,attendeeStatus,attendeeType,opaque_guest FROM attendees ORDER BY _id",null).use{c->buildList{while(c.moveToNext())add(List(c.columnCount){if(c.isNull(it))null else c.getString(it)})}}
