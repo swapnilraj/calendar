@@ -10,6 +10,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** The Application owns exactly one runtime/coordinator. Framework components never create stores. */
 interface ReminderRuntimeOwner { val reminderRuntime: ReminderRuntime }
@@ -54,13 +56,18 @@ class ReminderRuntime(
 ) {
     private val mutableHealth = MutableStateFlow(ReminderRuntimeHealth(ReminderRuntimeStatus.UNKNOWN))
     val health: StateFlow<ReminderRuntimeHealth> = mutableHealth.asStateFlow()
+    /** Read configuration only after entering this ordering boundary. An old startup read must not
+     * cancel jobs registered by a newer resume or publish health after its operation completes. */
+    private val ordering = Mutex()
 
     init { require(broadcastTimeoutMillis > 0 && jobTimeoutMillis > 0) }
 
     /** Startup registers recovery only. Resume also reconciles changes made in system settings. */
     fun onProcessStarted(): Job = scope.launch {
-        val registration = register()
-        if (registration == null || !registration.healthy) retry()
+        ordering.withLock {
+            val registration = register()
+            if (registration == null || !registration.healthy) retry()
+        }
     }
     fun onResume(): Job = scope.launch { reconcile() }
 
@@ -77,13 +84,13 @@ class ReminderRuntime(
         return Registration(config, healthy)
     }
 
-    suspend fun reconcile(alarm: ReminderVersion? = null, retryOnFailure: Boolean = true): Boolean {
+    suspend fun reconcile(alarm: ReminderVersion? = null, retryOnFailure: Boolean = true): Boolean = ordering.withLock {
         val registration = register()
         if (registration == null) {
             if (retryOnFailure) retry()
-            return true
+            return@withLock true
         }
-        return try {
+        try {
             val result = if (alarm == null) operations.reconcile() else operations.onAlarm(alarm)
             currentCoroutineContext().ensureActive()
             val registrationFailed = !registration.healthy
@@ -102,9 +109,9 @@ class ReminderRuntime(
         catch (_: Exception) { unavailable(); if (retryOnFailure) retry(); true }
     }
 
-    suspend fun action(identity: ReminderPostIdentity, snoozeMinutes: Int? = null) {
+    suspend fun action(identity: ReminderPostIdentity, snoozeMinutes: Int? = null) = ordering.withLock {
         val registration = register()
-        if (registration == null) { retry(); return }
+        if (registration == null) { retry(); return@withLock }
         if (!registration.healthy) retry()
         try {
             val result = if (snoozeMinutes == null) operations.dismiss(identity)
@@ -148,11 +155,13 @@ class ReminderRuntime(
         catch (cancelled: CancellationException) { throw cancelled }
         finally {
             if (contentTriggered) {
-                try {
-                    val config = configuration()
-                    if (config.enabled && !jobs.rearmContent(canObserveCalendar())) { degraded(); retry = true }
-                } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { unavailable(); retry = true }
+                ordering.withLock {
+                    try {
+                        val config = configuration()
+                        if (config.enabled && !jobs.rearmContent(canObserveCalendar())) { degraded(); retry = true }
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { unavailable(); retry = true }
+                }
             }
         }
         finished(retry)

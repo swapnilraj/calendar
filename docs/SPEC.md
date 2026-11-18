@@ -126,6 +126,9 @@ the contract alone does not establish bounded provider reads.
 Reminder framework components declare notification and persisted-job boot permissions. Their presence
 is a prerequisite for runtime wiring; app-owned background delivery is not yet enabled or device-verified.
 Notification permission must still be requested through explicit setup before posting.
+Runtime startup, resume, notification actions and content-job rearming serialize configuration reads
+with job registration/cancellation. An older suspended read cannot cancel a newer enabled registration
+or resurrect observation after a later disable. Health publication follows that operation ordering.
 Reminder preferences have a separate DataStore read state within the app preference store. Missing
 settings start disabled; corrupt or unavailable settings never substitute disabled configuration or
 overwrite the stored value. Background configuration suppliers perform a fresh read. Setup saves use
