@@ -60,7 +60,7 @@ class CalendarSeriesReaderTest {
         val reminders = mutableListOf<MutableMap<String, String?>>()
         val attendees = mutableListOf<MutableMap<String, String?>>()
         val extendedProperties = mutableListOf<MutableMap<String, String?>>()
-        data class Call(val path: String, val fields: List<String>?, val selection: String?, val args: List<String>)
+        data class Call(val path: String, val fields: List<String>?, val selection: String?, val args: List<String>, val inBatch: Boolean = false)
         val calls = mutableListOf<Call>()
         var partialPath: String? = null
         var failPath: String? = null
@@ -83,6 +83,9 @@ class CalendarSeriesReaderTest {
         var failCorrection = false
         var ignoreCorrectionEnd = false
         var corruptClonedReminder = false
+        var joinedAttendeeView = true
+        var recalculateDailyLastDate = false
+        private var inBatch = false
         override fun onCreate() = true
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?, cancellationSignal: CancellationSignal?): Cursor? {
             signal = cancellationSignal
@@ -92,11 +95,11 @@ class CalendarSeriesReaderTest {
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor? {
             val path = uri.pathSegments.first()
             if (committed && failReadsAfterCommit) error("Synthetic post-commit read failure")
-            calls += Call(path, projection?.toList(), selection, args?.toList().orEmpty())
+            calls += Call(path, projection?.toList(), selection, args?.toList().orEmpty(), inBatch)
             if (path == failPath) error("Synthetic source failure")
             if (path == nullPath) return null
             val id = uri.lastPathSegment?.toLongOrNull()
-            val rows: List<Map<String, String?>> = when (path) {
+            val rawRows: List<Map<String, String?>> = when (path) {
                 "calendars" -> listOf(calendar).filter { id == null || it["_id"] == id.toString() }
                 "events" -> events.filter { (id == null || it["_id"] == id.toString()) && matches(it, selection, args) }
                 "instances" -> effectiveInstances().filter { row -> matches(row, selection, args) &&
@@ -106,6 +109,17 @@ class CalendarSeriesReaderTest {
 
                 else -> error("Unexpected table")
             }
+            // Native Attendees queries expose the seeded Events projection aliases. Keep
+            // attendee IDs and actual OEM child values independent of their parent event.
+            val rows = if (path == "attendees" && joinedAttendeeView) rawRows.map { child ->
+                val parent = events.singleOrNull { it["_id"] == child["event_id"] }.orEmpty()
+                child + mapOf("rrule" to parent["rrule"], "rdate" to parent["rdate"], "exrule" to parent["exrule"], "exdate" to parent["exdate"],
+                    "title" to parent["title"], "lastDate" to parent["lastDate"], "selfAttendeeStatus" to parent["selfAttendeeStatus"],
+                    "calendar_id" to parent["calendar_id"], "eventStatus" to parent["eventStatus"], "_sync_id" to parent["_sync_id"],
+                    "deleted" to parent["deleted"], "dtstart" to parent["dtstart"], "dtend" to parent["dtend"], "duration" to parent["duration"],
+                    "allDay" to parent["allDay"], "organizer" to parent["organizer"], "isOrganizer" to parent["isOrganizer"],
+                    "account_name" to calendar["account_name"], "account_type" to calendar["account_type"])
+            } else rawRows
             afterQuery?.invoke(path)
             if (path == "events" && projection == null) privateCalendars += rows.map { it["calendar_id"] }
             val fields = projection ?: rows.flatMap { it.keys }.toSortedSet().toTypedArray().takeIf { it.isNotEmpty() } ?: arrayOf("_id", "event_id")
@@ -256,7 +270,13 @@ class CalendarSeriesReaderTest {
                 if (failCorrection && rows.any { it["_id"] in insertedExceptions }) throw android.content.OperationApplicationException("Synthetic correction rollback")
                 rows.forEach { rawTimes[it["_id"]!!] = values.keySet().associateWith { field -> values.get(field)?.toString() } }
             }
-            rows.forEach { row -> values.keySet().forEach { if (!(ignoreCorrectionEnd && it == "dtend")) row[it] = values.get(it)?.toString() } }
+            rows.forEach { row ->
+                values.keySet().forEach { if (!(ignoreCorrectionEnd && it == "dtend")) row[it] = values.get(it)?.toString() }
+                if (recalculateDailyLastDate && values.containsKey("rrule")) {
+                    val count = Regex("COUNT=([0-9]+)").find(row["rrule"].orEmpty())?.groupValues?.get(1)?.toLong()
+                    if (count != null) row["lastDate"] = (row.getValue("dtstart")!!.toLong() + (count - 1) * 86_400_000L).toString()
+                }
+            }
             return rows.size
         }
         override fun applyBatch(operations: ArrayList<android.content.ContentProviderOperation>): Array<android.content.ContentProviderResult> {
@@ -270,12 +290,13 @@ class CalendarSeriesReaderTest {
             val originalInserted = insertedExceptions.toSet()
             val originalRawTimes = rawTimes.toMap()
             val originalId = nextId
+            inBatch = true
             val result = try { super.applyBatch(operations) } catch (failure: Exception) {
                 events.clear(); events.addAll(originalEvents); reminders.clear(); reminders.addAll(originalReminders)
                 attendees.clear(); attendees.addAll(originalAttendees); extendedProperties.clear(); extendedProperties.addAll(originalProperties)
                 insertedExceptions.clear(); insertedExceptions.addAll(originalInserted); rawTimes.clear(); rawTimes.putAll(originalRawTimes); nextId = originalId
                 throw failure
-            }
+            } finally { inBatch = false }
             committed = true
             if (lostAcknowledgement) error("Synthetic lost acknowledgement after provider commit")
             return result
@@ -356,6 +377,25 @@ class CalendarSeriesReaderTest {
         fixture(readBudgets = ProviderReadBudgets(maxCanonicalBytes = 1000)) { _, source, store, _ ->
             assertTrue(source.loadForEdit(selected) is SeriesReadResult.NeedsReview)
             store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots", null).use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+        }
+    }
+
+    @Test fun attendeeChildSourceSeparatesOnlySeededEventAliasesAndKeepsOpaqueOwnedPayload() = runBlocking {
+        fixture { p, source, _, _ ->
+            val opaque = listOf("displayColor", "calendar_color", "ownerAccount", "sync_data1", "dirty", "mutators", "lastSynced", "future_oem")
+            p.attendees += mutableMapOf<String, String?>("_id" to "71", "event_id" to "10", "attendeeEmail" to "owner@example.invalid", "attendeeName" to "Self",
+                "attendeeStatus" to "1", "attendeeRelationship" to "2", "attendeeType" to "1", "attendeeIdentity" to "self-id", "attendeeIdNamespace" to "self-namespace")
+                .apply { opaque.forEach { put(it, "opaque-$it") } }
+            val captured = source.source(selected)
+            val child = captured.attendees.getValue(10).single()
+            assertEquals("71", child["_id"]); assertEquals("10", child["event_id"])
+            assertEquals("self-id", child["attendeeIdentity"]); assertEquals("self-namespace", child["attendeeIdNamespace"])
+            opaque.forEach { assertEquals("opaque-$it", child[it]) }
+            listOf("rrule", "lastDate", "title", "selfAttendeeStatus", "calendar_id", "eventStatus", "_sync_id", "deleted", "account_name", "account_type").forEach { assertFalse(child.containsKey(it)) }
+            assertEquals("FREQ=DAILY;COUNT=5", captured.master["rrule"])
+            p.query(CalendarContract.Attendees.CONTENT_URI, null, "event_id = ?", arrayOf("10"), null)!!.use {
+                assertTrue(it.moveToFirst()); assertEquals("FREQ=DAILY;COUNT=5", it.getString(it.getColumnIndexOrThrow("rrule")))
+            }
         }
     }
 

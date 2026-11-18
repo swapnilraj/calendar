@@ -2,6 +2,10 @@ package dev.swapnilraj.calendar.data.calendar
 
 import android.Manifest
 import android.content.ContentResolver
+import android.content.ContentProviderOperation
+import android.content.ContentUris
+import android.content.ContentValues
+import android.content.OperationApplicationException
 import android.provider.CalendarContract
 import dev.swapnilraj.calendar.core.*
 import java.time.Instant
@@ -74,6 +78,93 @@ class CalendarSeriesWriterTest {
             assertEquals(2, f.provider.calls.count { it.path == "events" && it.fields == null })
             f.store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots", null).use { it.moveToFirst(); assertEquals(1, it.getInt(0)) }
             assertEquals(0, f.provider.batchCount)
+        }
+    }
+
+    private fun Fixture.addSelfAttendee(opaque: Map<String, String?> = emptyMap()) {
+        provider.attendees += mutableMapOf<String, String?>("_id" to "71", "event_id" to "10", "attendeeEmail" to "owner@example.invalid", "attendeeName" to "Self",
+            "attendeeStatus" to "1", "attendeeRelationship" to "2", "attendeeType" to "1", "attendeeIdentity" to "self-identity", "attendeeIdNamespace" to "namespace").apply { putAll(opaque) }
+    }
+
+    @Test fun joinedAttendeeOldFollowingPostassertRollsBackAndNormalizedSourcePreservesOpaqueChild() = runBlocking {
+        fixture { f ->
+            f.addSelfAttendee(mapOf("future_oem" to "keep child metadata"))
+            f.provider.recalculateDailyLastDate = true
+            f.provider.events[0]["lastDate"] = start.plusSeconds(4 * 86_400).toEpochMilli().toString()
+            val raw = f.resolver.query(CalendarContract.Attendees.CONTENT_URI, null, "event_id = ?", arrayOf("10"), null)!!.use { cursor ->
+                assertTrue(cursor.moveToFirst()); cursor.columnNames.associateWith { cursor.getString(cursor.getColumnIndexOrThrow(it)) }
+            }
+            val update = ContentProviderOperation.newUpdate(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, 10))
+                .withValue("rrule", "FREQ=DAILY;COUNT=1").withExpectedCount(1).withYieldAllowed(false).build()
+            val oldPost = ContentProviderOperation.newAssertQuery(ContentUris.withAppendedId(CalendarContract.Attendees.CONTENT_URI, 71))
+                .withValues(ContentValues().apply { raw.forEach { (key, value) -> if (value == null) putNull(key) else put(key, value) } })
+                .withExpectedCount(1).withYieldAllowed(false).build()
+            try { f.provider.applyBatch(arrayListOf(update, oldPost)); fail("Old child rrule/lastDate assertion must reject the native joined view") }
+            catch (_: OperationApplicationException) { }
+            assertEquals("FREQ=DAILY;COUNT=5", f.provider.events[0]["rrule"])
+            val editable = f.editable()
+            val result = f.writer.mutate("following-self", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.FOLLOWING))
+            assertTrue(result is SeriesMutationResult.LocalDeleted)
+            assertEquals("FREQ=DAILY;COUNT=1", f.provider.events[0]["rrule"])
+            assertEquals(start.toEpochMilli().toString(), f.provider.events[0]["lastDate"])
+            assertEquals("keep child metadata", f.provider.attendees.single()["future_oem"])
+            assertTrue(f.provider.calls.filter { it.inBatch && it.path in setOf("attendees", "reminders", "extendedproperties") }.all { it.fields != null })
+        }
+    }
+
+    @Test fun allNonTemporalEditsPreserveTrueOemAttendeeColumnsWhileDerivedEventTitleChanges() = runBlocking {
+        fixture { f ->
+            f.addSelfAttendee(mapOf("sync_data1" to "opaque attendee sync", "displayColor" to "opaque attendee color"))
+            val editable = f.editable()
+            val original = f.store.edit(editable.token.value)!!
+            val groups = JSONObject(original).getJSONArray("attendees")
+            val child = (0 until groups.length()).map { groups.getJSONObject(it) }.single { it.getLong("parent") == 10L }.getJSONArray("rows").getJSONObject(0)
+            assertFalse(child.has("rrule")); assertFalse(child.has("title"))
+            assertEquals("opaque attendee sync", child.getString("sync_data1"))
+            assertTrue(f.writer.mutate("all-self", selected, editable.token, whole(editable, EventPatch(title = FieldChange.Set("Changed master")))) is SeriesMutationResult.LocalSaved)
+            assertEquals("opaque attendee sync", f.provider.attendees.single()["sync_data1"])
+            assertEquals("opaque attendee color", f.provider.attendees.single()["displayColor"])
+            assertEquals("Changed master", f.provider.events[0]["title"])
+        }
+    }
+
+    @Test fun unclassifiedAttendeeColumnsStillBlockNewExceptionCloneBeforeJournal() = runBlocking {
+        for (column in listOf("sync_data1", "displayColor", "calendar_color", "dirty", "lastSynced", "future_oem")) fixture { f ->
+            f.nativeCloneReady()
+            f.addSelfAttendee(mapOf(column to "unclassified payload"))
+            val editable = f.editable()
+            assertTrue(f.writer.mutate("unknown-clone", selected, editable.token, SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Only this")))) is SeriesMutationResult.PlanningReview)
+            assertNull(f.store.operation("unknown-clone"))
+            assertEquals(0, f.provider.batchCount)
+            assertEquals("unclassified payload", f.provider.attendees.single()[column])
+        }
+    }
+
+    @Test fun legacyJoinedChildSnapshotsAreNotRebasedForDispatchOrKnownRecovery() = runBlocking {
+        fixture { f ->
+            f.addSelfAttendee()
+            val editable = f.editable()
+            val source = JSONObject(f.store.edit(editable.token.value)!!)
+            val groups = source.getJSONArray("attendees")
+            val group = (0 until groups.length()).map { groups.getJSONObject(it) }.single { it.getLong("parent") == 10L }
+            val raw = group.getJSONArray("rows").getJSONObject(0)
+            raw.put("rrule", "FREQ=DAILY;COUNT=5").put("title", "Master")
+            val sorted = JSONObject(); raw.keys().asSequence().toList().sorted().forEach { sorted.put(it, raw.get(it)) }
+            group.getJSONArray("rows").put(0, sorted)
+            fun hash(value: String) = java.security.MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+            val legacyRaw = source.toString()
+            val legacy = EditToken(hash("SERIES_EDIT_V1" + legacyRaw))
+            f.store.saveEdit(legacy.value, legacyRaw)
+            assertEquals(common(MutationResult.Conflict(null)), f.writer.mutate("legacy-dispatch", selected, legacy, whole(editable, EventPatch(title = FieldChange.Set("Do not adopt")))))
+            assertNull(f.store.operation("legacy-dispatch"))
+            assertTrue(f.writer.mutate("new-following", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.FOLLOWING)) is SeriesMutationResult.LocalDeleted)
+            val operation = f.store.operation("new-following")!!
+            val receipt = JSONObject(operation.resultRef!!).put("token", legacy.value)
+            val signature = hash(JSONObject().put("version", 1).put("selected", receipt.getJSONObject("selected")).put("token", legacy.value).put("command", receipt.getJSONObject("command")).toString())
+            f.store.prepare("legacy-recovery", signature, operation.kind)
+            f.store.mark("legacy-recovery", "COMMITTED", receipt.toString())
+            assertTrue((f.writer.recover("legacy-recovery") as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
+            assertEquals(legacyRaw, f.store.edit(legacy.value))
         }
     }
 
@@ -381,7 +472,7 @@ class CalendarSeriesWriterTest {
         fixture { f ->
             f.nativeCloneReady()
             f.provider.events[0]["sync_data1"] = "Master sync metadata must not be copied"
-            f.provider.attendees += mutableMapOf("_id" to "71", "event_id" to "10", "attendeeEmail" to "owner@example.invalid", "attendeeName" to "Self",
+            f.provider.attendees += mutableMapOf<String, String?>("_id" to "71", "event_id" to "10", "attendeeEmail" to "owner@example.invalid", "attendeeName" to "Self",
                 "attendeeStatus" to "1", "attendeeRelationship" to "2", "attendeeType" to "1", "attendeeIdentity" to "self-identity", "attendeeIdNamespace" to "namespace")
             f.provider.extendedProperties += mutableMapOf("_id" to "72", "event_id" to "10", "name" to "provider-value", "value" to "Retain private metadata")
             val editable = f.editable()
@@ -671,7 +762,7 @@ class CalendarSeriesWriterTest {
         fixture { f ->
             f.provider.events[1]["_sync_id"] = null
             f.provider.extendedProperties += mutableMapOf("_id" to "70", "event_id" to "11", "name" to "Future", "value" to "Delete")
-            f.provider.attendees += mutableMapOf("_id" to "71", "event_id" to "11", "attendeeEmail" to "owner@example.invalid")
+            f.provider.attendees += mutableMapOf<String, String?>("_id" to "71", "event_id" to "11", "attendeeEmail" to "owner@example.invalid")
             val editable = f.editable()
             assertTrue(f.writer.mutate("mixed-delete", selected, editable.token, SeriesCommand.Delete(RecurrenceScope.FOLLOWING)) is SeriesMutationResult.LocalDeleted)
             assertTrue(f.provider.events.none { it["_id"] == "11" })

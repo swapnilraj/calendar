@@ -282,7 +282,7 @@ class CalendarSeriesWriter(
                 kept.forEach { id ->
                     val rows = grouped[id].orEmpty()
                     operations += ContentProviderOperation.newAssertQuery(uri).withSelection("event_id = ?", arrayOf(id.toString()))
-                        .withExpectedCount(rows.size).withYieldAllowed(false).build()
+                        .withValue("event_id", id).withExpectedCount(rows.size).withYieldAllowed(false).build()
                     rows.forEach { operations += assertRow(ContentUris.withAppendedId(uri, it["_id"]!!.toLong()), it) }
                 }
             }
@@ -400,14 +400,16 @@ class CalendarSeriesWriter(
 
     private fun assertClonedChildren(operations: ArrayList<ContentProviderOperation>, uri: Uri, insert: Int, rows: List<Map<String, String?>>) {
         operations += ContentProviderOperation.newAssertQuery(uri).withSelection("event_id = ?", arrayOf("0"))
-            .withSelectionBackReference(0, insert).withExpectedCount(rows.size).withYieldAllowed(false).build()
+            .withSelectionBackReference(0, insert).withValueBackReference("event_id", insert)
+            .withExpectedCount(rows.size).withYieldAllowed(false).build()
         rows.groupingBy { it }.eachCount().forEach { (row, count) ->
             val args = mutableListOf("0")
             val selection = "event_id = ?" + row.toSortedMap().entries.joinToString("") { (column, value) ->
                 if (value == null) " AND $column IS NULL" else { args += value; " AND $column = ?" }
             }
             operations += ContentProviderOperation.newAssertQuery(uri).withSelection(selection, args.toTypedArray())
-                .withSelectionBackReference(0, insert).withExpectedCount(count).withYieldAllowed(false).build()
+                .withSelectionBackReference(0, insert).withValueBackReference("event_id", insert)
+                .withExpectedCount(count).withYieldAllowed(false).build()
         }
     }
 
@@ -474,9 +476,11 @@ class CalendarSeriesWriter(
         (listOf(source.master) + source.exceptions).forEach { add(assertRow(eventUri(it["_id"]!!.toLong()), it)) }
         listOf(CalendarContract.Reminders.CONTENT_URI to source.reminders, CalendarContract.Attendees.CONTENT_URI to source.attendees,
             CalendarContract.ExtendedProperties.CONTENT_URI to source.extendedProperties).forEach { (uri, grouped) ->
-            grouped.keys.toList().chunked(200).forEach { chunk ->
-                add(ContentProviderOperation.newAssertQuery(uri).withSelection("event_id IN (${chunk.joinToString(",") { "?" }})", chunk.map { it.toString() }.toTypedArray())
-                    .withExpectedCount(chunk.sumOf { grouped.getValue(it).size }).withYieldAllowed(false).build())
+            // Each parent has one known event_id value, so count assertions project only that
+            // field rather than materializing an entire joined child payload inside the provider.
+            grouped.forEach { (parent, rows) ->
+                add(ContentProviderOperation.newAssertQuery(uri).withSelection("event_id = ?", arrayOf(parent.toString()))
+                    .withValue("event_id", parent).withExpectedCount(rows.size).withYieldAllowed(false).build())
             }
             grouped.values.flatten().forEach { add(assertRow(ContentUris.withAppendedId(uri, it["_id"]!!.toLong()), it)) }
         }
@@ -513,6 +517,13 @@ class CalendarSeriesWriter(
         val original = store.edit(receipt.getString("token")) ?: return uncertain(identity.masterEventId)
         if (hash("SERIES_EDIT_V1" + original) != receipt.getString("token")) return uncertain(identity.masterEventId)
         val bound = JSONObject(original)
+        // Do not strip/rebase old joined aliases into the new child-owned source interpretation.
+        val attendeeGroups = bound.getJSONArray("attendees")
+        for (index in 0 until attendeeGroups.length()) {
+            val children = attendeeGroups.getJSONObject(index).getJSONArray("rows")
+            for (child in 0 until children.length()) if (children.getJSONObject(child).keys().asSequence().any(SeriesAttendeeColumns::isJoinedAlias))
+                return uncertain(identity.masterEventId)
+        }
         if (parseRef(bound.getJSONObject("selection")) != selected || bound.getJSONObject("master").getString("_id").toLong() != identity.masterEventId)
             return uncertain(identity.masterEventId)
         val command = receipt.getJSONObject("command")

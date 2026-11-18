@@ -299,11 +299,12 @@ class CalendarSeriesReader(
         fields: Array<String>? = null): List<Map<String, String?>> {
         ensureRead()
         return query(uri, selection, args, fields).bounded(maxRows ?: readBudgets.maxSeriesChildren).use { cursor ->
+            val retainedColumns = cursor.columnNames.filterNot { uri.pathSegments.firstOrNull() == "attendees" && SeriesAttendeeColumns.isJoinedAlias(it) }
             buildList {
                 while (cursor.moveToNext()) {
                     currentCoroutineContext().ensureActive()
                     if (maxRows != null && size >= maxRows) throw SeriesSourceReview("Complete source exceeds the read budget")
-                    add(cursor.columnNames.associateWith { name ->
+                    add(retainedColumns.associateWith { name ->
                         val index = cursor.getColumnIndexOrThrow(name)
                         if (cursor.getType(index) == Cursor.FIELD_TYPE_BLOB) throw SeriesSourceReview("Unsupported opaque provider field")
                         if (cursor.isNull(index)) null else cursor.getString(index)
@@ -329,6 +330,34 @@ class CalendarSeriesReader(
     }
     private fun Map<String, String?>.long(name: String): Long? = this[name]?.toLongOrNull()
     private fun Map<String, String?>.flag(name: String): Boolean? = when (this[name]) { "0" -> false; "1" -> true; else -> null }
+}
+
+/** Pinned AOSP10/16 CalendarProvider2, Android16 77bed8f978646fc416a7d90f9e97485421961641
+ * lines5047–5090: Attendees copies the FIRST Events projection map before calendar columns,
+ * displayColor, _id, sync_data1..10, dirty/mutators/lastSynced are added. Only these forty
+ * documented aliases are Event-derived child views. Unclassified/OEM columns remain raw;
+ * this is not a universal OEM alias guarantee or permission to relax clone admission. */
+internal object SeriesAttendeeColumns {
+    private val owned = setOf(CalendarContract.Attendees._ID, CalendarContract.Attendees.EVENT_ID,
+        CalendarContract.Attendees.ATTENDEE_NAME, CalendarContract.Attendees.ATTENDEE_EMAIL,
+        CalendarContract.Attendees.ATTENDEE_STATUS, CalendarContract.Attendees.ATTENDEE_RELATIONSHIP,
+        CalendarContract.Attendees.ATTENDEE_TYPE, CalendarContract.Attendees.ATTENDEE_IDENTITY,
+        CalendarContract.Attendees.ATTENDEE_ID_NAMESPACE)
+    private val joined = setOf(CalendarContract.Events.ACCOUNT_NAME, CalendarContract.Events.ACCOUNT_TYPE,
+        CalendarContract.Events.TITLE, CalendarContract.Events.EVENT_LOCATION, CalendarContract.Events.DESCRIPTION,
+        CalendarContract.Events.STATUS, CalendarContract.Events.EVENT_COLOR, CalendarContract.Events.EVENT_COLOR_KEY,
+        CalendarContract.Events.SELF_ATTENDEE_STATUS, CalendarContract.Events.DTSTART, CalendarContract.Events.DTEND,
+        CalendarContract.Events.EVENT_TIMEZONE, CalendarContract.Events.EVENT_END_TIMEZONE, CalendarContract.Events.DURATION,
+        CalendarContract.Events.ALL_DAY, CalendarContract.Events.ACCESS_LEVEL, CalendarContract.Events.AVAILABILITY,
+        CalendarContract.Events.HAS_ALARM, CalendarContract.Events.HAS_EXTENDED_PROPERTIES, CalendarContract.Events.RRULE,
+        CalendarContract.Events.RDATE, CalendarContract.Events.EXRULE, CalendarContract.Events.EXDATE,
+        CalendarContract.Events.ORIGINAL_SYNC_ID, CalendarContract.Events.ORIGINAL_ID, CalendarContract.Events.ORIGINAL_INSTANCE_TIME,
+        CalendarContract.Events.ORIGINAL_ALL_DAY, CalendarContract.Events.LAST_DATE, CalendarContract.Events.HAS_ATTENDEE_DATA,
+        CalendarContract.Events.CALENDAR_ID, CalendarContract.Events.GUESTS_CAN_INVITE_OTHERS, CalendarContract.Events.GUESTS_CAN_MODIFY,
+        CalendarContract.Events.GUESTS_CAN_SEE_GUESTS, CalendarContract.Events.ORGANIZER, CalendarContract.Events.IS_ORGANIZER,
+        CalendarContract.Events.CUSTOM_APP_PACKAGE, CalendarContract.Events.CUSTOM_APP_URI, CalendarContract.Events.UID_2445,
+        CalendarContract.Events.DELETED, CalendarContract.Events._SYNC_ID)
+    fun isJoinedAlias(name: String) = name !in owned && name in joined
 }
 
 internal class SeriesSourceDenied(val reason: MutationDenial) : Exception()
