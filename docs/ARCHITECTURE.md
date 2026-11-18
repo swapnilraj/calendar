@@ -210,6 +210,7 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 
 | Date | Decision | Why |
 |---|---|---|
+| 2026-11-18 | Add the already-pinned pure JVM coroutines-core dependency to `:calendar-core` | Share cancellable search Flow contracts without Android imports; retain the application coroutine version |
 | 2026-11-18 | Pin `org.dmfs:lib-recur:0.17.1` in pure `:calendar-core` | Use a tested RFC recurrence parser/iterator for editing rather than hand-writing recurrence semantics; displayed instances still come from Android's provider |
 | 2026-11-17 | Fresh Compose app; no fork of Etar or Fossify | Fossify's day view is a list. Etar's grid is a dated 5k-line canvas view, and the owner rejected it. |
 | 2026-11-17 | Calendar store instead of the Google Calendar API | No OAuth or Google Cloud project; works with any account synced to the phone |
