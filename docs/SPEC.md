@@ -29,6 +29,13 @@ existing draft, permission, conflict and recovery rules; it does not authorize w
 dismissing. Details lose their old payload and actions immediately when the read state loses
 authority. Standalone legacy sheets remain available to existing component fixtures.
 
+For a modern raw ordinary edit with a NULL provider timezone, explicitly selecting the currently
+rendered timezone is an authored zone choice even when the visible text stays identical. Persist
+that intent separately from raw fields: a zone-only choice emits ZONE.Set and TIME.Keep; later time
+edits emit both. Generic no-op callbacks and known-source same-zone selections stay no-ops. Frozen
+commands, legacy drafts and meeting formats are unchanged. Incoming EDIT review retains its existing
+NULL-zone authoring guard until its separate review protocol supports that explicit intent.
+
 New ordinary UPDATE/DELETE operations store self-contained receipt4 source and native write plans
 before dispatch. Their exact commands and retirement fingerprints remain unchanged. Explicit retry
 adopts the winning prepared plan and rechecks its original source; uncertain attempted operations
