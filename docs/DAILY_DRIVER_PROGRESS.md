@@ -9,7 +9,7 @@ synthetic evidence; device/account/beta and signed-release gates remain pending.
 
 At `e075f48`, native invitation details now connect backend-issued response rights to durable
 response drafts, the response workflow and draft-browser recovery. The app compiles and 94 focused
-meeting/details/navigation tests pass. The full gate for this newer integration is running;
+meeting/details/navigation tests pass. Its full test/debug APK/lint gate passed with 1,191 tests;
 this does not establish Google invitation delivery. Reminder setup is already wired through the
 live app; the latest active-alert cleanup also preserves posted history when a calendar is unpinned.
 
