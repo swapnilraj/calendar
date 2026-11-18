@@ -68,6 +68,8 @@ sealed interface MutationResult {
      * Missing journals, unknown outcomes and unreadable records never establish this proof.
      */
     data class SafeToRetry(val operationId: String) : MutationResult
+    /** A permanent matching app-private fence prevents this original command from dispatching. */
+    data class Retired(val operationId: String) : MutationResult
     /** A possibly committed operation must be reconciled, never blindly re-submitted. */
     data class Uncertain(val operationId: String, val knownEventId: Long?) : MutationResult
 }

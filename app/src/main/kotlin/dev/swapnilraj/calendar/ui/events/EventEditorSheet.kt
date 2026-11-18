@@ -75,7 +75,7 @@ fun EventEditorContent(
         controller.observeCalendars(writableCalendars)
     }
     val blocked = controller.recoveryOnly || state.loading || state.saving || state.draftReadFailed || state.reviewRequired || state.recoveryRequired || state.retryReady || state.problem in setOf(EditorProblem.UNCERTAIN,
-        EditorProblem.UNSUPPORTED, EditorProblem.DRAFT_VERSION) || state.result is MutationResult.LocalSaved || state.result is MutationResult.LocalDeleted
+        EditorProblem.UNSUPPORTED, EditorProblem.DRAFT_VERSION, EditorProblem.DRAFT_RETIRED) || state.result is MutationResult.LocalSaved || state.result is MutationResult.LocalDeleted
     fun canEdit(field: EditableField) = !blocked && (existing == null || field in existing.allowedFields)
     Column(Modifier.fillMaxWidth().imePadding().verticalScroll(scroll).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -285,6 +285,7 @@ private fun problemResource(problem: EditorProblem) = when (problem) {
     EditorProblem.UNCERTAIN -> R.string.events_editor_uncertain
     EditorProblem.UNAVAILABLE -> R.string.events_editor_unavailable
     EditorProblem.DRAFT_UNAVAILABLE -> R.string.events_editor_draft_unavailable
+    EditorProblem.DRAFT_RETIRED -> R.string.events_editor_draft_retired
     EditorProblem.UNSUPPORTED -> R.string.events_editor_unsupported
     EditorProblem.DRAFT_VERSION -> R.string.events_editor_draft_version
     EditorProblem.SAFE_TO_RETRY -> R.string.events_editor_safe_retry

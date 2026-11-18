@@ -85,6 +85,30 @@ class EventEditorControllerTest {
         assertEquals(1, writer.creates)
         assertTrue(controller.state.result is MutationResult.LocalSaved)
     }
+    @Test fun matchingRetirementStopsLateControllerWithoutChangingOrDeletingItsRawDraft() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val store = Store(); val writer = Writer().apply { hold = gate }
+        val controller = controller(store, writer)
+        controller.save()
+        val retained = store.records.toMap()
+        writer.next = MutationResult.Retired(writer.ids.single())
+        gate.complete(Unit); yield()
+        assertEquals(EditorProblem.DRAFT_RETIRED, controller.state.problem)
+        controller.change { it.copy(title = "Late edit") }; controller.save()
+        assertEquals(initial.title, controller.state.fields.title)
+        assertEquals(1, writer.creates)
+        assertEquals(retained, store.records)
+        assertFalse(controller.state.retryReady)
+    }
+    @Test fun retirementOfAnotherOperationDoesNotProveThisRequestWasClosed() {
+        val writer = Writer().apply { next = MutationResult.Retired("another-operation") }
+        val controller = controller(writer = writer)
+        controller.save(); controller.save()
+        assertTrue(controller.state.result is MutationResult.Uncertain)
+        assertTrue(controller.state.recoveryRequired)
+        assertFalse(controller.state.retryReady)
+        assertEquals(1, writer.creates)
+    }
     @Test fun changedFieldsBecomePatchesAndUntouchedDataIsKept() {
         val writer = Writer(); val controller = controller(writer = writer, existing = editable())
         controller.change { it.copy(title = "Changed title") }
