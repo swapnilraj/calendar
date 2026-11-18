@@ -73,6 +73,7 @@ class EventEditorController(
     private var legacyDefaultVisibilityUnsafe = false
     private var legacyTargetUnsafe = false
     private var persistence: Job? = null
+    private var reviewSourceIdentity: CalendarIdentity? = null
     private val unsupported = existing?.let { source ->
         val ownEmails = listOfNotNull(source.details.organizer, source.details.calendar?.account?.name)
         source.details.attendees.any { guest -> guest.relationship != CalendarContract.Attendees.RELATIONSHIP_ORGANIZER &&
@@ -97,6 +98,7 @@ class EventEditorController(
                     return
                 }
                 val values = JSONObject(saved.payload)
+                reviewSourceIdentity = sourceIdentity(values)
                 require(saved.version != VERSION || values.has("recurrence"))
                 require(values.optString("target") == targetIdentity())
                 operationId = values.getString("operationId")
@@ -142,7 +144,7 @@ class EventEditorController(
                     restoredNotices = (restoredNotices + EditorNotice.CALENDAR_VISIBILITY_REVIEW_REQUIRED).distinct()
                 }
                 state = state.copy(fields = restoredFields, notices = restoredNotices, recoveryRequired = submitted,
-                    reviewRequired = sourceChanged, reviewLatest = if (sourceChanged) existing?.details else null,
+                    reviewRequired = sourceChanged, reviewLatest = if (sourceChanged && sourceNamespaceMatches(values)) existing?.details else null,
                     problem = if (submitted) EditorProblem.UNCERTAIN else if (sourceChanged) EditorProblem.CONFLICT else null)
             }
             state = state.copy(loading = false, problem = if (unsupported) EditorProblem.UNSUPPORTED else state.problem)
@@ -240,7 +242,13 @@ class EventEditorController(
             put("submitted", submitted)
             (frozenSubmission?.encode() ?: retainedSubmission)?.let { put("submission", it) }
         }
-        drafts.upsert(DraftRecord(draftId, VERSION, values.toString(), clock.instant()))
+        val record = DraftRecord(draftId, VERSION, values.toString(), clock.instant())
+        drafts.upsert(record)
+        if (existing != null && reviewSourceIdentity == null) {
+            val stored = drafts.load(draftId)
+            if (stored != null && stored.id == record.id && stored.version == record.version && stored.payload == record.payload)
+                reviewSourceIdentity = sourceIdentity(values)
+        }
         true
     } catch (cancelled: CancellationException) { throw cancelled }
     catch (_: Exception) { state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE); false }
@@ -363,11 +371,22 @@ class EventEditorController(
         }
     }
 
-    /** Load latest for review; this never discards or rebases raw draft fields. */
-    suspend fun reloadExisting(): EditReadResult? = existing?.let {
-        try { mutations.loadForEdit(it.details.occurrence.ref) }
+    /** A numeric occurrence reference never authorizes replacing its persisted calendar namespace. */
+    suspend fun reloadExisting(): EditReadResult? = existing?.let { original ->
+        val expected = reviewSourceIdentity
+        if (expected == null) {
+            state = state.copy(reviewRequired = true, reviewLatest = null, problem = EditorProblem.CONFLICT)
+            return@let EditReadResult.Unavailable
+        }
+        val latest = try { mutations.loadForEdit(original.details.occurrence.ref) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { EditReadResult.Unavailable }
+        if (latest is EditReadResult.Ready &&
+            (latest.event.details.occurrence.ref != original.details.occurrence.ref ||
+                !sameSourceNamespace(expected, latest.event))) {
+            state = state.copy(reviewRequired = true, reviewLatest = null, problem = EditorProblem.CONFLICT)
+            EditReadResult.Unavailable
+        } else latest
     }
 
     /** Only call after explicit user confirmation. Never discard an unresolved operation. */
@@ -451,14 +470,17 @@ class EventEditorController(
             fields.startOffset, fields.endOffset) != listOf(original.startDate, original.endDate,
             original.startTime, original.endTime, original.allDay, original.zone, original.startOffset, original.endOffset)
 
-    /** Source identity is durable authority, not a value inferred from a reused calendar/event ID. */
-    private fun sourceNamespaceMatches(values: JSONObject): Boolean = try {
+    /** Source identity is durable authority, never inferred from current metadata after restore. */
+    private fun sourceIdentity(values: JSONObject): CalendarIdentity? = try {
+        CalendarIdentityJson.optional(JSONObject(values.getString("sourceBaseline")), "sourceCalendarIdentity")
+    } catch (_: Exception) { null }
+    private fun sameSourceNamespace(expected: CalendarIdentity, source: EditableEvent): Boolean =
+        expected.account.name.isNotBlank() && expected.account.type.isNotBlank() &&
+            expected.calendarId == source.details.occurrence.ref.calendarId && expected == source.details.calendar?.identity
+    private fun sourceNamespaceMatches(values: JSONObject): Boolean {
         val source = existing ?: return true
-        val expected = CalendarIdentityJson.optional(JSONObject(values.getString("sourceBaseline")), "sourceCalendarIdentity")
-        val current = source.details.calendar?.identity
-        expected != null && expected.account.name.isNotBlank() && expected.account.type.isNotBlank() &&
-            expected.calendarId == source.details.occurrence.ref.calendarId && expected == current
-    } catch (_: Exception) { false }
+        return sourceIdentity(values)?.let { sameSourceNamespace(it, source) } == true
+    }
 
     private fun sourceBaseline(): String = sourceBaseline(initial, existing)
 

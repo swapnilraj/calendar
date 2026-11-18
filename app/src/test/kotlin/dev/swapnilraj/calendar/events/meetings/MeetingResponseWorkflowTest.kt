@@ -82,7 +82,7 @@ class MeetingResponseWorkflowTest {
     @Test fun explicitReviewPreparesNewIdentityOnlyAfterRetiringOldController() = runBlocking {
         val f = MeetingResponseFixture(); val launch = f.prepare(); val controller = f.controller(launch)
         val result = controller.discardAndReload()!!
-        val prepared = prepareReviewedMeetingResponse(launch, result, f.store) as MeetingResponsePreparation.Ready
+        val prepared = prepareReviewedMeetingResponse(launch, result, f.store, controller.originalCalendarIdentity) as MeetingResponsePreparation.Ready
         assertNotEquals(launch.draftId, prepared.launch.draftId); assertNotEquals(launch.generation, prepared.launch.generation)
         val replacement = f.store.rows.getValue(prepared.launch.draftId)
         assertNull(controller.discardAndReload()); controller.save()

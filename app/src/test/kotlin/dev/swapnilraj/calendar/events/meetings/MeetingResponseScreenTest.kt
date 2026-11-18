@@ -71,15 +71,15 @@ class MeetingResponseScreenTest {
         compose.onNodeWithText("Discard draft and review latest meeting").assertDoesNotExist()
         compose.onNodeWithText("No").performScrollTo().assertIsNotEnabled()
     }
-    @Test fun explicitUnsubmittedReviewConfirmsAndDeletesBeforeFreshReadOnlyLoad() = runBlocking<Unit> {
+    @Test fun explicitUnsubmittedReviewConfirmsAndReadsFreshBeforeExactDeletion() = runBlocking<Unit> {
         val controller = f.controller(f.prepare(), f.source.copy(token = EditToken("fresh-token")))
         var reviewed: MeetingReadResult<EditableMeeting>? = null
-        f.onRead = { assertTrue(f.store.rows.isEmpty()); assertFalse(controller.canChange) }
+        f.onRead = { assertTrue(f.store.rows.isNotEmpty()); assertFalse(controller.canChange) }
         show(controller) { reviewed = it }
         compose.onNodeWithText("Discard draft and review latest meeting").performScrollTo().performClick()
         assertTrue(f.store.rows.isNotEmpty()); assertEquals(0, f.reads)
         compose.onNodeWithText("Discard draft").performClick(); compose.waitForIdle()
-        assertTrue(reviewed is MeetingReadResult.Ready<*>); assertEquals(1, f.reads); assertEquals(0, f.permissionCalls); assertTrue(f.calls.isEmpty())
+        assertTrue(reviewed is MeetingReadResult.Ready<*>); assertTrue(f.store.rows.isEmpty()); assertEquals(1, f.reads); assertEquals(0, f.permissionCalls); assertTrue(f.calls.isEmpty())
     }
     @Test fun failedNativeSwipeFlushReshowsResponseChoicesAndCanCloseAfterRepair() = runBlocking<Unit> {
         val controller = f.controller(f.prepare()); f.choose(controller); var closed = false

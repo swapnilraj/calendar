@@ -48,9 +48,10 @@ suspend fun openMeetingResponseDraft(launch: MeetingResponseLaunch, meetings: Ca
 
 /** Called only after the old controller has atomically discarded and retired its unsubmitted draft. */
 suspend fun prepareReviewedMeetingResponse(launch: MeetingResponseLaunch, result: MeetingReadResult<EditableMeeting>,
-    store: AtomicDraftStore): MeetingResponsePreparation {
+    store: AtomicDraftStore, expectedCalendarIdentity: CalendarIdentity? = null): MeetingResponsePreparation {
     val source = (result as? MeetingReadResult.Ready)?.value ?: return MeetingResponsePreparation.Unavailable
-    if (source.details.occurrence.ref != launch.selected) return MeetingResponsePreparation.RetainedForReview
+    if (source.details.occurrence.ref != launch.selected || !responseNamespaceMatches(expectedCalendarIdentity, source))
+        return MeetingResponsePreparation.RetainedForReview
     return prepareMeetingResponseDraft(source, UUID.randomUUID().toString(), store)
 }
 
@@ -89,7 +90,7 @@ private fun MeetingResponseWorkflowBody(launch: MeetingResponseLaunch, meetings:
                 if (!replacing) {
                     replacing = true
                     coroutine.launch {
-                        val prepared = prepareReviewedMeetingResponse(launch, result, store)
+                        val prepared = prepareReviewedMeetingResponse(launch, result, store, controller.originalCalendarIdentity)
                         if (prepared is MeetingResponsePreparation.Ready && replacementHandler != null) {
                             replacementHandler?.invoke(prepared.launch)
                             // Keep the retired controller inaccessible until the host mounts its new route.

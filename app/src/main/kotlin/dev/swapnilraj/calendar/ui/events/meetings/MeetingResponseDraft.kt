@@ -1,6 +1,7 @@
 package dev.swapnilraj.calendar.ui.events.meetings
 
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.ui.events.CalendarIdentityJson
 import java.time.*
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -20,6 +21,10 @@ sealed interface MeetingResponsePreparation {
 }
 
 internal val responseScopes = listOf(RecurrenceScope.THIS, RecurrenceScope.ALL)
+internal fun responseNamespaceMatches(expected: CalendarIdentity?, source: EditableMeeting): Boolean =
+    expected != null && expected.account.name.isNotBlank() && expected.account.type.isNotBlank() &&
+        expected.calendarId == source.details.occurrence.ref.calendarId && expected == source.details.calendar?.identity
+
 internal fun responseRights(source: EditableMeeting) = responseScopes.associateWith { source.scopes[it]?.respond ?: AccessDecision.UNKNOWN }
 
 /** Explicit action only; missing restored records are never seeded or silently replaced. */
@@ -29,7 +34,8 @@ suspend fun prepareMeetingResponseDraft(source: EditableMeeting, draftId: String
     val old = try { store.load(draftId) } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { return MeetingResponsePreparation.Unavailable }
     if (old != null) return existingResponseLaunch(old, source.details.occurrence.ref, draftId)
-    if (responseRights(source).values.none { it == AccessDecision.ALLOWED } || source.token.value.isBlank())
+    if (!responseNamespaceMatches(source.details.calendar?.identity, source) ||
+        responseRights(source).values.none { it == AccessDecision.ALLOWED } || source.token.value.isBlank())
         return MeetingResponsePreparation.Unavailable
     val document = MeetingResponseDocument.initial(source, draftId)
     val replacement = MeetingResponseDraftCodec.record(document, clock.instant())
@@ -76,7 +82,7 @@ internal data class MeetingResponseDocument(val id: String, val generation: Stri
     val selected: EventRef, val token: EditToken, val title: String, val time: EventTime,
     val calendarLabel: String?, val accountLabel: String?, val originalStatus: Int?, val recurring: Boolean,
     val rights: Map<RecurrenceScope, AccessDecision>, val fields: MeetingResponseFields,
-    val operationId: String, val frozen: FrozenMeetingResponse? = null) {
+    val operationId: String, val frozen: FrozenMeetingResponse? = null, val sourceCalendarIdentity: CalendarIdentity? = null) {
     fun launch() = MeetingResponseLaunch(id, selected, frozen != null, generation)
     companion object {
         fun initial(source: EditableMeeting, id: String): MeetingResponseDocument {
@@ -84,7 +90,7 @@ internal data class MeetingResponseDocument(val id: String, val generation: Stri
             return MeetingResponseDocument(id, UUID.randomUUID().toString(), UUID.randomUUID().toString(), details.occurrence.ref,
                 source.token, details.occurrence.title, details.occurrence.time, details.calendar?.displayName,
                 details.calendar?.account?.name, details.selfAttendeeStatus, details.occurrence.ref.recurrence != null || source.master != null,
-                responseRights(source), MeetingResponseFields(), UUID.randomUUID().toString())
+                responseRights(source), MeetingResponseFields(), UUID.randomUUID().toString(), sourceCalendarIdentity = details.calendar?.identity)
         }
     }
 }
@@ -94,7 +100,8 @@ object MeetingResponseDraftCodec {
     const val VERSION = 3
     fun describe(record: DraftRecord): MeetingResponseLaunch? = try { decode(record).launch() } catch (_: Exception) { null }
     internal fun record(value: MeetingResponseDocument, updatedAt: Instant) = DraftRecord(value.id, VERSION, JSONObject().apply {
-        put("feature", "meeting-response"); put("schema", 1); put("generation", value.generation); put("revision", value.revision)
+        put("feature", "meeting-response"); put("schema", 2); put("generation", value.generation); put("revision", value.revision)
+        put("sourceCalendarIdentity", value.sourceCalendarIdentity?.let(CalendarIdentityJson::encode) ?: JSONObject.NULL)
         put("selected", ResponseJson.ref(value.selected)); put("token", value.token.value); put("title", value.title); put("time", ResponseJson.time(value.time))
         put("calendarLabel", value.calendarLabel ?: JSONObject.NULL); put("accountLabel", value.accountLabel ?: JSONObject.NULL)
         put("originalStatus", value.originalStatus ?: JSONObject.NULL); put("recurring", value.recurring)
@@ -105,9 +112,13 @@ object MeetingResponseDraftCodec {
     internal fun decode(record: DraftRecord): MeetingResponseDocument {
         require(record.id.isNotBlank() && record.version == VERSION)
         val value = JSONObject(record.payload)
-        require(value.keys().asSequence().all { it in setOf("feature", "schema", "generation", "revision", "selected", "token", "title", "time", "calendarLabel", "accountLabel", "originalStatus", "recurring", "rights", "scope", "response", "operationId", "frozen") })
-        require(value.getString("feature") == "meeting-response" && value.getInt("schema") == 1)
+        require(value.keys().asSequence().all { it in setOf("feature", "schema", "generation", "revision", "selected", "token", "title", "time", "calendarLabel", "accountLabel", "originalStatus", "recurring", "rights", "scope", "response", "operationId", "frozen", "sourceCalendarIdentity") })
+        require(value.getString("feature") == "meeting-response" && value.getInt("schema") in 1..2)
+        if (value.getInt("schema") == 1) require(!value.has("sourceCalendarIdentity"))
+        else require(value.has("sourceCalendarIdentity"))
         val selected = ResponseJson.ref(value.getJSONObject("selected")); val token = EditToken(value.getString("token").also { require(it.isNotBlank()) })
+        val sourceIdentity = CalendarIdentityJson.optional(value, "sourceCalendarIdentity")
+        sourceIdentity?.let { require(it.calendarId == selected.calendarId && it.account.name.isNotBlank() && it.account.type.isNotBlank()) }
         val id = value.getString("operationId").also { require(it.isNotBlank()) }
         val rights = value.getJSONObject("rights"); require(rights.keys().asSequence().toSet() == setOf("THIS", "ALL"))
         val fields = MeetingResponseFields(value.getString("scope"), value.getString("response"))
@@ -119,7 +130,7 @@ object MeetingResponseDraftCodec {
         return MeetingResponseDocument(record.id, value.getString("generation").also { UUID.fromString(it) }, value.getString("revision").also { UUID.fromString(it) },
             selected, token, value.getString("title"), ResponseJson.time(value.getJSONObject("time")), nullableString("calendarLabel"), nullableString("accountLabel"),
             if (value.isNull("originalStatus")) null else value.getInt("originalStatus"), value.getBoolean("recurring"),
-            mappedRights, fields, id, frozen)
+            mappedRights, fields, id, frozen, sourceIdentity)
     }
 }
 

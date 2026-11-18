@@ -27,7 +27,7 @@ class MeetingResponseDraftDiscoveryTest {
         val original = prepareOrReopenMeetingResponseDraft(f.source, f.store, f.clock) as MeetingResponsePreparation.Ready
         val controller = f.controller(original.launch)
         val fresh = controller.discardAndReload()!!
-        val replacement = prepareReviewedMeetingResponse(original.launch, fresh, f.store) as MeetingResponsePreparation.Ready
+        val replacement = prepareReviewedMeetingResponse(original.launch, fresh, f.store, controller.originalCalendarIdentity) as MeetingResponsePreparation.Ready
         val second = f.controller(replacement.launch); f.choose(second)
         f.next = MeetingMutationResult.Common(MutationResult.Uncertain("uncertain", f.selected.eventId)); second.save()
         val records = f.store.rows.toMap(); val compares = f.store.compares

@@ -32,6 +32,7 @@ class MeetingResponseController(val launch: MeetingResponseLaunch, private val s
     private val storage = Mutex()
     private val action = AtomicBoolean(false)
     private var retired = false
+    val originalCalendarIdentity: CalendarIdentity? get() = document?.sourceCalendarIdentity
     val operationId: String? get() = document?.operationId
     val title: String get() = document?.title.orEmpty()
     val time: EventTime? get() = document?.time
@@ -56,7 +57,7 @@ class MeetingResponseController(val launch: MeetingResponseLaunch, private val s
             require(loaded.generation == launch.generation && loaded.selected == launch.selected)
             require(!recoveryOnly || loaded.frozen != null)
             document = loaded; expected = record
-            val changed = loaded.frozen == null && (source == null || source.token != loaded.token ||
+            val changed = loaded.frozen == null && (source == null || !responseNamespaceMatches(loaded.sourceCalendarIdentity, source) || source.token != loaded.token ||
                 source.details.occurrence.ref != loaded.selected || responseRights(source) != loaded.rights)
             val invalid = loaded.fields.scope.isNotBlank() && loaded.fields.scope !in responseScopes.map { it.name } ||
                 loaded.fields.response.isNotBlank() && loaded.fields.response !in MeetingResponse.entries.map { it.name }
@@ -248,6 +249,19 @@ class MeetingResponseController(val launch: MeetingResponseLaunch, private val s
         try {
             persistence?.cancelAndJoin()
             val old = expected ?: return null
+            val original = document ?: return null
+            if (original.sourceCalendarIdentity == null) {
+                state = state.copy(reviewRequired = true, problem = MeetingResponseProblem.SOURCE_CHANGED)
+                return null
+            }
+            val fresh = try { meetings.loadForEdit(launch.selected) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { MeetingReadResult.Unavailable }
+            if (fresh !is MeetingReadResult.Ready || fresh.value.details.occurrence.ref != original.selected ||
+                !responseNamespaceMatches(original.sourceCalendarIdentity, fresh.value)) {
+                state = state.copy(reviewRequired = true, problem = MeetingResponseProblem.SOURCE_CHANGED)
+                return null
+            }
             val deleted = try { drafts.compareAndSet(launch.draftId, old, null) } catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) { DraftChangeResult.Unavailable }
             val removed = when (deleted) {
@@ -259,9 +273,7 @@ class MeetingResponseController(val launch: MeetingResponseLaunch, private val s
             }
             if (!removed) return null
             retired = true
-            return try { meetings.loadForEdit(launch.selected) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { MeetingReadResult.Unavailable }
+            return fresh
         } finally { state = state.copy(busy = false); action.set(false) }
     }
 }

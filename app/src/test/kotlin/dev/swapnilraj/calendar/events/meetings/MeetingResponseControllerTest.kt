@@ -100,7 +100,7 @@ class MeetingResponseControllerTest {
     }
     @Test fun unknownSchemaCorruptFrozenAndWrongGenerationStayRetainedForReview() = runBlocking {
         val launch = f.prepare(); val old = f.record()
-        for (raw in listOf(JSONObject(old.payload).put("schema", 2), JSONObject(old.payload).put("guestDeltas", JSONObject()), JSONObject(old.payload).put("generation", "not-a-generation"))) {
+        for (raw in listOf(JSONObject(old.payload).put("schema", 999), JSONObject(old.payload).put("guestDeltas", JSONObject()), JSONObject(old.payload).put("generation", "not-a-generation"))) {
             val opaque = old.copy(payload = raw.toString()); f.store.rows["response"] = opaque
             assertNull(MeetingResponseDraftCodec.describe(opaque)); assertEquals(MeetingResponsePreparation.RetainedForReview, prepareMeetingResponseDraft(f.source, "response", f.store, f.clock))
             val controller = f.controller(launch); controller.save(); controller.recover(); assertTrue(controller.state.draftUnreadable)
@@ -228,13 +228,13 @@ class MeetingResponseControllerTest {
         val current = f.controller(f.launch()); f.choose(current); assertTrue(current.prepareDismiss())
         val saved = f.record(); current.selectResponse(MeetingResponse.NO); current.save(); assertEquals(saved, f.record()); assertTrue(f.calls.isEmpty())
     }
-    @Test fun explicitUnsubmittedDiscardRetiresBeforeFreshLoadAndCannotDeleteReplacement() = runBlocking {
+    @Test fun explicitUnsubmittedDiscardReadsBeforeExactRecordDeletionAndCannotDeleteReplacement() = runBlocking {
         val launch = f.prepare(); val controller = f.controller(launch, f.source.copy(token = EditToken("fresh")))
         val gate = CompletableDeferred<Unit>(); f.onRead = { gate.await() }
         val first = f.scope.async { controller.discardAndReload() }
-        assertTrue(f.store.rows.isEmpty()); val replacement = f.controller(f.prepare()); f.choose(replacement, response = MeetingResponse.NO)
+        assertEquals(launch, f.launch()); val replacement = f.controller(f.prepare()); f.choose(replacement, response = MeetingResponse.NO)
         assertTrue(replacement.prepareDismiss()); val saved = f.record()
-        assertNull(controller.discardAndReload()); controller.save(); gate.complete(Unit); assertTrue(first.await() is MeetingReadResult.Ready)
+        assertNull(controller.discardAndReload()); controller.save(); gate.complete(Unit); assertNull(first.await())
         assertEquals(saved, f.record()); assertEquals(1, f.reads); assertTrue(f.calls.isEmpty())
     }
     @Test fun frozenProofDoesNotPermitDiscardAndPermissionDeniedRetryStillKeepsOriginal() = runBlocking {
