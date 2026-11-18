@@ -11,8 +11,15 @@ and five actual app whole-series temporal/rule journeys through the SQLite/nativ
 At that checkpoint, guest-creation UI and public incoming-link activation were pending; local
 writes do not prove invitation delivery. Log: `/tmp/daylight-meeting-integrated-full.log` (3m26s).
 
-Later integrated packets have focused evidence; **the complete gate has not yet been rerun on
-current HEAD**:
+At `c7a743b`, all **1,824 tests** passed (core232, app1,575, weather17) and the debug
+APK assembled. That run failed lint on indentation in the recurrence review dialog, corrected in
+`e1877a4`. The required full-gate rerun then exposed an intermittent cold-database concurrency
+fixture failure: one absent-create writer applied, while the other returned storage unavailable
+instead of Changed. Investigation is active; **the complete current gate is not green**. Logs:
+`/tmp/daylight-phone-draft-adoption-full.log` and
+`/tmp/daylight-phone-draft-adoption-gate.log`. Do not treat the assembled debug APK as a signed release.
+
+Later integrated packets include:
 
 - Ordinary editor generation/CAS, retirement, frozen restoration and cancelled-grid cleanup are
   connected to the actual app. Independent native/SQLite journeys cover replacement after a failed
@@ -34,8 +41,8 @@ Full-height phone editor/details and public VIEW/date/INSERT review are now inte
 combined host passed all7 incoming journeys together, all58 private-open/seed/retirement checks
 with screenshot verification, and3 multi-day move/resize/namespace journeys. Existing fixtures now
 use the real pickers, fixed toolbar actions and scoped icons. Three updated host images were
-recorded and inspected; standalone day rendering was unchanged. The complete gate is next and
-has not yet passed on this newer integration.
+recorded and inspected; standalone day rendering was unchanged. Current full-gate results are
+recorded above.
 
 Generated THIS RSVP has3 actual-app synthetic-provider journeys, including READ-loss/recreation
 and source-free SQL recovery with one batch. Clone admission still defaults to review in production.
@@ -47,7 +54,9 @@ The current Google Calendar2026.44 APK has installed and rendered notification/c
 onboarding in an isolated API35 software emulator. This is initial runtime evidence, not main-flow
 or pixel parity; see GOOGLE_CALENDAR_UX_PARITY.md. No Google account is configured. Real account,
 reminder/Doze/reboot/timezone/TalkBack/upgrade checks, seven-day beta and stable signed release remain
-pending. PR50 reminder activation passed full CI, is merged into integration and is attached.
+pending. PR50 reminder activation passed full CI, is merged into integration and is attached. PR51 bounded incoming-navigation
+metadata also passed full CI and merged into integration (`68e0340`); its publication branch passed
+228 focused checks. The newer aggregate phone integration remains separate from that published base.
 
 Earlier, at `5bd64d4`, the complete required gate passed: **1,340 tests** (core189, app1,134,
 weather17), debug APK assembly and lint; no failures, errors or skipped tests. This includes real
