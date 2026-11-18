@@ -11,6 +11,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.DraftStore
+import dev.swapnilraj.calendar.core.EventTime
+import dev.swapnilraj.calendar.ui.events.meetings.MeetingResponseLaunch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -30,7 +32,8 @@ sealed interface DraftBrowserState {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorDraftLaunch) -> Unit,
-    displayZone: ZoneId = ZoneId.systemDefault(), onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null) {
+    displayZone: ZoneId = ZoneId.systemDefault(), onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null,
+    onOpenMeeting: ((MeetingResponseLaunch) -> Unit)? = null) {
     var revision by remember { mutableIntStateOf(0) }
     val state by produceState<DraftBrowserState>(DraftBrowserState.Loading, store, revision) {
         value = DraftBrowserState.Loading
@@ -45,13 +48,14 @@ fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorD
         catch (_: Exception) { value = DraftBrowserState.Unavailable }
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone, onOpenSeries)
+        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone, onOpenSeries, onOpenMeeting)
     }
 }
 
 @Composable
 fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen: (EditorDraftLaunch) -> Unit,
-    onRefresh: () -> Unit, displayZone: ZoneId = ZoneId.systemDefault(), onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null) {
+    onRefresh: () -> Unit, displayZone: ZoneId = ZoneId.systemDefault(), onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null,
+    onOpenMeeting: ((MeetingResponseLaunch) -> Unit)? = null) {
     val locale = LocalLocale.current.platformLocale
     val formatter = remember(locale, displayZone) { DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
         .withLocale(locale).withZone(displayZone) }
@@ -72,7 +76,19 @@ fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen:
                         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             val launch = item.launch
                             val series = item.seriesLaunch
-                            if (series != null) {
+                            val meeting = item.meetingPreview
+                            if (meeting != null) {
+                                Text(meeting.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.meeting_response_draft_label))
+                                Text(when (val time = meeting.time) {
+                                    is EventTime.AllDay -> allDayDateText(time, locale)
+                                    is EventTime.Timed -> android.text.BidiFormatter.getInstance(locale).unicodeWrap(formatter.format(time.start))
+                                })
+                                if (meeting.launch.needsRecovery) Text(stringResource(R.string.events_drafts_needs_recovery))
+                                if (onOpenMeeting != null) TextButton(onClick = { onOpenMeeting(meeting.launch) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                                    Text(stringResource(if (meeting.launch.needsRecovery) R.string.events_drafts_recover else R.string.events_drafts_open))
+                                } else Text(stringResource(R.string.meeting_response_draft_host_unavailable))
+                            } else if (series != null) {
                                 Text(series.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
                                 Text(stringResource(R.string.series_draft))
                                 Text(stringResource(scopeLabel(series.scope)))

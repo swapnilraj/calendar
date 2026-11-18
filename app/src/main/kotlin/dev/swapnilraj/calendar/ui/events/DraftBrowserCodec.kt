@@ -1,6 +1,7 @@
 package dev.swapnilraj.calendar.ui.events
 
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.ui.events.meetings.*
 import java.time.*
 import org.json.JSONObject
 
@@ -31,11 +32,20 @@ data class EditorDraftLaunch internal constructor(
 }
 
 data class DraftBrowserItem(val recordId: String, val updatedAt: Instant,
-    val launch: EditorDraftLaunch?, val issue: DraftReadIssue?, val seriesLaunch: SeriesEditorLaunch? = null)
+    val launch: EditorDraftLaunch?, val issue: DraftReadIssue?, val seriesLaunch: SeriesEditorLaunch? = null,
+    val meetingPreview: MeetingResponseDraftPreview? = null)
 
 /** Reads the feature's versioned opaque payload without normalizing or saving incomplete fields. */
 object DraftBrowserCodec {
     fun read(record: DraftRecord): DraftBrowserItem {
+        // Identify the feature before overlapping legacy version numbers. A damaged invitation
+        // response must never be interpreted as an ordinary editor or series draft.
+        val feature = try { JSONObject(record.payload).opt("feature") } catch (_: Exception) { null }
+        if (feature == "meeting-response" || record.version == MeetingResponseDraftCodec.VERSION) {
+            val preview = meetingResponseDraftPreview(record)
+            return DraftBrowserItem(record.id, record.updatedAt, null,
+                if (preview == null) DraftReadIssue.UNREADABLE else null, meetingPreview = preview)
+        }
         if (record.version == SeriesDraftCodec.VERSION) {
             val launch = SeriesDraftCodec.describe(record)
             return DraftBrowserItem(record.id, record.updatedAt, null, if (launch == null) DraftReadIssue.UNREADABLE else null, launch)
