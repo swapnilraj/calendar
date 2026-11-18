@@ -30,9 +30,18 @@ internal class NativeGeneratedRsvpJourneyProvider(start: Instant) : ContentProvi
         val compatible = projection?.map { if (it in columns) it else "NULL AS \"$it\"" }?.toTypedArray()
         return native.query(uri, compatible, selection, args, sort)
     }
-    override fun insert(uri: Uri, values: ContentValues?) = native.insert(uri, values)
-    override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?) = native.update(uri, values, selection, args)
-    override fun delete(uri: Uri, selection: String?, args: Array<out String>?) = native.delete(uri, selection, args)
+    override fun insert(uri: Uri, values: ContentValues?): Uri {
+        requirePermission(Manifest.permission.WRITE_CALENDAR)
+        return native.insert(uri, values)
+    }
+    override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?): Int {
+        requirePermission(Manifest.permission.WRITE_CALENDAR)
+        return native.update(uri, values, selection, args)
+    }
+    override fun delete(uri: Uri, selection: String?, args: Array<out String>?): Int {
+        requirePermission(Manifest.permission.WRITE_CALENDAR)
+        return native.delete(uri, selection, args)
+    }
     override fun applyBatch(operations: ArrayList<ContentProviderOperation>): Array<ContentProviderResult> {
         requirePermission(Manifest.permission.READ_CALENDAR)
         requirePermission(Manifest.permission.WRITE_CALENDAR)
