@@ -5,8 +5,12 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import dev.swapnilraj.calendar.core.DraftRecord
-import dev.swapnilraj.calendar.core.DraftStore
+import dev.swapnilraj.calendar.core.AtomicDraftStore
+import dev.swapnilraj.calendar.core.DraftChangeResult
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,7 +21,7 @@ class CalendarLocalStore(
     databaseName: String = "daylight-local.db",
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
-) : SQLiteOpenHelper(context.applicationContext, databaseName, null, 2), DraftStore {
+) : SQLiteOpenHelper(context.applicationContext, databaseName, null, 2), AtomicDraftStore {
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
         // ATTEMPTED must be durably committed before a separate provider transaction begins.
@@ -81,6 +85,45 @@ class CalendarLocalStore(
     override suspend fun delete(id: String) = withContext(io) {
         writableDatabase.delete("drafts", "id = ?", arrayOf(id))
         Unit
+    }
+
+    override suspend fun compareAndSet(id: String, expected: DraftRecord?, replacement: DraftRecord?): DraftChangeResult = withContext(io) {
+        require(expected != null || replacement != null)
+        require(expected == null || expected.id == id)
+        require(replacement == null || replacement.id == id)
+        try {
+            currentCoroutineContext().ensureActive()
+            val db = writableDatabase
+            db.beginTransaction()
+            try {
+                val current = db.query("drafts", null, "id = ?", arrayOf(id), null, null, null).use { cursor ->
+                    if (!cursor.moveToFirst()) null else {
+                        val timestamp = Instant.parse(cursor.getString(cursor.getColumnIndexOrThrow("updated_at")))
+                        check(cursor.getLong(cursor.getColumnIndexOrThrow("updated_epoch")) == timestamp.epochSecond &&
+                            cursor.getInt(cursor.getColumnIndexOrThrow("updated_nano")) == timestamp.nano)
+                        DraftRecord(cursor.getString(cursor.getColumnIndexOrThrow("id")), cursor.getInt(cursor.getColumnIndexOrThrow("version")),
+                            cursor.getString(cursor.getColumnIndexOrThrow("payload")), timestamp)
+                    }
+                }
+                val result = if (current != expected) DraftChangeResult.Changed else {
+                    if (replacement == null) check(db.delete("drafts", "id = ?", arrayOf(id)) == 1)
+                    else {
+                        val values = ContentValues().apply {
+                            put("id", replacement.id); put("version", replacement.version); put("payload", replacement.payload)
+                            put("updated_at", replacement.updatedAt.toString()); put("updated_epoch", replacement.updatedAt.epochSecond)
+                            put("updated_nano", replacement.updatedAt.nano)
+                        }
+                        if (current == null) db.insertOrThrow("drafts", null, values)
+                        else check(db.update("drafts", values, "id = ?", arrayOf(id)) == 1)
+                    }
+                    DraftChangeResult.Applied
+                }
+                currentCoroutineContext().ensureActive()
+                db.setTransactionSuccessful()
+                result
+            } finally { db.endTransaction() }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { DraftChangeResult.Unavailable }
     }
 
     internal fun saveEdit(token: String, snapshot: String) {
