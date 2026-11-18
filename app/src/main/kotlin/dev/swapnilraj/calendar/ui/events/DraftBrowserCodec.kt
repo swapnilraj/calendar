@@ -30,11 +30,15 @@ data class EditorDraftLaunch internal constructor(
 }
 
 data class DraftBrowserItem(val recordId: String, val updatedAt: Instant,
-    val launch: EditorDraftLaunch?, val issue: DraftReadIssue?)
+    val launch: EditorDraftLaunch?, val issue: DraftReadIssue?, val seriesLaunch: SeriesEditorLaunch? = null)
 
 /** Reads the feature's versioned opaque payload without normalizing or saving incomplete fields. */
 object DraftBrowserCodec {
     fun read(record: DraftRecord): DraftBrowserItem {
+        if (record.version == SeriesDraftCodec.VERSION) {
+            val launch = SeriesDraftCodec.describe(record)
+            return DraftBrowserItem(record.id, record.updatedAt, null, if (launch == null) DraftReadIssue.UNREADABLE else null, launch)
+        }
         if (record.version != EventEditorController.VERSION)
             return DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNSUPPORTED_VERSION)
         return try {

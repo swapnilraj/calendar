@@ -30,7 +30,7 @@ sealed interface DraftBrowserState {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorDraftLaunch) -> Unit,
-    displayZone: ZoneId = ZoneId.systemDefault()) {
+    displayZone: ZoneId = ZoneId.systemDefault(), onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null) {
     var revision by remember { mutableIntStateOf(0) }
     val state by produceState<DraftBrowserState>(DraftBrowserState.Loading, store, revision) {
         value = DraftBrowserState.Loading
@@ -45,13 +45,13 @@ fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorD
         catch (_: Exception) { value = DraftBrowserState.Unavailable }
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone)
+        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone, onOpenSeries)
     }
 }
 
 @Composable
 fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen: (EditorDraftLaunch) -> Unit,
-    onRefresh: () -> Unit, displayZone: ZoneId = ZoneId.systemDefault()) {
+    onRefresh: () -> Unit, displayZone: ZoneId = ZoneId.systemDefault(), onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null) {
     val locale = LocalLocale.current.platformLocale
     val formatter = remember(locale, displayZone) { DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
         .withLocale(locale).withZone(displayZone) }
@@ -71,7 +71,17 @@ fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen:
                     itemsIndexed(state.items, key = { index, item -> "$index:${item.recordId}" }) { _, item ->
                         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             val launch = item.launch
-                            if (launch != null) {
+                            val series = item.seriesLaunch
+                            if (series != null) {
+                                Text(series.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.series_draft))
+                                Text(stringResource(scopeLabel(series.scope)))
+                                if (series.rawDate.isNotBlank()) Text(stringResource(R.string.events_drafts_raw_date, series.rawDate))
+                                if (series.needsRecovery) Text(stringResource(R.string.events_drafts_needs_recovery))
+                                if (onOpenSeries != null) TextButton(onClick = { onOpenSeries(series) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                                    Text(stringResource(if (series.needsRecovery) R.string.events_drafts_recover else R.string.events_drafts_open))
+                                } else Text(stringResource(R.string.series_draft_host_unavailable))
+                            } else if (launch != null) {
                                 Text(launch.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
                                 Text(stringResource(if (launch.kind == EditorDraftKind.CREATE) R.string.events_drafts_create else R.string.events_drafts_edit))
                                 Text(if (launch.rawDate.isBlank()) stringResource(R.string.events_drafts_date_unfinished)
