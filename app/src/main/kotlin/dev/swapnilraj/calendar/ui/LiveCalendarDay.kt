@@ -137,7 +137,12 @@ internal fun LiveCalendarDay(
         DisplayZoneOption.Device -> now
         is DisplayZoneOption.Fixed -> now.withZoneSameInstant(zone.zone)
     }
-    val visibleDate = selectedDateState.value?.let(LocalDate::parse) ?: displayNow.toLocalDate()
+    // On a cold external date launch the first pager must already use that date. Otherwise its
+    // initial visible-date callback can race the navigation effect and restore today's anchor.
+    val initialRequestedDate = dateNavigation?.instant?.let { instant ->
+        runCatching { instant.atZone(displayNow.zone).toLocalDate() }.getOrNull()
+    }?.takeIf { it in MultiDayMinDate..MultiDayMaxDate }
+    val visibleDate = selectedDateState.value?.let(LocalDate::parse) ?: initialRequestedDate ?: displayNow.toLocalDate()
     val dateText = visibleDate.toString()
     fun currentDate(): LocalDate = selectedDateState.value?.let(LocalDate::parse) ?: displayNow.toLocalDate()
     LaunchedEffect(Unit) { if (selectedDateState.value == null) selectedDateState.value = dateText }
