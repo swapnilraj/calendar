@@ -139,8 +139,9 @@ class CalendarSeriesWriter(
                 currentCoroutineContext().ensureActive()
                 val results = resolver.applyBatch(CalendarContract.AUTHORITY, prepared.operations)
                 prepared.insertedAt?.let { index ->
-                    val id = results.getOrNull(index)?.uri?.let(ContentUris::parseId) ?: error("Created row was not identified")
-                    check(id >= 0 && (listOf(prepared.source.master) + prepared.source.exceptions).none { it["_id"]?.toLongOrNull() == id })
+                    val id = CalendarExceptionAcknowledgement.read(results.getOrNull(index)?.uri,
+                        prepared.source.snapshot.identity.masterEventId,
+                        (listOf(prepared.source.master) + prepared.source.exceptions).map { requireNotNull(it["_id"]?.toLongOrNull()) }.toSet())
                     prepared.receipt.put("targets", JSONArray(listOf(id))).put("resultSelected", refJson(selected.copy(eventId = id)))
                         .put("syncIds", JSONObject().put(id.toString(), JSONObject.NULL)).put("eventUids", JSONObject().put(id.toString(), JSONObject.NULL))
                 }

@@ -929,4 +929,38 @@ class CalendarSeriesWriterTest {
         }
     }
 
+    @Test fun malformedNativeExceptionAcknowledgementsStayAttemptedWithoutLookupOrReplay() = runBlocking {
+        val authority = CalendarContract.AUTHORITY
+        val bad = listOf<(android.net.Uri) -> android.net.Uri>(
+            { android.net.Uri.parse("https://$authority/exception/10/900") },
+            { android.net.Uri.parse("content://foreign.invalid/exception/10/900") },
+            { android.net.Uri.parse("content://$authority/events/900") },
+            { android.net.Uri.parse("content://$authority/exception/11/900") },
+            { android.net.Uri.parse("content://$authority/exception/010/900") },
+            { android.net.Uri.parse("content://$authority/exception/10/0900") },
+            { android.net.Uri.parse("content://$authority/exception/10/%39%30%30") },
+            { android.net.Uri.parse("content://$authority/exception/10/900/") },
+            { android.net.Uri.parse("content://$authority/exception/10/0") },
+            { android.net.Uri.parse("content://$authority/exception/10/-1") },
+            { android.net.Uri.parse("content://$authority/exception/10/10") },
+            { android.net.Uri.parse("content://$authority/exception/10/11") },
+            { it.buildUpon().appendQueryParameter("unexpected", "1").build() },
+            { it.buildUpon().fragment("unexpected").build() })
+        for (transform in bad) fixture { f ->
+            f.nativeCloneReady(); val edit = f.editable()
+            f.provider.exceptionAcknowledgement = transform
+            val command = SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Synthetic ACK fixture")))
+            val outcome = f.writer.mutate("invalid-native-ack", selected, edit.token, command)
+            assertTrue(outcome.toString(), outcome is SeriesMutationResult.Common && outcome.outcome is MutationResult.Uncertain)
+            assertEquals("ATTEMPTED", f.store.operation("invalid-native-ack")!!.phase)
+            assertEquals(1, f.provider.insertedExceptions.size)
+            f.provider.calls.clear(); f.permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            assertEquals(SeriesMutationResult.Common(MutationResult.Uncertain("invalid-native-ack", null)), f.writer.recover("invalid-native-ack"))
+            assertTrue(f.provider.calls.isEmpty())
+            f.permissions.add(Manifest.permission.WRITE_CALENDAR)
+            assertTrue((f.writer.mutate("invalid-native-ack", selected, edit.token, command) as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
+            assertEquals(1, f.provider.batchCount); assertTrue(f.provider.calls.isEmpty())
+        }
+    }
+
 }

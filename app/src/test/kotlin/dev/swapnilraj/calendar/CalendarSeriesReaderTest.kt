@@ -83,6 +83,7 @@ class CalendarSeriesReaderTest {
         var failCorrection = false
         var ignoreCorrectionEnd = false
         var corruptClonedReminder = false
+        var exceptionAcknowledgement: ((Uri) -> Uri)? = null
         var joinedAttendeeView = true
         var recalculateDailyLastDate = false
         private var inBatch = false
@@ -226,7 +227,7 @@ class CalendarSeriesReaderTest {
             clone(attendees, listOf("attendeeName", "attendeeEmail", "attendeeStatus", "attendeeRelationship", "attendeeType", "attendeeIdentity", "attendeeIdNamespace"))
             clone(extendedProperties, listOf("name", "value"))
             if (corruptClonedReminder) reminders.firstOrNull { it["event_id"] == id.toString() }?.set("minutes", "999")
-            return android.content.ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id)
+            return android.content.ContentUris.withAppendedId(uri, id)
         }
 
         override fun getType(uri: Uri): String? = null
@@ -299,6 +300,12 @@ class CalendarSeriesReaderTest {
             } finally { inBatch = false }
             committed = true
             if (lostAcknowledgement) error("Synthetic lost acknowledgement after provider commit")
+            // Corrupt only the external batch ACK, after internal native backrefs have resolved.
+            exceptionAcknowledgement?.let { transform -> result.indices.forEach { i ->
+                result[i].uri?.takeIf { it.pathSegments.firstOrNull() == "exception" }?.let { uri ->
+                    result[i] = android.content.ContentProviderResult(transform(uri))
+                }
+            } }
             return result
         }
     }

@@ -394,11 +394,7 @@ internal class CalendarMeetingGeneratedResponseWriter(
         private fun sameNamespace(old: Map<String, String?>, current: Map<String, String?>) = meetingIdentity(old) == meetingIdentity(current) && (current["calendar_access_level"]?.toIntOrNull() ?: -1) >= CalendarContract.Calendars.CAL_ACCESS_READ
         private fun checkParcel(ops: List<ContentProviderOperation>) { val p = Parcel.obtain(); try { p.writeTypedList(ops); if (p.dataSize() > 256 * 1024) throw Review("The complete response transaction exceeds the safe local size budget") } finally { p.recycle() } }
         private fun JSONObject.nullable(key: String) = if (isNull(key)) null else getString(key)
-        internal fun exceptionId(uri: Uri?, base: MeetingSeriesSource): Long {
-            require(uri != null && uri.scheme == "content" && uri.authority == CalendarContract.AUTHORITY && uri.encodedQuery == null && uri.encodedFragment == null)
-            val parts = uri.pathSegments; require(parts.size == 3 && parts[0] == "exception" && parts[1] == base.masterId.toString())
-            val id = parts[2].toLong(); require(id > 0 && parts[2] == id.toString() && uri.encodedPath == "/exception/${base.masterId}/$id" && base.membership.none { it.meetingLong("_id") == id })
-            return id
-        }
+        internal fun exceptionId(uri: Uri?, base: MeetingSeriesSource): Long = CalendarExceptionAcknowledgement.read(
+            uri, base.masterId, base.membership.map { requireNotNull(it.meetingLong("_id")) }.toSet())
     }
 }
