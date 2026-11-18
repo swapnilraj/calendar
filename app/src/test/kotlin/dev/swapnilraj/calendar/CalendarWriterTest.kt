@@ -35,9 +35,11 @@ class CalendarWriterTest {
         var batchCount = 0
         var failReminder = false
         var lostAcknowledgement = false
+        var malformedReminderAcknowledgement = false
         var failReadsAfterCommit = false
         var committed = false
         var beforeBatch: (() -> Unit)? = null
+        var onQuery: (() -> Unit)? = null
         val queryCounts = mutableMapOf<String, Int>()
         fun resetQueryCounts() = queryCounts.clear()
         override fun onCreate() = true
@@ -52,9 +54,13 @@ class CalendarWriterTest {
             uri.pathSegments.lastOrNull()?.toLongOrNull()?.let { if (row["_id"] != it.toString()) return false }
             if (selection == null) return true
             val columns = Regex("([A-Za-z_][A-Za-z_0-9]*)\\s*=\\s*\\?").findAll(selection).map { it.groupValues[1] }.toList()
-            return columns.withIndex().all { (index, key) -> row[key] == args?.get(index) }
+            val parent = row["event_id"]?.let { id -> events.singleOrNull { it["_id"] == id } }
+            fun value(key: String) = if (row.containsKey(key)) row[key] else parent?.get(key)
+            if (Regex("([A-Za-z_][A-Za-z_0-9]*)\\s+IS NULL").findAll(selection).any { value(it.groupValues[1]) != null }) return false
+            return columns.withIndex().all { (index, key) -> value(key) == args?.get(index) }
         }
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor {
+            onQuery?.invoke()
             if (failReadsAfterCommit && committed) error("Synthetic post-commit provider unavailable")
             val tableName = uri.pathSegments.first()
             queryCounts[tableName] = (queryCounts[tableName] ?: 0) + 1
@@ -108,7 +114,9 @@ class CalendarWriterTest {
             }
             committed = true
             if (lostAcknowledgement) throw IllegalStateException("Synthetic lost acknowledgement after commit")
-            return results
+            return if (malformedReminderAcknowledgement) results.map { result ->
+                if (result.uri?.pathSegments?.firstOrNull() == "reminders") ContentProviderResult(Uri.parse("content://foreign/reminders/999")) else result
+            }.toTypedArray() else results
         }
     }
 
@@ -797,6 +805,277 @@ class CalendarWriterTest {
             assertEquals("Opaque imported metadata", event["sync_data1"]); assertEquals("Edited title", event["title"])
             assertEquals(ref.instanceStart.toEpochMilli().toString(), event["dtstart"])
             assertEquals(ref.instanceEnd.toEpochMilli().toString(), event["dtend"])
+        }
+    }
+
+    @Test fun receipt4UpdateRecoversAfterSnapshotPurgeAndReopenWithReadPermissionOnly() = runBlocking {
+        fixture { provider, writer, store, permissions ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            provider.events.single()["uid2445"] = "source-uid@probe.invalid"
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            provider.committed = false; provider.failReadsAfterCommit = true
+            val patch = EventPatch(title = FieldChange.Set("Changed"), alertMinutes = FieldChange.Set(listOf(15, 30)))
+            assertEquals(MutationResult.Uncertain("edit", null), writer.update("edit", ref, token, patch))
+            val recorded = store.operation("edit")!!
+            assertEquals("COMMITTED", recorded.phase)
+            assertEquals(4, org.json.JSONObject(recorded.resultRef!!).getInt("version"))
+            store.writableDatabase.delete("edit_snapshots", null, null)
+            provider.failReadsAfterCommit = false; permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            val context = RuntimeEnvironment.getApplication(); val reopened = CalendarLocalStore(context, store.databaseName)
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            try {
+                val second = CalendarWriter(context.contentResolver, CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0), reopened, permissions::contains)
+                assertEquals(MutationResult.LocalSaved(ref), second.recover("edit"))
+                assertEquals(MutationResult.LocalSaved(ref), second.recover("edit"))
+                assertEquals("Changed", provider.events.single()["title"])
+                assertEquals(listOf("15", "30"), provider.reminders.map { it["minutes"] })
+                assertEquals(2, provider.batchCount)
+            } finally { scope.cancel(); scope.coroutineContext[Job]!!.join(); reopened.close() }
+        }
+    }
+
+    @Test fun receipt4DeleteRecoversReadOnlyAfterSnapshotPurgeForTombstoneAndAbsentRow() = runBlocking {
+        for (hardDelete in listOf(false, true)) fixture { provider, writer, store, permissions ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            provider.events.single()["uid2445"] = "source-uid@probe.invalid"
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            provider.committed = false; provider.failReadsAfterCommit = true
+            assertEquals(MutationResult.Uncertain("delete", null), writer.delete("delete", ref, token))
+            assertEquals("COMMITTED", store.operation("delete")!!.phase)
+            store.writableDatabase.delete("edit_snapshots", null, null)
+            if (hardDelete) provider.events.clear()
+            provider.failReadsAfterCommit = false; permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            assertEquals(MutationResult.LocalDeleted(ref), writer.recover("delete"))
+            assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun receipt4PostCommitAuthoredDriftAndSameCalendarUidReplacementRemainUncertain() = runBlocking {
+        for (field in listOf("title", "eventTimezone", "uid2445", "_sync_id")) fixture { provider, writer, store, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            provider.events.single()["uid2445"] = "original@probe.invalid"
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            assertEquals(MutationResult.LocalSaved(ref), writer.update("edit", ref, token, EventPatch(title = FieldChange.Set("Changed"))))
+            provider.events.single()[field] = "replacement"
+            store.writableDatabase.delete("edit_snapshots", null, null)
+            assertEquals(MutationResult.Uncertain("edit", ref.eventId), writer.recover("edit"))
+            assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun receipt4ReadbackRequiresExactReminderPayloadAndMembership() = runBlocking {
+        for (change in listOf("payload", "extra", "missing")) fixture { provider, writer, store, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            assertEquals(MutationResult.LocalSaved(ref), writer.update("edit", ref, token, EventPatch(alertMinutes = FieldChange.Set(listOf(20)))))
+            when (change) {
+                "payload" -> provider.reminders.single()["minutes"] = "21"
+                "extra" -> provider.reminders += provider.reminders.single().toMutableMap().apply { put("_id", "999") }
+                else -> provider.reminders.clear()
+            }
+            store.writableDatabase.delete("edit_snapshots", null, null)
+            assertEquals(MutationResult.Uncertain("edit", ref.eventId), writer.recover("edit"))
+            assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun receipt4PreparedWinnerSurvivesSnapshotPurgeAndOnlyExactExplicitRetryDispatches() = runBlocking {
+        fixture { provider, writer, store, permissions ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            val patch = EventPatch(title = FieldChange.Set("Frozen"))
+            store.writableDatabase.execSQL("""CREATE TRIGGER interrupt_dispatch BEFORE UPDATE OF phase ON mutation_journal
+                WHEN NEW.phase = 'ATTEMPTED' BEGIN SELECT RAISE(FAIL, 'Synthetic interruption'); END""")
+            assertEquals(MutationResult.Unavailable, writer.update("edit", ref, token, patch))
+            val winner = store.operation("edit")!!.resultRef
+            store.writableDatabase.delete("edit_snapshots", null, null)
+            permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            assertEquals(MutationResult.SafeToRetry("edit"), writer.recover("edit"))
+            assertEquals(MutationResult.PermissionRequired, writer.update("edit", ref, token, patch))
+            permissions += Manifest.permission.WRITE_CALENDAR
+            assertEquals(MutationResult.Conflict(null), writer.update("edit", ref, token, patch.copy(title = FieldChange.Set("Other"))))
+            assertEquals(winner, store.operation("edit")!!.resultRef)
+            store.writableDatabase.execSQL("DROP TRIGGER interrupt_dispatch")
+            val context = RuntimeEnvironment.getApplication(); val reopened = CalendarLocalStore(context, store.databaseName)
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            try {
+                val second = CalendarWriter(context.contentResolver, CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0), reopened, permissions::contains)
+                assertEquals(MutationResult.LocalSaved(ref), second.update("edit", ref, token, patch))
+                assertEquals(MutationResult.LocalSaved(ref), writer.update("edit", ref, token, patch))
+                assertEquals(2, provider.batchCount)
+            } finally { scope.cancel(); scope.coroutineContext[Job]!!.join(); reopened.close() }
+        }
+    }
+
+    @Test fun receipt4AttemptedUnknownNeverReplaysAndRetirementStillFencesPreparedCommand() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            val patch = EventPatch(title = FieldChange.Set("Frozen"))
+            provider.lostAcknowledgement = true
+            assertEquals(MutationResult.Uncertain("unknown", null), writer.update("unknown", ref, token, patch))
+            store.writableDatabase.delete("edit_snapshots", null, null)
+            provider.lostAcknowledgement = false
+            assertEquals(MutationResult.Uncertain("unknown", null), writer.recover("unknown"))
+            assertEquals(MutationResult.Uncertain("unknown", null), writer.update("unknown", ref, token, patch))
+            assertEquals(2, provider.batchCount)
+            val next = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            val retirement = CalendarOperationRetirement(store)
+            assertEquals(OperationRetirementResult.Retired("retired"), retirement.retire(RetirableOperation.Update("retired", ref, next, patch)))
+            assertEquals(MutationResult.Retired("retired"), writer.update("retired", ref, next, patch))
+            assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun receipt4PreservesNullZoneOpaqueMetadataAndNonAlertRowsAcrossReadOnlyRecovery() = runBlocking {
+        fixture { provider, writer, store, permissions ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val row = provider.events.single(); row["eventTimezone"] = null; row["eventEndTimezone"] = null
+            row["availability"] = "77"; row["accessLevel"] = "88"; row["sync_data1"] = "Opaque"
+            provider.reminders += mutableMapOf("_id" to "901", "event_id" to ref.eventId.toString(), "method" to "2", "minutes" to "-1")
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            assertEquals(MutationResult.LocalSaved(ref), writer.update("edit", ref, token, EventPatch(title = FieldChange.Set("Changed"))))
+            store.writableDatabase.delete("edit_snapshots", null, null); permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            assertEquals(MutationResult.LocalSaved(ref), writer.recover("edit"))
+            assertNull(row["eventTimezone"]); assertEquals("77", row["availability"]); assertEquals("88", row["accessLevel"]); assertEquals("Opaque", row["sync_data1"])
+            assertEquals("-1", provider.reminders.single { it["method"] == "2" }["minutes"])
+            assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun receipt4ForgedNativePlanAndNamespaceCannotAcknowledgeOrRetry() = runBlocking {
+        for (field in listOf("plan", "identity", "sourceRaw")) fixture { provider, writer, store, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            assertEquals(MutationResult.LocalSaved(ref), writer.update("edit", ref, token, EventPatch(title = FieldChange.Set("Changed"))))
+            val j = org.json.JSONObject(store.operation("edit")!!.resultRef!!)
+            when (field) {
+                "plan" -> j.getJSONObject("plan").getJSONObject("changes").put("title", "Forged")
+                "identity" -> j.getJSONObject("identity").put("name", "foreign@probe.invalid")
+                else -> j.put("sourceRaw", "{}")
+            }
+            store.forceOperationForTest("edit", "COMMITTED", j.toString())
+            assertEquals(MutationResult.Uncertain("edit", null), writer.recover("edit"))
+            assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun receipt4IncompleteChildAcknowledgementKeepsKnownCommitWithoutGuessingOrReplay() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            provider.malformedReminderAcknowledgement = true
+            val patch = EventPatch(alertMinutes = FieldChange.Set(listOf(25)))
+            assertEquals(MutationResult.Uncertain("edit", ref.eventId), writer.update("edit", ref, token, patch))
+            val recorded = store.operation("edit")!!
+            assertEquals("COMMITTED", recorded.phase)
+            val j = org.json.JSONObject(recorded.resultRef!!)
+            assertFalse(j.getBoolean("ackComplete")); assertFalse(j.has("reminderIds"))
+            store.writableDatabase.delete("edit_snapshots", null, null)
+            provider.malformedReminderAcknowledgement = false
+            assertEquals(MutationResult.Uncertain("edit", ref.eventId), writer.recover("edit"))
+            assertEquals(MutationResult.Uncertain("edit", ref.eventId), writer.update("edit", ref, token, patch))
+            assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun receipt4DefiniteRollbackPreservesFrozenNativeRetryWithoutSnapshots() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            val patch = EventPatch(title = FieldChange.Set("Frozen"), alertMinutes = FieldChange.Set(listOf(25)))
+            provider.failReminder = true
+            assertEquals(MutationResult.Unavailable, writer.update("edit", ref, token, patch))
+            assertEquals("FAILED", store.operation("edit")!!.phase)
+            store.writableDatabase.delete("edit_snapshots", null, null)
+            assertEquals(MutationResult.SafeToRetry("edit"), writer.recover("edit"))
+            assertEquals(draft.title, provider.events.single()["title"])
+            provider.failReminder = false
+            assertEquals(MutationResult.LocalSaved(ref), writer.update("edit", ref, token, patch))
+            assertEquals(3, provider.batchCount)
+        }
+    }
+
+    @Test fun legacyV2EditReceiptAndOldProjectionTokenRemainCompatibleAndSnapshotDependent() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val fresh = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            val source = org.json.JSONObject(store.edit(fresh.value)!!)
+            source.getJSONObject("event").remove("uid2445"); source.getJSONObject("event").remove("_sync_id")
+            val raw = source.toString()
+            val hash = java.security.MessageDigest.getInstance("SHA-256").digest(("EDIT" + raw).toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+            val legacy = EditToken(hash); store.saveEdit(hash, raw)
+            val patch = EventPatch(title = FieldChange.Set("Legacy compatible"))
+            assertEquals(MutationResult.LocalSaved(ref), writer.update("edit", ref, legacy, patch))
+            val receipt = org.json.JSONObject(store.operation("edit")!!.resultRef!!)
+            assertEquals(4, receipt.getInt("version"))
+            assertEquals(raw, receipt.getString("sourceRaw"))
+            val old = org.json.JSONObject().put("version", 2).put("stage", "committed").put("kind", "UPDATE")
+                .put("signature", receipt.getString("signature")).put("command", receipt.getJSONObject("command"))
+                .put("identity", receipt.getJSONObject("identity")).put("ref", receipt.getJSONObject("ref"))
+            store.prepare("old", receipt.getString("signature"), "UPDATE")
+            store.forceOperationForTest("old", "COMMITTED", old.toString())
+            assertEquals(MutationResult.LocalSaved(ref), writer.recover("old"))
+            store.writableDatabase.delete("edit_snapshots", null, null)
+            assertEquals(MutationResult.Uncertain("old", null), writer.recover("old"))
+            assertEquals(MutationResult.LocalSaved(ref), writer.recover("edit"))
+            assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun receipt4AllDayEditRecoveryUsesFrozenUtcBoundsAfterDisplayZoneTravel() = runBlocking {
+        fixture { provider, writer, store, permissions ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            val time = EventTime.AllDay(CalendarDateRange(LocalDate.parse("2028-03-11"), LocalDate.parse("2028-03-14")))
+            val saved = writer.update("edit", ref, token, EventPatch(time = FieldChange.Set(time))) as MutationResult.LocalSaved
+            assertEquals(Instant.parse("2028-03-11T00:00:00Z"), saved.ref.instanceStart)
+            assertEquals(Instant.parse("2028-03-14T00:00:00Z"), saved.ref.instanceEnd)
+            store.writableDatabase.delete("edit_snapshots", null, null); permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            val prior = java.util.TimeZone.getDefault()
+            try {
+                java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Pacific/Honolulu"))
+                assertEquals(saved, writer.recover("edit"))
+            } finally { java.util.TimeZone.setDefault(prior) }
+            assertEquals("UTC", provider.events.single()["eventTimezone"])
+            assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun independentWriterCannotReplayTheWinningAttemptedEdit() = runBlocking {
+        fixture { provider, writer, store, permissions ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            val patch = EventPatch(title = FieldChange.Set("One winner"))
+            val context = RuntimeEnvironment.getApplication(); val reopened = CalendarLocalStore(context, store.databaseName)
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            try {
+                val second = CalendarWriter(context.contentResolver, CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0), reopened, permissions::contains)
+                var competing: MutationResult? = null
+                provider.beforeBatch = { competing = runBlocking { second.update("edit", ref, token, patch) } }
+                assertEquals(MutationResult.LocalSaved(ref), writer.update("edit", ref, token, patch))
+                assertEquals(MutationResult.Uncertain("edit", null), competing)
+                assertEquals(MutationResult.LocalSaved(ref), second.update("edit", ref, token, patch))
+                assertEquals(2, provider.batchCount)
+                assertEquals("One winner", provider.events.single()["title"])
+            } finally { scope.cancel(); scope.coroutineContext[Job]!!.join(); reopened.close() }
+        }
+    }
+
+    @Test fun cancellationAfterDurableV4PreparationCannotCrossTheProviderBoundary() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            val patch = EventPatch(title = FieldChange.Set("Must stay local"))
+            val task = async(start = CoroutineStart.LAZY) { writer.update("edit", ref, token, patch) }
+            provider.onQuery = { if (store.operationHeader("edit")?.phase == "PREPARED") task.cancel() }
+            task.start()
+            try { task.await(); fail("Cancelled edit must not return a save") } catch (_: CancellationException) { }
+            provider.onQuery = null
+            assertEquals("PREPARED", store.operation("edit")!!.phase)
+            assertEquals(MutationResult.SafeToRetry("edit"), writer.recover("edit"))
+            assertEquals(draft.title, provider.events.single()["title"])
+            assertEquals(1, provider.batchCount)
         }
     }
 

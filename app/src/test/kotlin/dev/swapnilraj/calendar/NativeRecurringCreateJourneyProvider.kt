@@ -40,6 +40,10 @@ internal class NativeRecurringCreateJourneyProvider(private val allowUpdates: Bo
         db.execSQL("CREATE TABLE attendees (_id INTEGER,event_id INTEGER,attendeeName TEXT,attendeeEmail TEXT,attendeeStatus INTEGER,attendeeRelationship INTEGER,attendeeType INTEGER,attendeeIdentity TEXT,attendeeIdNamespace TEXT)")
         db.execSQL("CREATE TABLE extendedproperties (_id INTEGER,event_id INTEGER,name TEXT,value TEXT)")
         db.execSQL("CREATE VIEW instance_view AS SELECT _id AS event_id,dtstart AS begin,COALESCE(dtend,dtstart+native_duration_ms) AS end,e.* FROM events e WHERE deleted=0")
+        // Native CalendarProvider joins Attendees (both URI shapes) and Reminders_ID to
+        // Events/Calendars. The Reminders collection intentionally remains a raw table.
+        db.execSQL("CREATE VIEW reminder_join AS SELECT r.*,e.calendar_id,e.organizer,e.uid2445,e._sync_id FROM reminders r JOIN events e ON e._id=r.event_id")
+        db.execSQL("CREATE VIEW attendee_join AS SELECT a.*,e.calendar_id,e.organizer,e.uid2445,e._sync_id FROM attendees a JOIN events e ON e._id=a.event_id")
     }
     fun setCalendar(column: String, value: String?) = db.update("calendars", ContentValues().apply { if (value == null) putNull(column) else put(column, value) }, "_id=2", null)
     fun count(table: String) = db.rawQuery("SELECT COUNT(*) FROM $table", null).use { it.moveToFirst(); it.getInt(0) }
@@ -61,7 +65,13 @@ internal class NativeRecurringCreateJourneyProvider(private val allowUpdates: Bo
             "begin" -> "(begin+$beginDelta) AS begin"; "end" -> "(end+$endDelta) AS end"; else -> it
         } }?.toTypedArray() else fields
         if (path == "instances") { where += "(begin+$beginDelta) < CAST(? AS INTEGER) AND (end+$endDelta) > CAST(? AS INTEGER)"; bind += uri.pathSegments[3]; bind += uri.pathSegments[2] }
-        return db.query(if (path == "instances") "instance_view" else path, projected, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
+        val queryTable = when {
+            path == "instances" -> "instance_view"
+            path == "attendees" -> "attendee_join"
+            path == "reminders" && uri.pathSegments.size == 2 -> "reminder_join"
+            else -> path
+        }
+        return db.query(queryTable, projected, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
     }
     override fun insert(uri: Uri, values: ContentValues?): Uri {
         val path = uri.pathSegments.first()
