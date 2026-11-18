@@ -128,7 +128,7 @@ class CalendarReminderSource(
         val warnings = mutableSetOf<ReminderSourceFailure>()
         for (chunk in config.enabledCalendars.toList().chunked(Batch)) {
             try {
-                query(CalendarContract.Calendars.CONTENT_URI, calendarFields, "_id IN (${marks(chunk.size)})", chunk.map { it.value.toString() }.toTypedArray()).use { cursor ->
+                calendarQuery("_id IN (${marks(chunk.size)})", chunk.map { it.value.toString() }.toTypedArray()).use { cursor ->
                     while (cursor.moveToNext()) {
                         currentCoroutineContext().ensureActive()
                         val id = CalendarId(cursor.requiredLong("_id"))
@@ -137,7 +137,8 @@ class CalendarReminderSource(
                         val info = CalendarInfo(id, "", cursor.int(CalendarContract.Calendars.CALENDAR_COLOR) ?: FallbackColor,
                             CalendarAccount(cursor.text(CalendarContract.Calendars.ACCOUNT_NAME).orEmpty(), cursor.text(CalendarContract.Calendars.ACCOUNT_TYPE).orEmpty()),
                             cursor.text(CalendarContract.Calendars.OWNER_ACCOUNT), null, access,
-                            cursor.int(CalendarContract.Calendars.VISIBLE) == 1, cursor.int(CalendarContract.Calendars.SYNC_EVENTS) == 1)
+                            cursor.int(CalendarContract.Calendars.VISIBLE) == 1, cursor.int(CalendarContract.Calendars.SYNC_EVENTS) == 1,
+                            providerId = cursor.text(CalendarContract.Calendars._SYNC_ID))
                         val identity = calendarIdentity(info)
                         calendars[id] = Calendar(info, identity)
                         val problem = when {
@@ -293,6 +294,17 @@ class CalendarReminderSource(
         return Occurrences(candidates, failed, invalid)
     }
 
+    private suspend fun calendarQuery(selection: String, args: Array<String>): Cursor = try {
+        query(CalendarContract.Calendars.CONTENT_URI, calendarFields + CalendarContract.Calendars._SYNC_ID, selection, args)
+    } catch (_: IllegalArgumentException) {
+        // Some providers omit optional sync IDs. Absence is unknown, never a replacement proof.
+        query(CalendarContract.Calendars.CONTENT_URI, calendarFields, selection, args)
+    } catch (failure: android.database.sqlite.SQLiteException) {
+        // Public SQLite-backed providers may surface a missing projection column directly.
+        // Other database errors remain failures, rather than weakening a known identity.
+        if (!failure.message.orEmpty().contains("no such column: _sync_id", ignoreCase = true)) throw failure
+        query(CalendarContract.Calendars.CONTENT_URI, calendarFields, selection, args)
+    }
     private suspend fun eventQuery(selection: String, args: Array<String>): Cursor = try {
         query(CalendarContract.Events.CONTENT_URI, eventFields + CalendarContract.Events.UID_2445, selection, args)
     } catch (_: IllegalArgumentException) {
@@ -320,7 +332,8 @@ class CalendarReminderSource(
         /** Shared with reminder setup: display names and provider visibility never change identity. */
         fun calendarIdentity(calendar: CalendarInfo): ReminderCalendarIdentity? {
             if (calendar.account.name.isBlank() || calendar.account.type.isBlank()) return null
-            return ReminderCalendarIdentity(hash(listOf("calendar-v1", calendar.id.value.toString(), calendar.account.type, calendar.account.name, calendar.owner)))
+            return ReminderCalendarIdentity(hash(listOf("calendar-v1", calendar.id.value.toString(), calendar.account.type, calendar.account.name, calendar.owner)),
+                calendar.providerId?.takeIf { it.isNotBlank() }?.let { hash(listOf("calendar-uid-v1", it)) })
         }
         private fun hash(values: List<String?>): String {
             val canonical = values.joinToString("") { value -> value?.let { "${it.toByteArray(Charsets.UTF_8).size}:$it" } ?: "-1:" }
