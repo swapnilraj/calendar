@@ -37,8 +37,9 @@ internal class SeriesEditorFixture {
     var recovered: SeriesMutationResult = SeriesMutationResult.Common(MutationResult.Unavailable)
     var proveSafe = false; var hold: CompletableDeferred<Unit>? = null
     var readResult: SeriesReadResult = SeriesReadResult.Ready(source)
+    var beforeRead: suspend () -> Unit = {}
     val port = object : CalendarSeriesMutations {
-        override suspend fun loadForEdit(selected: EventRef): SeriesReadResult { reads++; return readResult }
+        override suspend fun loadForEdit(selected: EventRef): SeriesReadResult { reads++; beforeRead(); return readResult }
         override suspend fun mutate(operationId: String, selected: EventRef, token: EditToken, command: SeriesCommand): SeriesMutationResult {
             calls += Call(operationId, selected, token, command); hold?.await(); return next
         }
@@ -240,6 +241,52 @@ class SeriesEditorTest {
         assertEquals(2, f.calls.size); assertEquals(1, f.calls.map { it.id }.distinct().size)
         editor.change { it.copy(title = "Another change") }; editor.save()
         assertNotEquals(f.calls.first().id, f.calls.last().id)
+    }
+    @Test fun concurrentConfirmedDiscardsCannotDeleteReplacementRawDraft() = runBlocking {
+        val old = f.controller(f.prepare(), f.source.copy(token = EditToken("fresh-token")))
+        val gateA = CompletableDeferred<Unit>(); val gateB = CompletableDeferred<Unit>()
+        f.beforeRead = { if (f.reads == 1) gateA.await() else gateB.await() }
+        val first = f.scope.async { old.discardAndReload() }
+        val second = f.scope.async { old.discardAndReload() }
+        assertTrue(old.state.reviewing); assertFalse(old.canReviewDraft)
+        gateA.complete(Unit); assertTrue(first.await() is SeriesReadResult.Ready)
+        val replacement = f.controller(f.prepare())
+        replacement.change { it.copy(title = "New replacement raw edits") }; assertTrue(replacement.flushDraft())
+        val newRecord = f.store.records.getValue("series")
+        gateB.complete(Unit); assertNull(second.await())
+        assertNull(old.discardAndReload()); assertEquals(SeriesReadResult.Unavailable, old.reloadForReview())
+        old.change { it.copy(title = "Old controller overwrite") }; old.save(); old.requestDelete(); old.confirmDelete()
+        assertEquals(newRecord, f.store.records.getValue("series")); assertEquals(1, f.reads); assertTrue(f.calls.isEmpty())
+        assertTrue(old.prepareDismiss()); assertFalse(old.canReviewDraft)
+    }
+    @Test fun discardChecksExpectedRecordBeforeDeletingObservedReplacement() = runBlocking {
+        val old = f.controller(f.prepare(), f.source.copy(token = EditToken("fresh-token")))
+        val gate = CompletableDeferred<Unit>(); f.beforeRead = { gate.await() }
+        val deleting = f.scope.async { old.discardAndReload() }
+        val original = f.store.records.getValue("series")
+        val replacement = original.copy(payload = JSONObject(original.payload).apply { getJSONObject("fields").put("title", "Observed replacement") }.toString())
+        f.store.records["series"] = replacement; gate.complete(Unit)
+        assertNull(deleting.await()); assertEquals(replacement, f.store.records.getValue("series"))
+        assertEquals(SeriesEditorProblem.DRAFT_UNAVAILABLE, old.state.problem); assertFalse(old.state.reviewing)
+        assertTrue(f.calls.isEmpty())
+    }
+    @Test fun failedReviewReadReleasesSingleFlightForNextExplicitConfirmation() = runBlocking {
+        val old = f.controller(f.prepare(), f.source.copy(token = EditToken("fresh-token")))
+        val before = f.store.records.getValue("series"); f.readResult = SeriesReadResult.Unavailable
+        assertEquals(SeriesReadResult.Unavailable, old.discardAndReload()); assertEquals(before, f.store.records.getValue("series"))
+        assertFalse(old.state.reviewing); assertTrue(old.canReviewDraft)
+        f.readResult = SeriesReadResult.Ready(f.source)
+        assertTrue(old.discardAndReload() is SeriesReadResult.Ready); assertEquals(2, f.reads); assertTrue(f.store.records.isEmpty())
+        assertNull(old.discardAndReload()); assertEquals(2, f.reads)
+    }
+    @Test fun reviewInFlightBlocksChangesAndDismissUntilFreshReadCompletes() = runBlocking {
+        val old = f.controller(f.prepare(), f.source.copy(token = EditToken("fresh-token")))
+        val gate = CompletableDeferred<Unit>(); f.beforeRead = { gate.await() }
+        val deleting = f.scope.async { old.discardAndReload() }
+        old.change { it.copy(title = "Must not change") }; old.save(); assertFalse(old.prepareDismiss())
+        assertEquals("Master title", old.state.fields.title); assertTrue(f.calls.isEmpty())
+        f.readResult = SeriesReadResult.Unavailable; gate.complete(Unit); deleting.await()
+        assertFalse(old.state.reviewing); assertTrue(old.prepareDismiss())
     }
     @Test fun mismatchedSuccessIdentityStaysUncertainAndRetainsDraft() {
         f.pending(); val restored = f.controller(f.launch(), null)

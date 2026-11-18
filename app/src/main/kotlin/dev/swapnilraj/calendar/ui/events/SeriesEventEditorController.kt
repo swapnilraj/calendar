@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import dev.swapnilraj.calendar.core.*
 import java.time.Clock
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.*
 
 enum class SeriesEditorProblem { DRAFT_UNAVAILABLE, SOURCE_CHANGED, UNSUPPORTED, INVALID_INPUT, NO_CHANGES,
@@ -14,7 +15,7 @@ enum class SeriesEditorProblem { DRAFT_UNAVAILABLE, SOURCE_CHANGED, UNSUPPORTED,
 data class SeriesEventEditorState(val fields: SeriesEditorFields = SeriesEditorFields(), val loading: Boolean = true,
     val saving: Boolean = false, val problem: SeriesEditorProblem? = null, val reviewRequired: Boolean = false,
     val recoveryRequired: Boolean = false, val retryReady: Boolean = false, val confirmDelete: Boolean = false,
-    val result: SeriesMutationResult? = null, val draftReadFailed: Boolean = false)
+    val result: SeriesMutationResult? = null, val draftReadFailed: Boolean = false, val reviewing: Boolean = false)
 
 /** Immutable scope and field provenance. A series draft is never interpreted as a one-off edit. */
 class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: EditableSeries?,
@@ -27,10 +28,13 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
     private var persistence: Job? = null
     private var completed = false
     private var retryLocked = false
+    private val discardInFlight = AtomicBoolean(false)
     val operationId: String? get() = document?.operationId
     val hasDefaultAlerts: Boolean get() = document?.hasDefaultAlerts == true
     val masterStart: RecurrenceStart? get() = document?.masterStart
     val fieldsAllowed: Set<EditableField> get() = document?.let { it.rights.fields.intersect(it.allowedFields).intersect(seriesUiFields) }.orEmpty()
+    val canReviewDraft: Boolean get() = !completed && !state.reviewing && !state.saving && state.reviewRequired &&
+        !state.recoveryRequired && !retryLocked && !recoveryOnly && !state.draftReadFailed
     val canChange: Boolean get() = launch.action == SeriesEditorAction.EDIT && !locked()
     val hasChanges: Boolean get() = document?.let { doc ->
         try { val command = seriesCommand(doc.copy(fields = state.fields)); when (command) {
@@ -63,7 +67,7 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { state = state.copy(loading = false, draftReadFailed = true, problem = SeriesEditorProblem.DRAFT_UNAVAILABLE) }
     }
-    private fun locked() = recoveryOnly || completed || state.loading || state.saving || state.draftReadFailed ||
+    private fun locked() = recoveryOnly || completed || state.loading || state.saving || state.reviewing || state.draftReadFailed ||
         state.reviewRequired || state.recoveryRequired || state.retryReady || retryLocked
 
     fun change(transform: (SeriesEditorFields) -> SeriesEditorFields) {
@@ -83,10 +87,10 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
     }
     suspend fun flushDraft(): Boolean {
         persistence?.cancelAndJoin()
-        if (state.loading || state.draftReadFailed || completed || state.reviewRequired) return false
+        if (state.loading || state.reviewing || state.draftReadFailed || completed || state.reviewRequired) return false
         return persist()
     }
-    suspend fun prepareDismiss(): Boolean = if (state.loading || state.draftReadFailed || completed || state.reviewRequired || recoveryOnly)
+    suspend fun prepareDismiss(): Boolean = if (state.saving || state.reviewing) false else if (state.loading || state.draftReadFailed || completed || state.reviewRequired || recoveryOnly)
         true else flushDraft()
 
     private suspend fun persist(): Boolean {
@@ -211,22 +215,41 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
             })
     }
     suspend fun reloadForReview(): SeriesReadResult {
+        if (completed) return SeriesReadResult.Unavailable
         return try { mutations.loadForEdit(launch.selected) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { SeriesReadResult.Unavailable }
     }
     /** Explicit discard only; unresolved operations are never abandoned or rebased. */
     suspend fun discardAndReload(): SeriesReadResult? {
-        if (locked() && (!state.reviewRequired || state.recoveryRequired || retryLocked) || state.loading || state.saving ||
-            state.draftReadFailed || completed || recoveryOnly) return null
-        val latest = reloadForReview()
-        if (latest is SeriesReadResult.Ready && (latest.series.selectedDetails.occurrence.ref != launch.selected || latest.series.snapshot.validatedSelection != launch.selected)) return SeriesReadResult.Unavailable
-        if (latest is SeriesReadResult.Ready) {
+        // Acquire before the first suspension: another confirmed action must never outlive replacement.
+        if (!discardInFlight.compareAndSet(false, true)) return null
+        var retired = false
+        try {
+            if (locked() && (!state.reviewRequired || state.recoveryRequired || retryLocked) || state.loading || state.saving ||
+                state.draftReadFailed || completed || recoveryOnly) return null
+            state = state.copy(reviewing = true)
             persistence?.cancelAndJoin()
-            try { drafts.delete(launch.draftId) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { state = state.copy(problem = SeriesEditorProblem.DRAFT_UNAVAILABLE); return null }
+            val latest = reloadForReview()
+            if (latest is SeriesReadResult.Ready && (latest.series.selectedDetails.occurrence.ref != launch.selected || latest.series.snapshot.validatedSelection != launch.selected))
+                return SeriesReadResult.Unavailable
+            if (latest is SeriesReadResult.Ready) {
+                try {
+                    val expected = expectedRecord ?: error("Missing expected draft")
+                    val current = drafts.load(launch.draftId)
+                    check(current != null && current.id == expected.id && current.version == expected.version && current.payload == expected.payload)
+                    // DraftStore has no CAS deletion. This fence detects observed replacement; single-flight
+                    // and retirement prevent this controller from deleting a subsequently prepared draft.
+                    drafts.delete(launch.draftId)
+                    completed = true
+                    retired = true
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { state = state.copy(problem = SeriesEditorProblem.DRAFT_UNAVAILABLE); return null }
+            }
+            return latest
+        } finally {
+            state = state.copy(reviewing = false)
+            if (!retired) discardInFlight.set(false)
         }
-        return latest
     }
 }

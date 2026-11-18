@@ -111,4 +111,37 @@ class SeriesEditorScreenTest {
         compose.onNodeWithText("Open draft").assertDoesNotExist()
         compose.onNodeWithText("This recurring draft is retained. Opening it is not available in this host yet.").assertIsDisplayed()
     }
+    @Test fun failedSwipeDismissReshowsNativeSheetAndRawFieldsRemainReachable() = runBlocking<Unit> {
+        val launch = f.prepare(); var failedWrites = 0; var fail = true; var closed = false
+        val tracked = object : DraftStore by f.store {
+            override suspend fun upsert(record: DraftRecord) {
+                if (fail) { failedWrites++; error("fixture draft unavailable") }
+                f.store.upsert(record)
+            }
+        }
+        val controller = SeriesEventEditorController(launch, f.source, f.port, tracked, f.scope)
+        compose.setContent { DaylightTheme { SeriesEventEditorSheet(controller, { closed = true }, {}, {}, {}) } }
+        controller.change { it.copy(title = "Unpersisted swipe draft") }; assertFalse(controller.flushDraft())
+        compose.waitForIdle(); val beforeSwipe = failedWrites
+        compose.onNodeWithText("Edit recurring event").onParent().performTouchInput { swipeDown(startY = height * 0.1f, endY = height * 0.95f, durationMillis = 250) }
+        compose.waitUntil(5_000) { failedWrites > beforeSwipe }; compose.waitForIdle()
+        assertFalse(closed); assertTrue(f.calls.isEmpty())
+        compose.onNodeWithText("Unpersisted swipe draft").assertIsDisplayed()
+        compose.onNodeWithText("The draft could not be read or stored. Retry after restoring local storage access.").assertIsDisplayed()
+        fail = false
+        compose.onNodeWithText("Edit recurring event").onParent().performTouchInput { swipeDown(startY = height * 0.1f, endY = height * 0.95f, durationMillis = 250) }
+        compose.waitUntil(5_000) { closed }
+        assertEquals("Unpersisted swipe draft", SeriesDraftCodec.describe(f.store.records.getValue("series"))!!.title)
+    }
+    @Test fun swipeCannotHideNativeSheetWhileSaveIsInFlight() = runBlocking<Unit> {
+        val gate = CompletableDeferred<Unit>(); f.hold = gate
+        val controller = f.controller(f.prepare()); controller.change { it.copy(title = "Saving") }; controller.save()
+        var closed = false
+        compose.setContent { DaylightTheme { SeriesEventEditorSheet(controller, { closed = true }, {}, {}, {}) } }
+        compose.onNodeWithText("Edit recurring event").onParent().performTouchInput { swipeDown(startY = height * 0.1f, endY = height * 0.95f, durationMillis = 250) }
+        compose.waitForIdle(); assertFalse(closed); assertTrue(controller.state.saving)
+        compose.onNodeWithText("Edit recurring event").assertIsDisplayed(); assertFalse(controller.prepareDismiss())
+        gate.complete(Unit); compose.waitForIdle(); assertEquals(1, f.calls.size)
+    }
+
 }

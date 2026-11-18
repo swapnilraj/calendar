@@ -43,13 +43,19 @@ fun SeriesEventEditorSheet(controller: SeriesEventEditorController, onDismiss: (
     onSaved: (SeriesMutationResult.LocalSaved) -> Unit, onDeleted: (SeriesMutationResult.LocalDeleted) -> Unit,
     onReview: (SeriesReadResult) -> Unit) {
     val scope = rememberCoroutineScope()
-    fun close() { scope.launch { if (controller.prepareDismiss()) onDismiss() } }
+    val sheetState = rememberModalBottomSheetState(confirmValueChange = { value ->
+        value != SheetValue.Hidden || !controller.state.saving && !controller.state.reviewing
+    })
+    fun close() { scope.launch {
+        if (controller.prepareDismiss()) onDismiss()
+        else sheetState.show() // Swipe/back may have hidden it before a draft write failed.
+    } }
     LaunchedEffect(controller.state.result) { when (val result = controller.state.result) {
         is SeriesMutationResult.LocalSaved -> onSaved(result)
         is SeriesMutationResult.LocalDeleted -> onDeleted(result)
         else -> Unit
     } }
-    ModalBottomSheet(onDismissRequest = ::close) { SeriesEventEditorContent(controller, ::close, onReview) }
+    ModalBottomSheet(onDismissRequest = ::close, sheetState = sheetState) { SeriesEventEditorContent(controller, ::close, onReview) }
 }
 
 @Composable
@@ -62,7 +68,7 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
         Text(stringResource(scopeLabel(launch.scope)), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(if (launch.scope == RecurrenceScope.ALL) R.string.series_master_origin else R.string.series_selected_origin))
         if (controller.recoveryOnly) Text(stringResource(R.string.series_recovery_only))
-        if (state.loading) CircularProgressIndicator()
+        if (state.loading || state.reviewing) CircularProgressIndicator()
         state.problem?.let { Text(stringResource(seriesProblem(it)), color = MaterialTheme.colorScheme.error) }
         if (state.recoveryRequired) TextButton(onClick = controller::recover, enabled = !state.saving) { Text(stringResource(R.string.events_editor_recover)) }
         if (state.retryReady) {
@@ -71,7 +77,7 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
                 Text(stringResource(if (launch.action == SeriesEditorAction.DELETE) R.string.events_editor_retry_delete else R.string.events_editor_retry_save))
             }
         }
-        if (state.reviewRequired) TextButton(onClick = { discard = true }, enabled = !state.saving) { Text(stringResource(R.string.series_discard_review)) }
+        if (state.reviewRequired) TextButton(onClick = { discard = true }, enabled = controller.canReviewDraft) { Text(stringResource(R.string.series_discard_review)) }
         val locale = LocalLocale.current.platformLocale
         controller.masterStart?.takeIf { launch.scope == RecurrenceScope.ALL }?.let { start ->
             val label = when (start) {
@@ -106,10 +112,10 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
         if (launch.scope == RecurrenceScope.ALL && launch.action == SeriesEditorAction.EDIT) Text(stringResource(R.string.series_override_policy))
         Text(stringResource(R.string.events_editor_local_save), style = MaterialTheme.typography.bodySmall)
         if (launch.action == SeriesEditorAction.EDIT) Button(onClick = controller::save, enabled = controller.canChange && controller.hasChanges) { Text(stringResource(R.string.events_editor_save)) }
-        else TextButton(onClick = controller::requestDelete, enabled = !controller.recoveryOnly && !state.loading && !state.saving && !state.reviewRequired && !state.recoveryRequired && !state.retryReady && !state.draftReadFailed && state.result !is SeriesMutationResult.LocalDeleted) {
+        else TextButton(onClick = controller::requestDelete, enabled = !controller.recoveryOnly && !state.loading && !state.saving && !state.reviewing && !state.reviewRequired && !state.recoveryRequired && !state.retryReady && !state.draftReadFailed && state.result !is SeriesMutationResult.LocalDeleted) {
             Text(stringResource(R.string.series_editor_delete))
         }
-        TextButton(onClick = onClose, enabled = !state.saving) { Text(stringResource(R.string.events_editor_cancel)) }
+        TextButton(onClick = onClose, enabled = !state.saving && !state.reviewing) { Text(stringResource(R.string.events_editor_cancel)) }
     }
     if (state.confirmDelete || retryDelete) AlertDialog(onDismissRequest = { controller.cancelDelete(); retryDelete = false },
         title = { Text(stringResource(R.string.series_confirm_delete)) },
