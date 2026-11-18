@@ -2,7 +2,7 @@
 
 Audit date: **2026-11-18**. Target requested by the user: the **current Android phone app**, including its screen structure and interactions, rather than feature names alone. This is an initial reference audit, not a claim of exact parity or a replacement for the feature inventory in [GOOGLE_CALENDAR_AUDIT.md](GOOGLE_CALENDAR_AUDIT.md).
 
-Daylight already implements the principal calendar views and substantial editing safeguards. Its current presentation differs considerably from the official Android references: navigation is spread across several rows, views live outside the drawer, the Day month title does not open date navigation, and details/editing use long bottom sheets. The first alignment packet should fix the shared navigation shell before reskinning individual event forms.
+At the initial source checkpoint described below, Daylight already implemented the principal calendar views and substantial editing safeguards. Its presentation differed considerably from the official Android references: navigation is spread across several rows, views live outside the drawer, the Day month title does not open date navigation, and details/editing use long bottom sheets. The initial recommendation was to align the shared navigation shell before reskinning individual event forms; subsequent updates are recorded separately below.
 
 ## Live-reference update — 18 November 2026
 
@@ -29,9 +29,92 @@ Daylight's earlier screenshots use Robolectric/Roborazzi source-based rendering,
 Android app. Those tests cannot execute Google's APK. The running emulator can execute both apps;
 comparison evidence must distinguish those real-device captures from source-rendered baselines.
 
+### Bounded runtime follow-up — 18 November 2026
+
+The independent emulator audit finished **blocked before the main calendar**. Five inspected
+captures show the Google Workspace splash, “Checking info”, then a Google-server communication
+error; system/launcher ANRs were also observed, and Back returned to the launcher. Installed
+versionCode was **2018381752** on API35, `en-US`, 360×640dp at 320dpi, font scale1, light theme.
+No accounts or credentials were added. This sequence does not establish the cause of the error;
+no authentication, backend or network diagnosis is inferred.
+
+The observation ledger is `/tmp/daylight-google-ux-resume-observation.json`; the five capture
+files match `/tmp/daylight-google-ux-resume-*.png`. These are session-local evidence, not committed
+Google assets. **Main navigation, event editor, guests and recurrence remain UNVERIFIED live.**
+The separate native local-provider acceptance run is provider evidence, not Google UX certification.
+
+## APK resource inspection — 18 November 2026
+
+**Status: static resource candidate evidence only. Google main-calendar phone UX remains
+UNVERIFIED live.** This section supersedes the initial audit's APK-unavailable statements, but
+not its distinctions between packaged controls, documented behavior and observed interactions.
+The initial source/baseline comparisons below are historical; they do not describe every subsequent
+Daylight implementation change.
+
+The inspected archive was `/tmp/daylight-b29-calendar-candidate.apk`, package
+`com.google.android.calendar`, versionName **2026.44.0-1016863050-release**, versionCode
+**2018381752**, SHA256
+`46fcded5edececc7a35fa8bd06e3127aa0ed2ef52728a11491f1ed2e45ea41e7`.
+`aapt2 dump badging` reported minSdk26, targetSdk37 and compileSdk37. Read-only inspection used
+Android SDK37 `aapt2 dump resources`, `aapt2 dump xmltree --file …` and `apkanalyzer manifest print`.
+Resource IDs below identify this archive only; obfuscated XML paths are not stable public APIs.
+No DEX decompilation, account access or runtime interaction was part of this inspection. Full
+resource dumps remain session-local under `/tmp`; no Google assets, fonts, icons or resource files
+were copied into the repository. Only short control labels are quoted here.
+
+**R — observed packaged resource:** a layout/menu/string exists in this APK. It may belong to an
+alternate, adaptive, legacy, account-gated or remotely configured path. XML visibility defaults do
+not establish runtime visibility. Resources alone cannot establish current phone arrangement,
+gestures, animation, focus, accessibility, delivery semantics or pixel parity.
+
+| Surface | R: exact resource evidence | Interpretation and remaining limit |
+| --- | --- | --- |
+| Editor header and sheet states | `layout/editor_header` **`0x7f0e007c`**, `res/Gf.xml`: minimum64dp header, Close at start, Save at end and centered `drag_handle`; no title TextView in this header candidate. `layout/editor_sheet` **`0x7f0e007d`**, `res/4s.xml`: header, collapsed, half-collapsed and expanded stubs. `layout/editor_sheet_predictive` **`0x7f0e007e`**, `res/4B.xml`: rounded clipping wrapper. | Packaged evidence for multiple editor states, not proof which state opens for FAB, empty-slot or Edit. Daylight's current phone editors are full-height with persistent New/Edit titles; that implementation is **not verified Google parity**. Do not change source UI solely from this XML. |
+| View selection and drawer | `menu/view_switcher_menu` **`0x7f100012`**, `res/oC.xml`: Schedule, Day, Week, Month. Compact/expanded toggle layouts **`0x7f0e0221`** / **`0x7f0e0223`**, `res/GH.xml` / `res/BD.xml`. `string/list_week_view_3days_label` **`0x7f14063e`**: “3 days”. Drawer accessibility string **`0x7f140259`** identifies Calendar List and Settings. | Four-view resources coexist with 3-day strings and the earlier five-view promotional drawer. Neither removal of 3-day nor active toolbar placement is established. Inspect the actual current drawer and phone view chooser. |
+| Toolbar and date navigator | `menu/all_in_one_title_bar_with_one_google_bar` **`0x7f100000`**, `res/uA.xml`: view switcher, Search, Today, Tasks and account items; view switcher initially hidden. `layout/date_picker_button` **`0x7f0e005d`**, `res/2Z.xml`: clickable/focusable minimum48dp control with text, arrow and alternate content; arrow initially hidden. `layout/mini_month` **`0x7f0e00e2`**, `res/W6.xml`: `drag_up_view` and date-picker container. Show/hide month-picker strings **`0x7f140274`** / **`0x7f140267`**. | Supports a date-navigator candidate, not exact arrow visibility, drag behavior, expansion height or date-retention rules. Tasks remains outside Daylight scope. Year-optional picker resources elsewhere in the APK must not be assumed to be the event date picker. |
+| Add people | `layout/contact_picker_sheet` **`0x7f0e004f`**, `res/87.xml`: detached text toolbar and RecyclerView. Toolbar **`0x7f0e007b`**, `res/tS.xml`: search field, clear control and action. Add people **`0x7f1403b8`**, Suggestions **`0x7f1403c4`**, Search results **`0x7f1403c2`**, Done **`0x7f1403be`**, discard prompt **`0x7f1403bc`**. Manifest declares READ_CONTACTS. | Contact-search UI is a concrete candidate difference from Daylight's ordered raw email/name guest rows. A permission declaration does not prove prompting, autocomplete data source or denied-permission behavior. No contacts permission should be added solely from APK evidence. |
+| Event recurrence and scope | `layout/recurrence_picker_view` **`0x7f0e0190`**, `res/HB.xml`, class `com.google.android.calendar.recurrencepicker.RecurrencePickerView`: interval/frequency, weekday/monthly selectors and never/date/count controls; container **`0x7f0e018b`**, `res/D2.xml`. “Does not repeat” **`0x7f1404e0`**, “Custom…” **`0x7f1404d3`**, save-scope title **`0x7f1404e1`**. Scope strings This event **`0x7f14093c`**, following **`0x7f14093a`**, all **`0x7f140938`**; scope container **`0x7f0e01af`**, `res/yn1.xml`. | Presence does not establish offered scope, order or prompt timing for a given event. Another recurrence layout **`0x7f0e018a`**, `res/6z.xml`, contains Tasks-specific components and is not a safe event reference. Daylight's repeat panel and explicit typed review exist; exact arrangement remains unverified. Preserve recurrence safeguards. |
+| Inline RSVP | `layout/event_rsvp_actions_pill` **`0x7f0e0083`**, `res/qW.xml`: Yes, No, Maybe buttons and alternate Yes-with-location group. Labels **`0x7f1408d7`** / **`0x7f1408d5`** / **`0x7f1408d4`**. `menu/rsvp_location_menu` **`0x7f10000a`**, `res/dP.xml`: Yes, in-room and virtual variants. | Candidate difference from Daylight's separate Respond/scope workflow. Actual inline visibility, eligibility and recurring response flow require runtime proof. Attendance-mode choices need supported backend rights before exposure. |
+| Guest notifications | Invitation/update/cancellation prompt strings **`0x7f1405c6`**, **`0x7f1405d2`**, **`0x7f1405c7`**; Send **`0x7f1405ce`**, Don't send **`0x7f1405cd`**; message layout **`0x7f0e00a7`**, `res/SY.xml`. | No proof of prompt timing, recipient selection, server defaults or delivery. **Send/Don't send capability is unverified for Daylight.** CalendarContract and a local write acknowledgement cannot fake these semantics or prove invitation delivery; retain honest sync-adapter/local-save wording. |
+| Details overflow | `menu/event_view_overflow` **`0x7f100004`**, `res/dC.xml`: Delete, Email guests, Forward; Duplicate, Copy to and Report spam initially hidden/disabled. | Runtime capabilities can change these defaults. Do not infer that Google lacks duplication, remove supported Daylight actions or add unsupported email/forward controls from this menu alone. |
+
+### Current Daylight observations and next runtime checks
+
+At source checkpoint **`9d168f8`**, `PhoneEventEditor.kt`, `PhoneMeetingCreateEditor.kt` and
+`PhoneOwnedMeetingEditor.kt` implement full-height editors and persistent toolbar titles. The
+meeting forms expose raw guest rows, issued roles and removals; no contact-search picker or
+READ_CONTACTS permission was found. Responses use a separate workflow. These are observed
+Daylight implementation differences from **packaged candidates**, not confirmed differences from
+an exercised Google phone flow. Header/title treatment, initial sheet height/drag states, contact
+search and inline RSVP merit investigation before further cosmetic alignment. Static XML alone
+does not justify a source UI change or weakening durable-draft, permission, identity or recurrence
+guards.
+
+The next audit must use synthetic data and record APK/build identity, Android version, viewport,
+density/insets, locale, 12/24-hour setting, theme, font/display scale and account entitlements:
+
+1. Open the actual drawer and every offered view; locate the active view chooser, expand/collapse
+   the month title, page/select dates and use Today. Check selection/scroll retention and Back.
+2. Compare FAB creation, empty-slot tap/long-press and existing-event Edit. Capture initial height,
+   drag/expansion states, title/header, keyboard, Back and cancel paths before deciding whether the
+   full-height Daylight implementation matches any active Google path.
+3. With authorized synthetic contacts only, inspect Add people search/suggestions, Done, discard,
+   role choices and unavailable/denied contacts behavior. Do not log private contacts or events.
+4. Inspect the **event** recurrence flow, including custom interval, monthly rules, count/date end
+   conditions and Save-time scopes; distinguish it from Tasks. Preserve exact event identity,
+   count/exclusions and duration safeguards while comparing presentation.
+5. When dedicated organizer/invitee accounts are authorized and available, inspect inline RSVP and
+   invitation/update/removal/cancellation prompts. Record account gating and actual delivery as
+   separate evidence; neither exists merely because a string or local ACK exists.
+6. Repeat relevant flows with large text, RTL, accessibility focus/announcements and matched DST
+   dates. Runtime captures are required for hit-testing, focus order, gestures and grid transitions.
+
+No main Google calendar, event editor or account-backed meeting flow was verified by this static
+inspection. The independent emulator audit remains the authority for subsequent live observations.
+
 ## Evidence and reproducibility
 
-Evidence tags used in every comparison row:
+Evidence tags used in the initial comparison rows (R above is the later packaged-resource evidence):
 
 - **P0–P7 — observed reference image:** visually inspected official Play promotional screenshots. These show composited phone presentations, not an instrumented running app. They establish visible arrangement, not gesture behavior or dp measurements.
 - **H1–H6 — documented:** fetched the Android-specific official Help pages below on the audit date; instructions establish interactions, not exact pixels.
@@ -59,7 +142,7 @@ Evidence tags used in every comparison row:
 - **H5:** [Invite people — Android](https://support.google.com/calendar/answer/37161?hl=en&co=GENIE.Platform%3DAndroid).
 - **H6:** [Respond to event invitations — Android](https://support.google.com/calendar/answer/37135?hl=en&co=GENIE.Platform%3DAndroid).
 
-All six Help pages and the Play page returned HTTP200. The pages can change independently of releases. Help was read as text without a browser. No Google APK was downloaded, unpacked, executed or inspected. No live Google gesture was exercised. APK resources alone, if obtained later, would still not prove runtime navigation, accessibility or gestures.
+At the initial marketing/help checkpoint, all six Help pages and the Play page returned HTTP200. The pages can change independently of releases. Help was read as text without a browser. At that initial checkpoint no Google APK had been downloaded, unpacked, executed or inspected, and no live Google gesture had been exercised. The later live-reference and resource updates above supersede APK availability only; static resources still do not prove runtime navigation, accessibility or gestures.
 
 ### Daylight evidence inspected
 
