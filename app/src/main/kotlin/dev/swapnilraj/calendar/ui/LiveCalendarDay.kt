@@ -32,7 +32,7 @@ import dev.swapnilraj.calendar.ui.multiday.multiDayWindow
 import dev.swapnilraj.calendar.ui.multiday.MultiDayMinDate
 import dev.swapnilraj.calendar.ui.multiday.MultiDayMaxDate
 import dev.swapnilraj.calendar.ui.events.meetings.*
-import dev.swapnilraj.calendar.ui.events.EventDetailsStateSheet
+import dev.swapnilraj.calendar.ui.events.PhoneEventDetails
 import dev.swapnilraj.calendar.ui.events.SeriesEditorAction
 import dev.swapnilraj.calendar.ui.events.canPrepareSeriesScope
 import dev.swapnilraj.calendar.ui.events.DraftBrowserSheet
@@ -673,7 +673,7 @@ internal fun LiveCalendarDay(
             CalendarReadState.Unavailable -> CalendarReadState.Unavailable
             CalendarReadState.LimitExceeded -> CalendarReadState.LimitExceeded
         }
-        EventDetailsStateSheet(shown, onDismiss = { openedEvent = null }, onRetry = reader::refresh,
+        PhoneEventDetails(shown, onDismiss = { openedEvent = null }, onRetry = reader::refresh,
             onOpenLink = onOpenLink, displayZone = displayNow.zone, use24Hour = use24Hour,
             onEdit = if (allowed(SeriesEditorAction.EDIT)) ({ value -> beginEdit(value, false) }) else null,
             onDelete = if (allowed(SeriesEditorAction.DELETE)) ({ value -> beginEdit(value, true) }) else null,

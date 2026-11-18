@@ -19,7 +19,7 @@ import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.data.CalendarPreferenceState
 import dev.swapnilraj.calendar.data.reminders.ReminderPreferenceState
-import dev.swapnilraj.calendar.ui.events.EventDetailsStateSheet
+import dev.swapnilraj.calendar.ui.events.PhoneEventDetails
 import dev.swapnilraj.calendar.ui.settings.DisplayZoneOption
 import java.time.ZoneId
 import kotlinx.coroutines.flow.collectLatest
@@ -33,7 +33,7 @@ internal fun ReminderOpenContent(app: CalendarApp, post: ReminderPostIdentity?, 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     CalendarPreferenceTheme(preferences) {
         Surface(Modifier.fillMaxSize()) {
-            if (post == null) EventDetailsStateSheet(CalendarReadState.Unavailable, onDismiss, {}, {})
+            if (post == null) PhoneEventDetails(CalendarReadState.Unavailable, onDismiss, {}, {})
             else PermissionGate {
                 val options = (preferences as? CalendarPreferenceState.Ready)?.value?.options
                 val deviceZone = ZoneId.systemDefault()
@@ -67,7 +67,7 @@ internal fun ReminderOpenContent(app: CalendarApp, post: ReminderPostIdentity?, 
                         }
                     }
                 } }
-                EventDetailsStateSheet(state, onDismiss,
+                PhoneEventDetails(state, onDismiss,
                     onRetry = { app.settings.refreshPreferences(); app.calendarReader.refresh(); app.reminderRuntime.onResume() },
                     onOpenLink = { value ->
                         val uri = Uri.parse(value)

@@ -22,6 +22,13 @@ Android emulator; see the dated evidence update in GOOGLE_CALENDAR_UX_PARITY.md.
 flows and exact live/pixel parity remain unverified. Provider
 permissions, draft preservation and uncertain-save handling remain required under the matched UI.
 
+Production ordinary create/edit and event details use full-height phone presentations with fixed
+close/Save or close/edit/overflow controls. Date/time and repeat inputs open focused pickers, with
+raw invalid input and explicit offset choices retained for review. This presentation delegates the
+existing draft, permission, conflict and recovery rules; it does not authorize writes on opening or
+dismissing. Details lose their old payload and actions immediately when the read state loses
+authority. Standalone legacy sheets remain available to existing component fixtures.
+
 The live native creation editor supports authored daily, weekly, monthly and yearly rules with
 interval, count or inclusive date limits, explicit master-time review and durable frozen recovery.
 A recurring local save is reported only after known-master journal receipt and actual first native
