@@ -229,7 +229,11 @@ class PublicCalendarEntryJourneyTest {
         compose.onNodeWithText("Save").assertIsNotEnabled()
         assertEquals(frozen.payload, runBlocking { f.app.calendarLocalStore.load(frozen.id) }!!.payload)
         checkResult(f)
-        compose.waitForIdle(); assertEquals(1, f.provider.batchCount)
+        // Compose idleness does not await the writer's IO coroutine. Prove the denied recovery
+        // finished before granting READ, so the next lifecycle transition is a separate action.
+        shown(f.app.getString(R.string.phone_event_pending_permission))
+        assertEquals(frozen.payload, runBlocking { f.app.calendarLocalStore.load(frozen.id) }!!.payload)
+        assertEquals(1, f.provider.batchCount)
         f.provider.failReadsAfterCommit = false
         shadowOf(f.app).grantPermissions(Manifest.permission.READ_CALENDAR)
         compose.runOnUiThread { editor.pause().stop().restart().start().resume() }
