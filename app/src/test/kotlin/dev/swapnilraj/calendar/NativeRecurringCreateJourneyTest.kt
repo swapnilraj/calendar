@@ -3,6 +3,8 @@ package dev.swapnilraj.calendar
 import android.Manifest
 import android.provider.CalendarContract
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.data.calendar.CalendarLocalStore
@@ -76,7 +78,7 @@ class NativeRecurringCreateJourneyTest {
         review()
         assertUnsubmitted(f)
         confirm()
-        shown(f.app.getString(R.string.events_editor_permission))
+        shown(f.app.getString(R.string.phone_event_permission))
         assertUnsubmitted(f)
         shadowOf(f.app).grantPermissions(Manifest.permission.WRITE_CALENDAR)
         compose.runOnUiThread { f.activity.pause().stop().restart().start().resume() }
@@ -86,8 +88,10 @@ class NativeRecurringCreateJourneyTest {
         shown("Save")
         assertUnsubmitted(f)
         compose.onAllNodesWithText("Create recurring event").assertCountEquals(0)
-        compose.onNodeWithText("Daily").performScrollTo().assertIsSelected()
+        compose.onNodeWithText("Daily").performScrollTo().performClick()
+        compose.onNode(hasText("Daily") and isSelectable()).assertIsSelected()
         compose.onNode(hasSetTextAction() and hasText("Occurrences (1–10000)")).performScrollTo().assertTextContains("4")
+        compose.onNodeWithText("Done").performClick()
         review()
         assertUnsubmitted(f)
         confirm()
@@ -100,15 +104,18 @@ class NativeRecurringCreateJourneyTest {
         shown("Create event")
         compose.onNodeWithText("Create event").performClick()
         shown("Save")
-        compose.onNode(hasSetTextAction() and hasText("Title")).performScrollTo().performTextReplacement(title)
-        compose.onNodeWithText("Synthetic calendar · owner@example.invalid").performScrollTo().performClick()
+        compose.onNode(hasSetTextAction() and hasContentDescription("Title")).performScrollTo().performTextReplacement(title)
+        compose.onNodeWithText(f.app.getString(R.string.phone_event_choose_calendar)).performScrollTo().performClick()
+        compose.onNode(hasText("Synthetic calendar") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)).performClick()
+        compose.onNodeWithText("Does not repeat").performScrollTo().performClick()
         compose.onNodeWithText("Daily").performScrollTo().performClick()
         compose.onNodeWithText("After a number of occurrences").performScrollTo().performClick()
         compose.onNode(hasSetTextAction() and hasText("Occurrences (1–10000)")).performScrollTo().performTextReplacement("4")
+        compose.onNodeWithText("Done").performClick()
         assertUnsubmitted(f)
     }
     private fun review() {
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performClick()
         shown("Review recurring event")
         compose.onNodeWithText("After 4 occurrences").assertExists()
     }

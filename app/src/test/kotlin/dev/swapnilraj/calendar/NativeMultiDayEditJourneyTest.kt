@@ -63,7 +63,7 @@ class NativeMultiDayEditJourneyTest {
         val retained = runBlocking { f.app.calendarLocalStore.list() }.single()
         f.provider.setCalendar("_sync_id", "replacement-calendar-B")
         compose.runOnUiThread { f.activity.recreate() }
-        shown("Replace with a new draft")
+        shown("Start a new draft")
         compose.onNodeWithText("Edit event").assertExists(); compose.onNodeWithText("New event").assertDoesNotExist()
         compose.onNodeWithText("Save").assertIsNotEnabled()
         compose.onNodeWithText("Delete event").assertDoesNotExist()
@@ -114,7 +114,7 @@ class NativeMultiDayEditJourneyTest {
         assertEquals(0, f.provider.batchCount)
     }
     private fun save(f: Fixture) {
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performClick()
         compose.waitUntil(15_000) {
             compose.waitForIdle()
             f.app.calendarLocalStore.readableDatabase.rawQuery("SELECT COUNT(*) FROM mutation_journal WHERE phase='VERIFIED'", null).use {
