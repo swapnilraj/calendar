@@ -59,6 +59,9 @@ class CalendarMeetingWriterTest {
                 put("attendeeStatus", 1); put("attendeeRelationship", 1); put("attendeeType", 2); put("opaque_child", "keep guest metadata")
             })
             table("reminders", mapOf("_id" to 30L, "event_id" to 10L, "minutes" to -1L, "method" to 0L))
+            // CalendarProvider's attendee projection map includes joined Events fields.
+            // Changing the owner's RSVP changes this derived field for EVERY guest row.
+            db.execSQL("CREATE VIEW attendee_view AS SELECT a.*, e.selfAttendeeStatus AS selfAttendeeStatus, e.eventStatus AS eventStatus FROM attendees a JOIN events e ON a.event_id = e._id")
         }
         private fun table(name: String, row: Map<String, Any?>) {
             val numbers = setOf("original_id", "originalInstanceTime")
@@ -94,7 +97,7 @@ class CalendarMeetingWriterTest {
                 val fields = projection!!.map { when (it) { "event_id" -> "_id AS event_id"; "begin" -> "dtstart AS begin"; "end" -> "dtend AS end"; else -> it } }.toTypedArray()
                 return db.query("events", fields, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort?.replace("begin", "dtstart")?.replace("event_id", "_id"))
             }
-            val result = db.query(path, projection, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
+            val result = db.query(if (path == "attendees") "attendee_view" else path, projection, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
             // Materialize the fixture cursor before simulating a concurrent provider change.
             result.count
             afterQuery?.invoke(path, selection)
@@ -167,6 +170,7 @@ class CalendarMeetingWriterTest {
                 assertEquals("keep event metadata", f.provider.value("events", "opaque_event"))
                 assertEquals("-1", f.provider.value("reminders", "minutes", 30))
             }
+            assertTrue(f.provider.reads.filter { it.path == "attendees" }.all { it.fields != null })
         }
     }
 
@@ -484,8 +488,75 @@ class CalendarMeetingWriterTest {
             assertEquals(CalendarContract.Attendees.CONTENT_URI, write.uri)
             assertEquals("_id = ? AND event_id = ? AND attendeeEmail = ? AND attendeeStatus = ?", write.selection)
             assertEquals(listOf("20", "10", "actor@example.invalid", "3"), write.args)
-            assertTrue(f.provider.reads.any { it.path == "attendees" && it.fields == null && it.selection == "_id = ? AND event_id = ? AND attendeeEmail = ?" })
+            assertTrue(f.provider.reads.any { it.path == "attendees" && it.fields?.contains("attendeeIdentity") == true && it.selection == "_id = ? AND event_id = ? AND attendeeEmail = ?" })
             assertEquals("1", f.provider.value("attendees", "attendeeStatus"))
+        }
+    }
+
+    @Test fun joinedAttendeeProjectionChangesEveryDerivedSelfStatusAndOldPostAssertionRollsBack() = runBlocking {
+        fixture { f ->
+            fun rawGuests(): List<Map<String, String?>> = f.provider.query(CalendarContract.Attendees.CONTENT_URI, null, "event_id = ?", arrayOf("10"), "_id ASC").use { cursor ->
+                buildList { while (cursor.moveToNext()) add(cursor.columnNames.associateWith { cursor.getString(cursor.getColumnIndexOrThrow(it)) }) }
+            }
+            val before = rawGuests()
+            assertEquals(listOf("3", "3"), before.map { it["selfAttendeeStatus"] })
+            val change = ContentValues().apply { put(CalendarContract.Attendees.ATTENDEE_STATUS, 1) }
+            val guard = "_id = ? AND event_id = ? AND attendeeEmail = ? AND attendeeStatus = ?"
+            assertEquals(1, f.provider.update(CalendarContract.Attendees.CONTENT_URI, change, guard, arrayOf("20", "10", "actor@example.invalid", "3")))
+            assertEquals(listOf("1", "1"), rawGuests().map { it["selfAttendeeStatus"] })
+            f.provider.update(CalendarContract.Attendees.CONTENT_URI, ContentValues().apply { put(CalendarContract.Attendees.ATTENDEE_STATUS, 3) },
+                guard, arrayOf("20", "10", "actor@example.invalid", "1"))
+            val oldExpected = before.first() + (CalendarContract.Attendees.ATTENDEE_STATUS to "1")
+            val oldPostAssert = ContentProviderOperation.newAssertQuery(ContentUris.withAppendedId(CalendarContract.Attendees.CONTENT_URI, 20))
+                .withValues(ContentValues().apply { oldExpected.forEach { (key, value) -> if (value == null) putNull(key) else put(key, value) } })
+                .withExpectedCount(1).withYieldAllowed(false).build()
+            val update = ContentProviderOperation.newUpdate(CalendarContract.Attendees.CONTENT_URI).withValues(change)
+                .withSelection(guard, arrayOf("20", "10", "actor@example.invalid", "3")).withExpectedCount(1).withYieldAllowed(false).build()
+            try { f.provider.applyBatch(arrayListOf(update, oldPostAssert)); fail("Old null-projection postassert must fail on the joined view") }
+            catch (_: OperationApplicationException) { }
+            assertEquals("3", f.provider.value("attendees", "attendeeStatus"))
+            assertEquals("3", f.provider.value("events", "selfAttendeeStatus"))
+            val editable = f.editable()
+            val captured = org.json.JSONObject(f.store.edit(editable.token.value)!!).getJSONArray("attendees")
+            repeat(captured.length()) { index ->
+                assertFalse(captured.getJSONObject(index).has("selfAttendeeStatus"))
+                assertFalse(captured.getJSONObject(index).has("opaque_child"))
+            }
+            assertEquals(MeetingMutationResult.LocalSaved(selected, RecurrenceScope.THIS), f.writer.mutate("base-columns", selected, editable.token, respond()))
+            assertEquals("keep self metadata", f.provider.value("attendees", "opaque_child"))
+            assertEquals("keep guest metadata", f.provider.value("attendees", "opaque_child", 21))
+        }
+    }
+
+    @Test fun legacyExtraAttendeeColumnsAreNeverSilentlyDroppedForDispatchOrCommittedRecovery() = runBlocking {
+        fixture { f ->
+            val editable = f.editable()
+            val source = org.json.JSONObject(f.store.edit(editable.token.value)!!)
+            val guests = source.getJSONArray("attendees")
+            repeat(guests.length()) { index ->
+                val guest = guests.getJSONObject(index)
+                guest.put("selfAttendeeStatus", "3").put("opaque_child", if (guest.getString("_id") == "20") "keep self metadata" else "keep guest metadata")
+                val sorted = org.json.JSONObject()
+                guest.keys().asSequence().toList().sorted().forEach { key -> sorted.put(key, guest.get(key)) }
+                guests.put(index, sorted)
+            }
+            val legacyRaw = source.toString()
+            fun hash(raw: String) = java.security.MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+            val legacyToken = EditToken("meeting-edit-v1:" + hash("MEETING_EDIT_V1" + legacyRaw))
+            f.store.saveEdit(legacyToken.value, legacyRaw)
+            assertEquals(common(MutationResult.Conflict(null)), f.writer.mutate("legacy-dispatch", selected, legacyToken, respond()))
+            assertNull(f.store.operation("legacy-dispatch"))
+            assertEquals(0, f.provider.batchCount)
+            assertTrue(f.writer.mutate("new-save", selected, editable.token, respond()) is MeetingMutationResult.LocalSaved)
+            val operation = f.store.operation("new-save")!!
+            val receipt = org.json.JSONObject(operation.resultRef!!)
+            receipt.getJSONObject("command").put("token", legacyToken.value)
+            val signature = hash("MEETING_COMMAND_V1" + receipt.getJSONObject("command").toString())
+            receipt.put("signature", signature)
+            f.store.prepare("legacy-commit", signature, operation.kind)
+            f.store.mark("legacy-commit", "COMMITTED", receipt.toString())
+            assertTrue((f.writer.recover("legacy-commit") as MeetingMutationResult.Common).outcome is MutationResult.Uncertain)
+            assertEquals(1, f.provider.batchCount)
         }
     }
 

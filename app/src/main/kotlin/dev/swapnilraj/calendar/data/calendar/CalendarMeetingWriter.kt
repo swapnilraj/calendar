@@ -241,8 +241,8 @@ class CalendarMeetingWriter(
                 throw Review("A unique exact calendar-owner attendee is required")
             val id = candidates.single().long("_id")!!
             rows(CalendarContract.Attendees.CONTENT_URI, "_id = ? AND event_id = ? AND attendeeEmail = ?",
-                arrayOf(id.toString(), selected.eventId.toString(), owner), 1)
-        } else rows(CalendarContract.Attendees.CONTENT_URI, "event_id = ?", arrayOf(selected.eventId.toString()), readBudgets.maxDetailChildren)
+                arrayOf(id.toString(), selected.eventId.toString(), owner), 1, attendeeFields)
+        } else rows(CalendarContract.Attendees.CONTENT_URI, "event_id = ?", arrayOf(selected.eventId.toString()), readBudgets.maxDetailChildren, attendeeFields)
         if (attendees.any { it.long("event_id") != selected.eventId || it.long("_id") == null } || attendees.map { it["_id"] }.toSet().size != attendees.size) throw Review("Ambiguous attendee identities")
         val matching = attendees.filter { it[CalendarContract.Attendees.ATTENDEE_EMAIL]?.trim()?.equals(owner.trim(), ignoreCase = true) == true }
         if (matching.size != 1 || matching.single()[CalendarContract.Attendees.ATTENDEE_EMAIL] != owner) throw Review("A unique exact calendar-owner attendee is required")
@@ -283,7 +283,7 @@ class CalendarMeetingWriter(
         assertRow(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, source.selected.eventId), source.event),
         if (source.selfOnly) assertOwnCandidate(source) else
             ContentProviderOperation.newAssertQuery(CalendarContract.Attendees.CONTENT_URI).withSelection("event_id = ?", arrayOf(source.selected.eventId.toString()))
-                .withExpectedCount(source.attendees.size).withYieldAllowed(false).build(),
+                .withValue(CalendarContract.Attendees.EVENT_ID, source.selected.eventId).withExpectedCount(source.attendees.size).withYieldAllowed(false).build(),
     ).apply { source.attendees.forEach { add(assertRow(ContentUris.withAppendedId(CalendarContract.Attendees.CONTENT_URI, it.long("_id")!!), it)) } }
 
     private fun assertOwnCandidate(source: Source): ContentProviderOperation {
@@ -347,6 +347,15 @@ class CalendarMeetingWriter(
             }
             return "event_id = ? AND TRIM(attendeeEmail, ?) GLOB ?" to arrayOf(eventId.toString(), trimCharacters, pattern)
         }
+        // AOSP sAttendeesProjectionMap also exposes joined Events columns. Projection=null
+        // would capture derived event.selfAttendeeStatus on EVERY attendee, which RSVP changes.
+        // Bind/assert documented attendee columns only. The status-only delta never copies or
+        // overwrites unrepresented OEM columns; their values are not an observed-row proof.
+        private val attendeeFields = arrayOf(CalendarContract.Attendees._ID, CalendarContract.Attendees.EVENT_ID,
+            CalendarContract.Attendees.ATTENDEE_NAME, CalendarContract.Attendees.ATTENDEE_EMAIL,
+            CalendarContract.Attendees.ATTENDEE_STATUS, CalendarContract.Attendees.ATTENDEE_RELATIONSHIP,
+            CalendarContract.Attendees.ATTENDEE_TYPE, CalendarContract.Attendees.ATTENDEE_IDENTITY,
+            CalendarContract.Attendees.ATTENDEE_ID_NAMESPACE)
         private const val Feature = "MEETING_EDIT_V1"
         private const val CommandFeature = "MEETING_COMMAND_V1"
         private const val Kind = "MEETING_V1_THIS_RESPOND"
