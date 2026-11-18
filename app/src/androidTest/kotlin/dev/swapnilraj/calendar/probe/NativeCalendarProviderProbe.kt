@@ -2,6 +2,7 @@ package dev.swapnilraj.calendar.probe
 
 import android.Manifest
 import android.app.Activity
+import android.app.Application
 import android.app.Instrumentation
 import android.content.ContentProviderOperation
 import android.content.ContentProviderResult
@@ -36,7 +37,12 @@ import org.json.JSONObject
  * Explicitly opted-in, SDK-only native LOCAL-provider experiment. This is not a test runner for
  * Google sync, a production provider attestor, or an entry point included in the application APK.
  *
- * Required instrumentation arguments (all pins are checked before any fixture mutation):
+ * Read-only bootstrap: probeOptIn=IDENTITY_ONLY_V1 and probeRunId=<canonical UUID> emits
+ * providerIdentity using PackageManager and public APK files only. It performs no calendar query,
+ * permission check/grant, fixture mutation, or calendar cleanup. Use its complete signing history
+ * and binary/build descriptor to supply the strict pins for a separate explicitly opted-in run.
+ *
+ * Required LOCAL-fixture arguments (all pins are checked before any fixture mutation):
  * probeOptIn=LOCAL_FIXTURE_V1; probeRunId=<canonical UUID>; expectedBuildFingerprint;
  * expectedProviderPackage; expectedProviderVersion; expectedBaseSha256;
  * expectedSplitsJson=[{"name":"split-name.apk","sha256":"..."}] (sorted by name, [] allowed);
@@ -50,6 +56,11 @@ import org.json.JSONObject
  */
 class NativeCalendarProviderProbe : Instrumentation() {
     private var arguments = Bundle()
+
+    // This probe exercises the native provider only. Avoid CalendarApp's reminder/widget startup;
+    // no application manifest or production initialization behavior changes.
+    override fun newApplication(cl: ClassLoader, className: String, context: Context): Application =
+        super.newApplication(cl, Application::class.java.name, context)
 
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
@@ -71,7 +82,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
         } catch (failure: Exception) {
             report.put("failure", probe.safeFailure(failure))
         } finally {
-            val cleaned = probe.cleanup(report)
+            val cleaned = if (probe.identityOnly) true else probe.cleanup(report)
             probe.close()
             report.put("status", if (successful && cleaned) "PASS" else "FAIL")
             var encoded = report.toString()
@@ -124,10 +135,20 @@ class NativeCalendarProviderProbe : Instrumentation() {
         private val cases = JSONArray()
         private lateinit var pinned: JSONObject
         private var endZoneMode = "distinct"
+        var identityOnly: Boolean = false
+            private set
 
         fun run(report: JSONObject) {
-            requireCondition(argument("probeOptIn") == "LOCAL_FIXTURE_V1", "OPT_IN_REQUIRED")
+            val optIn = argument("probeOptIn")
+            requireCondition(optIn in setOf("LOCAL_FIXTURE_V1", "IDENTITY_ONLY_V1"), "OPT_IN_REQUIRED")
+            identityOnly = optIn == "IDENTITY_ONLY_V1"
             runId = argument("probeRunId").also { requireCondition(UUID.fromString(it).toString() == it, "INVALID_RUN_ID") }
+            report.put("runId", runId)
+            if (identityOnly) {
+                step("identity-only")
+                report.put("scope", "native-provider-identity-only").put("providerIdentity", identity())
+                return
+            }
             account = "daylight-native-probe-${requireNotNull(runId)}"
             owner = "${requireNotNull(runId)}@probe.invalid"
             endZoneMode = arguments.getString("probeEndZoneMode") ?: "distinct"
