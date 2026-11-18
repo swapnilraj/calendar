@@ -3,7 +3,6 @@ package dev.swapnilraj.calendar.android.reminders
 import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.atomic.AtomicBoolean
-import dev.swapnilraj.calendar.core.AlarmSchedulingResult
 import dev.swapnilraj.calendar.core.ReminderConfiguration
 import dev.swapnilraj.calendar.core.ReminderPostIdentity
 import dev.swapnilraj.calendar.core.ReminderVersion
@@ -16,11 +15,6 @@ import kotlinx.coroutines.sync.withLock
 
 /** The Application owns exactly one runtime/coordinator. Framework components never create stores. */
 interface ReminderRuntimeOwner { val reminderRuntime: ReminderRuntime }
-
-/** Cancellation acceptance is not a physical-device observation or a ledger-history proof. */
-data class ReminderSuppressionResult(val notificationCancellationAccepted: Boolean, val alarm: AlarmSchedulingResult) {
-    val accepted: Boolean get() = notificationCancellationAccepted && alarm == AlarmSchedulingResult.CANCELLED
-}
 
 interface ReminderOperations {
     /** Narrow teardown only: no settings/provider/ledger access and no production no-op default. */
