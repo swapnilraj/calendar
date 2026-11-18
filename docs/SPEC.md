@@ -679,3 +679,12 @@ identical:
 - Home-screen widgets.
 - Our own sync or accounts.
 - Notifications. The system calendar app keeps sending reminders for the same events.
+
+## Signed candidate release process
+
+A manual release workflow must use an owner-controlled stable key held outside Git, verify its
+public certificate fingerprint, embed an increasing version code and create a draft GitHub release
+with the APK and checksum after the complete automated gate. It must never generate a replacement
+key or publish automatically. Draft candidates remain pending until account/device/upgrade and
+seven-day beta acceptance is recorded. See [RELEASE_SIGNING.md](RELEASE_SIGNING.md) for provisioning
+and the one-time debug-to-stable certificate transition.
