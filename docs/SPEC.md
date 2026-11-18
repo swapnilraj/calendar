@@ -398,10 +398,25 @@ malformed child acknowledgement becomes a self-contained COMMITTED receipt with 
 proof and remains Uncertain without replay or child-ID reconstruction. Reminder verification reads
 only bounded ID/event membership from the raw collection and payloads from UID-guarded joined item
 queries, followed by repeated membership and parent checks. Source eligibility is advisory; the
-actual authored event, guests and batch/receipt budgets are separately validated. Schema1 meeting
-drafts and the connected editor still block recurrence; V2 authoring UI and real account delivery
-verification remain separate. The guest-creation interface is connected through eligible unsaved
+actual authored event, guests and batch/receipt budgets are separately validated. Version6 document
+schema2 connects issued recurring rights, raw Repeat controls and an explicit typed recurrence review.
+Confirmation rechecks exact source rights before a durable frozen command and provider dispatch;
+permission grants never submit automatically. The first preview must equal DTSTART. Recurring success
+requires ALL scope and the exact first bounds/master/original key; one-off success keeps THIS scope.
+Schema1 frozen serialization and recovery remain unchanged. Unfrozen schema1 upgrades only after
+explicit fresh calendar selection. Frozen schema2 requests never reparse raw inputs or recompile the
+recurrence on recovery/retry. Exact no-op callbacks preserve review; real changes invalidate it.
+Real account delivery verification remains separate. The guest-creation interface is connected through eligible unsaved
 ordinary events; invitation delivery still requires controlled account verification.
+
+New one-off meeting operations use self-contained receipt2 with the exact issued source,
+provider values/child rows, stable generated UID and first bounds frozen once before dispatch.
+Concurrent preparation and explicit retries adopt the winning stored plan. Known-commit recovery
+works after edit snapshots are removed, requires no WRITE permission and never creates again.
+Command/token/signature and retirement formats remain compatible. Historical receipt1 is not
+rewritten: it retains its local snapshot dependency and remains Uncertain if that proof is gone.
+Malformed child acknowledgement with a known positive parent ID becomes a permanent incomplete
+COMMITTED receipt for new operations; no child search, reconstruction or replay follows.
 
 Owned one-off organizer edits, guest add/type/remove and cancellation also have a bounded provider
 executor behind the meeting port. It issues THIS-only rights after exact owner/account/organizer and
@@ -434,15 +449,19 @@ actual edits invalidate review. Once a local draft compare-and-set starts, its r
 ownership adoption finish together before caller cancellation is honored. Provider operations remain
 cancellable; cancelling during local freeze retains the original request without dispatching it. A sequence of separate load/upsert calls is not atomic. Series/response editors use atomic
 records and generations; ordinary editors and connected frozen-command retirement workflows also
-use exact-record ownership. A malformed child acknowledgement must never trigger a replay; where only a parent
-ID was acknowledged, conservative uncertainty may outlive that partial in-memory identity until a
-durable partial-receipt workflow is implemented.
+use exact-record ownership. A malformed child acknowledgement must never trigger a replay.
+Historical receipt formats may retain conservative uncertainty after a partial acknowledgement;
+new self-contained meeting receipts preserve known parent identity without claiming complete success.
 
 A pure metadata-only FOLLOWING helper proves its own bounded nominal COUNT/UNTIL partition and
 literal native EXDATE groups without trusting a caller-supplied plan. It preserves exception original
 identity, actual bounds, untouched metadata and selected dirty-field merge/conflict semantics. Its
-output is semantic planning only. Native exception transfer/cache invalidation and independently
-admitted provider profiles remain separate execution gates; this helper enables no new capability.
+output is semantic planning only. Nonzero prefix writes repeat exact unchanged original start,
+explicit NULL end, raw duration/zone/all-day/original context alongside the new RRULE so native
+instance/raw-time refresh can run; unrelated end-zone metadata stays untouched. Synthetic cache
+checks do not prove installed-provider behavior. Native exception transfer, installed-provider warm
+cache acceptance and independently admitted profiles remain separate gates; this helper enables no
+new capability.
 
 ### M8 — Search, preferences and Android entry points
 

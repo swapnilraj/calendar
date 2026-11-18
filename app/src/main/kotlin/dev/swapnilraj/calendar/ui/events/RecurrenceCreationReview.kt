@@ -59,7 +59,7 @@ internal fun RecurrenceCreationReview(plan: RecurrenceCreationPlan, spec: Recurr
                     is EventTime.Timed -> timedDateText(time, plan.eventZone, locale, true)
                 })
                 if (!plan.allDay) {
-                    Text(stringResource(R.string.recurrence_editor_zone_value, bidi.unicodeWrap(if (plan.eventZone.id == "Z") "UTC" else plan.eventZone.id)))
+                    Text(bidi.unicodeWrap(stringResource(R.string.recurrence_editor_zone_value, if (plan.eventZone.id == "Z") "UTC" else plan.eventZone.id)))
                     val seconds = (plan.firstTime as EventTime.Timed).duration.seconds
                     Text(bidi.unicodeWrap(if (seconds % 60 == 0L) pluralStringResource(R.plurals.events_duration_minutes,
                         (seconds / 60).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), seconds / 60)
