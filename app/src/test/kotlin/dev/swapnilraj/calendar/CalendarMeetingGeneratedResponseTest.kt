@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.net.Uri
 import android.provider.CalendarContract
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.SyntheticCloneProviderPolicy
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.*
@@ -22,13 +23,13 @@ class CalendarMeetingGeneratedResponseTest {
     private val start=Instant.parse("2026-11-18T09:00:00Z")
     private val selected=EventRef(CalendarId(2),10,start.plusSeconds(86400),start.plusSeconds(90000),RecurrenceRef(10,start.plusSeconds(86400)))
     private data class Fixture(val p: CalendarMeetingSeriesWriterTest.Provider,val writer: CalendarMeetingWriter,val reader: CalendarReader,val store: CalendarLocalStore,val permissions: MutableSet<String>)
-    private suspend fun fixture(block:suspend (Fixture)->Unit) {
+    private suspend fun fixture(providerClonePolicy:ProviderClonePolicy=SyntheticCloneProviderPolicy,block:suspend (Fixture)->Unit) {
         val context=RuntimeEnvironment.getApplication();val p=CalendarMeetingSeriesWriterTest.Provider(start);p.enableGenerated()
         org.robolectric.shadows.ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY,p)
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default);val name="generated-response-${UUID.randomUUID()}.db"
         val store=CalendarLocalStore(context,name);val permissions=mutableSetOf(Manifest.permission.READ_CALENDAR,Manifest.permission.WRITE_CALENDAR)
         val reader=CalendarReader(context.contentResolver,scope,stopTimeoutMillis=0)
-        val writer=CalendarMeetingWriter(context.contentResolver,reader,store,permissions::contains)
+        val writer=CalendarMeetingWriter(context.contentResolver,reader,store,permissions::contains,providerClonePolicy=providerClonePolicy)
         try {block(Fixture(p,writer,reader,store,permissions))} finally {scope.cancel();scope.coroutineContext[Job]!!.join();store.close();p.db.close();context.deleteDatabase(name)}
     }
     private suspend fun Fixture.edit(ref:EventRef=selected):EditableMeeting {
@@ -202,6 +203,41 @@ class CalendarMeetingGeneratedResponseTest {
             if(mode<2){assertTrue(f.writer.loadForEdit(selected) is MeetingReadResult.NeedsReview);assertEquals(0,f.p.batchCount)}
             else {val edit=f.edit();val result=f.writer.mutate("nullable-status",selected,edit.token,respond(response=MeetingResponse.NO))
                 assertTrue(result.toString(),result is MeetingMutationResult.LocalSaved);assertNull(f.p.value("events","eventStatus",(result as MeetingMutationResult.LocalSaved).selected.eventId))}
+        }
+    }
+
+    @Test fun unverifiedGeneratedClonePolicyLeavesAllSelfOnlyAndNeverAuditsOrJournalsClone()=runBlocking {fixture(providerClonePolicy=ProviderClonePolicy.Unverified){f->
+        val edit=f.edit();assertEquals(AccessDecision.DENIED,edit.scopes.getValue(RecurrenceScope.THIS).respond);assertEquals(AccessDecision.ALLOWED,edit.scopes.getValue(RecurrenceScope.ALL).respond)
+        assertFalse(f.p.queries.any{it.path=="attendees"&&it.fields==null})
+        assertTrue(f.writer.mutate("unverified-generated",selected,edit.token,respond()) is MeetingMutationResult.NeedsReview)
+        assertNull(f.store.operation("unverified-generated"));assertEquals(0,f.p.batchCount)
+        assertTrue(f.writer.mutate("inplace-all",selected,edit.token,respond(RecurrenceScope.ALL)) is MeetingMutationResult.LocalSaved)
+    }}
+    @Test fun generatedProfileRevocationAtPreparedAndAttemptedBoundaryNeverDispatchesOrReplays()=runBlocking {
+        for(stopAt in listOf("PREPARED","ATTEMPTED")){
+            var store:CalendarLocalStore?=null;var denied=true
+            val policy=ProviderClonePolicy{op->if(denied&&store?.operationHeader("generated-profile")?.phase==stopAt)null else SyntheticCloneProviderPolicy.currentProfile(op)}
+            fixture(providerClonePolicy=policy){f->store=f.store;val edit=f.edit();val frozen=respond()
+                val outcome=f.writer.mutate("generated-profile",selected,edit.token,frozen)
+                assertEquals(stopAt,f.store.operation("generated-profile")!!.phase);assertEquals(0,f.p.batchCount);denied=false
+                if(stopAt=="PREPARED"){assertTrue(outcome is MeetingMutationResult.NeedsReview);assertTrue(f.writer.mutate("generated-profile",selected,edit.token,frozen) is MeetingMutationResult.LocalSaved)}
+                else {assertEquals(common(MutationResult.Uncertain("generated-profile",null)),outcome);assertEquals(common(MutationResult.Uncertain("generated-profile",null)),f.writer.mutate("generated-profile",selected,edit.token,frozen));assertEquals(0,f.p.batchCount)}
+            }
+        }
+    }
+    @Test fun profileLossAfterKnownGeneratedCommitKeepsReadOnlyRecoveryAndCompositeAllAvailable()=runBlocking {
+        var admitted=true;val policy=ProviderClonePolicy{op->if(admitted)SyntheticCloneProviderPolicy.currentProfile(op)else null}
+        fixture(providerClonePolicy=policy){f->val edit=f.edit();admitted=false
+            assertTrue(f.writer.mutate("existing-composite-all",selected,edit.token,respond(RecurrenceScope.ALL)) is MeetingMutationResult.LocalSaved)
+            assertEquals(1,f.p.batchCount)
+        }
+        admitted=true
+        fixture(providerClonePolicy=policy){f->val edit=f.edit();f.p.delayGeneratedInstance=true
+            f.writer.mutate("known-generated-profile",selected,edit.token,respond());val id=JSONObject(f.store.operation("known-generated-profile")!!.resultRef!!).getLong("event")
+            assertEquals("COMMITTED",f.store.operation("known-generated-profile")!!.phase)
+            admitted=false;f.p.delayGeneratedInstance=false;f.permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            f.p.db.execSQL("INSERT INTO instances VALUES(?,?,?)",arrayOf(id,selected.instanceStart.toEpochMilli(),selected.instanceEnd.toEpochMilli()))
+            assertTrue(f.writer.recover("known-generated-profile") is MeetingMutationResult.LocalSaved);assertEquals(1,f.p.batchCount)
         }
     }
 

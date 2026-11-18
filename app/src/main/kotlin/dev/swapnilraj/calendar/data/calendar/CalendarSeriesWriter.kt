@@ -33,9 +33,10 @@ class CalendarSeriesWriter(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val budget: RecurrencePlanningBudget = RecurrencePlanningBudget(),
     private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
+    private val providerClonePolicy: ProviderClonePolicy = ProviderClonePolicy.Unverified,
 ) : CalendarSeriesMutations {
     private val mutex = Mutex()
-    private val followingEdits = CalendarFollowingSeriesWriter(resolver, sourceReader, store, hasPermission, this, io, budget, readBudgets)
+    private val followingEdits = CalendarFollowingSeriesWriter(resolver, sourceReader, store, hasPermission, this, io, budget, readBudgets, providerClonePolicy)
     private class Unsupported(val reason: String) : Exception()
     internal class Invalid(val fields: Set<InvalidEventField>) : Exception()
     private data class Prepared(val operations: ArrayList<ContentProviderOperation>, val receipt: JSONObject, val source: CalendarSeriesSource,
@@ -124,10 +125,12 @@ class CalendarSeriesWriter(
                     if (parcel.dataSize() > 256 * 1024) throw SeriesSourceReview("The complete series transaction exceeds the safe local size budget")
                 } finally { parcel.recycle() }
                 if (!permissions()) return@withLock common(MutationResult.PermissionRequired)
+                if (prepared.insertedAt != null) requireCloneProfile()
                 currentCoroutineContext().ensureActive()
                 store.prepare(operationId, signature, kind)
                 val persisted = store.operation(operationId) ?: error("Journal unavailable")
                 if (persisted.kind != kind || persisted.signature != signature) return@withLock common(MutationResult.Conflict(null))
+                if (prepared.insertedAt != null) requireCloneProfile()
                 if (!store.attempt(persisted)) return@withLock recover(store.operation(operationId)!!, false)
                 dispatch = persisted.copy(phase = "ATTEMPTED")
                 attempted = true
@@ -136,6 +139,8 @@ class CalendarSeriesWriter(
                     check(store.mark(requireNotNull(dispatch), "FAILED"))
                     return@withLock common(MutationResult.PermissionRequired)
                 }
+                if (prepared.insertedAt != null && !providerClonePolicy.allows(ProviderCloneOperation.GUEST_FREE_EXCEPTION))
+                    return@withLock common(MutationResult.Uncertain(operationId, null))
                 currentCoroutineContext().ensureActive()
                 val results = resolver.applyBatch(CalendarContract.AUTHORITY, prepared.operations)
                 prepared.insertedAt?.let { index ->
@@ -413,7 +418,13 @@ class CalendarSeriesWriter(
         return Prepared(operations, receipt, source)
     }
 
+    private fun requireCloneProfile() {
+        if (!providerClonePolicy.allows(ProviderCloneOperation.GUEST_FREE_EXCEPTION))
+            throw SeriesSourceReview("This provider's single-exception clone implementation has not been verified")
+    }
+
     private fun newTemplate(source: CalendarSeriesSource): ExceptionTemplate {
+        requireCloneProfile()
         if (source.snapshot.ruleRaw.isNullOrBlank()) throw Unsupported("The public exception API requires an RRULE master")
         val ref = source.snapshot.validatedSelection ?: throw SeriesSourceConflict()
         if (ref.eventId != source.snapshot.identity.masterEventId || ref.recurrence?.originalStart != ref.instanceStart) throw SeriesSourceConflict()

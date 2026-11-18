@@ -27,6 +27,7 @@ internal class CalendarFollowingSeriesWriter(
     private val io: CoroutineDispatcher,
     private val budget: RecurrencePlanningBudget,
     private val readBudgets: ProviderReadBudgets,
+    private val providerClonePolicy: ProviderClonePolicy,
 ) {
     private val mutex = Mutex()
     private class Review(val reason: String) : Exception()
@@ -46,7 +47,8 @@ internal class CalendarFollowingSeriesWriter(
         val raw=raw(source);val selected=requireNotNull(raw.snapshot.validatedSelection)
         val original=requireNotNull(selected.recurrence).originalStart
         val key=if(raw.snapshot.start is RecurrenceStart.AllDay)RecurrenceKey.Date(original.atOffset(ZoneOffset.UTC).toLocalDate())else RecurrenceKey.Timed(original)
-        material(raw,SeriesCommand.FollowingEdit(RecurrenceEditIntent.FollowingSeriesEdit(key)),previewUid(raw))
+        val model=material(raw,SeriesCommand.FollowingEdit(RecurrenceEditIntent.FollowingSeriesEdit(key)),previewUid(raw))
+        if(!model.whole)requireCloneProfile()
         SeriesScopeCapabilities(AccessDecision.ALLOWED,series.allowedFields,AccessDecision.UNKNOWN,recurrence=AccessDecision.ALLOWED)
     }catch(limit:ProviderReadLimitExceeded){throw limit}
     catch(cancelled:CancellationException){throw cancelled}
@@ -70,6 +72,7 @@ internal class CalendarFollowingSeriesWriter(
             val source=sourceReader.checkedSource(selected,token);val raw=raw(source)
             val frozenCommand=CalendarSeriesWriter.parseFollowingCommand(raw.snapshot,CalendarSeriesWriter.frozenCommandJson(command))
             val initial=material(raw,frozenCommand,previewUid(raw))
+            if(!initial.whole)requireCloneProfile()
             val uid=if(initial.whole)null else if(existing==null)newUid(raw) else proof(existing)?.first?.nullable("uid")?:return@withLock common(MutationResult.Uncertain(id,null))
             var model=material(raw,frozenCommand,uid)
             var ops=operations(source,raw,model)
@@ -82,6 +85,7 @@ internal class CalendarFollowingSeriesWriter(
                 .put("source",JSONObject(raw.encoded)).put("uid",uid?:JSONObject.NULL).put("material",model.json()).put("stage","prepared")
             checkStoredJson(metadata.toString(),readBudgets.maxCanonicalBytes)
             if(!permissions())return@withLock common(MutationResult.PermissionRequired)
+            if(!model.whole)requireCloneProfile()
             currentCoroutineContext().ensureActive();store.prepare(id,signature,kind,metadata.toString())
             val persisted=store.operation(id)?:error("Journal unavailable")
             if(persisted.kind!=kind||persisted.signature!=signature)return@withLock common(MutationResult.Conflict(null))
@@ -94,9 +98,11 @@ internal class CalendarFollowingSeriesWriter(
             model=material(raw,frozenCommand,stored.nullable("uid"));ops=operations(source,raw,model);checkParcel(ops.first)
             if(!permissions())return@withLock common(MutationResult.PermissionRequired)
             currentCoroutineContext().ensureActive()
+            if(!model.whole)requireCloneProfile()
             if(!store.attempt(persisted))return@withLock recover(store.operation(id)!!,false)
             attempted=persisted.copy(phase="ATTEMPTED")
             if(!permissions()){check(store.mark(attempted,"FAILED"));return@withLock common(MutationResult.PermissionRequired)}
+            if(!model.whole&&!providerClonePolicy.allows(ProviderCloneOperation.INDEPENDENT_TAIL))return@withLock common(MutationResult.Uncertain(id,null))
             currentCoroutineContext().ensureActive()
             val results=resolver.applyBatch(CalendarContract.AUTHORITY,ops.first)
             knownTail=if(model.whole)raw.snapshot.identity.masterEventId else normalInsertId(results,requireNotNull(ops.second)).also{require(it!=raw.snapshot.identity.masterEventId)}
@@ -358,6 +364,7 @@ internal class CalendarFollowingSeriesWriter(
         ensureRead();val cursor=suspendCancellableCoroutine<Cursor>{c->val signal=CancellationSignal();c.invokeOnCancellation{signal.cancel()};try{val result=resolver.query(uri,fields,selection,args,null,signal)?:error("Provider unavailable");try{ensureRead()}catch(f:Exception){result.close();throw f};c.resume(result,onCancellation={_,resource,_->resource.close()})}catch(f:Exception){c.resumeWithException(f)}}
         return cursor.bounded(maxRows).use{buildList{while(it.moveToNext()){currentCoroutineContext().ensureActive();add(fields.associateWith{field->it.getColumnIndexOrThrow(field).let{index->if(it.isNull(index))null else it.getString(index)}})}}}
     }
+    private fun requireCloneProfile(){if(!providerClonePolicy.allows(ProviderCloneOperation.INDEPENDENT_TAIL))throw Review("This provider's independent-tail copy implementation has not been verified")}
     private fun permissions()=hasPermission(Manifest.permission.READ_CALENDAR)&&hasPermission(Manifest.permission.WRITE_CALENDAR)
     private fun ensureRead(){if(!hasPermission(Manifest.permission.READ_CALENDAR))throw SecurityException()}
     companion object{

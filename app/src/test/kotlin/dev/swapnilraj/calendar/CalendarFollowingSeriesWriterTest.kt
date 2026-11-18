@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ContentValues
 import android.provider.CalendarContract
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.SyntheticCloneProviderPolicy
 import java.time.*
 import java.util.UUID
 import kotlinx.coroutines.*
@@ -23,7 +24,7 @@ class CalendarFollowingSeriesWriterTest {
     private val zone=ZoneId.of("Europe/London")
     private data class Fixture(val p:CalendarRecurringCreateTest.Provider,val writer:CalendarSeriesWriter,val source:CalendarSeriesReader,
         val reader:CalendarReader,val store:CalendarLocalStore,val permissions:MutableSet<String>,val selected:EventRef)
-    private suspend fun fixture(allDay:Boolean=false,ordinal:Int=2,block:suspend(Fixture)->Unit){
+    private suspend fun fixture(allDay:Boolean=false,ordinal:Int=2,providerClonePolicy:ProviderClonePolicy=SyntheticCloneProviderPolicy,block:suspend(Fixture)->Unit){
         val context=RuntimeEnvironment.getApplication();val p=CalendarRecurringCreateTest.Provider().apply{nativeMeetingMode=true;expandInstances=true;allowUpdates=true
             db.execSQL("ALTER TABLE calendars ADD COLUMN allowedAttendeeTypes TEXT DEFAULT '0,1,2'")}
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY,p)
@@ -37,7 +38,7 @@ class CalendarFollowingSeriesWriterTest {
         p.db.execSQL("UPDATE events SET _sync_id='prefix-sync',uid2445='prefix-public-uid'")
         val selected=seed.ref.copy(instanceStart=seed.ref.instanceStart.plusSeconds(ordinal*86400L),instanceEnd=seed.ref.instanceEnd.plusSeconds(ordinal*86400L),recurrence=RecurrenceRef(seed.ref.eventId,seed.ref.instanceStart.plusSeconds(ordinal*86400L)))
         val source=CalendarSeriesReader(context.contentResolver,reader,store,permissions::contains)
-        val writer=CalendarSeriesWriter(context.contentResolver,source,store,permissions::contains)
+        val writer=CalendarSeriesWriter(context.contentResolver,source,store,permissions::contains,providerClonePolicy=providerClonePolicy)
         p.batchCount=0;p.committed=false;p.queries.clear()
         try{block(Fixture(p,writer,source,reader,store,permissions,selected))}finally{scope.cancel();scope.coroutineContext[Job]!!.join();store.close();p.db.close();context.deleteDatabase(store.databaseName)}
     }
@@ -170,13 +171,13 @@ class CalendarFollowingSeriesWriterTest {
         val uid=JSONObject(f.store.operation("prepared")!!.resultRef!!).getString("uid");f.p.failReminder=false
         val two=CalendarLocalStore(RuntimeEnvironment.getApplication(),f.store.databaseName)
         try{val source=CalendarSeriesReader(RuntimeEnvironment.getApplication().contentResolver,f.reader,two,f.permissions::contains)
-            val writer=CalendarSeriesWriter(RuntimeEnvironment.getApplication().contentResolver,source,two,f.permissions::contains)
+            val writer=CalendarSeriesWriter(RuntimeEnvironment.getApplication().contentResolver,source,two,f.permissions::contains,providerClonePolicy=SyntheticCloneProviderPolicy)
             val saved=writer.mutate("prepared",f.selected,edit.token,frozen) as SeriesMutationResult.LocalSaved
             assertEquals(uid,event(f.p,saved.identity.masterEventId)["uid2445"]);assertEquals(uid,JSONObject(two.operation("prepared")!!.resultRef!!).getString("uid"))
         }finally{two.close()}
     };fixture{f->
         val edit=f.editable();val frozen=command(edit);val two=CalendarLocalStore(RuntimeEnvironment.getApplication(),f.store.databaseName)
-        try{val writer=CalendarSeriesWriter(RuntimeEnvironment.getApplication().contentResolver,CalendarSeriesReader(RuntimeEnvironment.getApplication().contentResolver,f.reader,two,f.permissions::contains),two,f.permissions::contains)
+        try{val writer=CalendarSeriesWriter(RuntimeEnvironment.getApplication().contentResolver,CalendarSeriesReader(RuntimeEnvironment.getApplication().contentResolver,f.reader,two,f.permissions::contains),two,f.permissions::contains,providerClonePolicy=SyntheticCloneProviderPolicy)
             val gate=CompletableDeferred<Unit>();val one=async(Dispatchers.IO){gate.await();f.writer.mutate("race",f.selected,edit.token,frozen)}
             val other=async(Dispatchers.IO){gate.await();writer.mutate("race",f.selected,edit.token,frozen)}
             gate.complete(Unit);val results=listOf(one.await(),other.await())
@@ -214,5 +215,38 @@ class CalendarFollowingSeriesWriterTest {
         assertTrue(f.writer.mutate("duration-mismatch",observed,edit.token,command(edit)) is SeriesMutationResult.PlanningReview)
         assertNull(f.store.operationHeader("duration-mismatch"));assertEquals(0,f.p.batchCount)
     }}
+
+    @Test fun unverifiedTailProfileDisablesActualSplitButKeepsOrdinalZeroAndDeleteCapabilities()=runBlocking {
+        for(ordinal in listOf(0,2))fixture(ordinal=ordinal,providerClonePolicy=ProviderClonePolicy.Unverified){f->
+            val edit=f.editable();val following=edit.scopes.getValue(RecurrenceScope.FOLLOWING)
+            assertEquals(AccessDecision.ALLOWED,following.delete)
+            assertEquals(if(ordinal==0)AccessDecision.ALLOWED else AccessDecision.DENIED,following.edit)
+            val result=f.writer.mutate("unverified-tail",f.selected,edit.token,command(edit,fields=EventPatch(title=FieldChange.Set("Synthetic guarded tail"))))
+            if(ordinal==0){assertTrue(result.toString(),result is SeriesMutationResult.LocalSaved);assertEquals(1,f.p.db.rawQuery("SELECT COUNT(*) FROM events",null).use{it.moveToFirst();it.getInt(0)})}
+            else {assertTrue(result.toString(),result is SeriesMutationResult.PlanningReview);assertNull(f.store.operation("unverified-tail"));assertEquals(0,f.p.batchCount)}
+        }
+    }
+    @Test fun tailProfileIsFreshAtPreparedRetryAndAttemptBoundaryWithoutRevivingUnknownDispatch()=runBlocking {
+        for(stopAt in listOf("PREPARED","ATTEMPTED")){
+            var store:CalendarLocalStore?=null;var denied=true
+            val policy=ProviderClonePolicy{op->if(denied&&store?.operationHeader("tail-profile")?.phase==stopAt)null else SyntheticCloneProviderPolicy.currentProfile(op)}
+            fixture(providerClonePolicy=policy){f->store=f.store;val edit=f.editable();val frozen=command(edit)
+                val outcome=f.writer.mutate("tail-profile",f.selected,edit.token,frozen)
+                assertEquals(stopAt,f.store.operation("tail-profile")!!.phase);assertEquals(0,f.p.batchCount)
+                denied=false
+                if(stopAt=="PREPARED"){assertTrue(outcome is SeriesMutationResult.PlanningReview);assertTrue(f.writer.mutate("tail-profile",f.selected,edit.token,frozen) is SeriesMutationResult.LocalSaved)}
+                else {assertEquals(common(MutationResult.Uncertain("tail-profile",null)),outcome);assertEquals(common(MutationResult.Uncertain("tail-profile",null)),f.writer.mutate("tail-profile",f.selected,edit.token,frozen));assertEquals(0,f.p.batchCount)}
+            }
+        }
+    }
+    @Test fun unverifiedTailPolicyStillAllowsKnownCommitRecoveryWithReadPermissionOnly()=runBlocking {
+        var admitted=true;val policy=ProviderClonePolicy{op->if(admitted)SyntheticCloneProviderPolicy.currentProfile(op)else null}
+        fixture(providerClonePolicy=policy){f->val edit=f.editable();f.p.failReadsAfterCommit=true
+            val outcome=f.writer.mutate("known-tail-profile",f.selected,edit.token,command(edit));assertTrue(outcome is SeriesMutationResult.Common&&outcome.outcome is MutationResult.Uncertain)
+            assertEquals("COMMITTED",f.store.operation("known-tail-profile")!!.phase)
+            admitted=false;f.p.failReadsAfterCommit=false;f.permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            assertTrue(f.writer.recover("known-tail-profile") is SeriesMutationResult.LocalSaved);assertEquals(1,f.p.batchCount)
+        }
+    }
 
 }

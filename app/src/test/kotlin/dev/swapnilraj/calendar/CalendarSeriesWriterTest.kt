@@ -8,6 +8,7 @@ import android.content.ContentValues
 import android.content.OperationApplicationException
 import android.provider.CalendarContract
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.SyntheticCloneProviderPolicy
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
@@ -45,7 +46,7 @@ class CalendarSeriesWriterTest {
     }
     private data class Fixture(val provider: CalendarSeriesReaderTest.Provider, val writer: CalendarSeriesWriter,
         val source: CalendarSeriesReader, val store: CalendarLocalStore, val permissions: MutableSet<String>, val reader: CalendarReader, val resolver: ContentResolver)
-    private suspend fun fixture(block: suspend (Fixture) -> Unit) {
+    private suspend fun fixture(providerClonePolicy: ProviderClonePolicy = SyntheticCloneProviderPolicy, block: suspend (Fixture) -> Unit) {
         val context = RuntimeEnvironment.getApplication()
         val p = CalendarSeriesReaderTest.Provider().apply {
             allowWrites = true
@@ -63,7 +64,7 @@ class CalendarSeriesWriterTest {
         val permissions = mutableSetOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
         val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
         val source = CalendarSeriesReader(context.contentResolver, reader, store, permissions::contains)
-        val writer = CalendarSeriesWriter(context.contentResolver, source, store, permissions::contains)
+        val writer = CalendarSeriesWriter(context.contentResolver, source, store, permissions::contains, providerClonePolicy = providerClonePolicy)
         try { block(Fixture(p, writer, source, store, permissions, reader, context.contentResolver)) }
         finally { scope.cancel(); scope.coroutineContext[Job]!!.join(); store.close(); context.deleteDatabase(store.databaseName) }
     }
@@ -468,7 +469,7 @@ class CalendarSeriesWriterTest {
         provider.reminders.forEach { it.remove("opaque_child") }
     }
 
-    @Test fun newThisExceptionPreservesTemplateCloudIdentityAndClonedChildrenWithoutResettingUnknownMetadata() = runBlocking {
+    @Test fun newThisExceptionPreservesTemplateCloudIdentityClonedChildrenAndExposedUnknownEventMetadata() = runBlocking {
         fixture { f ->
             f.nativeCloneReady()
             f.provider.events[0]["sync_data1"] = "Master sync metadata must not be copied"
@@ -960,6 +961,63 @@ class CalendarSeriesWriterTest {
             f.permissions.add(Manifest.permission.WRITE_CALENDAR)
             assertTrue((f.writer.mutate("invalid-native-ack", selected, edit.token, command) as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
             assertEquals(1, f.provider.batchCount); assertTrue(f.provider.calls.isEmpty())
+        }
+    }
+
+    @Test fun unverifiedCloneProfileCannotInferHiddenPhysicalPayloadFromPublicProjection() = runBlocking {
+        fixture(providerClonePolicy = ProviderClonePolicy.Unverified) { f ->
+            f.nativeCloneReady()
+            f.provider.events[0]["hidden_oem_identity"] = "Synthetic inaccessible physical identity"
+            f.provider.attendees += mutableMapOf("_id" to "88", "event_id" to "10", "attendeeEmail" to "owner@example.invalid", "attendeeRelationship" to "2", "attendeeType" to "0", "attendeeStatus" to "0", "hidden_oem_payload" to "Synthetic inaccessible child payload")
+            f.provider.hiddenPublicColumns = setOf("hidden_oem_identity", "hidden_oem_payload")
+            val source = f.source.source(selected)
+            assertFalse(source.master.containsKey("hidden_oem_identity"))
+            assertFalse(source.attendees.getValue(10).single().containsKey("hidden_oem_payload"))
+            val edit = f.editable()
+            assertEquals(AccessDecision.DENIED, edit.scopes.getValue(RecurrenceScope.THIS).edit)
+            assertEquals(AccessDecision.ALLOWED, edit.scopes.getValue(RecurrenceScope.ALL).edit)
+            assertTrue(f.writer.mutate("unverified-hidden", selected, edit.token, SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Synthetic new title")))) is SeriesMutationResult.PlanningReview)
+            assertNull(f.store.operation("unverified-hidden")); assertEquals(0, f.provider.batchCount)
+            assertEquals("Synthetic inaccessible child payload", f.provider.attendees.single()["hidden_oem_payload"])
+            assertTrue(f.writer.mutate("inplace", selected, edit.token, SeriesCommand.WholeEdit(RecurrenceEditIntent.WholeSeriesEdit(edit.snapshot.start, fields = EventPatch(title = FieldChange.Set("In-place title"))))) is SeriesMutationResult.LocalSaved)
+            assertEquals("Synthetic inaccessible child payload", f.provider.attendees.single()["hidden_oem_payload"])
+        }
+    }
+    @Test fun cloneProfileLossBeforeAndAfterAttemptPreventsDispatchAndRetryRechecksFreshAdmission() = runBlocking {
+        for (stopAt in listOf("PREPARED", "ATTEMPTED")) {
+            var store: CalendarLocalStore? = null; var denied = true
+            val policy = ProviderClonePolicy { op ->
+                if (denied && store?.operationHeader("profile-race")?.phase == stopAt) null else SyntheticCloneProviderPolicy.currentProfile(op)
+            }
+            fixture(providerClonePolicy = policy) { f ->
+                store = f.store; f.nativeCloneReady(); val edit = f.editable()
+                val command = SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Synthetic guarded clone")))
+                val result = f.writer.mutate("profile-race", selected, edit.token, command)
+                assertEquals(stopAt, f.store.operation("profile-race")!!.phase); assertEquals(0, f.provider.batchCount)
+                if (stopAt == "PREPARED") {
+                    assertTrue(result is SeriesMutationResult.PlanningReview)
+                    denied = false; assertTrue(f.writer.mutate("profile-race", selected, edit.token, command) is SeriesMutationResult.LocalSaved)
+                } else {
+                    assertEquals(SeriesMutationResult.Common(MutationResult.Uncertain("profile-race", null)), result)
+                    denied = false; assertTrue((f.writer.mutate("profile-race", selected, edit.token, command) as SeriesMutationResult.Common).outcome is MutationResult.Uncertain)
+                    assertEquals(0, f.provider.batchCount)
+                }
+            }
+        }
+    }
+    @Test fun lostCloneAdmissionDoesNotPreventKnownCommitReadOnlyRecoveryOrRetirement() = runBlocking {
+        var admitted = true
+        val policy = ProviderClonePolicy { op -> if (admitted) SyntheticCloneProviderPolicy.currentProfile(op) else null }
+        fixture(providerClonePolicy = policy) { f ->
+            f.nativeCloneReady(); val edit = f.editable(); f.provider.failReadsAfterCommit = true
+            val command = SeriesCommand.OccurrenceEdit(EventPatch(title = FieldChange.Set("Known synthetic clone")))
+            f.writer.mutate("known-profile", selected, edit.token, command)
+            assertEquals("COMMITTED", f.store.operation("known-profile")!!.phase)
+            admitted = false; f.provider.failReadsAfterCommit = false; f.permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            assertTrue(f.writer.recover("known-profile") is SeriesMutationResult.LocalSaved)
+            val request = RetirableOperation.Series("retire-unverified", selected, edit.token, command)
+            assertEquals(OperationRetirementResult.Retired(request.operationId), CalendarOperationRetirement(f.store).retire(request))
+            assertEquals(SeriesMutationResult.Common(MutationResult.Retired(request.operationId)), f.writer.mutate(request.operationId, selected, edit.token, command))
         }
     }
 

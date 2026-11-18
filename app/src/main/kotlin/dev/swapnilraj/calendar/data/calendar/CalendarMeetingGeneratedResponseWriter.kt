@@ -26,6 +26,7 @@ internal class CalendarMeetingGeneratedResponseWriter(
     private val io: CoroutineDispatcher,
     private val readBudgets: ProviderReadBudgets,
     private val planningBudget: RecurrencePlanningBudget,
+    private val providerClonePolicy: ProviderClonePolicy,
 ) {
     private val mutex = Mutex()
     private class Review(val reason: String) : Exception()
@@ -33,6 +34,7 @@ internal class CalendarMeetingGeneratedResponseWriter(
 
     /** Known unsupported clone profiles do not remove the complete base's ALL capability. */
     suspend fun audit(base: MeetingSeriesSource): MeetingGeneratedSource? = try {
+        requireCloneProfile()
         profileBase(base)
         val latest = rows(eventUri(base.masterId), arrayOf("_id", "calendar_id", "guestsCanSeeGuests", "isOrganizer"), maxRows = 1).singleOrNull()
             ?: throw MeetingSeriesConflict()
@@ -75,6 +77,7 @@ internal class CalendarMeetingGeneratedResponseWriter(
                 if (existing.phase !in setOf("PREPARED", "FAILED")) return@withLock recover(existing, false)
                 if (proof(existing) == null) return@withLock common(MutationResult.Uncertain(id, null))
             }
+            requireCloneProfile()
             val raw = store.edit(token.value) ?: throw MeetingSeriesConflict()
             val authority = MeetingSeriesAuthority.decode(raw, token, readBudgets.maxCanonicalBytes)
             val original = authority.generated ?: return@withLock MeetingMutationResult.Unsupported("This occurrence needs a fresh visible audited response source")
@@ -92,14 +95,17 @@ internal class CalendarMeetingGeneratedResponseWriter(
                 .put("source", JSONObject(raw)).put("stage", "prepared").put("status", status)
             checkStoredJson(metadata.toString(), readBudgets.maxCanonicalBytes)
             if (!permissions()) return@withLock common(MutationResult.PermissionRequired)
+            requireCloneProfile()
             currentCoroutineContext().ensureActive(); store.prepare(id, signature, kind, metadata.toString())
             val persisted = store.operation(id) ?: error("Journal unavailable")
             if (persisted.kind != kind || persisted.signature != signature) return@withLock common(MutationResult.Conflict(null))
             if (persisted.phase == "ABANDONED") return@withLock common(MutationResult.Retired(id))
             if (proof(persisted)?.first?.toString() != metadata.toString()) return@withLock common(MutationResult.Uncertain(id, null))
+            requireCloneProfile()
             if (!store.attempt(persisted)) return@withLock recover(store.operation(id)!!, false)
             attempted = persisted.copy(phase = "ATTEMPTED")
             if (!permissions()) { check(store.mark(attempted, "FAILED")); return@withLock common(MutationResult.PermissionRequired) }
+            if (!providerClonePolicy.allows(ProviderCloneOperation.GENERATED_RESPONSE_EXCEPTION)) return@withLock common(MutationResult.Uncertain(id, null))
             currentCoroutineContext().ensureActive()
             val results = resolver.applyBatch(CalendarContract.AUTHORITY, ops)
             known = exceptionId(results.getOrNull(insertion)?.uri, current.base)
@@ -362,6 +368,10 @@ internal class CalendarMeetingGeneratedResponseWriter(
                 continuation.resume(cursor, onCancellation = { _, resource, _ -> resource.close() })
             } catch (failure: Exception) { continuation.resumeWithException(failure) }
         }
+    }
+    private fun requireCloneProfile() {
+        if (!providerClonePolicy.allows(ProviderCloneOperation.GENERATED_RESPONSE_EXCEPTION))
+            throw Review("This provider's response-exception clone implementation has not been verified")
     }
     private fun ensureRead() { if (!hasPermission(Manifest.permission.READ_CALENDAR)) throw SecurityException() }
     private fun permissions() = hasPermission(Manifest.permission.READ_CALENDAR) && hasPermission(Manifest.permission.WRITE_CALENDAR)

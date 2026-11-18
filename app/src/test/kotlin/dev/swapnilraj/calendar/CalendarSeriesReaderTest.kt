@@ -85,6 +85,7 @@ class CalendarSeriesReaderTest {
         var corruptClonedReminder = false
         var exceptionAcknowledgement: ((Uri) -> Uri)? = null
         var joinedAttendeeView = true
+        var hiddenPublicColumns: Set<String> = emptySet()
         var recalculateDailyLastDate = false
         private var inBatch = false
         override fun onCreate() = true
@@ -123,7 +124,7 @@ class CalendarSeriesReaderTest {
             } else rawRows
             afterQuery?.invoke(path)
             if (path == "events" && projection == null) privateCalendars += rows.map { it["calendar_id"] }
-            val fields = projection ?: rows.flatMap { it.keys }.toSortedSet().toTypedArray().takeIf { it.isNotEmpty() } ?: arrayOf("_id", "event_id")
+            val fields = projection ?: rows.flatMap { it.keys }.filterNot { it in hiddenPublicColumns }.toSortedSet().toTypedArray().takeIf { it.isNotEmpty() } ?: arrayOf("_id", "event_id")
             return object : MatrixCursor(fields) {
                 override fun onMove(oldPosition: Int, newPosition: Int): Boolean {
                     if (path == partialPath && newPosition > 0) error("Synthetic partial source")

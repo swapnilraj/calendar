@@ -25,10 +25,11 @@ internal class CalendarMeetingSeriesWriter(
     private val io: CoroutineDispatcher,
     private val readBudgets: ProviderReadBudgets,
     planningBudget: RecurrencePlanningBudget,
+    providerClonePolicy: ProviderClonePolicy,
 ) {
     private val sourceReader = CalendarMeetingSeriesReader(resolver, reader, hasPermission, readBudgets, planningBudget)
     private val mutex = Mutex()
-    private val generated = CalendarMeetingGeneratedResponseWriter(resolver, reader, sourceReader, store, hasPermission, this, io, readBudgets, planningBudget)
+    private val generated = CalendarMeetingGeneratedResponseWriter(resolver, reader, sourceReader, store, hasPermission, this, io, readBudgets, planningBudget, providerClonePolicy)
     suspend fun loadForEdit(selected: EventRef): MeetingReadResult<EditableMeeting> = withContext(io + readBudgetContext(readBudgets.mutation)) {
         try {
             ensureRead()

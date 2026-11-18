@@ -30,10 +30,11 @@ class CalendarMeetingWriter(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
     planningBudget: RecurrencePlanningBudget = RecurrencePlanningBudget(),
+    providerClonePolicy: ProviderClonePolicy = ProviderClonePolicy.Unverified,
 ) : CalendarMeetings {
     private val mutex = Mutex()
     private val creation = CalendarMeetingCreateWriter(resolver, reader, store, hasPermission, io, readBudgets)
-    private val series = CalendarMeetingSeriesWriter(resolver, reader, store, hasPermission, io, readBudgets, planningBudget)
+    private val series = CalendarMeetingSeriesWriter(resolver, reader, store, hasPermission, io, readBudgets, planningBudget, providerClonePolicy)
     private class Denied(val reason: MutationDenial) : Exception()
     private class Review(val reason: String) : Exception()
     private class Conflict : Exception()

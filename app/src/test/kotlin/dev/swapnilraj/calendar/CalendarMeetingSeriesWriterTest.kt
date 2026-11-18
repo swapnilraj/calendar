@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.provider.CalendarContract
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.SyntheticCloneProviderPolicy
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.*
@@ -198,7 +199,7 @@ class CalendarMeetingSeriesWriterTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default); val name = "meeting-series-${UUID.randomUUID()}.db"
         val store = CalendarLocalStore(context, name); val permissions = mutableSetOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
         val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
-        val writer = CalendarMeetingWriter(context.contentResolver, reader, store, permissions::contains, readBudgets = budgets, planningBudget = planning)
+        val writer = CalendarMeetingWriter(context.contentResolver, reader, store, permissions::contains, readBudgets = budgets, planningBudget = planning, providerClonePolicy = SyntheticCloneProviderPolicy)
         try { block(Fixture(p, writer, reader, store, permissions)) }
         finally { scope.cancel(); scope.coroutineContext[Job]!!.join(); store.close(); p.db.close(); context.deleteDatabase(name) }
     }
