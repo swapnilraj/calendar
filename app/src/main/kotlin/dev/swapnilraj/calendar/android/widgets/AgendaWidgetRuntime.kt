@@ -23,6 +23,9 @@ class AgendaWidgetRuntime(
     private val scope: CoroutineScope,
     private val clock: Clock = Clock.systemUTC(),
     private val timeoutMillis: Long = 15_000,
+    private val removalEpochs: (Set<Int>) -> Map<Int, WidgetEpoch> = { ids ->
+        ids.associateWith { WidgetEpoch(it, UUID.randomUUID().toString()) }
+    },
 ) {
     private val revisions = ConcurrentHashMap<Int, Long>()
     private data class Removal(val epoch: WidgetEpoch, val receipt: Deferred<WidgetRemovalReceipt>,
@@ -34,6 +37,8 @@ class AgendaWidgetRuntime(
     private val saves = ConcurrentHashMap<Int, SaveAttempt>()
     private var nextSaveSerial = 0L
     private val publication = Any()
+    private val blocked = ConcurrentHashMap.newKeySet<Int>()
+    private val seenEpochTokens = mutableSetOf<String>()
     init { require(timeoutMillis > 0) }
 
     /** Called synchronously by widget callbacks/settings changes, before reading possibly slow data. */
@@ -73,8 +78,26 @@ class AgendaWidgetRuntime(
      */
     fun removed(widgetIds: Set<Int>, finished: () -> Unit = {}): Job {
         val registrations = synchronized(publication) {
-            widgetIds.filter { it > 0 }.map { id ->
-                val epoch = WidgetEpoch(id, UUID.randomUUID().toString())
+            val ids = widgetIds.filter { it > 0 }.toSet()
+            epochs.values.forEach { seenEpochTokens += it.token }
+            val issued = try {
+                removalEpochs(ids.toSet()).toMap().also { supplied ->
+                    require(supplied.keys == ids)
+                    require(supplied.all { (id, epoch) -> epoch.widgetId == id && epoch.token !in seenEpochTokens })
+                    require(supplied.values.map { it.token }.toSet().size == ids.size)
+                }
+            } catch (_: Exception) {
+                ids.forEach { id ->
+                    revisions.merge(id, 1L, Long::plus)
+                    saves.remove(id); epochs.remove(id); removals.remove(id)
+                    blocked += id
+                    publish(id, AgendaWidgetDisplay.Unavailable)
+                }
+                emptyMap()
+            }
+            issued.map { (id, epoch) ->
+                seenEpochTokens += epoch.token
+                blocked.remove(id)
                 epochs[id] = epoch
                 saves.remove(id)
                 revisions.merge(id, 1L, Long::plus)
@@ -116,6 +139,7 @@ class AgendaWidgetRuntime(
     suspend fun beginConfiguration(widgetId: Int): WidgetConfigurationSessionResult = try {
         withTimeout(timeoutMillis) {
             require(widgetId in host.widgetIds())
+            if (widgetId in blocked) return@withTimeout WidgetConfigurationSessionResult.Unavailable
             val known = synchronized(publication) { epochs[widgetId] }
             if (known != null && removals.containsKey(widgetId))
                 return@withTimeout WidgetConfigurationSessionResult.Ready(WidgetConfigurationSession(known))
@@ -124,7 +148,9 @@ class AgendaWidgetRuntime(
             if (proof == WidgetLifecycleProof.Unavailable) WidgetConfigurationSessionResult.Unavailable
             else if (verified == null || verified.widgetId != widgetId) WidgetConfigurationSessionResult.SetupRequired
             else synchronized(publication) {
+                if (widgetId in blocked) return@synchronized WidgetConfigurationSessionResult.Unavailable
                 val expected = epochs.putIfAbsent(widgetId, verified) ?: verified
+                seenEpochTokens += expected.token
                 if (expected != verified) WidgetConfigurationSessionResult.SetupRequired
                 else WidgetConfigurationSessionResult.Ready(WidgetConfigurationSession(expected))
             }
@@ -200,6 +226,7 @@ class AgendaWidgetRuntime(
     }
 
     private suspend fun load(id: Int): AgendaWidgetDisplay {
+        if (id in blocked) return AgendaWidgetDisplay.Unavailable
         removals[id]?.let { return it.display }
         saves[id]?.let { return it.display }
         val state = settings.configuration(id)
@@ -209,7 +236,10 @@ class AgendaWidgetRuntime(
         if (proof == WidgetLifecycleProof.Unavailable) return AgendaWidgetDisplay.Unavailable
         val verified = (proof as? WidgetLifecycleProof.Verified)?.epoch ?: return AgendaWidgetDisplay.SetupRequired
         if (stored.epoch != verified || verified.widgetId != id) return AgendaWidgetDisplay.SetupRequired
-        val expected = synchronized(publication) { epochs.putIfAbsent(id, verified) ?: verified }
+        val expected = synchronized(publication) {
+            if (id in blocked) return AgendaWidgetDisplay.Unavailable
+            (epochs.putIfAbsent(id, verified) ?: verified).also { seenEpochTokens += it.token }
+        }
         if (expected != verified) return AgendaWidgetDisplay.SetupRequired
         val config = stored.value
         val environment = (settings.environment() as? CalendarReadState.Ready)?.value ?: return AgendaWidgetDisplay.Unavailable
