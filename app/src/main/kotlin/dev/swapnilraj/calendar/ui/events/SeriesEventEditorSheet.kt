@@ -31,7 +31,7 @@ fun SeriesScopeContent(source: EditableSeries, action: SeriesEditorAction, onDis
         RecurrenceScope.entries.forEach { scope ->
             val enabled = canPrepareSeriesScope(source, scope, action)
             TextButton(onClick = { onSelect(scope) }, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(scopeLabel(scope))) }
-            if (!enabled) Text(stringResource(if (scope == RecurrenceScope.FOLLOWING && action == SeriesEditorAction.EDIT) R.string.series_scope_unsupported else scopeLimitation(source.scopes[scope]?.limitation)), style = MaterialTheme.typography.bodySmall)
+            if (!enabled) Text(stringResource(scopeLimitation(source.scopes[scope]?.limitation)), style = MaterialTheme.typography.bodySmall)
         }
         TextButton(onClick = onDismiss) { Text(stringResource(R.string.events_close)) }
     }
@@ -67,7 +67,9 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(if (controller.recoveryOnly) R.string.events_drafts_recover else if (launch.action == SeriesEditorAction.EDIT) R.string.series_editor_edit else R.string.series_editor_delete), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(scopeLabel(launch.scope)), style = MaterialTheme.typography.titleMedium)
-        Text(stringResource(if (launch.scope == RecurrenceScope.ALL) R.string.series_master_origin else R.string.series_selected_origin))
+        Text(stringResource(when { launch.scope == RecurrenceScope.ALL -> R.string.series_master_origin
+            launch.scope == RecurrenceScope.FOLLOWING && launch.action == SeriesEditorAction.EDIT -> R.string.series_tail_origin
+            else -> R.string.series_selected_origin }))
         if (controller.temporalPresented || controller.rulePresented) controller.masterContext?.calendar?.let { Text(it.account.name) }
         if (controller.recoveryOnly) Text(stringResource(R.string.series_recovery_only))
         if (state.loading || state.reviewing) CircularProgressIndicator()
@@ -96,10 +98,11 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
         }
         if (launch.action == SeriesEditorAction.DELETE || !controller.temporalPresented && !controller.rulePresented)
             Text(stringResource(if (launch.action == SeriesEditorAction.EDIT) R.string.series_time_unchanged else R.string.series_delete_read_only), style = MaterialTheme.typography.bodySmall)
-        if (launch.scope == RecurrenceScope.ALL && launch.action == SeriesEditorAction.EDIT) {
+        if (launch.scope != RecurrenceScope.THIS && launch.action == SeriesEditorAction.EDIT) {
             if (controller.temporalPresented && fields.temporal != null) SeriesTemporalControls(controller)
             if (controller.rulePresented && fields.recurrence != null) {
                 SeriesExistingLimit(requireNotNull(controller.masterContext))
+                if (launch.scope == RecurrenceScope.FOLLOWING) Text(stringResource(R.string.series_following_keep_help), style = MaterialTheme.typography.bodySmall)
                 RecurrenceEditorControls(fields.recurrence.values, fields.temporal?.startDate ?: controller.masterStart?.date.toString(),
                     controller.canChangeRule, allowNone = false, allowKeepEnd = true, onChange = controller::changeRule)
             }
@@ -130,6 +133,7 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
         }
         TextButton(onClick = onClose, enabled = !state.saving && !state.reviewing) { Text(stringResource(R.string.events_editor_cancel)) }
     }
+    state.followingReview?.let { review -> SeriesFollowingReviewDialog(review, fields.title, controller::confirmFollowingReview, controller::dismissFollowingReview) }
     state.wholeReview?.let { review -> SeriesWholeReviewDialog(review, fields.title, controller::confirmWholeReview, controller::dismissWholeReview) }
     if (state.confirmDelete || retryDelete) AlertDialog(onDismissRequest = { controller.cancelDelete(); retryDelete = false },
         title = { Text(stringResource(R.string.series_confirm_delete)) },

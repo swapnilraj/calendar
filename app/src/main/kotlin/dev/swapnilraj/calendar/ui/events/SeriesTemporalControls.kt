@@ -16,10 +16,10 @@ import java.time.format.FormatStyle
 @Composable
 internal fun SeriesTemporalControls(controller: SeriesEventEditorController) {
     val fields = controller.state.fields.temporal ?: return
-    val context = controller.masterContext ?: return
+    val context = controller.editingContext ?: return
     val timed = context.start is RecurrenceStart.Timed
     fun change(transform: (SeriesTemporalFields) -> SeriesTemporalFields) = controller.change { it.copy(temporal = transform(fields)) }
-    Text(stringResource(R.string.series_master_time_heading), style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(if (controller.launch.scope == RecurrenceScope.FOLLOWING) R.string.series_tail_time_heading else R.string.series_master_time_heading), style = MaterialTheme.typography.titleSmall)
     Text(stringResource(if (timed) R.string.series_kind_timed_fixed else R.string.series_kind_allday_fixed))
     OutlinedTextField(fields.startDate, { value -> change { it.copy(startDate = value) } }, enabled = controller.canChangeTime,
         label = { Text(stringResource(R.string.events_editor_start_date)) }, modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -54,7 +54,7 @@ internal fun SeriesTemporalControls(controller: SeriesEventEditorController) {
             is RecurrenceDurationChange.TimedElapsed -> "PT${duration.duration.seconds}S"; is RecurrenceDurationChange.AllDayDays -> "P${duration.days}D" }
         (RecurrenceMasterTemplates.resolve(start, raw) as? RecurrenceMasterTemplateResult.Ready)?.template
     }.getOrNull()
-    resolved?.let { SeriesLogicalInterval(it, R.string.series_resulting_master_interval) }
+    resolved?.let { SeriesLogicalInterval(it, if (controller.launch.scope == RecurrenceScope.FOLLOWING) R.string.series_after_tail else R.string.series_resulting_master_interval) }
 }
 
 @Composable

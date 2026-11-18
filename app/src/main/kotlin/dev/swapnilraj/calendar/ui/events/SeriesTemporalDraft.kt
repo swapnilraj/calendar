@@ -18,6 +18,20 @@ internal data class SeriesMasterContext(val calendar: CalendarIdentity, val star
     }
 }
 
+/** Presentation anchor only: immutable original identity in the master zone, never actual/display time. */
+internal fun SeriesMasterContext.nominalTail(selected: EventRef): SeriesMasterContext? = runCatching {
+    val boundary = requireNotNull(seriesOriginalBoundary(selected, start))
+    val nominal = when (boundary) {
+        is RecurrenceKey.Date -> RecurrenceStart.AllDay(boundary.date)
+        is RecurrenceKey.Timed -> {
+            val zone = (start as RecurrenceStart.Timed).zone
+            val local = boundary.instant.atZone(zone)
+            RecurrenceStart.Timed(local.toLocalDateTime(), zone, local.offset)
+        }
+    }
+    copy(start = nominal)
+}.getOrNull()
+
 data class SeriesTemporalFields(val startDate: String, val startTime: String = "", val zone: String = "", val offset: String = "",
     val durationMode: String = "KEEP", val hours: String = "", val minutes: String = "", val seconds: String = "", val days: String = "") {
     companion object {
@@ -38,7 +52,7 @@ data class SeriesTemporalFields(val startDate: String, val startTime: String = "
 
 data class SeriesRuleFields(val values: RecurrenceEditorFields, val patternDirty: Boolean = false,
     val intervalDirty: Boolean = false, val weekStartDirty: Boolean = false, val endDirty: Boolean = false) {
-    internal fun changes(original: RecurrenceSpec): RecurrenceRuleChanges {
+    internal fun changes(original: RecurrenceSpec, following: Boolean = false): RecurrenceRuleChanges {
         val pattern = if (patternDirty) values.copy(interval = "1", endMode = "NEVER", weekStart = "MONDAY").normalized()?.pattern
             ?: error("A series cannot be converted to a one-off here") else original.pattern
         val interval = if (intervalDirty) values.interval.toInt().also { require(it in 1..RecurrenceCreation.MAX_INTERVAL) } else original.interval
@@ -50,7 +64,10 @@ data class SeriesRuleFields(val values: RecurrenceEditorFields, val patternDirty
             else -> error("Unsupported authored end")
         }
         fun <T> change(value: T, old: T): FieldChange<T> = if (value == old) FieldChange.Keep else FieldChange.Set(value)
-        return RecurrenceRuleChanges(change(pattern, original.pattern), change(interval, original.interval), change(weekStart, original.weekStart), change(end, original.end))
+        // A tail's preserved COUNT is smaller than the master's COUNT. An explicitly authored
+        // ending must remain Set even if it happens to equal the original whole-series limit.
+        val ending = if (following && endDirty && values.endMode != "KEEP") FieldChange.Set(end) else change(end, original.end)
+        return RecurrenceRuleChanges(change(pattern, original.pattern), change(interval, original.interval), change(weekStart, original.weekStart), ending)
     }
     companion object {
         internal fun from(context: SeriesMasterContext): SeriesRuleFields? = context.parsed?.let { original ->

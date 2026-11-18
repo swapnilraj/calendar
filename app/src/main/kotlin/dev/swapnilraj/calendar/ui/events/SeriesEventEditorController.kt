@@ -17,11 +17,15 @@ enum class SeriesEditorProblem { DRAFT_UNAVAILABLE, SOURCE_CHANGED, UNSUPPORTED,
 data class SeriesWholeReview(val before: RecurrenceMasterTemplate, val after: RecurrenceMasterTemplate,
     val recurrence: RecurrenceSpec, val command: SeriesCommand.WholeEdit)
 
+data class SeriesFollowingReview(val before: RecurrenceMasterTemplate, val after: RecurrenceMasterTemplate,
+    val recurrence: RecurrenceSpec, val command: SeriesCommand.FollowingEdit, val boundary: RecurrenceKey, val earlierCount: Int)
+
 data class SeriesEventEditorState(val fields: SeriesEditorFields = SeriesEditorFields(), val loading: Boolean = true,
     val saving: Boolean = false, val problem: SeriesEditorProblem? = null, val reviewRequired: Boolean = false,
     val recoveryRequired: Boolean = false, val retryReady: Boolean = false, val confirmDelete: Boolean = false,
     val result: SeriesMutationResult? = null, val draftReadFailed: Boolean = false, val reviewing: Boolean = false,
-    val wholeReview: SeriesWholeReview? = null, val localOutcome: SeriesMutationResult? = null)
+    val wholeReview: SeriesWholeReview? = null, val localOutcome: SeriesMutationResult? = null,
+    val followingReview: SeriesFollowingReview? = null)
 
 /** Every schema2 change uses an exact record CAS. Submitted operations are never retired/reissued. */
 class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: EditableSeries?,
@@ -43,12 +47,13 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
     val hasDefaultAlerts: Boolean get() = document?.hasDefaultAlerts == true
     val masterStart: RecurrenceStart? get() = document?.masterStart
     internal val masterContext: SeriesMasterContext? get() = document?.context
+    internal val editingContext: SeriesMasterContext? get() = document?.let { if (it.scope == RecurrenceScope.FOLLOWING && it.action == SeriesEditorAction.EDIT) it.context?.nominalTail(it.selected) else it.context }
     val deletionBoundary: RecurrenceKey? get() = document?.takeIf { it.scope == RecurrenceScope.FOLLOWING && it.action == SeriesEditorAction.DELETE }
         ?.let { seriesOriginalBoundary(it.selected, it.masterStart) }
     val fieldsAllowed: Set<EditableField> get() = document?.let { doc -> doc.rights.fields.intersect(doc.allowedFields)
-        .intersect(seriesUiFields + if (doc.scope == RecurrenceScope.ALL) setOf(EditableField.TIME, EditableField.ZONE) else emptySet()) }.orEmpty()
-    val temporalPresented: Boolean get() = launch.scope == RecurrenceScope.ALL && EditableField.TIME in fieldsAllowed && masterContext?.template != null
-    val rulePresented: Boolean get() = launch.scope == RecurrenceScope.ALL && document?.rights?.recurrence == AccessDecision.ALLOWED && masterContext?.template != null && masterContext?.parsed != null
+        .intersect(seriesUiFields + if (doc.scope != RecurrenceScope.THIS) setOf(EditableField.TIME, EditableField.ZONE) else emptySet()) }.orEmpty()
+    val temporalPresented: Boolean get() = launch.scope != RecurrenceScope.THIS && EditableField.TIME in fieldsAllowed && editingContext?.template != null
+    val rulePresented: Boolean get() = launch.scope != RecurrenceScope.THIS && document?.rights?.recurrence == AccessDecision.ALLOWED && editingContext?.template != null && masterContext?.parsed != null
     val canChangeRule: Boolean get() = canChange && rulePresented
     val canChangeTime: Boolean get() = canChange && temporalPresented
     val canChangeZone: Boolean get() = canChangeTime && EditableField.ZONE in fieldsAllowed
@@ -58,6 +63,7 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
     val hasChanges: Boolean get() = document?.let { doc -> try { val command = seriesCommand(doc.copy(fields = state.fields)); when (command) {
         is SeriesCommand.WholeEdit -> command.intent.fields != EventPatch() || command.intent.newMasterStart != FieldChange.Keep || command.intent.duration != RecurrenceDurationChange.KeepRaw || command.intent.rule != RecurrenceRuleChanges()
         is SeriesCommand.OccurrenceEdit -> command.patch != EventPatch()
+        is SeriesCommand.FollowingEdit -> command.intent.fields != EventPatch() || command.intent.newTailStart != FieldChange.Keep || command.intent.duration != RecurrenceDurationChange.KeepRaw || command.intent.rule != RecurrenceRuleChanges()
         else -> false
     } } catch (_: Exception) { true } } ?: false
 
@@ -103,7 +109,7 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
             privacy = if (EditableField.PRIVACY in rights) proposed.privacy else old.privacy,
             temporal = temporal, recurrence = if (canChangeRule) proposed.recurrence else old.recurrence)
         reviewedFields = null; reviewedRevision = null
-        state = state.copy(fields = next, wholeReview = null, problem = null, result = null)
+        state = state.copy(fields = next, wholeReview = null, followingReview = null, problem = null, result = null)
         persistence?.cancel(); persistence = scope.launch { delay(300); persistFields() }
     }
     fun changeRule(values: RecurrenceEditorFields) {
@@ -130,7 +136,7 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
     }
 
     private suspend fun replace(next: SeriesDraftDocument): Boolean = storage.withLock {
-        if (retired || next.schema != 2) return@withLock false
+        if (retired || next.schema !in 2..3) return@withLock false
         val expected = expectedRecord ?: return@withLock false
         val replacement = SeriesDraftCodec.record(next.copy(revision = UUID.randomUUID().toString()), clock.instant())
         val result = try { atomic?.compareAndSet(launch.draftId, expected, replacement) ?: DraftChangeResult.Unavailable }
@@ -152,7 +158,7 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
         if (doc.schema == 1 || state.reviewRequired || doc.frozen != null) return verifyLease() && doc.submitted
         return replace(doc.copy(fields = state.fields))
     }
-    private fun stale() { retired = true; state = state.copy(problem = SeriesEditorProblem.DRAFT_UNAVAILABLE, retryReady = false, wholeReview = null) }
+    private fun stale() { retired = true; state = state.copy(problem = SeriesEditorProblem.DRAFT_UNAVAILABLE, retryReady = false, wholeReview = null, followingReview = null) }
     private suspend fun verifyLease(): Boolean = if (retired) false else try {
         if (drafts.load(launch.draftId) == expectedRecord) true else { stale(); false }
     } catch (cancelled: CancellationException) { throw cancelled }
@@ -172,6 +178,10 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
                     val review = wholeReview(command) ?: run { state = state.copy(problem = SeriesEditorProblem.NEEDS_REVIEW); return@launch }
                     reviewedFields = state.fields; reviewedRevision = document?.revision
                     state = state.copy(wholeReview = review)
+                } else if (command is SeriesCommand.FollowingEdit) {
+                    val review = followingReview(command) ?: run { state = state.copy(problem = SeriesEditorProblem.NEEDS_REVIEW); return@launch }
+                    reviewedFields = state.fields; reviewedRevision = document?.revision
+                    state = state.copy(followingReview = review)
                 } else submitPrepared(command)
             } finally { state = state.copy(saving = false); action.set(false) }
         }
@@ -189,11 +199,39 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
         val parsed = RecurrenceRules.parse(rule, anchor) as? ParsedRecurrence.Supported ?: return null
         SeriesWholeReview(requireNotNull(context.template), after, parsed.spec, command)
     } catch (_: Exception) { null } }
-    fun dismissWholeReview() { reviewedFields = null; reviewedRevision = null; state = state.copy(wholeReview = null) }
+    fun dismissWholeReview() { reviewedFields = null; reviewedRevision = null; state = state.copy(wholeReview = null, followingReview = null) }
     fun confirmWholeReview() {
         val review = state.wholeReview ?: return
         if (!canChange || reviewedFields != state.fields || reviewedRevision != document?.revision || !action.compareAndSet(false, true)) return
-        state = state.copy(saving = true, wholeReview = null, problem = null)
+        state = state.copy(saving = true, wholeReview = null, followingReview = null, problem = null)
+        scope.launch { try { submitPrepared(review.command) } finally { state = state.copy(saving = false); action.set(false) } }
+    }
+    private fun followingReview(command: SeriesCommand.FollowingEdit): SeriesFollowingReview? = try {
+        val live = source ?: error("Missing source")
+        val context = requireNotNull(document?.context)
+        val before = requireNotNull(context.nominalTail(launch.selected)?.template)
+        val plan = RecurrenceEditing.plan(live.snapshot, launch.selected, command.intent) as? RecurrencePlanningResult.Ready ?: error("Review plan")
+        val resolved = RecurrenceFollowingRules.resolve(live.snapshot, launch.selected, command.intent, plan)
+        val nominal = requireNotNull(context.nominalTail(launch.selected)).start
+        val anchor: RecurrenceStart
+        val raw: String
+        val earlier: Int
+        when (resolved) {
+            is RecurrenceFollowingRuleResult.Tail -> { anchor = resolved.tailStart; raw = resolved.tailRuleRaw; earlier = resolved.boundaryOrdinal }
+            is RecurrenceFollowingRuleResult.Whole -> { anchor = (command.intent.newTailStart as? FieldChange.Set)?.value ?: nominal; raw = resolved.ruleRaw; earlier = 0 }
+            is RecurrenceFollowingRuleResult.NeedsReview -> error("Unsupported tail")
+        }
+        val duration = when (val change = command.intent.duration) { RecurrenceDurationChange.KeepRaw -> context.durationRaw
+            is RecurrenceDurationChange.TimedElapsed -> "PT${change.duration.seconds}S"; is RecurrenceDurationChange.AllDayDays -> "P${change.days}D" }
+        val after = (RecurrenceMasterTemplates.resolve(anchor, duration) as? RecurrenceMasterTemplateResult.Ready)?.template ?: error("Tail interval")
+        val parsed = RecurrenceRules.parse(raw, anchor) as? ParsedRecurrence.Supported ?: error("Tail rule")
+        SeriesFollowingReview(before, after, parsed.spec, command, command.intent.expectedOriginalBoundary, earlier)
+    } catch (_: Exception) { null }
+    fun dismissFollowingReview() { reviewedFields = null; reviewedRevision = null; state = state.copy(followingReview = null) }
+    fun confirmFollowingReview() {
+        val review = state.followingReview ?: return
+        if (!canChange || reviewedFields != state.fields || reviewedRevision != document?.revision || !action.compareAndSet(false, true)) return
+        state = state.copy(saving = true, followingReview = null, problem = null)
         scope.launch { try { submitPrepared(review.command) } finally { state = state.copy(saving = false); action.set(false) } }
     }
     fun requestDelete() { if (launch.action == SeriesEditorAction.DELETE && !locked() && document?.rights?.delete == AccessDecision.ALLOWED) state = state.copy(confirmDelete = true) }
@@ -212,9 +250,10 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
     private suspend fun submitPrepared(command: SeriesCommand) {
         if (!verifyLease() || !permission()) return
         val doc = document ?: return
-        if (doc.schema != 2 || doc.frozen != null) return
+        if (doc.schema !in 2..3 || doc.frozen != null) return
         val frozen = FrozenSeriesSubmission(doc.operationId, doc.selected, doc.identity, doc.token, doc.scope, doc.action, command,
-            if (doc.scope == RecurrenceScope.FOLLOWING && doc.action == SeriesEditorAction.DELETE) doc.masterStart else null)
+            if (doc.scope == RecurrenceScope.FOLLOWING && doc.action == SeriesEditorAction.DELETE) doc.masterStart else null,
+            if (command is SeriesCommand.FollowingEdit) doc.masterStart else null)
         if (!replace(doc.copy(fields = state.fields, frozen = frozen, submitted = true))) return
         state = state.copy(recoveryRequired = true)
         dispatch(frozen)
@@ -268,7 +307,7 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
                 problem = if (removed) null else SeriesEditorProblem.DRAFT_UNAVAILABLE)
             return
         }
-        state = state.copy(saving = false, recoveryRequired = true, retryReady = proof, wholeReview = null, result = result,
+        state = state.copy(saving = false, recoveryRequired = true, retryReady = proof, wholeReview = null, followingReview = null, result = result,
             problem = when {
                 proof -> SeriesEditorProblem.SAFE_TO_RETRY
                 result is SeriesMutationResult.PlanningReview -> SeriesEditorProblem.NEEDS_REVIEW

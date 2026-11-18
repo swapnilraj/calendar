@@ -54,3 +54,30 @@ internal object SeriesWholeEditJson {
     }
     private fun number(value: JSONObject, key: String): Long = when (val raw = value.get(key)) { is Int -> raw.toLong(); is Long -> raw; else -> error("Invalid numeric intent") }
 }
+
+/** Dedicated schema3 payload; it cannot be decoded as an occurrence or whole-series command. */
+internal object SeriesFollowingEditJson {
+    fun encode(intent: RecurrenceEditIntent.FollowingSeriesEdit, master: RecurrenceStart,
+        selected: EventRef, token: EditToken): JSONObject {
+        require(intent.selectedExceptionPatch == EventPatch())
+        require(seriesOriginalBoundary(selected, master) == intent.expectedOriginalBoundary)
+        return JSONObject().put("boundary", when (val boundary = intent.expectedOriginalBoundary) {
+            is RecurrenceKey.Date -> JSONObject().put("kind", "date").put("date", boundary.date.toString())
+            is RecurrenceKey.Timed -> JSONObject().put("kind", "timed").put("instant", boundary.instant.toString())
+        }).put("tail", SeriesWholeEditJson.encode(RecurrenceEditIntent.WholeSeriesEdit(master, intent.fields,
+            intent.newTailStart, intent.duration, intent.rule), selected, token))
+    }
+    fun decode(value: JSONObject, selected: EventRef, token: EditToken): Pair<RecurrenceEditIntent.FollowingSeriesEdit, RecurrenceStart> {
+        SeriesTemporalJson.exact(value, "boundary", "tail")
+        val encoded = value.getJSONObject("boundary")
+        val boundary = when (SeriesTemporalJson.text(encoded, "kind")) {
+            "date" -> { SeriesTemporalJson.exact(encoded, "kind", "date"); RecurrenceKey.Date(LocalDate.parse(SeriesTemporalJson.text(encoded, "date"))) }
+            "timed" -> { SeriesTemporalJson.exact(encoded, "kind", "instant"); RecurrenceKey.Timed(Instant.parse(SeriesTemporalJson.text(encoded, "instant"))) }
+            else -> error("Unknown original boundary")
+        }
+        val tail = SeriesWholeEditJson.decode(value.getJSONObject("tail"), selected, token)
+        require(seriesOriginalBoundary(selected, tail.expectedMasterStart) == boundary)
+        return RecurrenceEditIntent.FollowingSeriesEdit(boundary, tail.fields, tail.newMasterStart,
+            tail.duration, tail.rule) to tail.expectedMasterStart
+    }
+}
