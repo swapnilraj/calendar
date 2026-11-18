@@ -44,7 +44,7 @@ fun SettingsSheet(
     onSave: (CalendarSettingsOptions) -> Unit,
     onDismiss: () -> Unit,
     onChooseDefaultCalendar: () -> Unit,
-    onOpenReminderSetup: () -> Unit,
+    onOpenReminderSetup: (() -> Unit)?,
     modifier: Modifier = Modifier,
     saving: Boolean = false,
     saveError: String? = null,
@@ -89,7 +89,9 @@ fun SettingsSheet(
                 }
                 item {
                     TextButton(enabled = !saving, onClick = onChooseDefaultCalendar, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_default_calendar)) }
-                    TextButton(enabled = !saving, onClick = onOpenReminderSetup, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_reminder_setup)) }
+                    onOpenReminderSetup?.let { open ->
+                        TextButton(enabled = !saving, onClick = open, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.settings_reminder_setup)) }
+                    }
                 }
                 item { SectionTitle(stringResource(R.string.settings_calendar_display)) }
                 item {

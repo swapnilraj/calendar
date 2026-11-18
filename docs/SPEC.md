@@ -61,6 +61,18 @@ Explicit known privacy/availability are retained; unresolved metadata is shown f
 inherited Calendar default visibility must be approved for its target calendar; changing calendars
 invalidates that inherited approval. Frozen legacy commands lacking proof remain recovery-only.
 
+The drawer Settings screen now saves display preferences atomically with the existing calendar
+selection/default/view/zoom snapshot. First weekday, hidden weekend columns, declined-event filtering,
+device/fixed display zone, system/light/dark theme and weather visibility/units apply to the live app.
+An unavailable save retains raw settings for retry; choosing a creation calendar remains independent.
+Weather location resolution still uses device location/device-zone fallback; a display-zone preference
+only changes the calendar clock. Fahrenheit converts display values, leaving pure weather rules and
+Celsius forecast data unchanged. Theme overrides apply consistently to the grid and weather substrate.
+The main Create action starts a timed draft using saved duration/reminder defaults; month/date-sheet
+creation starts an all-day draft with its separate reminder default. Existing unresolved reminders
+are never reinterpreted through these new-event defaults. Reminder setup remains separate pending
+runtime wiring.
+
 1. **Events always win.** Weather is painted under the hour lines and events. Nothing covers an event
    or its text, and event colours are never tinted.
 2. **Glanceable, not readable.** "Rainy evening, dark by five" should land in under a second without

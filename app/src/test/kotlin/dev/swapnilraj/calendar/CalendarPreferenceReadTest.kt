@@ -58,6 +58,32 @@ class CalendarPreferenceReadTest {
     private fun settings(store: Store) = Settings(RuntimeEnvironment.getApplication(), store)
     private suspend fun Channel<CalendarPreferenceState>.next(): CalendarPreferenceState = withTimeout(10_000) { receive() }
 
+    @Test fun displaySaveIsAtomicWithFiltersAndFailureCannotPartiallyApplyOptions() = runBlocking {
+        val original = stored(setOf("9")).toMutablePreferences().apply {
+            this[stringPreferencesKey("reminder_private_fixture")] = "retain"
+        }.toPreferences()
+        val store = Store(original)
+        val settings = settings(store)
+        val options = dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions(
+            defaultView = dev.swapnilraj.calendar.ui.calendars.CalendarViewOption.MONTH,
+            defaultDurationMinutes = 75, timedReminderMinutes = 30, showDeclined = false,
+            showWeekends = false, theme = dev.swapnilraj.calendar.ui.settings.SettingsTheme.DARK,
+            displayZone = dev.swapnilraj.calendar.ui.settings.DisplayZoneOption.Fixed(java.time.ZoneId.of("America/Los_Angeles")),
+            weatherVisible = false)
+        assertTrue(settings.setDisplaySettings(options))
+        val ready = settings.calendarPreferences.filterIsInstance<CalendarPreferenceState.Ready>().first().value
+        assertEquals(options, ready.options)
+        assertEquals("MONTH", ready.view)
+        assertEquals(CalendarSelection.Explicit(setOf(CalendarId(9))), ready.selection)
+        assertEquals(CalendarId(9), ready.defaultCalendar)
+        assertEquals(88f, ready.hourHeight)
+        assertEquals("retain", store.stored[stringPreferencesKey("reminder_private_fixture")])
+        val saved = store.stored
+        store.failReads()
+        assertFalse(settings.setDisplaySettings(options.copy(defaultDurationMinutes = 90)))
+        assertEquals(saved, store.stored)
+    }
+
     @Test fun firstReadFailureDoesNotExposeDefaultsOrOverwriteExplicitNoneOrWorkSelection() = runBlocking {
         for (ids in listOf(emptySet(), setOf("9"))) {
             val store = Store(stored(ids), failing = true)
@@ -125,9 +151,9 @@ class CalendarPreferenceReadTest {
             assertEquals(CalendarPreferenceState.Loading, states.next())
             val first = (states.next() as CalendarPreferenceState.Ready).value
             assertTrue(settings.setCalendarView("MONTH"))
-            assertEquals(CalendarPreferenceState.Ready(first.copy(view = "MONTH")), states.next())
+            assertEquals(CalendarPreferenceState.Ready(first.copy(view = "MONTH", options = first.options.copy(defaultView = dev.swapnilraj.calendar.ui.calendars.CalendarViewOption.MONTH))), states.next())
             assertTrue(settings.setCalendarSelection(CalendarSelection.Explicit(emptySet())))
-            val hidden = first.copy(view = "MONTH", selection = CalendarSelection.Explicit(emptySet()))
+            val hidden = first.copy(view = "MONTH", selection = CalendarSelection.Explicit(emptySet()), options = first.options.copy(defaultView = dev.swapnilraj.calendar.ui.calendars.CalendarViewOption.MONTH))
             assertEquals(CalendarPreferenceState.Ready(hidden), states.next())
             settings.setHourHeight(120f)
             assertEquals(CalendarPreferenceState.Ready(hidden.copy(hourHeight = 120f)), states.next())

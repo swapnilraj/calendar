@@ -1,6 +1,6 @@
 package dev.swapnilraj.calendar.ui
 
-import androidx.compose.foundation.isSystemInDarkTheme
+import dev.swapnilraj.calendar.ui.theme.LocalDaylightDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -13,7 +13,7 @@ import dev.swapnilraj.calendar.weather.*
 @Composable
 fun BoxScope.WeatherBackground(hours: List<DayHour>) {
     val gutterWidth = LocalCalendarGutter.current
-    val theme = if (isSystemInDarkTheme()) WeatherTheme.DARK else WeatherTheme.LIGHT
+    val theme = if (LocalDaylightDarkTheme.current) WeatherTheme.DARK else WeatherTheme.LIGHT
     val stops = remember(hours, theme) { gradientStops(hours, theme) }
     val texture = remember(hours) { textureFor(hours) }
     Box(Modifier.matchParentSize().padding(start = gutterWidth).drawWithCache {
