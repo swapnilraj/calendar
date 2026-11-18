@@ -81,14 +81,16 @@ internal fun ReminderSettingsWorkflow(app: CalendarApp, onDismiss: () -> Unit) {
                     saving = true
                     scope.launch {
                         try {
-                            var saved = app.settings.saveReminderSettings(expected, updated)
-                            if (saved == ReminderPreferenceSave.Unavailable) {
-                                // A lost storage ACK does not prove failure. Preferences are idempotent;
-                                // readback can confirm the exact requested current settings safely.
-                                val current = try { app.settings.readReminderSettings() }
-                                catch (cancelled: CancellationException) { throw cancelled }
-                                catch (_: Exception) { null }
-                                if (current == updated) saved = ReminderPreferenceSave.Saved(updated)
+                            val saved = app.reminderRuntime.updateConfiguration {
+                                var outcome = app.settings.saveReminderSettings(expected, updated)
+                                if (outcome == ReminderPreferenceSave.Unavailable) {
+                                    // Preferences are idempotent; exact readback can confirm a lost ACK.
+                                    val current = try { app.settings.readReminderSettings() }
+                                    catch (cancelled: CancellationException) { throw cancelled }
+                                    catch (_: Exception) { null }
+                                    if (current == updated) outcome = ReminderPreferenceSave.Saved(updated)
+                                }
+                                outcome
                             }
                             result = saved
                             if (saved is ReminderPreferenceSave.Saved) {

@@ -134,6 +134,12 @@ and form only after the user requests discard. An uncertain preference save is r
 success acknowledgement. Device delivery is not claimed by a local save.
 Delivery setup shows Checking until its latest requested reconciliation completes, and never presents
 old Ready health while current notification/calendar permissions or precise-alarm access are missing.
+Reminder setup enrolls settings CAS and readback in the runtime's configuration-change ordering before
+acknowledging a save. Old in-flight delivery cannot cross that acknowledged application update; after
+source awaits, delivery and snooze also recheck fresh configuration and permissions. Known disable or
+permission loss attempts alarm/notification teardown independently of ledger success. Unknown settings
+remain unavailable, and known permission loss permits narrow teardown without running a delivery cycle.
+This does not make private settings, CalendarProvider and Android notifications one atomic transaction.
 Notification permission must be requested through explicit setup before posting.
 Runtime startup, resume, notification actions and content-job rearming serialize configuration reads
 with job registration/cancellation. An older suspended read cannot cancel a newer enabled registration

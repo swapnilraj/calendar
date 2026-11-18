@@ -17,5 +17,6 @@ internal fun CalendarApp.createReminderRuntime(scope: CoroutineScope): ReminderR
             ComponentName(this, ReminderActionReceiver::class.java))), configuration, permissions)
     return ReminderRuntime(CoordinatorReminderOperations(coordinator),
         AndroidReminderJobs(this, ComponentName(this, ReminderJobService::class.java)), scope, configuration,
-        { checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED })
+        { checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED },
+        deliveryPermissions = permissions)
 }
