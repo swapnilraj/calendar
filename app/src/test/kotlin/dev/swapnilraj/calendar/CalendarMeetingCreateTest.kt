@@ -93,11 +93,11 @@ class CalendarMeetingCreateTest {
         fixture{f->val token=f.creation().token;assertTrue(f.writer.create("self-only",token,draft,emptyList()) is MeetingMutationResult.LocalSaved);assertEquals(1,f.p.count("attendees"))}
     }
 
-    @Test fun allDayUsesUtcExclusiveDatesAndRecurringRequestsNeverFallBackToOneOff()=runBlocking{fixture{f->
+    @Test fun allDayUsesUtcExclusiveDatesAndUnversionedRecurringRequestsNeverFallBackToOneOff()=runBlocking{fixture{f->
         val token=f.creation().token;val allDay=draft.copy(time=EventTime.AllDay(CalendarDateRange(LocalDate.of(2026,11,18),LocalDate.of(2026,11,21))),eventZone=null)
         val saved=f.writer.create("dates",token,allDay,guests) as MeetingMutationResult.LocalSaved
         assertEquals(Instant.parse("2026-11-18T00:00:00Z"),saved.selected.instanceStart);assertEquals(Instant.parse("2026-11-21T00:00:00Z"),saved.selected.instanceEnd);assertEquals("UTC",f.p.value("eventTimezone"))
-    };fixture{f->val token=f.creation().token;assertTrue(f.writer.create("recurring",token,draft.copy(recurrence=RecurrenceSpec(RecurrencePattern.Daily)),guests) is MeetingMutationResult.Unsupported);assertNull(f.store.operationHeader("recurring"));assertEquals(0,f.p.batchCount)}}
+    };fixture{f->f.p.setCalendar("canModifyTimeZone",null);val token=f.creation().token;assertTrue(f.writer.create("recurring",token,draft.copy(recurrence=RecurrenceSpec(RecurrencePattern.Daily)),guests) is MeetingMutationResult.NeedsReview);assertNull(f.store.operationHeader("recurring"));assertEquals(0,f.p.batchCount)}}
 
     @Test fun atomicAttendeeAndReminderFailuresRollBackAndRetryOnlyExactFrozenPayload()=runBlocking{
         listOf(true,false).forEach{attendee->fixture{f->val token=f.creation().token;f.p.failAttendee=attendee;f.p.failReminder=!attendee

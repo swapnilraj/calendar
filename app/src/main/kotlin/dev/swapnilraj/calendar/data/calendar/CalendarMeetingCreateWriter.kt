@@ -28,10 +28,11 @@ internal class CalendarMeetingCreateWriter(
     private val readBudgets: ProviderReadBudgets,
 ) {
     private val mutex = Mutex()
+    private val recurring = CalendarRecurringMeetingCreateWriter(resolver, reader, store, hasPermission, this, io, readBudgets)
     private val authoredFields = CalendarWriter(resolver, reader, store, hasPermission, io, readBudgets)
-    private class Review(val reason: String) : Exception()
-    private class Invalid(val reason: String) : Exception()
-    private class Denied(val reason: MutationDenial) : Exception()
+    internal class Review(val reason: String) : Exception()
+    internal class Invalid(val reason: String) : Exception()
+    internal class Denied(val reason: MutationDenial) : Exception()
     private class Conflict : Exception()
     private data class Guest(val email: String, val type: Int, val name: String?)
     private data class Source(val calendar: Map<String,String?>) {
@@ -53,8 +54,11 @@ internal class CalendarMeetingCreateWriter(
             }
             val encoded=before.encode(); checkStoredJson(encoded,readBudgets.maxCanonicalBytes)
             if(calendar(target.calendarId).encode()!=encoded) throw Conflict()
-            val token=EditToken(token(encoded));ensureRead();store.saveEdit(token.value,encoded)
-            MeetingReadResult.Ready(MeetingCreation(info,token,types.mapNotNull(::guestType).toSet()))
+            val recurringAllowed=MeetingRecurringCreationSource.canIssue(before.calendar)
+            val issued=if(recurringAllowed)MeetingRecurringCreationSource.wrap(encoded,readBudgets.maxCanonicalBytes)else encoded
+            if(recurringAllowed)recurring.checkSourceParcel(before.calendar)
+            val token=EditToken(if(recurringAllowed)MeetingRecurringCreationSource.token(issued)else token(encoded));ensureRead();store.saveEdit(token.value,issued)
+            MeetingReadResult.Ready(MeetingCreation(info,token,types.mapNotNull(::guestType).toSet(),if(recurringAllowed)AccessDecision.ALLOWED else AccessDecision.UNKNOWN))
         } catch(_:ProviderReadLimitExceeded){MeetingReadResult.LimitExceeded}
         catch(_:SecurityException){MeetingReadResult.PermissionRequired}
         catch(denied:Denied){MeetingReadResult.Denied(denied.reason)}
@@ -65,6 +69,7 @@ internal class CalendarMeetingCreateWriter(
     }
 
     suspend fun create(id:String, editToken:EditToken, draft:EventDraft, inputs:List<MeetingGuestInput>):MeetingMutationResult = withContext(io+readBudgetContext(readBudgets.mutation)) {mutex.withLock {
+        if(draft.recurrence!=null)return@withLock recurring.create(id,editToken,draft,inputs)
         var dispatch:CalendarLocalStore.Operation?=null
         var knownId:Long?=null
         try {
@@ -152,7 +157,7 @@ internal class CalendarMeetingCreateWriter(
 
     suspend fun recover(id:String):MeetingMutationResult=withContext(io+readBudgetContext(readBudgets.mutation)){mutex.withLock{
         try{if(store.operationHeader(id)?.phase=="ABANDONED")return@withLock common(MutationResult.Retired(id))
-            ensureRead();store.operation(id)?.let{recover(it,true)}?:common(MutationResult.Unavailable)
+            ensureRead();store.operation(id)?.let{if(CalendarRecurringMeetingCreateWriter.handles(it.kind))recurring.recover(id)else recover(it,true)}?:common(MutationResult.Unavailable)
         }catch(_:SecurityException){common(MutationResult.PermissionRequired)}catch(cancelled:CancellationException){throw cancelled}
         catch(_:Exception){common(MutationResult.Uncertain(id,null))}
     }}
@@ -220,10 +225,10 @@ internal class CalendarMeetingCreateWriter(
         proof
     }catch(_:Exception){null}
     private fun source(token:EditToken):Source{
-        val raw=store.edit(token.value)?:throw Conflict();if(token(raw)!=token.value)throw Conflict()
-        val json=JSONObject(raw);require(json.getString("feature")==SourceFeature)
-        val source=Source(meetingRow(json.getJSONObject("calendar")));require(source.identity==meetingParseIdentity(json.getJSONObject("identity")))
-        require(source.encode()==raw);return source
+        val raw=store.edit(token.value)?:throw Conflict()
+        val base=if(token.value.startsWith(MeetingRecurringCreationSource.TokenPrefix))MeetingRecurringCreationSource.decode(raw,token,readBudgets.maxCanonicalBytes).baseRaw
+            else {if(token(raw)!=token.value)throw Conflict();raw}
+        return Source(legacySourceCalendar(base,readBudgets.maxCanonicalBytes))
     }
     private suspend fun calendar(id:CalendarId):Source{
         val uri=ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,id.value)
@@ -254,6 +259,18 @@ internal class CalendarMeetingCreateWriter(
             if(old==null)rows[key]=guest
         };return rows.values.toList()
     }
+    /** Pure validation/material only. The V2 transaction and stored plan are owned separately. */
+    internal fun initialRecurringPayload(calendar:Map<String,String?>,draft:EventDraft,inputs:List<MeetingGuestInput>):Pair<ContentValues,List<ContentValues>> {
+        require(draft.recurrence==null)
+        val source=Source(calendar);val types=policy(source)
+        return eventValues(draft,source) to (listOf(self(source.identity.owner!!))+guests(inputs,source.identity.owner!!,types).map(::attendee))
+    }
+    internal fun authoredAttendees(calendar:Map<String,String?>,inputs:List<MeetingGuestInput>):List<ContentValues> {
+        val source=Source(calendar);val types=policy(source)
+        return listOf(self(source.identity.owner!!))+guests(inputs,source.identity.owner!!,types).map(::attendee)
+    }
+    internal fun verifyCalendarPolicy(calendar:Map<String,String?>) { policy(Source(calendar)) }
+    internal suspend fun currentCreationCalendar(id:CalendarId)=calendar(id).calendar
     private fun eventValues(draft:EventDraft,source:Source)=authoredFields.meetingOneOffValues(draft,source.calendar).apply{
         put("organizer",source.identity.owner);put("eventStatus",1);put("hasAttendeeData",1)
         put("guestsCanModify",0);put("guestsCanInviteOthers",0);put("guestsCanSeeGuests",1)
@@ -273,8 +290,16 @@ internal class CalendarMeetingCreateWriter(
         private const val CommandFeature="MEETING_CREATE_COMMAND_V1"
         private const val Kind="MEETING_V1_CREATE"
         private const val MaxGuests=200
-        fun handles(kind:String)=kind==Kind
-        fun fingerprint(token:EditToken,draft:EventDraft,guests:List<MeetingGuestInput>,maxBytes:Int)=Kind to meetingHash(CommandFeature+commandJson(token,draft,guests,maxBytes).toString())
+        fun handles(kind:String)=kind==Kind||CalendarRecurringMeetingCreateWriter.handles(kind)
+        fun fingerprint(token:EditToken,draft:EventDraft,guests:List<MeetingGuestInput>,maxBytes:Int):Pair<String,String> =
+            if(draft.recurrence!=null)CalendarRecurringMeetingCreateWriter.fingerprint(token,draft,guests,maxBytes)
+            else Kind to meetingHash(CommandFeature+commandJson(token,draft,guests,maxBytes).toString())
+        internal fun legacySourceRaw(calendar:Map<String,String?>)=Source(calendar).encode()
+        internal fun legacySourceCalendar(raw:String,maxBytes:Int):Map<String,String?> {
+            checkStoredJson(raw,maxBytes);val json=JSONObject(raw);require(json.getString("feature")==SourceFeature)
+            val source=Source(meetingRow(json.getJSONObject("calendar")));require(source.identity==meetingParseIdentity(json.getJSONObject("identity")))
+            require(source.encode()==raw);return source.calendar
+        }
         private fun commandJson(token:EditToken,draft:EventDraft,guests:List<MeetingGuestInput>,maxBytes:Int):JSONObject{
             if(guests.size>MaxGuests||token.value.length>64*1024)throw ProviderReadLimitExceeded()
             checkCanonical(guests.map{listOf(it.email,it.name,it.type.name)},maxBytes)

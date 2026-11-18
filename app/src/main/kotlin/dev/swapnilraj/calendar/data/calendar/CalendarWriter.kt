@@ -527,6 +527,8 @@ class CalendarWriter(
         if (invalid.isNotEmpty()) throw Invalid(invalid)
     }
 
+    internal fun meetingRecurrencePlan(draft: EventDraft): RecurrenceCreationPlan = requireNotNull(compileRecurrence(draft))
+
     /** Shared authored-field validation/encoding only; meeting creation owns its own provider transaction. */
     internal fun meetingOneOffValues(draft: EventDraft, calendar: Map<String, String?>): ContentValues {
         if (draft.recurrence != null) throw Invalid(setOf(InvalidEventField.RECURRENCE))
@@ -698,6 +700,7 @@ class CalendarWriter(
             return CalendarIdentity(CalendarId(json.getLong("calendar")), CalendarAccount(json.getString("name"), json.getString("type")),
                 if (json.isNull("owner")) null else json.getString("owner"), if (json.isNull("providerId")) null else json.getString("providerId"))
         }
+        internal fun frozenDraftRecurrence(json: JSONObject) = parseSpec(json)
         internal fun frozenDraftIdentity(json: JSONObject) = parseIdentity(json)
         internal fun frozenDraftJson(draft: EventDraft, maxBytes: Int) = draftJson(draft, maxBytes)
         internal fun createFingerprint(draft: EventDraft, maxBytes: Int): Pair<String, String> = "CREATE" to signature("CREATE", draftJson(draft, maxBytes))
