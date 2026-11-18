@@ -38,6 +38,9 @@ class EventEditorController(
     private val scope: CoroutineScope,
     private val clock: Clock = Clock.systemUTC(),
     initialCalendarSelected: Boolean = true,
+    val recoveryOnly: Boolean = false,
+    private val recoveryRef: EventRef? = null,
+    private val requireStoredDraft: Boolean = false,
 ) {
     private val original = fieldsFor(initial).let {
         if (existing == null && !initialCalendarSelected) it.copy(calendarId = "") else it
@@ -55,6 +58,7 @@ class EventEditorController(
     private var retryLocked = false
     private var frozenSubmission: FrozenEditorSubmission? = null
     private var retainedSubmission: Any? = null
+    private var recoveryRecord: DraftRecord? = null
     private var persistence: Job? = null
     private val unsupported = existing?.let { source ->
         val ownEmails = listOfNotNull(source.details.organizer, source.details.calendar?.account?.name)
@@ -68,7 +72,13 @@ class EventEditorController(
     private suspend fun restore() {
         try {
             val saved = drafts.load(draftId)
+            check(saved != null || !requireStoredDraft && !recoveryOnly) { "Draft no longer available" }
             if (saved != null) {
+                if (recoveryOnly) {
+                    val launch = DraftBrowserCodec.read(saved).launch ?: throw IllegalArgumentException()
+                    require(launch.needsRecovery && launch.ref == recoveryRef)
+                    recoveryRecord = saved
+                }
                 if (saved.version != VERSION) {
                     state = state.copy(loading = false, problem = EditorProblem.DRAFT_VERSION)
                     return
@@ -102,7 +112,7 @@ class EventEditorController(
         catch (_: Exception) { state = state.copy(loading = false, draftReadFailed = true, problem = EditorProblem.DRAFT_UNAVAILABLE) }
     }
 
-    private fun writesBlocked(): Boolean = state.loading || state.saving || state.draftReadFailed || state.reviewRequired ||
+    private fun writesBlocked(): Boolean = recoveryOnly || state.loading || state.saving || state.draftReadFailed || state.reviewRequired ||
         uncertain || retryLocked || completed || unsupported || state.problem == EditorProblem.DRAFT_VERSION
 
     fun change(transform: (EventEditorFields) -> EventEditorFields) {
@@ -118,7 +128,7 @@ class EventEditorController(
         persistence = scope.launch { delay(300); persistSafely() }
     }
 
-    suspend fun prepareDismiss(): Boolean = if (state.loading || completed || unsupported || state.draftReadFailed || state.reviewRequired ||
+    suspend fun prepareDismiss(): Boolean = if (recoveryOnly || state.loading || completed || unsupported || state.draftReadFailed || state.reviewRequired ||
         state.problem == EditorProblem.DRAFT_VERSION) true else flushDraft()
 
     suspend fun flushDraft(): Boolean {
@@ -128,6 +138,17 @@ class EventEditorController(
     }
 
     private suspend fun persistSafely(): Boolean {
+        if (recoveryOnly) {
+            // No source baseline may be rebuilt from a fallback seed or missing live edit source.
+            return try {
+                val expected = recoveryRecord ?: return false
+                val current = drafts.load(draftId)
+                val unchanged = current != null && current.version == expected.version && current.payload == expected.payload
+                if (!unchanged) state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE)
+                unchanged
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE); false }
+        }
         if (state.reviewRequired || state.draftReadFailed || state.problem == EditorProblem.DRAFT_VERSION) return false
         return try {
         val values = encode(state.fields).apply {
@@ -230,7 +251,8 @@ class EventEditorController(
 
     /** Only call after explicit user confirmation. Never discard an unresolved operation. */
     suspend fun discardAndReload(): EditReadResult? {
-        if (uncertain || retryLocked || state.saving) return null
+        if (recoveryOnly || uncertain || retryLocked || state.loading || state.saving || state.draftReadFailed ||
+            state.problem == EditorProblem.DRAFT_VERSION) return null
         val latest = reloadExisting() ?: return null
         if (latest is EditReadResult.Ready) {
             persistence?.cancelAndJoin()
@@ -297,44 +319,61 @@ class EventEditorController(
             fields.startOffset, fields.endOffset) != listOf(original.startDate, original.endDate,
             original.startTime, original.endTime, original.allDay, original.zone, original.startOffset, original.endOffset)
 
-    /** Canonical source values, never localized labels or the edited raw form. */
-    private fun sourceBaseline(): String = JSONObject().apply {
-        put("calendarId", initial.calendarId.value)
-        put("title", initial.title); put("location", initial.location); put("description", initial.description)
-        put("zone", initial.eventZone?.id.orEmpty())
-        put("alerts", org.json.JSONArray(initial.alertMinutes))
-        when (val time = initial.time) {
-            is EventTime.Timed -> { put("kind", "timed"); put("start", time.start.toString()); put("end", time.end.toString()) }
-            is EventTime.AllDay -> { put("kind", "allDay"); put("start", time.dates.start.toString()); put("end", time.dates.endExclusive.toString()) }
-        }
-        existing?.let { source ->
-            put("sourceTitle", source.details.occurrence.title)
-            put("sourceLocation", source.details.location); put("sourceDescription", source.details.description)
-            put("sourceZone", source.details.eventZone?.id.orEmpty())
-            when (val sourceTime = source.details.occurrence.time) {
-                is EventTime.Timed -> {
-                    put("sourceKind", "timed"); put("sourceStart", sourceTime.start.toString()); put("sourceEnd", sourceTime.end.toString())
-                }
-                is EventTime.AllDay -> {
-                    put("sourceKind", "allDay"); put("sourceStart", sourceTime.dates.start.toString()); put("sourceEnd", sourceTime.dates.endExclusive.toString())
-                }
-            }
-            put("sourceReminders", org.json.JSONArray(source.details.reminders.map { "${it.method}:${it.minutesBefore}" }.sorted()))
-            val ref = source.details.occurrence.ref
-            put("refCalendar", ref.calendarId.value); put("refEvent", ref.eventId)
-            put("refStart", ref.instanceStart.toString()); put("refEnd", ref.instanceEnd.toString())
-            put("refMaster", ref.recurrence?.masterEventId?.toString().orEmpty())
-            put("refOriginal", ref.recurrence?.originalStart?.toString().orEmpty())
-            put("allowed", org.json.JSONArray(source.allowedFields.map { it.name }.sorted()))
-        }
-    }.toString()
+    private fun sourceBaseline(): String = sourceBaseline(initial, existing)
 
-    private fun targetIdentity(): String = existing?.details?.occurrence?.ref?.let {
-        "edit:${it.calendarId.value}:${it.eventId}:${it.recurrence}"
-    } ?: "create"
+    private fun targetIdentity(): String = editorDraftTarget(existing?.details?.occurrence?.ref ?: if (recoveryOnly) recoveryRef else null)
 
     companion object {
         const val VERSION = 1
+
+        /** Explicit new-launch preparation only; restoration must require the existing record. */
+        internal fun initialRecord(initial: EventDraft, existing: EditableEvent?, id: String,
+            selected: Boolean, clock: Clock): DraftRecord {
+            require(id.isNotBlank())
+            val fields = fieldsFor(initial).let { if (existing == null && !selected) it.copy(calendarId = "") else it }
+            val payload = encode(fields).apply {
+                put("operationId", UUID.randomUUID().toString()); put("operationKind", "")
+                put("operationPayload", ""); put("submitted", false)
+                put("target", editorDraftTarget(existing?.details?.occurrence?.ref))
+                put("sourceToken", existing?.token?.value.orEmpty())
+                put("sourceBaseline", sourceBaseline(initial, existing))
+            }
+            return DraftRecord(id, VERSION, payload.toString(), clock.instant())
+        }
+
+        /** Canonical source values, never localized labels or the edited raw form. */
+        private fun sourceBaseline(initial: EventDraft, existing: EditableEvent?): String = JSONObject().apply {
+            put("calendarId", initial.calendarId.value)
+            put("title", initial.title); put("location", initial.location); put("description", initial.description)
+            put("zone", initial.eventZone?.id.orEmpty())
+            put("alerts", org.json.JSONArray(initial.alertMinutes))
+            when (val time = initial.time) {
+                is EventTime.Timed -> { put("kind", "timed"); put("start", time.start.toString()); put("end", time.end.toString()) }
+                is EventTime.AllDay -> { put("kind", "allDay"); put("start", time.dates.start.toString()); put("end", time.dates.endExclusive.toString()) }
+            }
+            existing?.let { source ->
+                put("sourceTitle", source.details.occurrence.title)
+                put("sourceLocation", source.details.location); put("sourceDescription", source.details.description)
+                put("sourceZone", source.details.eventZone?.id.orEmpty())
+                when (val sourceTime = source.details.occurrence.time) {
+                    is EventTime.Timed -> {
+                        put("sourceKind", "timed"); put("sourceStart", sourceTime.start.toString()); put("sourceEnd", sourceTime.end.toString())
+                    }
+                    is EventTime.AllDay -> {
+                        put("sourceKind", "allDay"); put("sourceStart", sourceTime.dates.start.toString()); put("sourceEnd", sourceTime.dates.endExclusive.toString())
+                    }
+                }
+                put("sourceReminders", org.json.JSONArray(source.details.reminders.map { "${it.method}:${it.minutesBefore}" }.sorted()))
+                val ref = source.details.occurrence.ref
+                put("refCalendar", ref.calendarId.value); put("refEvent", ref.eventId)
+                put("refStart", ref.instanceStart.toString()); put("refEnd", ref.instanceEnd.toString())
+                put("refMaster", ref.recurrence?.masterEventId?.toString().orEmpty())
+                put("refOriginal", ref.recurrence?.originalStart?.toString().orEmpty())
+                put("allowed", org.json.JSONArray(source.allowedFields.map { it.name }.sorted()))
+            }
+        }.toString()
+
+
         fun fieldsFor(draft: EventDraft): EventEditorFields {
             val zone = draft.eventZone ?: ZoneId.systemDefault()
             val time = draft.time
@@ -382,6 +421,8 @@ class EventEditorController(
                 "location" to f.location, "description" to f.description, "alerts" to f.alerts,
                 "startOffset" to f.startOffset, "endOffset" to f.endOffset).forEach { (key, value) -> put(key, value) }
         }
+        internal fun readRawFields(p: JSONObject): EventEditorFields = decode(p)
+
         private fun decode(p: JSONObject) = EventEditorFields(
             p.getString("calendarId"), p.optString("title", ""),
             p.optString("startDate", ""), p.optString("endDate", ""), p.optString("startTime", ""),
