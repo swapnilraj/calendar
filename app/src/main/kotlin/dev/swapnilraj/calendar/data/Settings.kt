@@ -14,6 +14,7 @@ import dev.swapnilraj.calendar.core.CalendarSelection
 import dev.swapnilraj.calendar.core.CalendarInfo
 import dev.swapnilraj.calendar.core.AccessDecision
 import dev.swapnilraj.calendar.data.settings.CalendarSettingsCodec
+import dev.swapnilraj.calendar.data.reminders.*
 import dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions
 import java.util.Base64
 import java.io.IOException
@@ -45,6 +46,44 @@ class Settings(context: Context, dataStore: DataStore<Preferences>? = null) {
     }.distinctUntilChanged()
 
     fun refreshPreferences() { refresh.update { it + 1 } }
+
+    val reminderPreferences: Flow<ReminderPreferenceState> = refresh.flatMapLatest {
+        flow<ReminderPreferenceState> {
+            emit(ReminderPreferenceState.Loading)
+            emitAll(store.data.map { values -> when (val read = ReminderSettingsCodec.read(values)) {
+                is ReminderSettingsRead.Ready -> ReminderPreferenceState.Ready(read.settings)
+                is ReminderSettingsRead.Unavailable -> ReminderPreferenceState.Unavailable(read.problem)
+            } })
+        }.catch { failure ->
+            if (failure is IOException) emit(ReminderPreferenceState.Unavailable()) else throw failure
+        }
+    }.distinctUntilChanged()
+
+    /** Background suppliers read the actual store on every call, never a remembered display default. */
+    suspend fun readReminderSettings(): SavedReminderSettings = when (val read = ReminderSettingsCodec.read(store.data.first())) {
+        is ReminderSettingsRead.Ready -> read.settings
+        is ReminderSettingsRead.Unavailable -> throw IllegalStateException("Reminder settings unavailable")
+    }
+
+    /** CAS inside the durable edit prevents delayed setup/strengthening from replacing newer choices. */
+    suspend fun saveReminderSettings(expected: SavedReminderSettings, updated: SavedReminderSettings): ReminderPreferenceSave = try {
+        val expectedSnapshot = expected.copy(expectedCalendarIdentities = expected.expectedCalendarIdentities.toMap(),
+            explicitDefaults = expected.explicitDefaults.toMap())
+        val updatedSnapshot = updated.copy(expectedCalendarIdentities = updated.expectedCalendarIdentities.toMap(),
+            explicitDefaults = updated.explicitDefaults.toMap())
+        var result: ReminderPreferenceSave = ReminderPreferenceSave.Unavailable
+        store.edit { values ->
+            when (val current = ReminderSettingsCodec.read(values)) {
+                is ReminderSettingsRead.Unavailable -> Unit
+                is ReminderSettingsRead.Ready -> if (current.settings != expectedSnapshot) result = ReminderPreferenceSave.Changed
+                else result = when (val saved = ReminderSettingsCodec.write(values, updatedSnapshot)) {
+                    is ReminderSettingsSave.Saved -> ReminderPreferenceSave.Saved(saved.settings)
+                    is ReminderSettingsSave.Invalid -> ReminderPreferenceSave.Invalid
+                }
+            }
+        }
+        result
+    } catch (_: IOException) { ReminderPreferenceSave.Unavailable }
 
     // Legacy collectors keep their last successful value during read failure. New critical UI
     // must consume calendarPreferences atomically and render/query only in the Ready state.
