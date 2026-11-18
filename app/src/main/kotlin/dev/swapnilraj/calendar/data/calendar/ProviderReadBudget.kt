@@ -121,7 +121,19 @@ internal fun checkCanonical(value: Any?, maxBytes: Int, overheadBytes: Long = 0)
 internal fun checkStoredJson(value: String, maxBytes: Int) {
     // UTF-8 never uses fewer bytes than UTF-16 code units. Bound before encoding/parsing.
     if (value.length > maxBytes) throw ProviderReadLimitExceeded()
-    if (value.toByteArray(Charsets.UTF_8).size > maxBytes) throw ProviderReadLimitExceeded()
+    var utf8Bytes = 0L
+    var utf16Index = 0
+    while (utf16Index < value.length) {
+        val code = value[utf16Index].code
+        utf8Bytes += when {
+            code <= 0x7f -> 1
+            code <= 0x7ff -> 2
+            Character.isHighSurrogate(value[utf16Index]) && utf16Index + 1 < value.length && Character.isLowSurrogate(value[utf16Index + 1]) -> { utf16Index++; 4 }
+            else -> 3 // Conservative for unpaired surrogates; no temporary UTF-8 allocation.
+        }
+        if (utf8Bytes > maxBytes) throw ProviderReadLimitExceeded()
+        utf16Index++
+    }
     val limits = currentReadBudget()?.limits ?: ProviderReadBudgets().mutation
     // Reject deeply nested/huge legacy JSON structures and overlong decoded cells BEFORE
     // JSONObject/JSONArray can allocate a tree. This is a budget scan, not a JSON validator.

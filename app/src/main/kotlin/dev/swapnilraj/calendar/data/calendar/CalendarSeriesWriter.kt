@@ -42,33 +42,32 @@ class CalendarSeriesWriter(
     private data class ExceptionTemplate(val ref: EventRef, val allDay: Boolean, val zone: String, val duration: String)
     private data class FollowingDelete(val whole: Boolean, val prefixRule: String?, val future: List<SeriesException>)
 
-    override suspend fun loadForEdit(selected: EventRef): SeriesReadResult = try { when (val result = sourceReader.loadForEdit(selected)) {
-        is SeriesReadResult.Ready -> {
-            val fields = result.series.allowedFields - EditableField.TIME - EditableField.ZONE
+    override suspend fun loadForEdit(selected: EventRef): SeriesReadResult = try {
+        sourceReader.loadForEditDecorated(selected) { source, series ->
+            val fields = series.allowedFields - EditableField.TIME - EditableField.ZONE
             val supported = SeriesScopeCapabilities(AccessDecision.ALLOWED, fields, AccessDecision.ALLOWED)
             val unsupported = SeriesScopeCapabilities(AccessDecision.DENIED, emptySet(), AccessDecision.DENIED, SeriesActionLimitation.UNSUPPORTED)
-            val existing = result.series.snapshot.exceptions.any { it.ref == selected && !it.cancelled }
+            val existing = series.snapshot.exceptions.any { it.ref == selected && !it.cancelled }
             val thisCapabilities = if (existing) supported else try {
-                newTemplate(sourceReader.checkedSource(selected, result.series.token))
+                newTemplate(source)
                 supported
             } catch (_: Unsupported) { unsupported }
             catch (_: SeriesSourceReview) { unsupported.copy(limitation = SeriesActionLimitation.REVIEW_REQUIRED) }
-            val following = when (val plan = RecurrencePlanning.plan(result.series.snapshot, selected, RecurrenceScope.FOLLOWING, RecurrenceMutation.Delete, budget)) {
+            val following = when (val plan = RecurrencePlanning.plan(series.snapshot, selected, RecurrenceScope.FOLLOWING, RecurrenceMutation.Delete, budget)) {
                 is RecurrencePlanningResult.Ready -> try {
-                    followingDelete(result.series.snapshot, plan)
+                    followingDelete(series.snapshot, plan)
                     if (plan.actions.singleOrNull() !is RecurrencePlanAction.DeleteSeries)
-                        followingContext(sourceReader.checkedSource(selected, result.series.token).master)
+                        followingContext(source.master)
                     unsupported.copy(delete = AccessDecision.ALLOWED, limitation = SeriesActionLimitation.UNKNOWN)
                 } catch (_: Unsupported) { unsupported }
                 catch (_: SeriesSourceReview) { unsupported.copy(limitation = SeriesActionLimitation.REVIEW_REQUIRED) }
                 is RecurrencePlanningResult.Unsupported -> unsupported
                 else -> unsupported.copy(limitation = SeriesActionLimitation.REVIEW_REQUIRED)
             }
-            result.copy(series = result.series.copy(allowedFields = fields, scopes = mapOf(RecurrenceScope.ALL to supported,
-                RecurrenceScope.THIS to thisCapabilities, RecurrenceScope.FOLLOWING to following)))
+            series.copy(allowedFields = fields, scopes = mapOf(RecurrenceScope.ALL to supported,
+                RecurrenceScope.THIS to thisCapabilities, RecurrenceScope.FOLLOWING to following))
         }
-        else -> result
-    } } catch (_: SecurityException) { SeriesReadResult.PermissionRequired }
+    } catch (_: SecurityException) { SeriesReadResult.PermissionRequired }
     catch (denied: SeriesSourceDenied) { SeriesReadResult.Denied(denied.reason) }
     catch (cancelled: CancellationException) { throw cancelled }
     catch (_: Exception) { SeriesReadResult.Unavailable }

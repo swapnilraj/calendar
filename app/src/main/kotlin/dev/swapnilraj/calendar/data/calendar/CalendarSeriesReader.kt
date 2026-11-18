@@ -27,7 +27,11 @@ class CalendarSeriesReader(
     private val budget: RecurrencePlanningBudget = RecurrencePlanningBudget(),
     private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
 ) : CalendarSeriesReadPort {
-    override suspend fun loadForEdit(selected: EventRef): SeriesReadResult = withContext(io + readBudgetContext(readBudgets.mutation)) {
+    override suspend fun loadForEdit(selected: EventRef): SeriesReadResult = loadForEditDecorated(selected) { _, series -> series }
+
+    /** Pure capability derivation runs against the verified source BEFORE any edit token is saved. */
+    internal suspend fun loadForEditDecorated(selected: EventRef,
+        decorate: (CalendarSeriesSource, EditableSeries) -> EditableSeries): SeriesReadResult = withContext(io + readBudgetContext(readBudgets.mutation)) {
         try {
             val before = source(selected)
             val canonical = before.canonical()
@@ -35,8 +39,10 @@ class CalendarSeriesReader(
             ensureRead()
             val token = EditToken(MessageDigest.getInstance("SHA-256").digest(("SERIES_EDIT_V1" + canonical)
                 .toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) })
+            val editable = decorate(before, EditableSeries(before.selectedDetails, before.masterFields, before.snapshot, token, before.allowedFields))
+            ensureRead()
             store.saveEdit(token.value, canonical)
-            SeriesReadResult.Ready(EditableSeries(before.selectedDetails, before.masterFields, before.snapshot, token, before.allowedFields))
+            SeriesReadResult.Ready(editable)
         } catch (_: ProviderReadLimitExceeded) { SeriesReadResult.NeedsReview("Complete source exceeds the read budget") }
         catch (_: SecurityException) { SeriesReadResult.PermissionRequired }
         catch (denied: SeriesSourceDenied) { SeriesReadResult.Denied(denied.reason) }

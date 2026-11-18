@@ -67,6 +67,16 @@ class CalendarSeriesWriterTest {
     private fun whole(series: EditableSeries, patch: EventPatch) = SeriesCommand.WholeEdit(RecurrenceEditIntent.WholeSeriesEdit(series.snapshot.start, fields = patch))
     private fun common(result: MutationResult) = SeriesMutationResult.Common(result)
 
+    @Test fun capabilityDiscoveryUsesTheSameTwoVerifiedGraphsBeforePersistingOneToken() = runBlocking {
+        fixture { f ->
+            val editable = f.editable()
+            assertEquals(AccessDecision.ALLOWED, editable.scopes.getValue(RecurrenceScope.ALL).edit)
+            assertEquals(2, f.provider.calls.count { it.path == "events" && it.fields == null })
+            f.store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots", null).use { it.moveToFirst(); assertEquals(1, it.getInt(0)) }
+            assertEquals(0, f.provider.batchCount)
+        }
+    }
+
     @Test fun allFieldEditsPreserveRawRecurrenceOverridesUnknownFieldsAndNonAlertRows() = runBlocking {
         fixture { f ->
             val editable = f.editable()

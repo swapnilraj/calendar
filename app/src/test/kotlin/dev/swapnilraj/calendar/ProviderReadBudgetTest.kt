@@ -63,6 +63,7 @@ class ProviderReadBudgetTest {
         val raw = mapOf("long-key" to "\u0001".repeat(200))
         try { checkCanonical(raw, 1000); fail("escaped JSON byte quota") } catch (_: ProviderReadLimitExceeded) { }
         try { checkStoredJson("\u20ac".repeat(400), 1000); fail("UTF8 byte quota") } catch (_: ProviderReadLimitExceeded) { }
+        try { checkStoredJson("😀".repeat(300), 1000); fail("surrogate-pair UTF8 byte quota") } catch (_: ProviderReadLimitExceeded) { }
         assertTrue(checkCanonical(mapOf("a" to "ok"), 1000) <= 1000)
         withReadBudget(ProviderReadLimits(10, 5, 1000)) {
             try { checkStoredJson("[1,2,3,4,5,6,7]", 1000); fail("scalar JSON cells before parsing") } catch (_: ProviderReadLimitExceeded) { }

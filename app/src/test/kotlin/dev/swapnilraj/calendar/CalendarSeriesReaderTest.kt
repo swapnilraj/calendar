@@ -326,6 +326,32 @@ class CalendarSeriesReaderTest {
         }
     }
 
+    @Test fun capabilityDecorationMustFinishBeforeSnapshotPersistence() = runBlocking {
+        fixture { _, source, store, _ ->
+            var decorated = false
+            val result = source.loadForEditDecorated(selected) { captured, editable ->
+                decorated = true
+                assertEquals(captured.snapshot, editable.snapshot)
+                throw ProviderReadLimitExceeded()
+            }
+            assertTrue(decorated)
+            assertTrue(result is SeriesReadResult.NeedsReview)
+            store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots", null).use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+        }
+    }
+
+    @Test fun changedSourceNeverInvokesCapabilityDecorationOrPersistsAToken() = runBlocking {
+        fixture { p, source, store, _ ->
+            var instanceReads = 0
+            p.afterQuery = { path -> if (path == "instances" && ++instanceReads == 1) p.events[0]["description"] = "Concurrent edit" }
+            var decorated = false
+            val result = source.loadForEditDecorated(selected) { _, editable -> decorated = true; editable }
+            assertEquals(SeriesReadResult.Unavailable, result)
+            assertFalse(decorated)
+            store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots", null).use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+        }
+    }
+
     @Test fun canonicalByteBudgetRejectsBeforeSnapshotPersistence() = runBlocking {
         fixture(readBudgets = ProviderReadBudgets(maxCanonicalBytes = 1000)) { _, source, store, _ ->
             assertTrue(source.loadForEdit(selected) is SeriesReadResult.NeedsReview)
