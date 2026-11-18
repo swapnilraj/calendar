@@ -34,7 +34,7 @@ fun DayPage(date: LocalDate, events: List<CalEvent>, now: ZonedDateTime, zone: Z
         snapshotFlow { scroll.value }.distinctUntilChanged().collect { if (latestActive && positioned) latestOnScroll(it) }
     }
     Column(Modifier.fillMaxSize()) {
-        DayHeader(date, now.withZoneSameInstant(zone).toLocalDate(), events.filter { it.allDay }, zone, use24Hour, onEventClick, summary)
+        DayHeader(date, now.withZoneSameInstant(zone).toLocalDate(), events.filter { it.allDay }, zone, use24Hour, onEventClick, summary, dayEvents = events)
         HorizontalDivider(thickness = 0.5.dp)
         BoxWithConstraints(Modifier.weight(1f)) {
             val viewport = with(density) { maxHeight.toPx() }

@@ -1,0 +1,13 @@
+<resources>
+    <string name="calendar_all_day">All day</string>
+    <string name="calendar_no_title">No title</string>
+    <string name="calendar_declined">Declined</string>
+    <string name="calendar_open_event">Open event</string>
+    <string name="calendar_day_events">Events for %1$s</string>
+    <string name="calendar_view_day_events">View events for %1$s</string>
+    <string name="calendar_close_events">Close</string>
+    <plurals name="calendar_more_events">
+        <item quantity="one">+%d more event</item>
+        <item quantity="other">+%d more events</item>
+    </plurals>
+</resources>

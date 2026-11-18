@@ -1,6 +1,9 @@
 package dev.swapnilraj.calendar
 
 import androidx.compose.ui.test.*
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.swapnilraj.calendar.data.*
@@ -22,7 +25,7 @@ class WeatherScreenTest {
     @get:Rule val compose=createComposeRule()
     private val zone=ZoneId.of("Europe/London")
     private val now=ZonedDateTime.of(2026,11,17,15,20,0,0,zone)
-    private fun show(kind: String) {
+    private fun show(kind: String, direction: LayoutDirection = LayoutDirection.Ltr) {
         val date=now.toLocalDate()
         val forecast=(0..24).map { i ->
             val condition=when {kind=="rainy_evening" && i in 15..22->63;kind=="snowy_morning" && i in 5..11->73;else->0}
@@ -37,11 +40,13 @@ class WeatherScreenTest {
             CalEvent(2,date.atTime(18,0).atZone(zone).toInstant(),date.atTime(19,0).atZone(zone).toInstant(),"Evening walk",0xffb06a47.toInt()))
         compose.setContent {
             DaylightTheme {
+              CompositionLocalProvider(LocalLayoutDirection provides direction) {
                 DayScreen(now,true,64f,{ _,_->flowOf(CalendarState.Ready(events)) },{},{},
                     initialScrollHour=if(kind=="snowy_morning")5.0 else 13.0,
                     actions={ WeatherOptions(WeatherState(forecast,"London"),{},{}) },
                     summary={ daySummary(forecast,date,zone)?.let { WeatherSummary(it) } },
                     background={ hoursForDay(forecast,date,zone)?.let { WeatherBackground(it) } })
+              }
             }
         }
         compose.waitForIdle()
@@ -54,4 +59,8 @@ class WeatherScreenTest {
     @Test @Config(qualifiers="+night") fun rainDark() { show("rainy_evening");compose.onRoot().captureRoboImage("src/test/screenshots/rainy_evening_dark.png") }
     @Test @Config(qualifiers="+notnight") fun snowLight() { show("snowy_morning");compose.onRoot().captureRoboImage("src/test/screenshots/snowy_morning_light.png") }
     @Test @Config(qualifiers="+night") fun snowDark() { show("snowy_morning");compose.onRoot().captureRoboImage("src/test/screenshots/snowy_morning_dark.png") }
+    @Test @Config(qualifiers="+notnight") fun rainRtl() {
+        show("rainy_evening", LayoutDirection.Rtl)
+        compose.onRoot().captureRoboImage("src/test/screenshots/calendar_weather_rtl.png")
+    }
 }
