@@ -107,6 +107,7 @@ internal fun PhoneEventEditorContent(
                 PhoneEditorDateRow(stringResource(R.string.phone_event_ends), fields.endDate, fields.endTime, fields.allDay, use24Hour,
                     view.canEdit(EditableField.TIME), { panel = PhoneEditorPanel.END_DATE }, { panel = PhoneEditorPanel.END_TIME })
                 if (!fields.allDay) {
+                    if (!view.blocked && view.requiresProviderZoneChoice) Text(stringResource(R.string.phone_event_region_zone), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 64.dp, end = 24.dp))
                     PhoneEditorRow(PhoneEventGlyph.ZONE, stringResource(R.string.phone_event_zone),
                         PhoneEventEditorText.zone(fields.zone)?.let(bidi::unicodeWrap) ?: stringResource(R.string.phone_event_unfinished, fields.zone), view.canEdit(EditableField.ZONE), { panel = PhoneEditorPanel.ZONE })
                     PhoneEditorOffsetChoices(fields.startDate, fields.startTime, fields.zone, fields.startOffset, view.canEdit(EditableField.TIME), stringResource(R.string.phone_event_start_time)) { value -> controller.change { it.copy(startOffset = value) } }

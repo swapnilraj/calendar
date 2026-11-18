@@ -82,4 +82,5 @@
     <string name="phone_event_local_saved">This event was saved on this device. Finish closing its draft; it will not be saved again.</string>
     <string name="phone_event_local_deleted">This event was deleted on this device. Finish closing its draft; it will not be deleted again.</string>
     <string name="phone_event_remove">Remove</string>
+    <string name="phone_event_region_zone">Choose a supported region time zone, such as Europe/London, before saving this time. Your calendar cannot safely use the current zone.</string>
 </resources>

@@ -41,6 +41,35 @@ class PhoneEventEditorPresentationTest {
         assertTrue(editor.state.retryReady); assertFalse(view.canSave); assertFalse(view.canEdit(EditableField.TITLE))
         assertEquals(1, writer.creates)
     }
+    @Test fun importedOffsetZoneDoesNotBlockUnrelatedTitleAndAlertKeepPatches() {
+        val imported = draft.copy(eventZone = ZoneOffset.ofHoursMinutes(5,30))
+        val time = draft.time as EventTime.Timed
+        val ref = EventRef(draft.calendarId, 42, time.start, time.end)
+        val source = EditableEvent(EventDetails(EventOccurrence(ref, draft.time, draft.title, 1), eventTestCalendar(), eventZone = imported.eventZone), EditToken("imported"), EditableField.entries.toSet())
+        val editor = preparedEditor(imported, source, "imported", writer, store, scope)
+        editor.change { it.copy(title = "Title only, with a new alert", alerts = "10") }
+        val view = PhoneEventEditorPresentation(editor, listOf(eventTestCalendar()))
+        assertFalse(view.requiresProviderZoneChoice); assertTrue(view.canSave)
+        editor.save(); assertEquals(1, writer.updates)
+        assertEquals(FieldChange.Keep, writer.patch!!.time); assertEquals(FieldChange.Keep, writer.patch!!.eventZone)
+        assertEquals(FieldChange.Set(listOf(10)), writer.patch!!.alertMinutes)
+    }
+    @Test fun authoredOffsetOnlyZoneNeedsRegionChoiceForCreateAndTemporalEdit() {
+        val imported = draft.copy(eventZone = ZoneOffset.ofHoursMinutes(5,30))
+        val created = preparedEditor(imported, null, "offset-create", writer, store, scope)
+        assertTrue(PhoneEventEditorPresentation(created, listOf(eventTestCalendar())).requiresProviderZoneChoice)
+        assertFalse(PhoneEventEditorPresentation(created, listOf(eventTestCalendar())).canSave)
+        val time = draft.time as EventTime.Timed
+        val ref = EventRef(draft.calendarId, 42, time.start, time.end)
+        val source = EditableEvent(EventDetails(EventOccurrence(ref, draft.time, draft.title, 1), eventTestCalendar(), eventZone = imported.eventZone), EditToken("imported"), EditableField.entries.toSet())
+        val edited = preparedEditor(imported, source, "offset-edit", writer, store, scope)
+        edited.change { it.copy(startTime = "15:00") }
+        val view = PhoneEventEditorPresentation(edited, listOf(eventTestCalendar()))
+        assertTrue(view.requiresProviderZoneChoice); assertFalse(view.canSave)
+        edited.change { it.copy(zone = "Asia/Kolkata") }
+        assertFalse(view.requiresProviderZoneChoice); assertTrue(view.canSave)
+        assertEquals(0, writer.creates); assertEquals(0, writer.updates)
+    }
     @Test fun unknownRightsAndForeignConstructorCalendarCannotBecomeEditorAuthority() = runBlocking {
         val ref = EventRef(draft.calendarId, 42, (draft.time as EventTime.Timed).start, (draft.time as EventTime.Timed).end)
         val source = EditableEvent(EventDetails(EventOccurrence(ref, draft.time, draft.title, 1), eventTestCalendar()), EditToken("A"), setOf(EditableField.TITLE))

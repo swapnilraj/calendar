@@ -17,7 +17,21 @@ internal class PhoneEventEditorPresentation(val controller: EventEditorControlle
     fun canEdit(field: EditableField) = !blocked && (!controller.isEditing || field in controller.existing?.allowedFields.orEmpty())
     val needsAttention get() = state.legacy || state.reviewRequired || state.recoveryRequired || controller.hasFrozenSubmission || state.draftReadFailed || state.localOutcome != null
     val canChooseCalendar get() = !blocked && !controller.isEditing
-    val canSave get() = !blocked && !controller.calendarSelectionRequired && !controller.visibilityChoiceRequired &&
+    val requiresProviderZoneChoice: Boolean get() {
+        if (fields.allDay) return false
+        val zone = runCatching { ZoneId.of(fields.zone) }.getOrNull() ?: return false
+        if (ProviderTimeZoneCompatibility.isCompatible(zone)) return false
+        if (!controller.isEditing) return true
+        val source = controller.existing ?: return false
+        val baseline = EventEditorController.fieldsFor(EventDraft(source.details.occurrence.ref.calendarId,
+            source.details.occurrence.time, source.details.eventZone, ""))
+        val timeChanged = EditableField.TIME in source.allowedFields &&
+            listOf(fields.startDate, fields.endDate, fields.startTime, fields.endTime, fields.allDay, fields.zone, fields.startOffset, fields.endOffset) !=
+                listOf(baseline.startDate, baseline.endDate, baseline.startTime, baseline.endTime, baseline.allDay, baseline.zone, baseline.startOffset, baseline.endOffset)
+        val zoneChanged = EditableField.ZONE in source.allowedFields && (fields.zone != baseline.zone || fields.allDay != baseline.allDay)
+        return timeChanged || zoneChanged
+    }
+    val canSave get() = !blocked && !requiresProviderZoneChoice && !controller.calendarSelectionRequired && !controller.visibilityChoiceRequired &&
         (controller.isEditing || calendars.any { it.identity == fields.targetIdentity && it.id.value.toString() == fields.calendarId && it.capabilities.createEvents == AccessDecision.ALLOWED })
     val calendar: CalendarInfo? get() = if (controller.isEditing) controller.existing?.details?.calendar?.takeIf { it.identity == controller.boundCalendarIdentity }
         else calendars.firstOrNull { it.identity == fields.targetIdentity && it.id.value.toString() == fields.calendarId }
