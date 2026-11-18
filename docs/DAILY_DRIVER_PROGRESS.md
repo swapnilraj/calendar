@@ -4,62 +4,86 @@ Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
-At `21d53d1`, the required full gate **passed: 2,019 tests** (core257, app1,745,
-weather17), debug APK assembly and lint, with zero failures, errors or skipped tests. Command:
-`./gradlew test :app:assembleDebug :app:lintDebug`; log:
-`/tmp/daylight-meeting-edit-recurring-gate.log` (5m48s). Debug APK SHA-256:
-`3e59e8cc563fdebdac0b1ef743c449c80c7e1ab14eab3fbdf28fa907dffb36d0`.
-This remains debug-signed local evidence, not a stable production release.
+At code checkpoint `b2e4dd1` (subsequent changes are documentation only), the required full gate
+**passed: 2,102 tests** (core257, app1,828, weather17), debug APK assembly and lint, with zero
+failures, errors or skipped tests. Command: `./gradlew test :app:assembleDebug :app:lintDebug`;
+log `/tmp/daylight-private-owner-final-full-gate.log` (6m11s). Debug APK44,731,753 bytes, SHA-256:
+`b3a1c2fa2591edb0a2956e3f0164eddeb2865030f1257593affcfe4053e57952`.
+This is a debug-signed local checkpoint, not a stable production release or daily-driver certification.
 
-The organizer one-off editor is now connected to native details and the draft browser. Its component
-passed59 focused checks (including18 existing backend checks) and three light/dark/2x RTL images
-were recorded, inspected and verified. The host compiles and23 browser/phone checks passed. An
-independent six-journey actual-app suite is in progress: cancellation, exact-generation reopening
-and namespace drift passed on the first run; that run also reproduced the global permission gate
-unmounting an open editor. A bounded host fix retains only the masked organizer workflow during
-READ loss; its actual lifecycle/recovery checks are pending. These are synthetic fixtures, not
-Google/Workspace delivery or UI parity evidence. No newer full-gate result supersedes the2,019
-checkpoint above yet.
+Organizer one-off editing is connected to details and exact-generation draft-browser reopening.
+Its59 focused component/backend checks, eight actual-app journeys and light/dark/2x RTL images
+passed. Sparse guest additions/removals/roles preserve other responses and opaque metadata;
+confirmed cancellation excludes unsaved field/guest edits. The global READ gate retains an open
+masked organizer workflow, covers the underlying calendar and removes its accessibility content.
+Actual lifecycle, permission-no-autosave, namespace conflict and snapshot-purged READ-only recovery
+checks passed using synthetic native/SQLite fixtures, not Google delivery.
 
-External EDIT review/private reopening is connected and passed13 actual-app entry journeys.
-Add people now atomically promotes one ordinary raw draft into a dedicated meeting draft; browser
-reopening checks its feature and generation. Schema2 meeting creation connects issued recurring
-rights, typed review and frozen commands while preserving schema1 frozen formats. Eleven actual-app
-one-off/recurring journeys passed, including COUNT, multi-day UTC all-day inclusive UNTIL, permissions,
-source changes and source-free recovery without a second batch. These use synthetic provider/SQLite
-fixtures, not live Google sync. New one-off receipt2 is self-contained; historical receipt1 still
-requires its retained local snapshot. Recurring, phone guest-form and ordinary review images were
-recorded, inspected and verified, including the corrected duration/zone labels at 2x RTL.
+New ordinary UPDATE/DELETE receipt4 freezes the issued source and exact native plan before dispatch,
+so READ-only recovery survives edit-snapshot removal.72 focused checks and137 affected fixture
+regressions passed. Native result/parent/child/namespace drift remains uncertain; missing child
+acknowledgments never replay. Legacy receipt2 edits and historical one-off meeting receipt1 retain
+their snapshot dependency. Newly assigned/changed NULL UID/sync identity is conservatively uncertain.
 
-The previous full attempt failed19 checks:17 owned-meeting tests could not seed through a fixture
-view missing native joined uid2445, one old creation-capability assertion was stale, and one ordinary
-review image needed the new UTC label. Test-only corrections preserve invalid-authority/no-write and
-opaque-metadata/response assertions;107 focused regressions passed before this green full gate.
+Explicitly choosing the current renderer for an ordinary NULL-zone edit now records separate authored
+zone intent: zone-only emits ZONE.Set/TIME.Keep; subsequent time edits emit both.68 focused checks
+passed, including actual picker-to-receipt4 writer journeys. Existing frozen/legacy/meeting formats
+remain unchanged. Incoming EDIT review's corresponding explicit-Apply extension is a separate
+in-progress isolated packet; its existing guard is not yet removed in this checkpoint.
 
-Nonzero Following prefix writes now repeat the unchanged original raw time context with the cut
-rule, with154 focused checks including explicit cache-model controls. Actual installed-provider
-warm-cache acceptance remains pending, and no production clone profile is admitted. The optional
-SDK-only LOCAL probe APK builds. Its real API35 emulator identity-only run passed for
-`com.android.providers.calendar` version35. Two guarded fixture attempts stopped on native API
-contract errors in the test harness: the calendar insert ACK preserves its request query, and an
-event-ID update URI forbids an additional selection. Both fixture cleanups were verified; both
-harness fixes are committed and the SDK APK pair plus lint passed. A subsequent identity attempt
-stopped at the ADB guard after the emulator disconnected, before fixture activity. No 18-case
-runtime PASS is claimed. Identity evidence: `/tmp/daylight-native-provider-identity-30138a09/`;
-failed fixture reports: `/tmp/daylight-native-provider-fixtures-30138a09/` and
-`/tmp/daylight-native-provider-fixtures-calack2/`.
-The probe is separate from Google/Workspace sync and UI parity certification.
+Four independent controlled CREATE/EDIT regressions exposed a real private-activity cleanup race:
+after exact deletion applied, stop/resume discarded its owner before the acknowledgment returned.
+The fix retains accepted write/known-outcome owners, refreshes/masks authority without remounting,
+and preserves newer successor generations. All four unchanged before/after regressions now pass
+with exactly one provider batch and one cleanup CAS.56 related host/phone checks passed; the new
+private authority mask image was recorded, inspected and verified. Earlier full attempts failed five
+inaccurate native-child fixture queries (corrected without weakening assertions), then one public
+create test that granted READ before its denied IO recovery completed. That test now asserts the
+completed permission outcome and unchanged frozen record before granting READ; its seven journeys
+and the final full gate pass. Logs preserve both failed attempts.
 
-Remaining implementation includes completing actual-app organizer acceptance, advanced
-exception transfer/execution admission, the explicit same-renderer-zone edge on NULL-zone imports,
-and release provisioning. Personal/Workspace round-trips, physical reminder/Doze/reboot/timezone/
-TalkBack/upgrade checks, seven-day beta and stable signed release remain pending. The GitHub
-integration currently cannot access Actions secrets (HTTP403); no signing key was provisioned.
-PR53 typed retirement foundation passed full CI, merged into integration (`7f439b1`) and is attached.
-PR54 ordinary backend retirement also passed CI and merged into integration (`21d88e5`); its
-artifact attachment is confirmed by the task artifact inventory.
+The guarded native API35 LOCAL experiment **passed all18 cases**. All six RRULE-only controls
+reproduced stale prefix8+tail5=13 instances with5 duplicates; six exact-context cases produced
+prefix3+tail5=8 with0 duplicates; six final-assertion rollbacks retained the original8. The owned
+synthetic calendar and all30 event IDs were verified absent after cleanup. The complete bounded
+[report](audit/evidence/native-local-provider-api35-2026-11-18.json) and
+[runbook](NATIVE_PROVIDER_PROBE.md) record exact pins/guards. This direct SDK experiment does not
+certify Daylight's complete series writer, Google sync, hidden metadata or a production clone profile.
+Google/Workspace round-trips remain NOT_RUN and production profile activation remains NONE.
+
+Google Calendar2026.44 was launched in the emulator: splash → Checking info → communication error,
+with system/launcher ANRs also observed; Back returned to the launcher. No accounts/credentials were
+added. Main navigation/editor/guests/repeat and exact parity remain UNVERIFIED. Read-only APK
+resources identify candidate sheet/header/contact-search/RSVP differences, not active phone flow
+proof. See [UX evidence](GOOGLE_CALENDAR_UX_PARITY.md); reference graphics remain outside Git.
+
+The owner-signed draft-release pipeline is prepared in PR58, including increasing versions,
+certificate pinning, temporary-secret cleanup, checksums and draft-only GitHub releases. Six signing
+mechanism controls passed; release assembly code2/name0.2.0-beta.1 was non-debuggable and its
+unsigned APK passed temporary fixture-key signing/alignment. Fixture keys/APKs were deleted.
+Stable owner-key provisioning remains pending (GitHub Actions secrets access returned403). GitHub
+manual dispatch also requires the workflow on the default branch; integration publication alone
+is not that bootstrap. No stable signed APK or published production release is claimed.
+
+PR53–57 passed full CI and merged into `codex/daily-driver`; PR58 passed CI before a SPEC-only merge
+with PR57 and is awaiting its new merged-tree CI. Artifact attachment requests for55–58 have not
+returned confirmation;54 was confirmed in the task inventory. Aggregate source remains ahead of
+bounded publication; no aggregate overwrite or merge of draft PR3 into main was performed.
+
+Remaining source/admission work includes incoming explicit-zone review, advanced exception transfer
+and production clone admission, guest/contact-search and other UX reconciliation, plus remaining
+bounded publication. Controlled personal/Workspace organizer-attendee/offline/conflict checks,
+physical reminder/Doze/reboot/timezone/TalkBack/upgrade acceptance, seven-day work/personal beta,
+default-branch release bootstrap and stable owner signing/release are still pending. The entire goal
+remains active and is not marked complete.
 
 Earlier checkpoint and packet history:
+
+At `21d53d1`, the full required gate passed2,019 tests (core257, app1,745, weather17), debug APK
+and lint in5m48s; log `/tmp/daylight-meeting-edit-recurring-gate.log`. That prior debug APK SHA-256
+was `3e59e8cc563fdebdac0b1ef743c449c80c7e1ab14eab3fbdf28fa907dffb36d0`.
+
+
 
 At `bf2ef3f`, the complete required gate passed: **1,490 tests** (core221, app1,252,
 weather17), debug APK assembly and lint; no failures, errors or skipped tests. This includes the

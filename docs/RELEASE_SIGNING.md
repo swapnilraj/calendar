@@ -6,6 +6,11 @@ certificate, and creates a **draft GitHub release** containing the APK and SHA25
 an Actions artifact. The draft release assets provide durable storage; this does not certify the
 account/device/beta gates or publish a production release.
 
+GitHub requires the workflow file on the repository's default branch before manual dispatch is
+available. Its integration-branch publication does not satisfy that prerequisite; the separate
+CI-only default-branch bootstrap remains pending. This does not require merging an unaccepted
+application release.
+
 Provision the GitHub `release-signing` environment before running it. An owner must supply these
 secrets through GitHub's settings or a trusted local CLI, never a chat, source file, commit or log:
 
