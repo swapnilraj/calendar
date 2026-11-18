@@ -6,6 +6,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -20,7 +22,7 @@ import java.time.format.TextStyle
 internal fun RecurrenceCreationReview(plan: RecurrenceCreationPlan, spec: RecurrenceSpec, title: String,
     onConfirm: () -> Unit, onDismiss: () -> Unit) {
     val locale = LocalLocale.current.platformLocale
-    val bidi = android.text.BidiFormatter.getInstance(locale)
+    val bidi = android.text.BidiFormatter.getInstance(LocalLayoutDirection.current == LayoutDirection.Rtl)
     val date = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
     val timed = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale).withZone(plan.eventZone)
     fun day(value: java.time.DayOfWeek) = value.getDisplayName(TextStyle.FULL, locale)
@@ -57,11 +59,11 @@ internal fun RecurrenceCreationReview(plan: RecurrenceCreationPlan, spec: Recurr
                     is EventTime.Timed -> timedDateText(time, plan.eventZone, locale, true)
                 })
                 if (!plan.allDay) {
-                    Text(stringResource(R.string.recurrence_editor_zone_value, bidi.unicodeWrap(plan.eventZone.id)))
+                    Text(stringResource(R.string.recurrence_editor_zone_value, bidi.unicodeWrap(if (plan.eventZone.id == "Z") "UTC" else plan.eventZone.id)))
                     val seconds = (plan.firstTime as EventTime.Timed).duration.seconds
-                    Text(if (seconds % 60 == 0L) pluralStringResource(R.plurals.events_duration_minutes,
+                    Text(bidi.unicodeWrap(if (seconds % 60 == 0L) pluralStringResource(R.plurals.events_duration_minutes,
                         (seconds / 60).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), seconds / 60)
-                    else pluralStringResource(R.plurals.events_duration_seconds, seconds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), seconds))
+                    else pluralStringResource(R.plurals.events_duration_seconds, seconds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), seconds)))
                 }
                 Text(stringResource(R.string.recurrence_editor_preview))
                 plan.preview.forEach { occurrence -> Text(bidi.unicodeWrap(when (occurrence) {
