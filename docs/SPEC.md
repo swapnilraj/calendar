@@ -5,6 +5,22 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+### Google Calendar Android UX reference
+
+The user's confirmed UX target is the current Google Calendar Android phone app. Match its navigation
+structure, screen hierarchy, control placement, date/view switching, gestures and ordinary event and
+meeting workflows, rather than treating similar feature coverage as UX parity. Preserve Daylight
+branding and the existing weather rules. Compare the core calendar with weather hidden, then verify
+the optional weather layer separately. Reference observations and remaining differences belong in
+`GOOGLE_CALENDAR_UX_PARITY.md`.
+
+Pin reference app build, device size/density, Android version, locale, theme and font scale when
+making a verified parity claim. Official screenshots/help are evidence for what they show, not proof
+of live interaction timing or exact dimensions. APK inspection, where available, is read-only
+reference analysis; implementation stays in this repository. No Google APK or connected Android
+reference device is currently available, so exact live/pixel parity remains unverified. Provider
+permissions, draft preservation and uncertain-save handling remain required under the matched UI.
+
 The live native creation editor supports authored daily, weekly, monthly and yearly rules with
 interval, count or inclusive date limits, explicit master-time review and durable frozen recovery.
 A recurring local save is reported only after known-master journal receipt and actual first native
