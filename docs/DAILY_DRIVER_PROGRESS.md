@@ -10,8 +10,8 @@ Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
   Wave 0 session.** The earlier two agents reviewed dependencies/ownership only.
 - Implementation branch: `codex/daily-driver`. Initial read-contract/module bootstrap and scope docs are implemented;
   mutation and persistence ports will be frozen before their dependent worker packets. A new module or contract alone does not establish native editing or new views.
-- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (67 tests), including
-  core contracts, merged day geometry, and persistent calendar preferences. No device/cloud/beta result is claimed.
+- Baseline evidence remains in [the audit](GOOGLE_CALENDAR_AUDIT.md). Local verification: `./gradlew test :app:assembleDebug :app:lintDebug` passed (132 tests), including
+  merged provider reads, native detail components, day fixes, reminder components and preferences. No device/cloud/beta result is claimed.
 
 ## Active implementation packets
 
@@ -22,11 +22,11 @@ Six workers have isolated worktrees under `/workspace/daylight-workers/`, based 
 
 | Packet | Owner/worktree | Current deliverable |
 |---|---|---|
-| A1 | Provider | Live metadata, range and detail reader with synthetic-provider tests |
+| A1 | Provider | Merged via PR #6; 10 provider tests; production reader wiring pending |
 | B1 | Temporal | Merged via PR #4; 14 geometry tests passed; renderer wiring pending |
-| C1 | Calendar | All-day overflow/semantics, font sizing and RTL fixes |
-| D1 | Events | Native details component with safe link actions and UI tests |
-| E1 | Android | Reminder health/setup and notification components |
+| C1 | Calendar | Merged via PR #10; D1/D3/D4/D5 automated checks and inspected screens pass |
+| D1 | Events | Merged via PR #8; details component/tests pass; root wiring pending |
+| E1 | Android | Merged via PR #9; component tests pass; scheduler/delivery pending |
 | F1 | Verification | Merged via PR #5; readiness and M0 matrix; actual device cases NOT_RUN |
 
 Remaining packets are **in progress**, not integrated user-facing features. App-local selection and
@@ -39,7 +39,7 @@ wiring and integration; workers do not overwrite shared contracts or each other'
 |---|---|---|
 | Wave 0 bootstrap | In progress | Core module/contracts, preserved baseline, tests/build/lint verified |
 | M0 Google compatibility | Pending external verification | Dedicated personal/Workspace two-account/provider/device round-trips |
-| M1 rendering/accessibility | Planned | Correct D1–D5 regression tests and inspected all-day/font/RTL/DST screens |
+| M1 rendering/accessibility | Partial: D1/D3/D4/D5 automated checks pass; D2 renderer pending | Correct D1–D5 regression tests and inspected all-day/font/RTL/DST screens |
 | M2 calendars/ranges/sidebar | Planned | Stable identity, independent persisted filters, shared ranges/observer and coverage states |
 | M3 planning views | Planned | Day/three-day/week/month/agenda, date navigation, leap/six-row/dense/RTL cases |
 | M4 native details | Planned | Complete readable event context, correct occurrence identity and meeting links |
@@ -61,3 +61,12 @@ leaves its gate pending while independent implementation continues.
 Data loss, duplicate writes, incorrect recurrence scope, missed eligible reminders or failed meeting
 propagation block release. The whole goal completes only when all required milestones and release
 gates pass. Do not turn the audit totals into a percentage-complete estimate.
+
+## Current next packets
+
+- A2: durable draft/journal and safe one-off provider writer.
+- B3: recurrence rules/presets using pinned lib-recur; pure timing already merged in PR #7.
+- C2: native month component and navigation.
+- D2: native one-off editor and recovery controller.
+- Lead: shared read range/native-detail wiring, transition rendering, and contract integration.
+- Physical Google, notification delivery, beta and release gates remain pending.

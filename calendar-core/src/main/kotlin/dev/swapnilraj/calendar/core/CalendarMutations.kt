@@ -62,6 +62,8 @@ interface CalendarMutations {
     suspend fun create(operationId: String, draft: EventDraft): MutationResult
     suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult
     suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult
+    /** Inspect the durable journal/read back a known commit; never submits a new provider write. */
+    suspend fun recover(operationId: String): MutationResult
 }
 
 /** Versioned UI payload retains invalid/partial input without accidentally saving an event. */
