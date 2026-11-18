@@ -19,10 +19,10 @@ class EventEditorControllerTest {
         Instant.parse("2028-06-15T10:00:00Z")), ZoneOffset.UTC, "Future appointment", alertMinutes = listOf(10))
     private val ref = EventRef(CalendarId(2), 42, (initial.time as EventTime.Timed).start, (initial.time as EventTime.Timed).end)
     private fun controller(store: Store = Store(), writer: Writer = Writer(), existing: EditableEvent? = null,
-        draft: EventDraft = initial): EventEditorController {
+        draft: EventDraft = initial, selected: Boolean = true): EventEditorController {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined).also(scopes::add)
         return EventEditorController(draft, existing, "draft-fixture", writer, store, scope,
-            Clock.fixed(Instant.parse("2026-11-18T00:00:00Z"), ZoneOffset.UTC))
+            Clock.fixed(Instant.parse("2026-11-18T00:00:00Z"), ZoneOffset.UTC), initialCalendarSelected = selected)
     }
     @After fun cleanUp() { scopes.forEach { it.cancel() } }
     private fun editable() = EditableEvent(EventDetails(EventOccurrence(ref, initial.time, initial.title, 1), null),
@@ -268,15 +268,188 @@ class EventEditorControllerTest {
         assertEquals(0, writer.creates)
         assertEquals(EditorProblem.DRAFT_UNAVAILABLE, controller.state.problem)
     }
+    @Test fun askEachTimeRequiresExplicitCalendarAndRestoresChosenSelection() = runBlocking {
+        val writer = Writer(); val store = Store()
+        val first = controller(store, writer, draft = initial.copy(calendarId = CalendarId(0)), selected = false)
+        assertEquals("", first.state.fields.calendarId)
+        first.save(); assertEquals(0, writer.creates)
+        assertEquals(EditorProblem.INVALID_INPUT, first.state.problem)
+        first.change { it.copy(calendarId = "2") }; first.flushDraft()
+        val restored = controller(store, writer, draft = initial.copy(calendarId = CalendarId(0)), selected = false)
+        assertEquals("2", restored.state.fields.calendarId)
+        restored.save(); assertEquals(1, writer.creates)
+        assertEquals(CalendarId(2), writer.createdDrafts.single().calendarId)
+    }
+
+    @Test fun safeRecoveryOnlyEnablesExplicitRetryAndLocksOriginalFields() {
+        val writer = Writer().apply { next = MutationResult.Uncertain("fixture-op", null); safeRecovery = true }
+        val editor = controller(writer = writer)
+        editor.save(); val id = writer.ids.single()
+        editor.recover()
+        assertEquals(1, writer.creates)
+        assertTrue(editor.state.retryReady); assertFalse(editor.state.recoveryRequired)
+        editor.change { it.copy(title = "Must not replace dispatchable command") }; editor.save()
+        assertEquals(initial.title, editor.state.fields.title)
+        assertEquals(1, writer.creates)
+        writer.next = MutationResult.LocalSaved(ref)
+        editor.retryOriginal()
+        assertEquals(listOf(id, id), writer.ids)
+        assertEquals(listOf(initial, initial), writer.createdDrafts)
+    }
+
+    @Test fun originalUpdatePatchTokenAndRefSurviveFreshSourceAcrossRestore() {
+        val store = Store(); val writer = Writer().apply { next = MutationResult.Uncertain("fixture-op", null); safeRecovery = true }
+        val first = controller(store, writer, editable())
+        first.change { it.copy(title = "Original request") }; first.save()
+        val originalRequest = writer.updatedCommands.single()
+        val movedRef = ref.copy(instanceStart = ref.instanceStart.plusSeconds(60), instanceEnd = ref.instanceEnd.plusSeconds(60))
+        val fresh = editable().copy(token = EditToken("fresh-token"), details = editable().details.copy(
+            location = "Changed elsewhere", occurrence = editable().details.occurrence.copy(ref = movedRef)))
+        val restored = controller(store, writer, fresh, initial.copy(location = "Changed elsewhere"))
+        restored.recover(); writer.next = MutationResult.LocalSaved(ref); restored.retryOriginal()
+        assertEquals(2, writer.updates)
+        assertEquals(originalRequest, writer.updatedCommands.last())
+        assertEquals(FieldChange.Keep, writer.updatedCommands.last().third.location)
+    }
+
+    @Test fun restoredDeleteRetriesDeleteNotAnUpdateWithFreshToken() {
+        val store = Store(); val writer = Writer().apply { deleteResult = MutationResult.Uncertain("fixture-op", null); safeRecovery = true }
+        val first = controller(store, writer, editable())
+        first.requestDelete(); first.confirmDelete()
+        val originalDelete = writer.deletedCommands.single()
+        val restored = controller(store, writer, editable().copy(token = EditToken("fresh-token")))
+        restored.recover(); assertEquals("delete", restored.pendingOperationKind)
+        restored.save(); assertEquals(0, writer.updates)
+        writer.deleteResult = MutationResult.LocalDeleted(ref); restored.retryOriginal()
+        assertEquals(2, writer.deletes)
+        assertEquals(originalDelete, writer.deletedCommands.last())
+        assertEquals(writer.ids.first(), writer.ids.last())
+    }
+
+    @Test fun retryProofIsNotReusedAfterAnotherProcessRestore() {
+        val store = Store(); val writer = Writer().apply { next = MutationResult.Uncertain("fixture-op", null); safeRecovery = true }
+        val first = controller(store, writer); first.save(); first.recover()
+        assertTrue(first.state.retryReady)
+        val restored = controller(store, writer)
+        assertFalse(restored.state.retryReady); assertTrue(restored.state.recoveryRequired)
+        writer.safeRecovery = false; writer.recovered = MutationResult.Unavailable
+        restored.recover(); restored.retryOriginal()
+        assertEquals(1, writer.creates)
+        assertFalse(restored.state.retryReady)
+    }
+
+    @Test fun missingCorruptOrMismatchedFrozenCommandNeverUnlocksRetry() {
+        for (bad in listOf("missing", "version", "id")) {
+            val store = Store(); val writer = Writer().apply { next = MutationResult.Uncertain("fixture-op", null); safeRecovery = true }
+            controller(store, writer).save()
+            val record = store.records.getValue("draft-fixture")
+            val payload = org.json.JSONObject(record.payload)
+            when (bad) {
+                "missing" -> payload.remove("submission")
+                "version" -> payload.getJSONObject("submission").put("version", 999)
+                "id" -> payload.getJSONObject("submission").put("operationId", "another-operation")
+            }
+            store.records[record.id] = record.copy(payload = payload.toString())
+            val restored = controller(store, writer); restored.recover(); restored.retryOriginal(); restored.save()
+            assertEquals(1, writer.creates)
+            assertFalse(restored.state.retryReady); assertTrue(restored.state.recoveryRequired)
+            assertEquals(EditorProblem.RETRY_UNAVAILABLE, restored.state.problem)
+            if (bad == "version") assertEquals(999, org.json.JSONObject(store.records.getValue(record.id).payload)
+                .getJSONObject("submission").getInt("version"))
+        }
+    }
+
+    @Test fun mismatchedProofAndReadFailureRemainLocked() {
+        val writer = Writer().apply { next = MutationResult.Uncertain("fixture-op", null); recovered = MutationResult.SafeToRetry("wrong-operation") }
+        val editor = controller(writer = writer); editor.save(); editor.recover(); editor.retryOriginal()
+        assertFalse(editor.state.retryReady); assertEquals(1, writer.creates)
+        writer.recovered = MutationResult.Unavailable; editor.recover(); editor.save()
+        assertTrue(editor.state.recoveryRequired); assertEquals(1, writer.creates)
+    }
+
+    @Test fun failedRetryDoesNotPermitEditingOrChangingCommandIdentity() {
+        val writer = Writer().apply { next = MutationResult.Uncertain("fixture-op", null); safeRecovery = true }
+        val editor = controller(writer = writer); editor.save(); editor.recover()
+        writer.next = MutationResult.PermissionRequired; editor.retryOriginal()
+        editor.change { it.copy(title = "Unsafe replacement") }; editor.save()
+        assertEquals(initial.title, editor.state.fields.title)
+        assertTrue(editor.state.retryReady); assertEquals(2, writer.creates)
+        editor.retryOriginal()
+        assertEquals(1, writer.ids.distinct().size)
+        assertEquals(3, writer.creates)
+    }
+
+    @Test fun explicitRetryStillHasDoubleTapGuard() = runBlocking {
+        val writer = Writer().apply { next = MutationResult.Uncertain("fixture-op", null); safeRecovery = true }
+        val editor = controller(writer = writer); editor.save(); editor.recover()
+        val gate = CompletableDeferred<Unit>(); writer.hold = gate; writer.next = MutationResult.LocalSaved(ref)
+        editor.retryOriginal(); editor.retryOriginal()
+        assertEquals(2, writer.creates)
+        gate.complete(Unit); yield()
+        editor.retryOriginal(); assertEquals(2, writer.creates)
+    }
+
+    @Test fun routeDeleteCannotBypassFailedIncompatibleOrCorruptDraft() {
+        for (failure in listOf("read", "version", "payload")) {
+            val store = Store().apply {
+                if (failure == "read") failReads = true
+                else records["draft-fixture"] = DraftRecord("draft-fixture", if (failure == "version") 99 else 1,
+                    "not a valid draft payload", Instant.EPOCH)
+            }
+            val writer = Writer(); val editor = controller(store, writer, editable())
+            assertNotNull(editor.state.problem)
+            editor.requestDelete(); editor.confirmDelete()
+            assertFalse(editor.state.confirmDelete)
+            assertEquals(0, writer.deletes)
+        }
+    }
+
+    @Test fun routeDeleteWhileRestoreLoadsNeverLeavesAPendingConfirmation() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val store = Store().apply { beforeLoad = gate }
+        val writer = Writer(); val editor = controller(store, writer, editable())
+        assertTrue(editor.state.loading)
+        editor.requestDelete(); editor.confirmDelete()
+        assertFalse(editor.state.confirmDelete)
+        gate.complete(Unit); yield()
+        assertFalse(editor.state.loading)
+        editor.confirmDelete(); assertEquals(0, writer.deletes)
+    }
+
+    @Test fun tokenAdoptionDiscardsObsoleteFailedCommandWithoutLockingDraft() = runBlocking {
+        val store = Store(); val writer = Writer().apply { next = MutationResult.PermissionRequired }
+        controller(store, writer, editable()).save()
+        val fresh = editable().copy(token = EditToken("fresh-identical-source"))
+        val adopted = controller(store, writer, fresh)
+        assertFalse(adopted.state.recoveryRequired); assertTrue(adopted.flushDraft())
+        assertFalse(org.json.JSONObject(store.records.getValue("draft-fixture").payload).has("submission"))
+        val restored = controller(store, writer, fresh)
+        assertFalse(restored.state.recoveryRequired); assertFalse(restored.state.reviewRequired)
+        restored.change { it.copy(title = "Still editable") }
+        assertEquals("Still editable", restored.state.fields.title)
+    }
+
+    @Test fun explicitCalendarRequirementDoesNotClearExistingCalendar() {
+        val editor = controller(existing = editable(), selected = false)
+        assertEquals("2", editor.state.fields.calendarId)
+    }
+
     class Store : DraftStore {
-        val records = mutableMapOf<String, DraftRecord>(); var failWrites = false
-        override suspend fun load(id: String) = records[id]
+        val records = mutableMapOf<String, DraftRecord>(); var failWrites = false; var failReads = false
+        var beforeLoad: CompletableDeferred<Unit>? = null
+        override suspend fun load(id: String): DraftRecord? {
+            beforeLoad?.await(); if (failReads) error("fixture read failure"); return records[id]
+        }
         override suspend fun list() = records.values.toList()
         override suspend fun upsert(record: DraftRecord) { if (failWrites) error("fixture storage failure"); records[record.id] = record }
         override suspend fun delete(id: String) { records.remove(id) }
     }
     inner class Writer : CalendarMutations {
         var creates = 0; var updates = 0; var deletes = 0; var throwOnCreate = false
+        var safeRecovery = false; var deleteResult: MutationResult? = null
+        val createdDrafts = mutableListOf<EventDraft>()
+        val updatedCommands = mutableListOf<Triple<EventRef, EditToken, EventPatch>>()
+        val deletedCommands = mutableListOf<Pair<EventRef, EditToken>>()
         val ids = mutableListOf<String>(); val recoveryIds = mutableListOf<String>()
         var next: MutationResult = MutationResult.LocalSaved(ref)
         var recovered: MutationResult = MutationResult.Uncertain("fixture-op", null)
@@ -284,14 +457,16 @@ class EventEditorControllerTest {
         var patch: EventPatch? = null; var hold: CompletableDeferred<Unit>? = null
         override suspend fun loadForEdit(ref: EventRef) = editRead ?: EditReadResult.Ready(editable())
         override suspend fun create(operationId: String, draft: EventDraft): MutationResult {
-            creates++; ids += operationId; hold?.await(); if (throwOnCreate) error("fixture interruption"); return next
+            creates++; ids += operationId; createdDrafts += draft; hold?.await(); if (throwOnCreate) error("fixture interruption"); return next
         }
         override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult {
-            updates++; ids += operationId; this.patch = patch; return next
+            updates++; ids += operationId; this.patch = patch; updatedCommands += Triple(ref, token, patch); return next
         }
         override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult {
-            deletes++; ids += operationId; return MutationResult.LocalDeleted(ref)
+            deletes++; ids += operationId; deletedCommands += ref to token; return deleteResult ?: MutationResult.LocalDeleted(ref)
         }
-        override suspend fun recover(operationId: String): MutationResult { recoveryIds += operationId; return recovered }
+        override suspend fun recover(operationId: String): MutationResult {
+            recoveryIds += operationId; return if (safeRecovery) MutationResult.SafeToRetry(operationId) else recovered
+        }
     }
 }

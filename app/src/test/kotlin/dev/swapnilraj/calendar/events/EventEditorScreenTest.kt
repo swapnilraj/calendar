@@ -32,12 +32,14 @@ class EventEditorScreenTest {
         Instant.parse("2028-06-15T10:00:00Z")), ZoneOffset.UTC, "Future appointment", alertMinutes = listOf(10))
     private val ref = EventRef(calendar.id, 42, (draft.time as EventTime.Timed).start, (draft.time as EventTime.Timed).end)
     private var writes = 0
+    private var writeResult: MutationResult? = null
+    private var proveSafe = false
     private val writer = object : CalendarMutations {
         override suspend fun loadForEdit(ref: EventRef): EditReadResult = EditReadResult.Unavailable
-        override suspend fun create(operationId: String, draft: EventDraft): MutationResult { writes++; return MutationResult.LocalSaved(ref) }
-        override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult { writes++; return MutationResult.LocalSaved(ref) }
-        override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult { writes++; return MutationResult.LocalDeleted(ref) }
-        override suspend fun recover(operationId: String): MutationResult = MutationResult.Uncertain(operationId, null)
+        override suspend fun create(operationId: String, draft: EventDraft): MutationResult { writes++; return writeResult ?: MutationResult.LocalSaved(ref) }
+        override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult { writes++; return writeResult ?: MutationResult.LocalSaved(ref) }
+        override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult { writes++; return writeResult ?: MutationResult.LocalDeleted(ref) }
+        override suspend fun recover(operationId: String): MutationResult = if (proveSafe) MutationResult.SafeToRetry(operationId) else MutationResult.Uncertain(operationId, null)
     }
     private fun controller() = EventEditorController(draft, null, "fixture-draft", writer, EventEditorControllerTest.Store(), scope)
     private fun show(controller: EventEditorController, close: () -> Unit = {}) {
@@ -110,6 +112,46 @@ class EventEditorScreenTest {
         compose.onAllNodesWithText("2028-06-15").assertCountEquals(2)
         assertEquals(0, writes)
     }
+    @Test fun retryActionRequiresExplicitClickAndLeavesFieldsLocked() {
+        writeResult = MutationResult.Uncertain("fixture", null)
+        val editor = controller(); editor.save(); proveSafe = true; editor.recover(); show(editor)
+        assertEquals(1, writes)
+        compose.onNodeWithText("Future appointment").assertIsNotEnabled()
+        compose.onNodeWithText("Save").performScrollTo().assertIsNotEnabled()
+        writeResult = MutationResult.LocalSaved(ref)
+        compose.onNodeWithText("Retry original save").performScrollTo().performClick()
+        assertEquals(2, writes)
+    }
+    @Test fun originalDeletionRetryRequiresASecondExplicitConfirmation() {
+        val source = EditableEvent(EventDetails(EventOccurrence(ref, draft.time, draft.title, 1), calendar),
+            EditToken("original-token"), EditableField.entries.toSet())
+        val editor = EventEditorController(draft, source, "fixture-delete", writer, EventEditorControllerTest.Store(), scope)
+        writeResult = MutationResult.Uncertain("fixture", null)
+        editor.requestDelete(); editor.confirmDelete(); proveSafe = true; editor.recover(); show(editor)
+        assertEquals(1, writes)
+        compose.onNodeWithText("Retry original deletion").performScrollTo().performClick()
+        compose.onNodeWithText("Retry deletion of the original event?").assertIsDisplayed()
+        assertEquals(1, writes)
+        writeResult = MutationResult.LocalDeleted(ref)
+        compose.onAllNodesWithText("Retry original deletion").onLast().performClick()
+        assertEquals(2, writes)
+    }
+    @Test fun askEachTimeDoesNotSelectFirstCalendarImplicitly() {
+        val editor = EventEditorController(draft.copy(calendarId = CalendarId(0)), null, "fixture-no-calendar", writer,
+            EventEditorControllerTest.Store(), scope, initialCalendarSelected = false)
+        show(editor)
+        compose.onNodeWithText("Save").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Personal · fixture@example.test").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performScrollTo().assertIsEnabled()
+        assertEquals(0, writes)
+    }
+
+    @Test @Config(qualifiers = "+notnight") fun retryReadyLight() {
+        writeResult = MutationResult.Uncertain("fixture", null)
+        val editor = controller(); editor.save(); proveSafe = true; editor.recover(); show(editor)
+        compose.onRoot().captureRoboImage("src/test/screenshots/events_editor_retry_light.png")
+    }
+
     @Test @Config(qualifiers = "+notnight") fun createEditorLight() {
         show(controller()); compose.onRoot().captureRoboImage("src/test/screenshots/events_editor_light.png")
     }

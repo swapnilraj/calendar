@@ -84,4 +84,10 @@
     <string name="events_editor_discard_reload">Discard draft and load latest</string>
     <string name="events_editor_discard_confirm">Discard your unsaved draft?</string>
     <string name="events_editor_discard_description">Your retained draft changes will be removed. The latest event will be loaded for a new edit. No calendar event is changed by this action.</string>
+    <string name="events_editor_safe_retry">Recovery confirmed that no changes were committed. You may explicitly retry the original request.</string>
+    <string name="events_editor_retry_unavailable">The original request could not be recovered. No retry was submitted. Keep this draft and review the calendar.</string>
+    <string name="events_editor_retry_locked">Only the unchanged original request can be retried. Editing remains locked until that operation is resolved.</string>
+    <string name="events_editor_retry_save">Retry original save</string>
+    <string name="events_editor_retry_delete">Retry original deletion</string>
+    <string name="events_editor_retry_delete_confirm">Retry deletion of the original event?</string>
 </resources>

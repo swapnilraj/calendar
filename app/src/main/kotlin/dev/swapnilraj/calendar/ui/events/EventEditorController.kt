@@ -19,13 +19,13 @@ data class EventEditorFields(
 )
 
 enum class EditorProblem { INVALID_INPUT, AMBIGUOUS_TIME, NONEXISTENT_TIME, PERMISSION,
-    DENIED, CONFLICT, UNCERTAIN, UNAVAILABLE, DRAFT_UNAVAILABLE, UNSUPPORTED, DRAFT_VERSION }
+    DENIED, CONFLICT, UNCERTAIN, UNAVAILABLE, DRAFT_UNAVAILABLE, UNSUPPORTED, DRAFT_VERSION, SAFE_TO_RETRY, RETRY_UNAVAILABLE }
 
 data class EventEditorState(
     val fields: EventEditorFields, val loading: Boolean = true, val saving: Boolean = false,
     val problem: EditorProblem? = null, val result: MutationResult? = null,
     val confirmDelete: Boolean = false, val recoveryRequired: Boolean = false, val reviewRequired: Boolean = false,
-    val reviewLatest: EventDetails? = null, val draftReadFailed: Boolean = false,
+    val reviewLatest: EventDetails? = null, val draftReadFailed: Boolean = false, val retryReady: Boolean = false,
 )
 
 /** Injected ports are the only write path. Dismissal and restoration never submit an event. */
@@ -37,18 +37,25 @@ class EventEditorController(
     private val drafts: DraftStore,
     private val scope: CoroutineScope,
     private val clock: Clock = Clock.systemUTC(),
+    initialCalendarSelected: Boolean = true,
 ) {
-    var state by mutableStateOf(EventEditorState(fieldsFor(initial)))
+    private val original = fieldsFor(initial).let {
+        if (existing == null && !initialCalendarSelected) it.copy(calendarId = "") else it
+    }
+    var state by mutableStateOf(EventEditorState(original))
         private set
     private var operationId = UUID.randomUUID().toString()
     val pendingOperationId: String get() = operationId
     private var operationKind = ""
+    val pendingOperationKind: String get() = operationKind
     private var submitted = false
     private var completed = false
     private var operationPayload = ""
     private var uncertain = false
+    private var retryLocked = false
+    private var frozenSubmission: FrozenEditorSubmission? = null
+    private var retainedSubmission: Any? = null
     private var persistence: Job? = null
-    private val original = fieldsFor(initial)
     private val unsupported = existing?.let { source ->
         val ownEmails = listOfNotNull(source.details.organizer, source.details.calendar?.account?.name)
         source.details.attendees.any { guest -> guest.relationship != CalendarContract.Attendees.RELATIONSHIP_ORGANIZER &&
@@ -72,11 +79,19 @@ class EventEditorController(
                 operationKind = values.optString("operationKind", "")
                 submitted = values.getBoolean("submitted")
                 operationPayload = values.optString("operationPayload", "")
+                retainedSubmission = values.opt("submission")?.takeUnless { it === JSONObject.NULL }
+                frozenSubmission = try {
+                    values.optJSONObject("submission")?.let(FrozenEditorSubmission::decode)?.takeIf {
+                        it.operationId == operationId && it.kind == operationKind
+                    }
+                } catch (_: Exception) { null }
+                submitted = submitted || retainedSubmission != null && frozenSubmission == null
                 uncertain = submitted
                 val sourceChanged = !submitted && existing != null && values.optString("sourceBaseline") != sourceBaseline()
                 if (!submitted && !sourceChanged && values.optString("sourceToken") != existing?.token?.value.orEmpty()) {
                     // Only identical canonical source values, identity and rights permit token adoption.
                     operationId = UUID.randomUUID().toString(); operationPayload = ""
+                    frozenSubmission = null; retainedSubmission = null
                 }
                 state = state.copy(fields = decode(values), recoveryRequired = submitted,
                     reviewRequired = sourceChanged, reviewLatest = if (sourceChanged) existing?.details else null,
@@ -87,8 +102,11 @@ class EventEditorController(
         catch (_: Exception) { state = state.copy(loading = false, draftReadFailed = true, problem = EditorProblem.DRAFT_UNAVAILABLE) }
     }
 
+    private fun writesBlocked(): Boolean = state.loading || state.saving || state.draftReadFailed || state.reviewRequired ||
+        uncertain || retryLocked || completed || unsupported || state.problem == EditorProblem.DRAFT_VERSION
+
     fun change(transform: (EventEditorFields) -> EventEditorFields) {
-        if (state.loading || state.saving || state.draftReadFailed || state.reviewRequired || uncertain || completed || unsupported || state.problem == EditorProblem.DRAFT_VERSION) return
+        if (writesBlocked()) return
         val old = state.fields
         var next = transform(old)
         if (next.startDate != old.startDate || next.startTime != old.startTime || next.zone != old.zone || next.allDay != old.allDay)
@@ -110,7 +128,7 @@ class EventEditorController(
     }
 
     private suspend fun persistSafely(): Boolean {
-        if (state.reviewRequired) return false
+        if (state.reviewRequired || state.draftReadFailed || state.problem == EditorProblem.DRAFT_VERSION) return false
         return try {
         val values = encode(state.fields).apply {
             put("operationId", operationId); put("operationKind", operationKind)
@@ -118,6 +136,7 @@ class EventEditorController(
             put("sourceToken", existing?.token?.value.orEmpty())
             put("sourceBaseline", sourceBaseline())
             put("submitted", submitted)
+            (frozenSubmission?.encode() ?: retainedSubmission)?.let { put("submission", it) }
         }
         drafts.upsert(DraftRecord(draftId, VERSION, values.toString(), clock.instant()))
         true
@@ -126,8 +145,7 @@ class EventEditorController(
     }
 
     fun save() {
-        if (state.loading || state.saving || state.draftReadFailed || state.reviewRequired || uncertain || completed || unsupported || state.problem == EditorProblem.DRAFT_VERSION) return
-        if (state.reviewRequired) return
+        if (writesBlocked()) return
         val normalized = try { normalizedDraft(state.fields,
             preserveTime = if (existing != null && !timeChanged(state.fields)) initial.time else null,
             preserveAlerts = if (existing != null && state.fields.alerts == original.alerts) initial.alertMinutes else null) }
@@ -142,11 +160,13 @@ class EventEditorController(
                 operationId = UUID.randomUUID().toString()
             operationPayload = payload
             operationKind = kind
+            val command = if (existing == null) FrozenEditorSubmission.Create(operationId, normalized)
+                else FrozenEditorSubmission.Update(operationId, existing.details.occurrence.ref, existing.token, patch(normalized))
+            frozenSubmission = command
             submitted = true
             if (!persistSafely()) { state = state.copy(saving = false); return@launch }
             val result = try {
-                if (existing == null) mutations.create(operationId, normalized)
-                else mutations.update(operationId, existing.details.occurrence.ref, existing.token, patch(normalized))
+                command.execute(mutations)
             } catch (cancelled: CancellationException) { uncertain = true; throw cancelled }
             catch (_: Exception) { MutationResult.Uncertain(operationId, existing?.details?.occurrence?.ref?.eventId) }
             finish(result)
@@ -154,27 +174,44 @@ class EventEditorController(
     }
 
     fun requestDelete() {
-        if (existing != null && !state.loading && !state.saving && !uncertain && !completed && !unsupported && !state.reviewRequired) state = state.copy(confirmDelete = true)
+        if (existing != null && !writesBlocked()) state = state.copy(confirmDelete = true)
     }
     fun cancelDelete() { state = state.copy(confirmDelete = false) }
     fun confirmDelete() {
         val event = existing ?: return
-        if (!state.confirmDelete || state.saving || uncertain || completed || unsupported || state.reviewRequired) return
+        if (!state.confirmDelete || writesBlocked()) return
         state = state.copy(saving = true, confirmDelete = false, problem = null)
         scope.launch {
             persistence?.cancelAndJoin()
             if (operationKind != "delete") operationId = UUID.randomUUID().toString()
             operationKind = "delete"; submitted = true
+            val command = FrozenEditorSubmission.Delete(operationId, event.details.occurrence.ref, event.token)
+            frozenSubmission = command
             if (!persistSafely()) { state = state.copy(saving = false); return@launch }
-            val result = try { mutations.delete(operationId, event.details.occurrence.ref, event.token) }
+            val result = try { command.execute(mutations) }
             catch (cancelled: CancellationException) { uncertain = true; throw cancelled }
             catch (_: Exception) { MutationResult.Uncertain(operationId, event.details.occurrence.ref.eventId) }
             finish(result)
         }
     }
 
+    /** A recovery proof only enables a separate user action; it never dispatches a write. */
+    fun retryOriginal() {
+        val command = frozenSubmission ?: return
+        if (!state.retryReady || state.loading || state.draftReadFailed || state.problem == EditorProblem.DRAFT_VERSION || state.saving || completed || command.operationId != operationId || command.kind != operationKind) return
+        state = state.copy(saving = true, retryReady = false, problem = null, result = null)
+        scope.launch {
+            submitted = true
+            if (!persistSafely()) { state = state.copy(saving = false, retryReady = true); return@launch }
+            val result = try { command.execute(mutations) }
+            catch (cancelled: CancellationException) { uncertain = true; throw cancelled }
+            catch (_: Exception) { MutationResult.Uncertain(operationId, existing?.details?.occurrence?.ref?.eventId) }
+            finish(result)
+        }
+    }
+
     fun recover() {
-        if (!uncertain || state.saving || completed) return
+        if ((!uncertain && !retryLocked) || state.saving || completed) return
         state = state.copy(saving = true)
         scope.launch {
             val result = try { mutations.recover(operationId) }
@@ -193,7 +230,7 @@ class EventEditorController(
 
     /** Only call after explicit user confirmation. Never discard an unresolved operation. */
     suspend fun discardAndReload(): EditReadResult? {
-        if (uncertain || state.saving) return null
+        if (uncertain || retryLocked || state.saving) return null
         val latest = reloadExisting() ?: return null
         if (latest is EditReadResult.Ready) {
             persistence?.cancelAndJoin()
@@ -204,30 +241,41 @@ class EventEditorController(
         return latest
     }
 
-    private suspend fun finish(result: MutationResult, recovery: Boolean = false) {
+    private suspend fun finish(received: MutationResult, recovery: Boolean = false) {
+        val matchingProof = received is MutationResult.SafeToRetry && received.operationId == operationId
+        val validCommand = !state.draftReadFailed && state.problem != EditorProblem.DRAFT_VERSION &&
+            frozenSubmission?.let { it.operationId == operationId && it.kind == operationKind } == true
+        val result = if (received is MutationResult.SafeToRetry && !matchingProof)
+            MutationResult.Uncertain(operationId, existing?.details?.occurrence?.ref?.eventId) else received
         val success = result is MutationResult.LocalSaved || result is MutationResult.LocalDeleted
-        uncertain = result is MutationResult.Uncertain || recovery && !success
+        val proofWithoutCommand = matchingProof && !validCommand
+        if (matchingProof) retryLocked = true
+        uncertain = result is MutationResult.Uncertain || recovery && !success && !matchingProof || proofWithoutCommand
+        val retryReady = !success && !uncertain && retryLocked && validCommand
         if (success) {
             completed = true
             try { drafts.delete(draftId) } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { /* A submitted record is safe: restore requires recovery, never resubmission. */ }
+            catch (_: Exception) { /* A submitted record stays locked on restoration. */ }
         } else {
-            // Known failures can be edited/retried; a crash during that persistence stays conservative.
-            submitted = uncertain
+            // An unfinished retry remains bound to its original ID and frozen command on disk.
+            submitted = uncertain || retryLocked
             persistSafely()
         }
-        state = state.copy(saving = false, recoveryRequired = uncertain,
-            reviewRequired = result is MutationResult.Conflict && existing != null,
-            reviewLatest = (result as? MutationResult.Conflict)?.latest, result = result, problem = when (result) {
-            is MutationResult.LocalSaved, is MutationResult.LocalDeleted -> null
-            MutationResult.PermissionRequired -> EditorProblem.PERMISSION
-            is MutationResult.Denied -> EditorProblem.DENIED
-            is MutationResult.ValidationFailed -> EditorProblem.INVALID_INPUT
-            is MutationResult.Conflict -> EditorProblem.CONFLICT
-            is MutationResult.Uncertain -> EditorProblem.UNCERTAIN
-            MutationResult.Unavailable -> EditorProblem.UNAVAILABLE
-            is MutationResult.SafeToRetry -> EditorProblem.UNCERTAIN // Locked until exact-command retry UI is implemented.
-        })
+        state = state.copy(saving = false, recoveryRequired = uncertain, retryReady = retryReady,
+            reviewRequired = result is MutationResult.Conflict && existing != null && !retryLocked,
+            reviewLatest = (result as? MutationResult.Conflict)?.latest, result = result, problem = when {
+                proofWithoutCommand -> EditorProblem.RETRY_UNAVAILABLE
+                else -> when (result) {
+                    is MutationResult.LocalSaved, is MutationResult.LocalDeleted -> null
+                    MutationResult.PermissionRequired -> EditorProblem.PERMISSION
+                    is MutationResult.Denied -> EditorProblem.DENIED
+                    is MutationResult.ValidationFailed -> EditorProblem.INVALID_INPUT
+                    is MutationResult.Conflict -> EditorProblem.CONFLICT
+                    is MutationResult.Uncertain -> EditorProblem.UNCERTAIN
+                    MutationResult.Unavailable -> EditorProblem.UNAVAILABLE
+                    is MutationResult.SafeToRetry -> EditorProblem.SAFE_TO_RETRY
+                }
+            })
     }
 
     private fun patch(draft: EventDraft): EventPatch {
