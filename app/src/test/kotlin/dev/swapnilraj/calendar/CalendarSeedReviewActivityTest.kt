@@ -78,7 +78,7 @@ class CalendarSeedReviewActivityTest {
         try {
             awaitText(app.getString(R.string.events_editor_create))
             assertEquals(0, mutations.writes)
-            compose.onNodeWithText(app.getString(R.string.events_editor_save)).performScrollTo().performClick()
+            compose.onNodeWithText(app.getString(R.string.events_editor_save)).assertIsDisplayed().performClick()
             compose.waitUntil(8_000) {
                 compose.onAllNodesWithText(app.getString(R.string.events_editor_save)).fetchSemanticsNodes()
                 host.get().isFinishing
@@ -96,7 +96,7 @@ class CalendarSeedReviewActivityTest {
         val host = launch(request)
         try {
             awaitText(app.getString(R.string.events_editor_create))
-            compose.onNodeWithText(app.getString(R.string.events_editor_save)).performScrollTo().performClick()
+            compose.onNodeWithText(app.getString(R.string.events_editor_save)).assertIsDisplayed().performClick()
             compose.waitForIdle()
             assertEquals(0, mutations.writes)
             val doc = runBlocking { OrdinaryDraftDocument.decode(requireNotNull(store.load(request.draftId))) }
@@ -180,7 +180,8 @@ class CalendarSeedReviewActivityTest {
         shadowOf(app).denyPermissions(Manifest.permission.READ_CALENDAR)
         val host = launch(request)
         try {
-            awaitText(app.getString(R.string.events_drafts_recovery_only))
+            awaitText(app.getString(R.string.phone_event_check_save))
+            compose.onNodeWithText(app.getString(R.string.events_editor_save)).assertIsDisplayed().assertIsNotEnabled()
             compose.onNodeWithText(seedReviewCalendar.displayName).assertDoesNotExist()
             assertEquals(0, mutations.writes)
         } finally { host.pause().stop().destroy() }

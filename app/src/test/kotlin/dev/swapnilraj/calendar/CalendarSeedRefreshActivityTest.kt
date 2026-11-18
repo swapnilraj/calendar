@@ -37,6 +37,7 @@ class CalendarSeedRefreshActivityTest {
     private fun launch() = Robolectric.buildActivity(CalendarSeedReviewActivity::class.java,
         CalendarSeedReviewActivity.intent(app, seedReviewRequest(true).sessionId, seedReviewRequest(true).seed, ZoneOffset.UTC)).setup().visible()
     private fun shown(text: String) = compose.waitUntil(8_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+    private fun recoveryAction() = hasText(app.getString(R.string.phone_event_check_save)) and hasClickAction()
     private fun grant() = shadowOf(app).grantPermissions(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
 
     @Test fun writerRefreshHintDuringKnownCommitRecoveryDoesNotCancelExactCleanup() {
@@ -59,10 +60,10 @@ class CalendarSeedRefreshActivityTest {
         envRead = { if (recoveryStarted) observed.complete(Unit) }
         val host = launch()
         try {
-            shown(app.getString(R.string.events_editor_recover))
-            compose.onNodeWithText(app.getString(R.string.events_editor_recover)).performScrollTo().performClick()
+            compose.waitUntil(8_000) { compose.onAllNodes(recoveryAction()).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(recoveryAction()).performScrollTo().performClick()
             compose.waitUntil(8_000) {
-                compose.onAllNodesWithText(app.getString(R.string.events_editor_recover)).fetchSemanticsNodes()
+                compose.onAllNodes(recoveryAction()).fetchSemanticsNodes()
                 host.get().isFinishing
             }
             assertEquals(1, recoveries); assertEquals(0, writer.writes)
@@ -115,7 +116,7 @@ class CalendarSeedRefreshActivityTest {
             shown(app.getString(R.string.events_editor_create))
             environment = CalendarReadState.Ready(seedReviewEnvironment.copy(calendars = listOf(seedReviewCalendar.copy(providerId = "replacement-calendar"))))
             changes.tryEmit(Unit)
-            shown(app.getString(R.string.events_calendar_reselection))
+            shown(app.getString(R.string.phone_event_choose_calendar_notice))
             compose.onNodeWithText(app.getString(R.string.events_editor_save)).assertIsNotEnabled()
             assertEquals(0, writer.writes)
         } finally { host.pause().stop().destroy() }

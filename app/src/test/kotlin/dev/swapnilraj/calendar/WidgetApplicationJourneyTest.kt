@@ -70,7 +70,8 @@ class WidgetApplicationJourneyTest {
             .captureRoboImage("src/test/screenshots/integration_widget_private_details_title.png")
         compose.onNodeWithText("Join meeting").performScrollTo().performClick()
         assertEquals("https://meet.google.com/aaa-bbbb-ccc", shadowOf(f.details!!.get()).nextStartedActivity.dataString)
-        compose.onNodeWithText("Edit event").assertDoesNotExist()
+        compose.onNodeWithContentDescription(f.app.getString(R.string.events_editor_edit)).assertDoesNotExist()
+        compose.onNodeWithContentDescription(f.app.getString(R.string.phone_details_more_actions)).assertDoesNotExist()
         f.assertNoneAndNoWrites()
         compose.runOnUiThread { f.details!!.pause().stop() }
         compose.waitForIdle()
@@ -102,8 +103,8 @@ class WidgetApplicationJourneyTest {
         val create = f.click(R.id.widget_create)
         f.launchMain(create)
         shown("Save")
-        compose.onNode(hasSetTextAction() and hasText("Title")).performTextReplacement("Retained widget draft")
-        compose.waitUntil(15_000) { runBlocking { f.app.calendarLocalStore.list() }.any { it.payload.contains("Retained widget draft") } }
+        compose.onNode(hasSetTextAction() and hasContentDescription(f.app.getString(R.string.phone_event_title))).performTextReplacement("Retained widget draft")
+        compose.waitUntil(15_000) { compose.onAllNodesWithContentDescription(f.app.getString(R.string.phone_event_title)).fetchSemanticsNodes(); runBlocking { f.app.calendarLocalStore.list() }.any { it.payload.contains("Retained widget draft") } }
         val before = runBlocking { f.app.calendarLocalStore.list() }.associate { it.id to it.payload }
         assertEquals(1, before.size)
         compose.runOnUiThread { f.main!!.newIntent(create) }
@@ -165,6 +166,32 @@ class WidgetApplicationJourneyTest {
         compose.runOnUiThread { f.configuration!!.pause().stop().restart().start().resume() }
         compose.waitUntil(15_000) { compose.onAllNodesWithTag("widget_setup_independent").fetchSemanticsNodes().isNotEmpty() }
         assertEquals(AgendaWidgetConfigurationState.SetupRequired, runBlocking { f.app.agendaWidgetServices.configuration(f.id) })
+        f.assertNoneAndNoWrites()
+    }
+
+    @Test fun privatePhoneDetailsRevokesCalendarContentAndJoinAfterReadPermissionLoss() = fixture { f ->
+        f.configure()
+        f.provider.setEvent("description", "Synthetic meeting https://meet.google.com/aaa-bbbb-ccc")
+        f.launchMain(f.click(R.id.widget_row))
+        val destination = f.nextActivity()
+        compose.runOnUiThread { f.details = Robolectric.buildActivity(WidgetOpenActivity::class.java, destination).setup().visible() }
+        shown(title)
+        compose.onNodeWithText("Join meeting").assertExists()
+        compose.onNodeWithText(f.app.getString(R.string.phone_details_more)).performScrollTo().performClick()
+        compose.onNodeWithText(f.app.getString(R.string.phone_details_less)).assertExists()
+        compose.runOnUiThread { f.details!!.pause().stop() }
+        compose.waitForIdle()
+        compose.onNodeWithText(title).assertDoesNotExist()
+        shadowOf(f.app).denyPermissions(Manifest.permission.READ_CALENDAR)
+        f.provider.detailReads = 0
+        compose.runOnUiThread { f.details!!.restart().start().resume() }
+        shown("Allow calendar access")
+        compose.onNodeWithText(title).assertDoesNotExist()
+        compose.onNodeWithText("Join meeting").assertDoesNotExist()
+        compose.onNodeWithText(f.app.getString(R.string.phone_details_less)).assertDoesNotExist()
+        compose.onNodeWithText(f.app.getString(R.string.phone_details_more)).assertDoesNotExist()
+        compose.onNodeWithContentDescription(f.app.getString(R.string.events_editor_edit)).assertDoesNotExist()
+        assertEquals(0, f.provider.detailReads)
         f.assertNoneAndNoWrites()
     }
 
