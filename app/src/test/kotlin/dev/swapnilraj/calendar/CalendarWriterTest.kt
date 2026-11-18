@@ -265,6 +265,41 @@ class CalendarWriterTest {
         }
     }
 
+    @Test fun readOnlyPermissionCanDiscoverEditEligibilityAndRecoverWithoutWriting() = runBlocking {
+        fixture { provider, writer, store, permissions ->
+            // Seed an existing appointment without using the mutation adapter under test.
+            val uri = provider.insert(CalendarContract.Events.CONTENT_URI, ContentValues().apply {
+                put(CalendarContract.Events.CALENDAR_ID, 2L)
+                put(CalendarContract.Events.DTSTART, Instant.parse("2026-11-17T09:00:00Z").toEpochMilli())
+                put(CalendarContract.Events.DTEND, Instant.parse("2026-11-17T10:00:00Z").toEpochMilli())
+                put(CalendarContract.Events.EVENT_TIMEZONE, "Europe/London")
+                put(CalendarContract.Events.TITLE, "Synthetic existing appointment")
+                put(CalendarContract.Events.ALL_DAY, 0)
+            })
+            val ref = EventRef(CalendarId(2), ContentUris.parseId(uri), Instant.parse("2026-11-17T09:00:00Z"), Instant.parse("2026-11-17T10:00:00Z"))
+            store.prepare("known", "fixture-signature", "CREATE")
+            store.mark("known", "COMMITTED", "{\"calendar\":2,\"event\":${ref.eventId},\"start\":\"${ref.instanceStart}\",\"end\":\"${ref.instanceEnd}\"}")
+            permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            val editable = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            assertEquals(EditableField.entries.toSet(), editable.allowedFields)
+            assertEquals(editable.token, (writer.loadForEdit(ref) as EditReadResult.Ready).event.token)
+            assertEquals(MutationResult.LocalSaved(ref), writer.recover("known"))
+            assertEquals(MutationResult.PermissionRequired, writer.create("read-only-create", draft))
+            assertEquals(MutationResult.PermissionRequired, writer.update("read-only-update", ref, editable.token, EventPatch(title = FieldChange.Set("No write"))))
+            assertEquals(MutationResult.PermissionRequired, writer.delete("read-only-delete", ref, editable.token))
+            assertEquals(0, provider.batchCount)
+            assertEquals("Synthetic existing appointment", provider.events.single()["title"])
+            permissions.remove(Manifest.permission.READ_CALENDAR)
+            permissions += Manifest.permission.WRITE_CALENDAR
+            assertEquals(EditReadResult.PermissionRequired, writer.loadForEdit(ref))
+            assertEquals(MutationResult.PermissionRequired, writer.recover("known"))
+            assertEquals(MutationResult.PermissionRequired, writer.create("no-read-create", draft))
+            assertEquals(MutationResult.PermissionRequired, writer.update("no-read-update", ref, editable.token, EventPatch()))
+            assertEquals(MutationResult.PermissionRequired, writer.delete("no-read-delete", ref, editable.token))
+            assertEquals(0, provider.batchCount)
+        }
+    }
+
     @Test fun permissionsInvalidOffsetsAndUnknownRightsNeverWrite() = runBlocking {
         fixture { provider, writer, _, permissions ->
             permissions.remove(Manifest.permission.WRITE_CALENDAR)
