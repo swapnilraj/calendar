@@ -62,6 +62,7 @@ class EventEditorController(
     val pendingOperationId: String get() = document?.operationId.orEmpty()
     val pendingOperationKind: String get() = document?.operationKind.orEmpty()
     val generation: String? get() = document?.generation
+    val isEditing: Boolean get() = document?.launch?.kind?.let { it == EditorDraftKind.EDIT } ?: (existing != null || recoveryRef != null)
     val hasFrozenSubmission: Boolean get() = document?.frozen != null
     val boundCalendarIdentity: CalendarIdentity? get() = document?.let { doc ->
         (doc.frozen as? FrozenEditorSubmission.Create)?.draft?.targetIdentity ?: if (doc.launch.kind == EditorDraftKind.EDIT) doc.sourceIdentity else doc.fields.targetIdentity

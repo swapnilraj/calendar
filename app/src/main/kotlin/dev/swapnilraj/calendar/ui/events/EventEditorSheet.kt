@@ -90,7 +90,7 @@ fun EventEditorContent(
     Column(Modifier.fillMaxWidth().imePadding().verticalScroll(scroll).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(if (controller.recoveryOnly) R.string.events_drafts_recover
-            else if (existing == null) R.string.events_editor_create else R.string.events_editor_edit),
+            else if (controller.isEditing) R.string.events_editor_edit else R.string.events_editor_create),
             style = MaterialTheme.typography.headlineSmall)
         if (controller.recoveryOnly) {
             Text(stringResource(R.string.events_drafts_recovery_only), style = MaterialTheme.typography.titleMedium)
@@ -127,7 +127,7 @@ fun EventEditorContent(
         }
         OutlinedTextField(fields.title, { value -> controller.change { it.copy(title = value) } },
             label = { Text(stringResource(R.string.events_editor_title)) }, enabled = canEdit(EditableField.TITLE), modifier = Modifier.fillMaxWidth())
-        if (existing == null && !controller.recoveryOnly) {
+        if (!controller.isEditing && !controller.recoveryOnly) {
             Text(stringResource(R.string.events_calendar))
             writableCalendars.filter { it.capabilities.createEvents == AccessDecision.ALLOWED }.forEach { calendar ->
                 FilterChip(selected = fields.targetIdentity == calendar.identity && fields.calendarId == calendar.id.value.toString(), enabled = !blocked && calendar.account.name.isNotBlank() && calendar.account.type.isNotBlank(),
@@ -174,7 +174,7 @@ fun EventEditorContent(
                 label = { Text(stringResource(R.string.events_editor_zone)) }, enabled = canEdit(EditableField.ZONE),
                 singleLine = true, modifier = Modifier.fillMaxWidth())
         }
-        if (existing == null && !controller.recoveryOnly && controller.recurringCreationSupported) {
+        if (!controller.isEditing && !controller.recoveryOnly && controller.recurringCreationSupported) {
             RecurrenceEditorControls(fields.recurrence, fields.startDate, !blocked) { value ->
                 controller.change { it.copy(recurrence = value) }
             }

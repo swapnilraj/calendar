@@ -6,7 +6,7 @@ import java.time.Clock
 import kotlinx.coroutines.CancellationException
 
 sealed interface DraftPreparationResult {
-    data class Ready(val launch: EditorDraftLaunch) : DraftPreparationResult
+    data class Ready(val launch: EditorDraftLaunch, val exactRecord: DraftRecord? = null) : DraftPreparationResult
     data object Unavailable : DraftPreparationResult
 }
 
@@ -61,7 +61,7 @@ private suspend fun prepareDraft(initial: EventDraft, existing: EditableEvent?, 
         val changed = try { atomic.compareAndSet(id, null, record) } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { DraftChangeResult.Unavailable }
         val durable = store.load(id)
-        if (changed != DraftChangeResult.Changed && durable == record) DraftPreparationResult.Ready(launch)
+        if (changed != DraftChangeResult.Changed && durable == record) DraftPreparationResult.Ready(launch, if (newOnly) record else null)
         else if (!newOnly && changed == DraftChangeResult.Changed && durable != null) {
             val collision = DraftBrowserCodec.read(durable).launch
             if (collision != null && editorDraftTarget(collision.ref) == expected) DraftPreparationResult.Ready(collision) else DraftPreparationResult.Unavailable
