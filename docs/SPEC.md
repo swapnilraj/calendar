@@ -86,6 +86,11 @@ without guests/recurrence, retaining explicit Private/Public/Confidential choice
 default visibility needs target-calendar-specific approval when its calendar changes; unproven frozen
 legacy commands stay recovery-only. The app duplication action is a separate routing packet.
 
+The settings form validates raw default-duration/reminder/display-zone inputs, retains invalid values
+and save failures, and blocks edits/dismissal during a caller-owned save. Its preference codec mutates
+only display keys and the shared view key; calendar selection/default, zoom and reminder policy keys
+are preserved. The caller owns atomic storage and applying these values to the application.
+
 ## Approved daily-driver target (18 November 2026)
 
 This target supersedes the original phase roadmap and its widget/notification exclusions below.
