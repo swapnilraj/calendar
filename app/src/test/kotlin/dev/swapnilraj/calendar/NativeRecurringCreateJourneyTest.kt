@@ -78,7 +78,13 @@ class NativeRecurringCreateJourneyTest {
         review()
         assertUnsubmitted(f)
         confirm()
-        shown(f.app.getString(R.string.phone_event_permission))
+        try { shown(f.app.getString(R.string.phone_event_permission)) } catch (failure: AssertionError) {
+            val categories = listOf(R.string.phone_event_pending_permission, R.string.phone_event_invalid,
+                R.string.phone_event_unavailable, R.string.events_calendar_reselection, R.string.phone_event_uncertain)
+                .associateWith { compose.onAllNodesWithText(f.app.getString(it)).fetchSemanticsNodes().size }
+            val submitted = runBlocking { f.app.calendarLocalStore.list() }.map { JSONObject(it.payload).optBoolean("submitted") }
+            throw AssertionError("Expected unfrozen permission state; visible category counts=$categories submitted=$submitted", failure)
+        }
         assertUnsubmitted(f)
         shadowOf(f.app).grantPermissions(Manifest.permission.WRITE_CALENDAR)
         compose.runOnUiThread { f.activity.pause().stop().restart().start().resume() }

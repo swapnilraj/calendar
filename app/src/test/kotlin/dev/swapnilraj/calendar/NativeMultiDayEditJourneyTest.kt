@@ -80,16 +80,16 @@ class NativeMultiDayEditJourneyTest {
         columns.performSemanticsAction(SemanticsActions.ScrollBy) { it(-10000f, 0f) }
         val node = compose.onNodeWithText(title)
         val viewport = compose.onNodeWithTag("multiday_time_scroll")
-        val initial = node.fetchSemanticsNode().boundsInRoot
-        val body = viewport.fetchSemanticsNode().boundsInRoot
-        viewport.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, initial.top - body.top - 64f) }
+        node.performScrollTo()
         node.assertIsDisplayed()
+        val body = viewport.fetchSemanticsNode().boundsInRoot
         val bounds = node.fetchSemanticsNode().boundsInRoot
+        assertTrue("The entire event must be visible before choosing move versus resize", bounds.top >= body.top && bounds.bottom <= body.bottom && bounds.height > 48f)
         val target = compose.onNodeWithTag("multiday_grid_${f.date.plusDays(1)}").fetchSemanticsNode().boundsInRoot
         // Fixture pins 64dp/hour and mdpi; semantics day bounds are viewport-clipped.
         val hourPixels = 64f
         compose.mainClock.autoAdvance = false
-        node.performTouchInput { down(if (resize) Offset(bounds.width / 2, bounds.height - 3) else center) }
+        node.performTouchInput { down(if (resize) Offset(bounds.width / 2, bounds.height - 3) else Offset(bounds.width / 2, bounds.height / 4)) }
         compose.mainClock.advanceTimeBy(700)
         compose.waitUntil(15_000) {
             compose.mainClock.advanceTimeBy(16)
