@@ -151,7 +151,10 @@ class NativeGeneratedRsvpJourneyTest {
         assertEquals(f.ref.recurrence!!.originalStart.toEpochMilli().toString(), new["originalInstanceTime"])
         assertEquals(f.ref.instanceStart.toEpochMilli().toString(), new["dtstart"]); assertEquals(f.ref.instanceEnd.toEpochMilli().toString(), new["dtend"])
         assertEquals("0", new["originalAllDay"]); assertEquals(status, new["selfAttendeeStatus"]); assertEquals("1", new["eventStatus"])
-        assertNull(new["rrule"]); assertNull(new["_sync_id"])
+        assertNull(new["rrule"]); assertNull(new["_sync_id"]); assertEquals("uid-10", new["uid2445"])
+        val master = f.before.getValue("events").single { it["_id"] == "10" }
+        for (field in listOf("title", "eventLocation", "description", "organizer", "eventTimezone", "eventEndTimezone", "availability", "accessLevel"))
+            assertEquals(field, master[field], new[field])
         for (table in listOf("attendees", "reminders", "extendedproperties")) {
             val old = f.before.getValue(table); val ids = old.map { it["_id"] }.toSet()
             assertEquals(old, f.provider.snapshot(table).filter { it["_id"] in ids })
@@ -161,6 +164,7 @@ class NativeGeneratedRsvpJourneyTest {
         assertEquals("1", copied.single { it["attendeeEmail"] == "other@example.invalid" }["attendeeStatus"])
         assertEquals(f.before.getValue("instances"), f.provider.snapshot("instances").filter { it["event_id"] != id.toString() })
         assertEquals(1, f.provider.native.correctionValues.size)
+        assertEquals(setOf("dtstart", "dtend", "eventTimezone", "allDay", "originalInstanceTime", "originalAllDay"), f.provider.native.correctionValues.single().keySet())
         return f.ref.copy(eventId = id)
     }
     private class Fixture(val app: CalendarApp, val provider: NativeGeneratedRsvpJourneyProvider,
