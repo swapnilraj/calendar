@@ -32,6 +32,11 @@ class CalendarMeetingWriterTest {
         var failUpdate = false
         var beforeBatch: (() -> Unit)? = null
         val queries = mutableListOf<String>()
+        data class Read(val path: String, val rowId: Long?, val fields: List<String>?, val selection: String?)
+        val reads = mutableListOf<Read>()
+        var guardHiddenGuests = false
+        var rejectOwnPredicate = false
+        var afterQuery: ((String, String?) -> Unit)? = null
         init {
             table("calendars", mapOf("_id" to 2L, "account_name" to "actor@example.invalid", "account_type" to "com.google", "ownerAccount" to "actor@example.invalid",
                 "_sync_id" to "calendar-A", "calendar_access_level" to 300L, "visible" to 1L, "sync_events" to 1L,
@@ -71,6 +76,13 @@ class CalendarMeetingWriterTest {
             if (failAfterCommit && committed) error("Synthetic postcommit unavailability")
             val path = uri.pathSegments.first()
             queries += path
+            val rowId = uri.lastPathSegment?.toLongOrNull()
+            reads += Read(path, rowId, projection?.toList(), selection)
+            if (path == "attendees" && rowId == null) {
+                if (selection?.contains("TRIM(attendeeEmail") == true) {
+                    if (rejectOwnPredicate) throw IllegalArgumentException("Synthetic unsupported private filter")
+                } else check(!guardHiddenGuests) { "A hidden guest list must not be queried" }
+            }
             val where = mutableListOf<String>()
             val bind = mutableListOf<String>()
             if (path != "instances") uri.lastPathSegment?.toLongOrNull()?.let { where += "_id = ?"; bind += it.toString() }
@@ -79,7 +91,11 @@ class CalendarMeetingWriterTest {
                 val fields = projection!!.map { when (it) { "event_id" -> "_id AS event_id"; "begin" -> "dtstart AS begin"; "end" -> "dtend AS end"; else -> it } }.toTypedArray()
                 return db.query("events", fields, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort?.replace("begin", "dtstart")?.replace("event_id", "_id"))
             }
-            return db.query(path, projection, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
+            val result = db.query(path, projection, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
+            // Materialize the fixture cursor before simulating a concurrent provider change.
+            result.count
+            afterQuery?.invoke(path, selection)
+            return result
         }
         override fun insert(uri: Uri, values: ContentValues?): Uri? = error("RSVP must not insert")
         override fun delete(uri: Uri, selection: String?, args: Array<out String>?): Int = error("RSVP must not delete")
@@ -90,7 +106,7 @@ class CalendarMeetingWriterTest {
             val id = ContentUris.parseId(uri)
             val where = "_id = ?" + (selection?.let { " AND ($it)" } ?: "")
             val count = db.update("attendees", values, where, arrayOf(id.toString(), *args.orEmpty()))
-            if (count == 1 && value("attendees", "attendeeEmail", id) == "actor@example.invalid")
+            if (count == 1 && value("attendees", "attendeeEmail", id) == value("calendars", "ownerAccount", 2))
                 db.update("events", ContentValues().apply { put("selfAttendeeStatus", values.getAsInteger("attendeeStatus")) }, "_id = 10", null)
             return count
         }
@@ -165,7 +181,7 @@ class CalendarMeetingWriterTest {
         }
     }
 
-    @Test fun unknownAclOrNamespaceAndHiddenGuestsFailBeforeRestrictedQueries() = runBlocking {
+    @Test fun unknownAclOrNamespaceFailBeforeRestrictedQueries() = runBlocking {
         fixture { f ->
             f.provider.set("calendars", "calendar_access_level", "200")
             assertTrue(f.writer.loadForEdit(selected) is MeetingReadResult.Denied)
@@ -176,12 +192,6 @@ class CalendarMeetingWriterTest {
             assertTrue(f.writer.loadForEdit(selected) is MeetingReadResult.Denied)
             assertEquals(listOf("calendars"), f.provider.queries)
         }
-        listOf<String?>("0", null).forEach { visibility -> fixture { f ->
-            f.provider.set("events", "guestsCanSeeGuests", visibility)
-            assertTrue(f.writer.loadForEdit(selected) is MeetingReadResult.NeedsReview)
-            assertFalse(f.provider.queries.contains("attendees"))
-            assertEquals(0, f.provider.batchCount)
-        } }
     }
 
     @Test fun duplicateSelfAliasAndUnknownRowPolicyCannotIssueAnEditToken() = runBlocking {
@@ -292,6 +302,163 @@ class CalendarMeetingWriterTest {
             assertEquals(common(MutationResult.Uncertain("legacy", null)), f.writer.recover("legacy"))
             assertTrue(f.provider.queries.isEmpty())
             assertEquals(1, f.provider.batchCount)
+        }
+    }
+
+    @Test fun hiddenAndUnknownGuestVisibilityRespondWithoutReadingAnyOtherGuestPayload() = runBlocking {
+        listOf<String?>("0", null, "99").forEachIndexed { index, visibility -> fixture { f ->
+            f.provider.set("events", "guestsCanSeeGuests", visibility)
+            f.provider.guardHiddenGuests = true
+            f.permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            val editable = f.editable()
+            assertEquals(AccessDecision.ALLOWED, editable.scopes.getValue(RecurrenceScope.THIS).respond)
+            assertTrue(editable.details.attendees.isEmpty())
+            val raw = org.json.JSONObject(f.store.edit(editable.token.value)!!)
+            assertEquals("SELF", raw.getString("attendeeCoverage"))
+            assertEquals(1, raw.getJSONArray("attendees").length())
+            f.permissions += Manifest.permission.WRITE_CALENDAR
+            assertEquals(MeetingMutationResult.LocalSaved(selected, RecurrenceScope.THIS), f.writer.mutate("hidden-$index", selected, editable.token, respond()))
+            f.permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            assertEquals(MeetingMutationResult.LocalSaved(selected, RecurrenceScope.THIS), f.writer.recover("hidden-$index"))
+            assertEquals("1", f.provider.value("attendees", "attendeeStatus", 21))
+            assertEquals("keep guest metadata", f.provider.value("attendees", "opaque_child", 21))
+            f.provider.reads.filter { it.path == "attendees" }.forEach { read ->
+                if (read.rowId == null) {
+                    assertTrue(read.selection!!.contains("TRIM(attendeeEmail"))
+                    assertNotNull(read.fields)
+                    assertTrue(read.fields!!.all { it in setOf("_id", "event_id", "attendeeEmail") })
+                } else assertEquals(20L, read.rowId)
+            }
+        } }
+    }
+
+    @Test fun privateLookupRejectsAsciiUnicodeCaseAndWhitespaceDuplicateAliases() = runBlocking {
+        val aliases = listOf("actor@example.invalid" to "ACTOR@example.invalid",
+            "actor@example.invalid" to "\u2007actor@example.invalid\t", "actor@example.invalid" to "actor@example.ınvalid",
+            "actor@example.invalid" to "actor@example.İnvalid", "user@example.invalid" to "uſer@example.invalid", "k@example.invalid" to "K@example.invalid")
+        aliases.forEach { (owner, alias) -> fixture { f ->
+            f.provider.set("calendars", "account_name", owner); f.provider.set("calendars", "ownerAccount", owner)
+            f.provider.set("attendees", "attendeeEmail", owner)
+            f.provider.set("attendees", "attendeeEmail", alias, 21)
+            f.provider.set("events", "guestsCanSeeGuests", "0")
+            f.provider.guardHiddenGuests = true
+            assertTrue(f.writer.loadForEdit(selected) is MeetingReadResult.NeedsReview)
+            assertTrue(f.provider.reads.filter { it.path == "attendees" }.all { it.rowId == null && it.fields == listOf("_id", "event_id", "attendeeEmail") })
+            f.store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots", null).use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+            assertEquals(0, f.provider.batchCount)
+        } }
+    }
+
+    @Test fun caseVariantWithoutAnExactSelfRowNeverLoadsItsPrivatePayload() = runBlocking {
+        fixture { f ->
+            f.provider.set("events", "guestsCanSeeGuests", "0"); f.provider.guardHiddenGuests = true
+            f.provider.set("attendees", "attendeeEmail", "ACTOR@example.invalid")
+            assertTrue(f.writer.loadForEdit(selected) is MeetingReadResult.NeedsReview)
+            assertTrue(f.provider.reads.filter { it.path == "attendees" }.all { it.rowId == null && it.fields == listOf("_id", "event_id", "attendeeEmail") })
+            assertEquals(0, f.provider.batchCount)
+        }
+    }
+
+    @Test fun privateSourceReceiptsSurviveReopenAndNeverReplayALostAcknowledgement() = runBlocking {
+        fixture { f ->
+            f.provider.set("events", "guestsCanSeeGuests", "0"); f.provider.guardHiddenGuests = true
+            val token = f.editable().token
+            f.provider.failAfterCommit = true
+            assertTrue((f.writer.mutate("private-commit", selected, token, respond()) as MeetingMutationResult.Common).outcome is MutationResult.Uncertain)
+            f.provider.failAfterCommit = false
+            val reopened = CalendarLocalStore(RuntimeEnvironment.getApplication(), f.store.databaseName)
+            try {
+                val other = CalendarMeetingWriter(RuntimeEnvironment.getApplication().contentResolver, f.reader, reopened, f.permissions::contains)
+                f.permissions.remove(Manifest.permission.WRITE_CALENDAR)
+                assertEquals(MeetingMutationResult.LocalSaved(selected, RecurrenceScope.THIS), other.recover("private-commit"))
+                f.permissions += Manifest.permission.WRITE_CALENDAR
+                val current = (other.loadForEdit(selected) as MeetingReadResult.Ready).value
+                f.provider.lostAck = true
+                assertTrue((other.mutate("private-lost", selected, current.token, respond(MeetingResponse.NO)) as MeetingMutationResult.Common).outcome is MutationResult.Uncertain)
+                assertEquals(common(MutationResult.Uncertain("private-lost", null)), other.recover("private-lost"))
+                assertEquals(common(MutationResult.Uncertain("private-lost", null)), other.mutate("private-lost", selected, current.token, respond(MeetingResponse.NO)))
+                assertEquals(2, f.provider.batchCount)
+            } finally { reopened.close() }
+        }
+    }
+
+    @Test fun privateLookupEscapesGlobMetacharactersAndDoesNotExpandStoredSourceMode() = runBlocking {
+        fixture { f ->
+            val owner = "a*b?c[d]@example.invalid"
+            f.provider.set("calendars", "account_name", owner); f.provider.set("calendars", "ownerAccount", owner)
+            f.provider.set("attendees", "attendeeEmail", owner)
+            f.provider.set("attendees", "attendeeEmail", "axbycd@example.invalid", 21)
+            f.provider.set("events", "guestsCanSeeGuests", "0")
+            f.provider.guardHiddenGuests = true
+            val editable = f.editable()
+            assertEquals(MeetingMutationResult.LocalSaved(selected, RecurrenceScope.THIS), f.writer.mutate("literal", selected, editable.token, respond()))
+            f.provider.set("events", "guestsCanSeeGuests", "1")
+            f.provider.reads.clear()
+            // An external metadata change makes exact recovery uncertain; the SELF read mode
+            // remains narrow even when the current provider would allow a full list.
+            assertTrue((f.writer.recover("literal") as MeetingMutationResult.Common).outcome is MutationResult.Uncertain)
+            assertTrue(f.provider.reads.filter { it.path == "attendees" && it.rowId == null }.all { it.selection!!.contains("TRIM(attendeeEmail") })
+        }
+    }
+
+    @Test fun unsupportedPrivatePredicateAndNonAsciiActorRemainExplicitReviewWithoutFullFallback() = runBlocking {
+        fixture { f ->
+            f.provider.set("events", "guestsCanSeeGuests", "0")
+            f.provider.guardHiddenGuests = true; f.provider.rejectOwnPredicate = true
+            assertTrue(f.writer.loadForEdit(selected) is MeetingReadResult.NeedsReview)
+            assertEquals(1, f.provider.reads.count { it.path == "attendees" })
+        }
+        fixture { f ->
+            val owner = "áctór@example.invalid"
+            f.provider.set("calendars", "account_name", owner); f.provider.set("calendars", "ownerAccount", owner)
+            f.provider.set("attendees", "attendeeEmail", owner)
+            f.provider.set("events", "guestsCanSeeGuests", "0")
+            f.provider.guardHiddenGuests = true
+            assertTrue(f.writer.loadForEdit(selected) is MeetingReadResult.NeedsReview)
+            assertTrue(f.provider.reads.none { it.path == "attendees" })
+        }
+    }
+
+    @Test fun duplicateAtDispatchRollsBackButUnobservedOtherGuestChangesDoNotBroadenTheWrite() = runBlocking {
+        fixture { f ->
+            f.provider.set("events", "guestsCanSeeGuests", "0"); f.provider.guardHiddenGuests = true
+            val token = f.editable().token
+            f.provider.beforeBatch = { f.provider.set("attendees", "attendeeEmail", "ACTOR@example.invalid", 21) }
+            assertEquals(common(MutationResult.Unavailable), f.writer.mutate("duplicate-race", selected, token, respond()))
+            assertEquals("3", f.provider.value("attendees", "attendeeStatus"))
+            assertEquals("3", f.provider.value("events", "selfAttendeeStatus"))
+            assertEquals("FAILED", f.store.operation("duplicate-race")!!.phase)
+        }
+        fixture { f ->
+            f.provider.set("events", "guestsCanSeeGuests", "0"); f.provider.guardHiddenGuests = true
+            val token = f.editable().token
+            f.provider.beforeBatch = { f.provider.set("attendees", "attendeeStatus", "2", 21) }
+            assertEquals(MeetingMutationResult.LocalSaved(selected, RecurrenceScope.THIS), f.writer.mutate("other-guest", selected, token, respond()))
+            assertEquals("2", f.provider.value("attendees", "attendeeStatus", 21))
+            assertEquals("keep guest metadata", f.provider.value("attendees", "opaque_child", 21))
+        }
+    }
+
+    @Test fun visibilityChangesBeforeTokenAndOldCompleteSourceBecomingHiddenNeverReadAFullList() = runBlocking {
+        fixture { f ->
+            f.provider.set("events", "guestsCanSeeGuests", "0"); f.provider.guardHiddenGuests = true
+            var changed = false
+            f.provider.afterQuery = { path, selection ->
+                if (!changed && path == "attendees" && selection?.contains("TRIM(attendeeEmail") == true) {
+                    changed = true; f.provider.set("events", "guestsCanSeeGuests", null)
+                }
+            }
+            assertEquals(MeetingReadResult.Unavailable, f.writer.loadForEdit(selected))
+            f.store.readableDatabase.rawQuery("SELECT COUNT(*) FROM edit_snapshots", null).use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
+        }
+        fixture { f ->
+            val editable = f.editable()
+            assertFalse(org.json.JSONObject(f.store.edit(editable.token.value)!!).has("attendeeCoverage"))
+            assertTrue(f.writer.mutate("all-source", selected, editable.token, respond()) is MeetingMutationResult.LocalSaved)
+            f.provider.set("events", "guestsCanSeeGuests", "0"); f.provider.guardHiddenGuests = true
+            f.provider.reads.clear()
+            assertTrue((f.writer.recover("all-source") as MeetingMutationResult.Common).outcome is MutationResult.Uncertain)
+            assertTrue(f.provider.reads.none { it.path == "attendees" })
         }
     }
 

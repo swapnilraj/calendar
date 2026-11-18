@@ -35,13 +35,14 @@ class CalendarMeetingWriter(
     private class Review(val reason: String) : Exception()
     private class Conflict : Exception()
     private data class Source(val selected: EventRef, val calendar: Map<String, String?>,
-        val event: Map<String, String?>, val attendees: List<Map<String, String?>>, val self: Map<String, String?>) {
+        val event: Map<String, String?>, val attendees: List<Map<String, String?>>, val self: Map<String, String?>, val selfOnly: Boolean = false) {
         fun canonical(maxBytes: Int): String {
             val values = mapOf("feature" to Feature, "calendar" to calendar, "event" to event, "attendees" to attendees)
             checkCanonical(values, maxBytes, 1024)
             return JSONObject().put("feature", Feature).put("selected", refJson(selected))
                 .put("calendar", rowJson(calendar)).put("event", rowJson(event))
-                .put("attendees", JSONArray(attendees.map(::rowJson))).put("self", self.getValue("_id")).toString()
+                .put("attendees", JSONArray(attendees.map(::rowJson))).put("self", self.getValue("_id"))
+                .apply { if (selfOnly) put("attendeeCoverage", "SELF") }.toString()
         }
     }
 
@@ -61,7 +62,7 @@ class CalendarMeetingWriter(
                 CalendarReadState.LimitExceeded -> throw ProviderReadLimitExceeded()
                 else -> return@withContext MeetingReadResult.Unavailable
             }
-            if (source(selected, identity(before.calendar)).canonical(readBudgets.maxCanonicalBytes) != canonical) throw Conflict()
+            if (source(selected, identity(before.calendar), before.selfOnly).canonical(readBudgets.maxCanonicalBytes) != canonical) throw Conflict()
             val token = EditToken(editTokenFor(canonical))
             ensureRead()
             store.saveEdit(token.value, canonical)
@@ -96,7 +97,7 @@ class CalendarMeetingWriter(
             if (editTokenFor(raw) != token.value) throw Conflict()
             val original = decodeSource(raw)
             if (original.selected != selected) throw Conflict()
-            val current = source(selected, identity(original.calendar))
+            val current = source(selected, identity(original.calendar), original.selfOnly)
             if (current.canonical(readBudgets.maxCanonicalBytes) != raw) throw Conflict()
             val status = responseStatus(command.response)
             val operations = assertions(current)
@@ -108,6 +109,7 @@ class CalendarMeetingWriter(
                 attendees = current.attendees.map { if (it["_id"] == current.self["_id"]) it + (CalendarContract.Attendees.ATTENDEE_STATUS to status.toString()) else it })
             operations += assertRow(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, selected.eventId),
                 post.event.filterKeys { it !in setOf(CalendarContract.Events.DIRTY, CalendarContract.Events.MUTATORS) })
+            if (current.selfOnly) operations += assertOwnCandidate(current)
             post.attendees.forEach { operations += assertRow(ContentUris.withAppendedId(CalendarContract.Attendees.CONTENT_URI, it.long("_id")!!), it) }
             // Android CalendarProvider supports own RSVP through Attendees.STATUS. An ordinary
             // Events.SELF_ATTENDEE_STATUS update throws; a decline is not event cancellation.
@@ -185,7 +187,7 @@ class CalendarMeetingWriter(
         val old = decodeSource(store.edit(command.getString("token")) ?: return common(MutationResult.Uncertain(operation.id, null)))
         val uncertain = common(MutationResult.Uncertain(operation.id, old.selected.eventId))
         val target = parseIdentity(proof.getJSONObject("identity"))
-        val current = try { source(old.selected, target) }
+        val current = try { source(old.selected, target, old.selfOnly) }
             catch (_: Denied) { return uncertain }
             catch (_: Review) { return uncertain }
             catch (_: Conflict) { return uncertain }
@@ -202,7 +204,7 @@ class CalendarMeetingWriter(
         return MeetingMutationResult.LocalSaved(old.selected, RecurrenceScope.THIS)
     }
 
-    private suspend fun source(selected: EventRef, expected: CalendarIdentity? = null): Source {
+    private suspend fun source(selected: EventRef, expected: CalendarIdentity? = null, expectedSelfOnly: Boolean? = null): Source {
         ensureRead()
         if (selected.recurrence != null) throw Denied(MutationDenial.RECURRENCE)
         val calendar = calendar(selected.calendarId)
@@ -224,10 +226,20 @@ class CalendarMeetingWriter(
         if (event[CalendarContract.Events.STATUS]?.let { it !in setOf("0", "1") } == true ||
             !event[CalendarContract.Events.CUSTOM_APP_PACKAGE].isNullOrBlank() || !event[CalendarContract.Events.CUSTOM_APP_URI].isNullOrBlank())
             throw Denied(MutationDenial.UNSUPPORTED_EVENT)
-        // First packet intentionally requires full guest visibility. A unique-self filtered read
-        // for hidden guest lists is a later packet; matching an email never unlocks a full list.
-        if (event[CalendarContract.Events.GUESTS_CAN_SEE_GUESTS] != "1") throw Review("Guest visibility does not permit a complete response source")
-        val attendees = rows(CalendarContract.Attendees.CONTENT_URI, "event_id = ?", arrayOf(selected.eventId.toString()), readBudgets.maxDetailChildren)
+        val fullGuestVisibility = event[CalendarContract.Events.GUESTS_CAN_SEE_GUESTS] == "1"
+        val selfOnly = expectedSelfOnly ?: !fullGuestVisibility
+        if (!selfOnly && !fullGuestVisibility) throw Review("The original complete guest source is no longer visible")
+        val attendees = if (selfOnly) {
+            // Only IDs and matching addresses are read until uniqueness/exact identity is proved.
+            // No full-list fallback or other-guest payload is allowed on this path.
+            val candidates = ownCandidates(selected.eventId, owner)
+            if (candidates.size != 1 || candidates.single()[CalendarContract.Attendees.ATTENDEE_EMAIL] != owner ||
+                candidates.single().long("event_id") != selected.eventId || candidates.single().long("_id") == null)
+                throw Review("A unique exact calendar-owner attendee is required")
+            val id = candidates.single().long("_id")!!
+            rows(ContentUris.withAppendedId(CalendarContract.Attendees.CONTENT_URI, id), "event_id = ? AND attendeeEmail = ?",
+                arrayOf(selected.eventId.toString(), owner), 1)
+        } else rows(CalendarContract.Attendees.CONTENT_URI, "event_id = ?", arrayOf(selected.eventId.toString()), readBudgets.maxDetailChildren)
         if (attendees.any { it.long("event_id") != selected.eventId || it.long("_id") == null } || attendees.map { it["_id"] }.toSet().size != attendees.size) throw Review("Ambiguous attendee identities")
         val matching = attendees.filter { it[CalendarContract.Attendees.ATTENDEE_EMAIL]?.trim()?.equals(owner.trim(), ignoreCase = true) == true }
         if (matching.size != 1 || matching.single()[CalendarContract.Attendees.ATTENDEE_EMAIL] != owner) throw Review("A unique exact calendar-owner attendee is required")
@@ -238,19 +250,20 @@ class CalendarMeetingWriter(
             self[CalendarContract.Attendees.ATTENDEE_STATUS] != event[CalendarContract.Events.SELF_ATTENDEE_STATUS]) throw Review("Unknown or contradictory self-attendee policy")
         if (self[CalendarContract.Attendees.ATTENDEE_IDENTITY].isNullOrBlank() != self[CalendarContract.Attendees.ATTENDEE_ID_NAMESPACE].isNullOrBlank())
             throw Review("Incomplete attendee namespace")
-        return Source(selected, calendar, event, attendees, self)
+        return Source(selected, calendar, event, attendees, self, selfOnly)
     }
 
     private suspend fun calendar(id: CalendarId) = rows(ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI, id.value), maxRows = 1).singleOrNull()
         ?.also { if (it.long("_id") != id.value) throw Conflict() } ?: throw Conflict()
-    private suspend fun rows(uri: Uri, selection: String? = null, args: Array<String>? = null, maxRows: Int): List<Map<String, String?>> {
+    private suspend fun rows(uri: Uri, selection: String? = null, args: Array<String>? = null, maxRows: Int,
+        fields: Array<String>? = null): List<Map<String, String?>> {
         ensureRead()
         val cursor = suspendCancellableCoroutine { continuation ->
             val signal = CancellationSignal()
             continuation.invokeOnCancellation { signal.cancel() }
             try {
                 ensureRead()
-                val value = (resolver.query(uri, null, selection, args, "_id ASC", signal) ?: error("Provider unavailable")).bounded(maxRows)
+                val value = (resolver.query(uri, fields, selection, args, "_id ASC", signal) ?: error("Provider unavailable")).bounded(maxRows)
                 try { ensureRead() } catch (failure: Exception) { value.close(); throw failure }
                 continuation.resume(value, onCancellation = { _, resource, _ -> resource.close() })
             } catch (failure: Exception) { continuation.resumeWithException(failure) }
@@ -265,9 +278,25 @@ class CalendarMeetingWriter(
     private fun assertions(source: Source): ArrayList<ContentProviderOperation> = arrayListOf(
         assertRow(ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI, source.selected.calendarId.value), source.calendar),
         assertRow(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, source.selected.eventId), source.event),
-        ContentProviderOperation.newAssertQuery(CalendarContract.Attendees.CONTENT_URI).withSelection("event_id = ?", arrayOf(source.selected.eventId.toString()))
-            .withExpectedCount(source.attendees.size).withYieldAllowed(false).build(),
+        if (source.selfOnly) assertOwnCandidate(source) else
+            ContentProviderOperation.newAssertQuery(CalendarContract.Attendees.CONTENT_URI).withSelection("event_id = ?", arrayOf(source.selected.eventId.toString()))
+                .withExpectedCount(source.attendees.size).withYieldAllowed(false).build(),
     ).apply { source.attendees.forEach { add(assertRow(ContentUris.withAppendedId(CalendarContract.Attendees.CONTENT_URI, it.long("_id")!!), it)) } }
+
+    private fun assertOwnCandidate(source: Source): ContentProviderOperation {
+        val filter = ownFilter(source.selected.eventId, identity(source.calendar).owner ?: throw Review("Missing actor"))
+        return ContentProviderOperation.newAssertQuery(CalendarContract.Attendees.CONTENT_URI).withSelection(filter.first, filter.second)
+            .withValue(CalendarContract.Attendees._ID, source.self.long("_id")!!).withExpectedCount(1).withYieldAllowed(false).build()
+    }
+    private suspend fun ownCandidates(eventId: Long, owner: String): List<Map<String, String?>> {
+        val filter = ownFilter(eventId, owner)
+        return try { rows(CalendarContract.Attendees.CONTENT_URI, filter.first, filter.second, 2,
+            arrayOf(CalendarContract.Attendees._ID, CalendarContract.Attendees.EVENT_ID, CalendarContract.Attendees.ATTENDEE_EMAIL)) }
+        catch (denied: SecurityException) { throw denied }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (limit: ProviderReadLimitExceeded) { throw limit }
+        catch (_: Exception) { throw Review("Provider cannot prove a unique self attendee without guest access") }
+    }
     private fun assertRow(uri: Uri, values: Map<String, String?>) = ContentProviderOperation.newAssertQuery(uri)
         .withValues(ContentValues().apply { values.forEach { (key, value) -> if (value == null) putNull(key) else put(key, value) } })
         .withExpectedCount(1).withYieldAllowed(false).build()
@@ -282,9 +311,39 @@ class CalendarMeetingWriter(
         require(value.getString("feature") == Feature)
         val attendees = value.getJSONArray("attendees").let { list -> List(list.length()) { row(list.getJSONObject(it)) } }
         val self = attendees.single { it["_id"] == value.getString("self") }
-        return Source(parseRef(value.getJSONObject("selected")), row(value.getJSONObject("calendar")), row(value.getJSONObject("event")), attendees, self)
+        require(!value.has("attendeeCoverage") || value.getString("attendeeCoverage") == "SELF")
+        val selfOnly = value.has("attendeeCoverage")
+        require(!selfOnly || attendees.size == 1)
+        return Source(parseRef(value.getJSONObject("selected")), row(value.getJSONObject("calendar")), row(value.getJSONObject("event")), attendees, self, selfOnly)
     }
     companion object {
+        private val caseClasses = java.util.concurrent.ConcurrentHashMap<Char, String>()
+        private val trimCharacters: String by lazy {
+            buildString { for (code in 0..0xffff) if (code.toChar().isWhitespace()) append(code.toChar()) }
+        }
+        /** SQLite NOCASE omits Unicode simple-case matches of ASCII I/K/S. Explicit GLOB
+         * classes match Kotlin's existing trim/ignoreCase duplicate policy without fetching
+         * another guest's payload. Non-ASCII actors require a later provider proof. */
+        private fun ownFilter(eventId: Long, owner: String): Pair<String, Array<String>> {
+            if (owner.isEmpty() || owner.length > 254 || owner.any { it.code !in 0x21..0x7e })
+                throw Review("A bounded ASCII account address is required for private self lookup")
+            val pattern = buildString {
+                owner.forEach { char ->
+                    append(when {
+                        char in 'A'..'Z' || char in 'a'..'z' -> caseClasses.computeIfAbsent(char.lowercaseChar()) { letter ->
+                            buildString { append('['); for (code in 0..0xffff) if (code.toChar().equals(letter, ignoreCase = true)) append(code.toChar()); append(']') }
+                        }
+                        char == '*' -> "[*]"
+                        char == '?' -> "[?]"
+                        char == '[' -> "[[]"
+                        char == ']' -> "[]]"
+                        else -> char.toString()
+                    })
+                    if (length > 4096) throw Review("Self lookup pattern exceeds the provider budget")
+                }
+            }
+            return "event_id = ? AND TRIM(attendeeEmail, ?) GLOB ?" to arrayOf(eventId.toString(), trimCharacters, pattern)
+        }
         private const val Feature = "MEETING_EDIT_V1"
         private const val CommandFeature = "MEETING_COMMAND_V1"
         private const val Kind = "MEETING_V1_THIS_RESPOND"
