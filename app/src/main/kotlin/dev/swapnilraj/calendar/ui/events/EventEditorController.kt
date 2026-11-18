@@ -188,6 +188,8 @@ class EventEditorController(
             next = next.copy(startOffset = "")
         if (next.endDate != old.endDate || next.endTime != old.endTime || next.zone != old.zone || next.allDay != old.allDay)
             next = next.copy(endOffset = "")
+        // Widget callbacks can repeat a value; unchanged raw state keeps the exact reviewed command.
+        if (next == old && notices == state.notices) return
         recurrenceReviewPayload = ""
         state = state.copy(fields = next, notices = notices, recurrenceReview = null, problem = if (state.reviewRequired) EditorProblem.CONFLICT else null, result = null)
         if (persist) {

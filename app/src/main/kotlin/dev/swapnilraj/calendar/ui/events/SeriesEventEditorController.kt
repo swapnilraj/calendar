@@ -108,6 +108,8 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
             availability = if (EditableField.AVAILABILITY in rights) proposed.availability else old.availability,
             privacy = if (EditableField.PRIVACY in rights) proposed.privacy else old.privacy,
             temporal = temporal, recurrence = if (canChangeRule) proposed.recurrence else old.recurrence)
+        // Check after rights/offset clamping: an ignored or repeated value does not change review.
+        if (next == old) return
         reviewedFields = null; reviewedRevision = null
         state = state.copy(fields = next, wholeReview = null, followingReview = null, problem = null, result = null)
         persistence?.cancel(); persistence = scope.launch { delay(300); persistFields() }

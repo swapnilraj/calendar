@@ -85,6 +85,26 @@ class RecurringCreateEditorTest {
         assertEquals(calls.single().second, (FrozenEditorSubmission.decode(frozen) as FrozenEditorSubmission.Create).draft)
         hold!!.complete(Unit)
     }
+    @Test fun exactNoopAfterReviewKeepsRawPayloadRevisionAndConfirmDispatchesReviewedCreate() = runBlocking {
+        val controller = editor(); repeat(controller, RecurrenceEditorFields(frequency = "DAILY", endMode = "COUNT", count = "4"))
+        assertTrue(controller.flushDraft()); controller.save()
+        val review = controller.state.recurrenceReview!!; val record = store.records.getValue("recurring")
+        controller.change { it.copy(title = it.title, recurrence = it.recurrence.copy()) }
+        controller.selectCalendar(eventTestCalendar())
+        delay(350)
+        assertSame(review, controller.state.recurrenceReview); assertEquals(record, store.records.getValue("recurring"))
+        assertTrue(calls.isEmpty()); controller.confirmRecurringCreate()
+        assertEquals(1, calls.size); assertEquals(RecurrenceEnd.Count(4), calls.single().second.recurrence!!.end)
+        assertEquals(review.firstTime, calls.single().second.time)
+    }
+    @Test fun noopReviewNeverBypassesChangedDraftLeaseBeforeConfirm() = runBlocking {
+        val controller = editor(); repeat(controller); assertTrue(controller.flushDraft()); controller.save()
+        val successor = store.records.getValue("recurring").let { it.copy(updatedAt = it.updatedAt.plusSeconds(1)) }
+        store.records["recurring"] = successor
+        controller.change { it }; assertNotNull(controller.state.recurrenceReview)
+        controller.confirmRecurringCreate()
+        assertTrue(calls.isEmpty()); assertEquals(successor, store.records.getValue("recurring")); assertEquals(EditorProblem.DRAFT_UNAVAILABLE, controller.state.problem)
+    }
     @Test fun anyFieldChangeInvalidatesReviewWithoutWriting() {
         val controller = editor(); repeat(controller); controller.save(); controller.change { it.copy(title = "Changed after preview") }
         assertNull(controller.state.recurrenceReview); controller.confirmRecurringCreate(); assertTrue(calls.isEmpty())
