@@ -34,6 +34,7 @@ class AndroidReminderDeliveryTest {
     private val key = ReminderKey.of(ref, 10)
     private val version = ReminderVersion(key, identity, 1, 3)
     private val ready = ReminderPermissionState(true, true, true, true, true)
+    private fun post(alias: ReminderNotificationAlias) = ReminderPostIdentity(alias, "post-${alias.nonce}")
     private fun candidate() = ReminderCandidate(key, identity,
         EventOccurrence(ref, EventTime.Timed(ref.instanceStart, ref.instanceEnd), "Synthetic title", 0xff112233.toInt()), now.minusSeconds(600))
 
@@ -87,8 +88,8 @@ class AndroidReminderDeliveryTest {
         val notifications = AndroidReminderNotifications(context, targets, { ZoneOffset.UTC }, { ready })
         val one = ReminderNotificationAlias(ref, now, "generation-one")
         val two = one.copy(nonce = "generation-two")
-        assertEquals(ReminderPostResult.POSTED, notifications.post(candidate(), one))
-        assertEquals(ReminderPostResult.POSTED, notifications.post(candidate(), two))
+        assertEquals(ReminderPostResult.POSTED, notifications.post(candidate(), post(one)))
+        assertEquals(ReminderPostResult.POSTED, notifications.post(candidate(), post(two)))
         val manager = context.getSystemService(NotificationManager::class.java)
         assertEquals(2, manager.activeNotifications.size)
         val encoded = manager.activeNotifications.map {
@@ -97,7 +98,7 @@ class AndroidReminderDeliveryTest {
         assertEquals(setOf("generation-one", "generation-two"), encoded.map { it.generation }.toSet())
         assertEquals(2, encoded.map { it.tag }.toSet().size)
         notifications.cancel(one)
-        assertFalse(notifications.isActive(one)); assertTrue(notifications.isActive(two))
+        assertFalse(notifications.isActive(post(one))); assertTrue(notifications.isActive(post(two)))
     }
 
     @Test fun endOnlyUpdateUsesFreshPresentationWithThePersistedOldAlias() {
@@ -108,7 +109,7 @@ class AndroidReminderDeliveryTest {
         val newEnd = ref.instanceEnd.plusSeconds(600)
         val changed = candidate().let { it.copy(occurrence = it.occurrence.copy(ref = ref.copy(instanceEnd = newEnd),
             time = EventTime.Timed(ref.instanceStart, newEnd), title = "Fresh title")) }
-        notifications.post(changed, alias)
+        notifications.post(changed, post(alias))
         val posted = context.getSystemService(NotificationManager::class.java).activeNotifications.single()
         assertEquals("Fresh title", posted.notification.extras.getCharSequence(Notification.EXTRA_TITLE))
         val action = ReminderIntents.identity(shadowOf(posted.notification.contentIntent).savedIntent)!!
@@ -120,7 +121,7 @@ class AndroidReminderDeliveryTest {
         shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
         val targets = ReminderIntentTargets(ComponentName(context.packageName, "MainActivity"), receiver)
         val notifications = AndroidReminderNotifications(context, targets, { ZoneOffset.UTC }, { ready })
-        notifications.post(candidate(), ReminderNotificationAlias(ref, now, "old-private"))
+        notifications.post(candidate(), post(ReminderNotificationAlias(ref, now, "old-private")))
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.notify("unrelated-status", 99, Notification.Builder(context, ReminderNotificationFactory.CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_popup_reminder).setContentTitle("Other app status").build())
@@ -131,7 +132,7 @@ class AndroidReminderDeliveryTest {
     @Test fun notificationPermissionGuardDoesNotPostAndLegacyIdentityStillRoundTrips() {
         val targets = ReminderIntentTargets(ComponentName(context.packageName, "MainActivity"), receiver)
         val notifications = AndroidReminderNotifications(context, targets, { ZoneOffset.UTC }, { ready.copy(notificationPermission = false) })
-        assertEquals(ReminderPostResult.PERMISSION_REQUIRED, notifications.post(candidate(), ReminderNotificationAlias(ref, now, "denied")))
+        assertEquals(ReminderPostResult.PERMISSION_REQUIRED, notifications.post(candidate(), post(ReminderNotificationAlias(ref, now, "denied"))))
         assertTrue(context.getSystemService(NotificationManager::class.java).activeNotifications.isEmpty())
         val legacy = ReminderIdentity(ref, now)
         assertNull(legacy.generation)
@@ -143,7 +144,45 @@ class AndroidReminderDeliveryTest {
         val targets = ReminderIntentTargets(ComponentName(context.packageName, "MainActivity"), receiver)
         val notifications = AndroidReminderNotifications(context, targets, { ZoneOffset.UTC }, { ready })
         assertEquals(ReminderPostResult.PERMISSION_REQUIRED,
-            notifications.post(candidate(), ReminderNotificationAlias(ref, now, "revoked-before-post")))
+            notifications.post(candidate(), post(ReminderNotificationAlias(ref, now, "revoked-before-post"))))
         assertTrue(context.getSystemService(NotificationManager::class.java).activeNotifications.isEmpty())
+    }
+
+    @Test fun repostKeepsStableTagButOldImmutableActionsKeepTheirOriginalPostToken() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val targets = ReminderIntentTargets(ComponentName(context.packageName, "MainActivity"), receiver)
+        val notifications = AndroidReminderNotifications(context, targets, { ZoneOffset.UTC }, { ready })
+        val alias = ReminderNotificationAlias(ref, now, "stable-generation")
+        val first = ReminderPostIdentity(alias, "post-one")
+        val second = ReminderPostIdentity(alias, "post-two")
+        notifications.post(candidate(), first)
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val firstNotification = manager.activeNotifications.single()
+        val retainedOpen = firstNotification.notification.contentIntent
+        val retainedSnooze = firstNotification.notification.actions.first().actionIntent
+        notifications.post(candidate(), second)
+        val current = manager.activeNotifications.single()
+        assertEquals(firstNotification.tag, current.tag)
+        assertNotEquals(retainedOpen, current.notification.contentIntent)
+        assertNotEquals(retainedSnooze, current.notification.actions.first().actionIntent)
+        val oldAction = ReminderIntents.identity(shadowOf(retainedSnooze).savedIntent)!!
+        val newAction = ReminderIntents.identity(shadowOf(current.notification.actions.first().actionIntent).savedIntent)!!
+        assertEquals(first, oldAction.postIdentityOrNull())
+        assertEquals(second, newAction.postIdentityOrNull())
+        assertNotEquals(shadowOf(retainedSnooze).savedIntent.data,
+            shadowOf(current.notification.actions.first().actionIntent).savedIntent.data)
+        assertEquals("post-two", current.notification.extras.getString(ReminderNotificationFactory.EXTRA_POST_TOKEN))
+        assertNull(current.notification.publicVersion.extras.getString(ReminderNotificationFactory.EXTRA_POST_TOKEN))
+        assertFalse(notifications.isActive(first))
+        assertTrue(notifications.isActive(second))
+    }
+
+    @Test fun legacyIdentityIsNeverUpgradedToTheCurrentLedgerToken() {
+        val legacy = ReminderIdentity(ref, now, "generation")
+        assertNull(legacy.postIdentityOrNull())
+        val targets = ReminderIntentTargets(ComponentName(context.packageName, "MainActivity"), receiver)
+        val decoded = ReminderIntents.identity(ReminderIntents.intent(context, targets, legacy, ReminderIntents.ACTION_DISMISS))!!
+        assertNull(decoded.postToken)
+        assertNull(decoded.postIdentityOrNull())
     }
 }

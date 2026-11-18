@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.text.format.DateFormat
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.EventDetails
@@ -63,6 +64,7 @@ class ReminderNotificationFactory(private val context: Context, private val targ
                 .setSmallIcon(android.R.drawable.ic_popup_reminder)
                 .setContentTitle(context.getString(R.string.reminders_private_title)).build())
             .setAutoCancel(true).setOnlyAlertOnce(true).setShowWhen(false)
+        identity.postToken?.let { token -> builder.addExtras(Bundle().apply { putString(EXTRA_POST_TOKEN, token) }) }
         for (minutes in listOf(5, 10, 30)) {
             val pending = PendingIntent.getBroadcast(context, 0,
                 ReminderIntents.intent(context, targets, identity, ReminderIntents.ACTION_SNOOZE, minutes), flags)
@@ -72,5 +74,8 @@ class ReminderNotificationFactory(private val context: Context, private val targ
         return ReminderNotification(identity.tag, 0, builder.build())
     }
 
-    companion object { const val CHANNEL_ID = "event_reminders" }
+    companion object {
+        const val CHANNEL_ID = "event_reminders"
+        const val EXTRA_POST_TOKEN = "dev.swapnilraj.calendar.reminders.POST_TOKEN"
+    }
 }

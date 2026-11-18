@@ -32,7 +32,7 @@ class ReminderCoordinator(
     private val configuration: suspend () -> ReminderConfiguration,
     private val permissions: () -> ReminderPermissionState,
     private val clock: Clock = Clock.systemUTC(),
-    private val horizon: Duration = Duration.ofHours(24),
+    private val horizon: Duration = Duration.ofDays(90),
     private val catchUp: Duration = Duration.ofHours(24),
     private val batchSize: Int = 32,
 ) {
@@ -140,7 +140,7 @@ class ReminderCoordinator(
                 is ReminderResolution.Eligible -> {
                     if (!sameOccurrence(resolution.candidate, record, config)) {
                         markUncertain(claim, counts)
-                    } else if (notifications.isActive(record.notificationAlias)) {
+                    } else if (record.postIdentity?.let(notifications::isActive) == true) {
                         if (ledger.acknowledge(claim, ReminderDeliveryOutcome.Posted(clock.instant()))) counts.posted++
                     } else markUncertain(claim, counts)
                 }
@@ -172,6 +172,12 @@ class ReminderCoordinator(
                     continue
                 }
                 val candidate = (resolution as? ReminderResolution.Eligible)?.candidate
+                val postIdentity = record.postIdentity
+                if (postIdentity == null) {
+                    markUncertain(claim, counts)
+                    unattempted.remove(claim)
+                    continue
+                }
                 val permissionAvailable = canDeliver()
                 if (candidate == null || !sameOccurrence(candidate, record, config) ||
                     (record.snoozedUntil == null && candidate.due != record.plannedDue) || !permissionAvailable) {
@@ -182,7 +188,7 @@ class ReminderCoordinator(
                     continue
                 }
                 unattempted.remove(claim) // From here an exception may follow an accepted notification.
-                val outcome = try { notifications.post(candidate, record.notificationAlias) }
+                val outcome = try { notifications.post(candidate, postIdentity) }
                     catch (cancelled: CancellationException) {
                         withContext(NonCancellable) { ledger.acknowledge(claim, ReminderDeliveryOutcome.Uncertain) }
                         throw cancelled
@@ -227,7 +233,9 @@ class ReminderCoordinator(
             !(candidate.sourceEventUidFingerprint != null && record.sourceEventUidFingerprint != null &&
                 candidate.sourceEventUidFingerprint != record.sourceEventUidFingerprint)
 
-    suspend fun snooze(alias: ReminderNotificationAlias, minutes: Int): ReminderActionResult = mutex.withLock {
+    suspend fun snooze(identity: ReminderPostIdentity?, minutes: Int): ReminderActionResult = mutex.withLock {
+        if (identity == null) return@withLock ReminderActionResult.IGNORED
+        val alias = identity.alias
         if (minutes !in listOf(5, 10, 30)) return@withLock ReminderActionResult.IGNORED
         val config = configuration()
         if (!config.enabled) return@withLock ReminderActionResult.IGNORED
@@ -238,39 +246,42 @@ class ReminderCoordinator(
             notifications.cancel(alias)
             return@withLock ReminderActionResult.IGNORED
         }
-        val record = postedForAction(alias) ?: return@withLock ReminderActionResult.IGNORED
+        val record = postedForAction(identity) ?: return@withLock ReminderActionResult.IGNORED
         val result = resolve(setOf(record.key), config)
         if (result.permissionRequired) return@withLock ReminderActionResult.PERMISSION_REQUIRED
         if (result.values[record.key] == ReminderResolution.GoneOrIneligible) {
-            if (ledger.dismiss(record.version)) notifications.cancel(alias)
+            if (ledger.dismiss(record.version, identity.token)) notifications.cancel(alias)
             armNext()
             return@withLock ReminderActionResult.IGNORED
         }
         val candidate = (result.values[record.key] as? ReminderResolution.Eligible)?.candidate
             ?: return@withLock ReminderActionResult.SOURCE_UNAVAILABLE
         if (!sameOccurrence(candidate, record, config)) return@withLock ReminderActionResult.IGNORED
-        val snoozed = ledger.snooze(record.version, minutes, clock.instant()) ?: return@withLock ReminderActionResult.IGNORED
+        val snoozed = ledger.snooze(record.version, identity.token, minutes, clock.instant()) ?: return@withLock ReminderActionResult.IGNORED
         notifications.cancel(snoozed.notificationAlias)
         armNext()
         ReminderActionResult.APPLIED
     }
 
-    suspend fun dismiss(alias: ReminderNotificationAlias): ReminderActionResult = mutex.withLock {
-        val record = postedForAction(alias)
-        if (record == null || !ledger.dismiss(record.version)) return@withLock ReminderActionResult.IGNORED
+    suspend fun dismiss(identity: ReminderPostIdentity?): ReminderActionResult = mutex.withLock {
+        if (identity == null) return@withLock ReminderActionResult.IGNORED
+        val alias = identity.alias
+        val record = postedForAction(identity)
+        if (record == null || !ledger.dismiss(record.version, identity.token)) return@withLock ReminderActionResult.IGNORED
         notifications.cancel(alias)
         if (configuration().enabled && canDeliver()) armNext() else cancelAlarm()
         ReminderActionResult.APPLIED
     }
 
     /** Called only for validated private immutable nonce-bearing notification actions. */
-    private suspend fun postedForAction(alias: ReminderNotificationAlias): ReminderRecord? {
-        var record = ledger.findByAlias(alias) ?: return null
+    private suspend fun postedForAction(identity: ReminderPostIdentity): ReminderRecord? {
+        var record = ledger.findByAlias(identity.alias) ?: return null
+        if (record.postToken != identity.token) return null
         if (record.state == ReminderDeliveryState.POSTING || record.state == ReminderDeliveryState.UNCERTAIN) {
             if (!ledger.acknowledge(ReminderClaim(record), ReminderDeliveryOutcome.Posted(clock.instant()))) return null
-            record = ledger.findByAlias(alias) ?: return null
+            record = ledger.findByAlias(identity.alias) ?: return null
         }
-        return record.takeIf { it.state == ReminderDeliveryState.POSTED }
+        return record.takeIf { it.state == ReminderDeliveryState.POSTED && it.postToken == identity.token }
     }
 
     private fun canDeliver(): Boolean = permissions().let { it.calendarAccess && it.canPostNotifications }
