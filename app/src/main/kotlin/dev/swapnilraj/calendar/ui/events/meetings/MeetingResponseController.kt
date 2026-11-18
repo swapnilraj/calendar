@@ -206,7 +206,7 @@ class MeetingResponseController(val launch: MeetingResponseLaunch, private val s
     private suspend fun finish(result: MeetingMutationResult, recovery: Boolean = false) {
         val doc = document ?: return
         val frozen = doc.frozen ?: return
-        if (result is MeetingMutationResult.LocalSaved && result.selected == frozen.selected && result.scope == frozen.command.scope) {
+        if (result is MeetingMutationResult.LocalSaved && savedResponseMatches(doc, frozen, result)) {
             state = state.copy(localOutcome = result, retryReady = false)
             complete(result)
             return
@@ -226,6 +226,20 @@ class MeetingResponseController(val launch: MeetingResponseLaunch, private val s
             outcome == MutationResult.Unavailable -> MeetingResponseProblem.UNAVAILABLE
             else -> MeetingResponseProblem.UNCERTAIN
         })
+    }
+    private fun savedResponseMatches(doc: MeetingResponseDocument, frozen: FrozenMeetingResponse,
+        result: MeetingMutationResult.LocalSaved): Boolean {
+        if (result.scope != frozen.command.scope) return false
+        val original = frozen.selected
+        val recurrence = original.recurrence
+        val generatedThis = frozen.command.scope == RecurrenceScope.THIS && recurrence != null && original.eventId == recurrence.masterEventId
+        if (!generatedThis) return result.selected == original
+        // The backend materializes this original occurrence as a new exception. Only its event
+        // ID may change: actual bounds, calendar, parent and original key remain frozen exactly.
+        if (doc.sourceCalendarIdentity?.calendarId != original.calendarId || !doc.recurring ||
+            recurrence!!.masterEventId <= 0 || recurrence.originalStart != original.instanceStart) return false
+        return result.selected.eventId > 0 && result.selected.eventId != original.eventId &&
+            result.selected.copy(eventId = original.eventId) == original
     }
     private suspend fun complete(result: MeetingMutationResult.LocalSaved) = storage.withLock {
         withContext(NonCancellable) {
