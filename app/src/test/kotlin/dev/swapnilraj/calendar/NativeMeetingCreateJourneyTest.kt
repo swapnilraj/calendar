@@ -2,6 +2,7 @@ package dev.swapnilraj.calendar
 
 import android.Manifest
 import android.content.Intent
+import android.provider.CalendarContract
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.ui.semantics.Role
