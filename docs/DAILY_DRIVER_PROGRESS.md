@@ -20,6 +20,13 @@ provider-semantic fixture: decline preserves other event/guest metadata, WRITE p
 needs another Save, and frozen committed-outcome recovery never replays. Two native UI crops were
 recorded, inspected and verified. This establishes local RSVP integration, not remote delivery.
 
+Day-grid creation, move and resize are now connected to durable native editors (`5fbb2b0`).
+Focused helper/gesture/editor tests cover fresh eligibility, late namespace replacement, retained
+original baselines, cancelled reviews, DST offset choices and gap alternatives. Three new screens
+were recorded, inspected and verified; old screenshots stayed unchanged. The standalone restored
+edit-namespace fix passed 62 focused checks. Recurring gestures remain on the existing scoped editor
+route, and the full gate for the newer grid integration is still pending.
+
 ## Verified starting point
 
 - Audited baseline: `23808c1` on `codex/calendar-feature-audit`; existing app is a read-only day view

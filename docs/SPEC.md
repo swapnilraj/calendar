@@ -5,6 +5,14 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+Day-view timed create, move and resize gestures prepare durable native-editor drafts; they never
+save automatically. Editing requires fresh provider eligibility and the same occurrence/calendar
+namespace before and after preparation. Restoring an unsubmitted edit also requires its original
+full calendar identity; missing legacy identity remains under review rather than adopting a new
+source token. Frozen recovery retains the original command. Unknown source zones cannot authorize
+a timed gesture. Overlaps require an explicit UTC-offset choice; gap alternatives preserve the
+original edit time or disclose the ordinary valid-date creation defaults.
+
 Authored recurrence is a distinct new-event input. Until a writer supports that input completely,
 it rejects the command before journaling or provider writes instead of creating a one-off event.
 Existing one-off operations retain their representation; recurring updates remain on scoped series
