@@ -37,7 +37,7 @@ class CalendarWriter(
     }
 
     override suspend fun loadForEdit(ref: EventRef): EditReadResult = withContext(io) {
-        if (!permissions()) return@withContext EditReadResult.PermissionRequired
+        if (!hasPermission(Manifest.permission.READ_CALENDAR)) return@withContext EditReadResult.PermissionRequired
         try {
             val before = source(ref)
             policy(before)
@@ -177,7 +177,7 @@ class CalendarWriter(
 
     /** Recovery never submits provider operations, even if a matching create seems likely. */
     override suspend fun recover(operationId: String): MutationResult = withContext(io) { mutex.withLock {
-        if (!permissions()) MutationResult.PermissionRequired
+        if (!hasPermission(Manifest.permission.READ_CALENDAR)) MutationResult.PermissionRequired
         else try { store.operation(operationId)?.let { recover(it) } ?: MutationResult.Unavailable }
         catch (_: SecurityException) { MutationResult.PermissionRequired }
         catch (cancelled: CancellationException) { throw cancelled }
@@ -202,6 +202,7 @@ class CalendarWriter(
         return MutationResult.LocalSaved(result.value.occurrence.ref)
     }
 
+    // Runtime WRITE is required only for provider mutation, not editor eligibility or recovery.
     private fun permissions() = hasPermission(Manifest.permission.READ_CALENDAR) && hasPermission(Manifest.permission.WRITE_CALENDAR)
 
     private fun source(ref: EventRef): Source {
