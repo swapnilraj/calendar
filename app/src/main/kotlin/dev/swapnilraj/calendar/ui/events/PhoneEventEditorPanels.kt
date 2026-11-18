@@ -2,6 +2,7 @@ package dev.swapnilraj.calendar.ui.events
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -42,7 +43,7 @@ internal fun PhoneEditorPanelContent(panel: PhoneEditorPanel, view: PhoneEventEd
         PhoneEditorPanel.CALENDAR -> PhoneEditorPanelFrame(stringResource(R.string.phone_event_choose_calendar), onDismiss) {
             LazyColumn(Modifier.fillMaxSize()) { items(view.calendars.filter { it.capabilities.createEvents == AccessDecision.ALLOWED }, key = { "${it.id}:${it.identity}" }) { calendar ->
                 val selected = fields.targetIdentity == calendar.identity && fields.calendarId == calendar.id.value.toString()
-                Row(Modifier.fillMaxWidth().clickable(enabled = view.canChooseCalendar && calendar.account.name.isNotBlank() && calendar.account.type.isNotBlank(), role = Role.RadioButton) { controller.selectCalendar(calendar); onDismiss() }.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(Modifier.fillMaxWidth().selectable(selected = selected, enabled = view.canChooseCalendar && calendar.account.name.isNotBlank() && calendar.account.type.isNotBlank(), role = Role.RadioButton) { controller.selectCalendar(calendar); onDismiss() }.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Box(Modifier.size(16.dp).background(Color(calendar.color), CircleShape))
                     Column(Modifier.weight(1f)) { Text(calendar.displayName, style = MaterialTheme.typography.bodyLarge); Text(calendar.account.name, style = MaterialTheme.typography.bodyMedium) }
                     RadioButton(selected, onClick = null, enabled = view.canChooseCalendar)
@@ -71,7 +72,7 @@ internal fun PhoneEditorPanelContent(panel: PhoneEditorPanel, view: PhoneEventEd
             PhoneEditorPanelFrame(stringResource(if (privacy) R.string.events_visibility else R.string.events_availability), onDismiss) {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     (if (privacy) listOf("", "0", "1", "2", "3") else listOf("", "0", "1", "2")).forEach { option ->
-                        Row(Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.RadioButton) {
+                        Row(Modifier.fillMaxWidth().selectable(selected = option == value, enabled = enabled, role = Role.RadioButton) {
                             controller.change { if (privacy) it.copy(privacy = option) else it.copy(availability = option) }; onDismiss()
                         }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(option == value, onClick = null, enabled = enabled)
@@ -145,7 +146,7 @@ private fun PhoneEditorZonePanel(raw: String, enabled: Boolean, onDismiss: () ->
             else {
                 OutlinedTextField(query, { query = it }, label = { Text(stringResource(R.string.phone_event_search_zone)) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp))
                 LazyColumn { items(choices.filter { it.contains(query.trim(), ignoreCase = true) }) { zone ->
-                    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.RadioButton) { onChange(zone); onDismiss() }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().selectable(selected = raw == zone, enabled = enabled, role = Role.RadioButton) { onChange(zone); onDismiss() }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(raw == zone, onClick = null, enabled = enabled); Text(zone.replace('_', ' '), modifier = Modifier.padding(start = 16.dp))
                     }
                 } }
@@ -167,7 +168,7 @@ private fun PhoneEditorAlertPanel(raw: String, enabled: Boolean, onDismiss: () -
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(label, modifier = Modifier.weight(1f))
                         val removeLabel = stringResource(R.string.phone_event_remove_notification, label)
-                        TextButton(onClick = { onChange(values.filterNot { it == minutes }.joinToString(",")) }, enabled = enabled, modifier = Modifier.semantics { contentDescription = removeLabel }) { Text(stringResource(R.string.events_editor_delete)) }
+                        TextButton(onClick = { onChange(values.filterNot { it == minutes }.joinToString(",")) }, enabled = enabled, modifier = Modifier.semantics { contentDescription = removeLabel }) { Text(stringResource(R.string.phone_event_remove)) }
                     }
                 }
                 Text(stringResource(R.string.phone_event_add_notification), style = MaterialTheme.typography.titleSmall)

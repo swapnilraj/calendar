@@ -18,7 +18,7 @@ internal class PhoneEventEditorPresentation(val controller: EventEditorControlle
     val canChooseCalendar get() = !blocked && !controller.isEditing
     val canSave get() = !blocked && !controller.calendarSelectionRequired && !controller.visibilityChoiceRequired &&
         (controller.isEditing || calendars.any { it.identity == fields.targetIdentity && it.id.value.toString() == fields.calendarId && it.capabilities.createEvents == AccessDecision.ALLOWED })
-    val calendar: CalendarInfo? get() = if (controller.isEditing) controller.existing?.details?.calendar
+    val calendar: CalendarInfo? get() = if (controller.isEditing) controller.existing?.details?.calendar?.takeIf { it.identity == controller.boundCalendarIdentity }
         else calendars.firstOrNull { it.identity == fields.targetIdentity && it.id.value.toString() == fields.calendarId }
 }
 

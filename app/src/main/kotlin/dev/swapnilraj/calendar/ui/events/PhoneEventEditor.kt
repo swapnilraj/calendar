@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,6 +17,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -47,10 +49,10 @@ fun PhoneEventEditor(
     fun close() { scope.launch { if (controller.prepareDismiss()) onDismiss() } }
     Dialog(onDismissRequest = ::close, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
         PhoneEventEditorContent(controller, writableCalendars, ::close, use24Hour,
-            onReview = if (onReviewExisting != null) ({ scope.launch { controller.reloadExisting()?.let(onReviewExisting) }; Unit }) else null,
-            onUpgrade = if (onReplacedLaunch != null) ({ scope.launch { controller.upgradeLegacyDraft()?.let(onReplacedLaunch) }; Unit }) else null,
-            onReplace = if (onReplacedLaunch != null) ({ scope.launch { controller.replaceDraft()?.let(onReplacedLaunch) }; Unit }) else null,
-            onDiscard = if (onDiscarded != null) ({ scope.launch { if (controller.discardDraft()) onDiscarded() }; Unit }) else null)
+            onReview = if (onReviewExisting != null) ({ scope.launch { controller.reloadExisting()?.let(onReviewExisting) } }) else null,
+            onUpgrade = if (onReplacedLaunch != null) ({ scope.launch { controller.upgradeLegacyDraft()?.let(onReplacedLaunch) } }) else null,
+            onReplace = if (onReplacedLaunch != null) ({ scope.launch { controller.replaceDraft()?.let(onReplacedLaunch) } }) else null,
+            onDiscard = if (onDiscarded != null) ({ scope.launch { if (controller.discardDraft()) onDiscarded() } }) else null)
     }
 }
 
@@ -77,7 +79,7 @@ internal fun PhoneEventEditorContent(
                 val closeLabel = stringResource(R.string.phone_event_close)
                 IconButton(onClick = onClose, enabled = !state.saving, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = closeLabel }) { PhoneEventIcon(PhoneEventGlyph.CLOSE) }
                 Text(stringResource(if (controller.recoveryOnly) R.string.phone_event_check_save else if (controller.isEditing) R.string.events_editor_edit else R.string.events_editor_create),
-                    style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+                    style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(horizontal = 8.dp).semantics { heading() })
                 TextButton(onClick = controller::save, enabled = view.canSave, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.events_editor_save)) }
             }
         }) { padding ->
@@ -95,9 +97,9 @@ internal fun PhoneEventEditorContent(
                     view.calendar?.account?.name ?: controller.boundCalendarIdentity?.account?.name,
                     enabled = view.canChooseCalendar, onClick = { panel = PhoneEditorPanel.CALENDAR }, swatch = view.calendar?.color?.let(::Color))
                 HorizontalDivider(Modifier.padding(start = 64.dp))
-                Row(Modifier.fillMaxWidth().padding(start = 64.dp, end = 24.dp).heightIn(min = 64.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().toggleable(value = fields.allDay, enabled = view.canEdit(EditableField.TIME), role = Role.Switch, onValueChange = { value -> controller.change { it.copy(allDay = value) } }).padding(start = 64.dp, end = 24.dp).heightIn(min = 64.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.events_all_day), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                    Switch(fields.allDay, { value -> controller.change { it.copy(allDay = value) } }, enabled = view.canEdit(EditableField.TIME))
+                    Switch(fields.allDay, onCheckedChange = null, enabled = view.canEdit(EditableField.TIME))
                 }
                 PhoneEditorDateRow(stringResource(R.string.phone_event_starts), fields.startDate, fields.startTime, fields.allDay, use24Hour,
                     view.canEdit(EditableField.TIME), { panel = PhoneEditorPanel.START_DATE }, { panel = PhoneEditorPanel.START_TIME })

@@ -89,7 +89,8 @@ internal fun phoneRepeatSummary(raw: RecurrenceEditorFields): String {
         RecurrencePattern.Daily -> R.string.recurrence_editor_daily; is RecurrencePattern.Weekly -> R.string.recurrence_editor_weekly
         is RecurrencePattern.MonthlyDate, is RecurrencePattern.MonthlyWeekday -> R.string.recurrence_editor_monthly; is RecurrencePattern.Yearly -> R.string.recurrence_editor_yearly
     }) else pluralStringResource(unit, spec.interval, spec.interval)
-    return if (spec.pattern is RecurrencePattern.Weekly) "$interval · ${spec.pattern.days.sortedBy { it.value }.joinToString(", ") { it.getDisplayName(TextStyle.SHORT, locale) }}" else interval
+    val weekly = spec.pattern as? RecurrencePattern.Weekly
+    return if (weekly != null) "$interval · ${weekly.days.sortedBy { it.value }.joinToString(", ") { it.getDisplayName(TextStyle.SHORT, locale) }}" else interval
 }
 @Composable
 internal fun phoneMetadataLabel(value: String, privacy: Boolean): String = stringResource(if (privacy) when(value) {
