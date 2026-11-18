@@ -177,11 +177,7 @@ internal fun LiveCalendarDay(
         preparingWrite = true
         scope.launch {
             try {
-                // A stable per-occurrence ID retains any frozen response instead of bypassing it.
-                val ref = source.details.occurrence.ref
-                val id = java.util.UUID.nameUUIDFromBytes(("meeting-response-v1|" + ref.toString())
-                    .toByteArray(Charsets.UTF_8)).toString()
-                val prepared = prepareMeetingResponseDraft(source, id, requireNotNull(atomicDrafts), draftClock)
+                val prepared = prepareOrReopenMeetingResponseDraft(source, requireNotNull(atomicDrafts), draftClock)
                 if (prepared is MeetingResponsePreparation.Ready) {
                     if (openedEvent == context) {
                         openedEvent = null
