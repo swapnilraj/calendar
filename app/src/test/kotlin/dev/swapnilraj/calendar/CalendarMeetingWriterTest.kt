@@ -185,9 +185,9 @@ class CalendarMeetingWriterTest {
                 assertNull(f.store.operation("unsupported-$index"))
             }
             val draft = EventDraft(CalendarId(2), EventTime.Timed(start, start.plusSeconds(3600)), java.time.ZoneOffset.UTC, "no")
-            assertTrue(f.writer.create("create", editable.token, draft, emptyList()) is MeetingMutationResult.Unsupported)
-            assertTrue(f.writer.loadForCreate(editable.details.calendar!!.identity) is MeetingReadResult.Denied)
+            assertTrue(f.writer.create("create", editable.token, draft.copy(recurrence = RecurrenceSpec(RecurrencePattern.Daily)), emptyList()) is MeetingMutationResult.Unsupported)
             assertTrue(f.provider.queries.isEmpty())
+            assertFalse(f.writer.loadForCreate(editable.details.calendar!!.identity) is MeetingReadResult.Ready)
             assertEquals(0, f.provider.batchCount)
         }
     }

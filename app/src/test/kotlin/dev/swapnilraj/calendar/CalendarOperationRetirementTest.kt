@@ -83,7 +83,7 @@ class CalendarOperationRetirementTest {
         assertEquals(OperationRetirementResult.Conflict("same"),b.inspect(RetirableOperation.Delete("same",ref,token)))
         val unknown=RetirableOperation.Create("unknown",draft);one.prepare(unknown);one.forceOperationForTest("unknown","FUTURE_PHASE")
         assertEquals(OperationRetirementResult.Unavailable,a.retire(unknown));assertEquals("FUTURE_PHASE",one.operationHeader("unknown")!!.phase)
-        assertEquals(OperationRetirementResult.Unsupported,a.retire(RetirableOperation.MeetingCreate("future",token,draft,listOf(MeetingGuestInput("guest@example.invalid",MeetingGuestType.REQUIRED)))))
+        assertEquals(OperationRetirementResult.Unsupported,a.retire(RetirableOperation.Meeting("future",ref,token,MeetingCommand.CancelOwned(RecurrenceScope.THIS))))
         assertNull(one.operationHeader("future"))
     } }
 

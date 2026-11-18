@@ -32,6 +32,7 @@ class CalendarMeetingWriter(
     planningBudget: RecurrencePlanningBudget = RecurrencePlanningBudget(),
 ) : CalendarMeetings {
     private val mutex = Mutex()
+    private val creation = CalendarMeetingCreateWriter(resolver, reader, store, hasPermission, io, readBudgets)
     private val series = CalendarMeetingSeriesWriter(resolver, reader, store, hasPermission, io, readBudgets, planningBudget)
     private class Denied(val reason: MutationDenial) : Exception()
     private class Review(val reason: String) : Exception()
@@ -48,10 +49,9 @@ class CalendarMeetingWriter(
         }
     }
 
-    override suspend fun loadForCreate(target: CalendarIdentity): MeetingReadResult<MeetingCreation> =
-        MeetingReadResult.Denied(MutationDenial.UNSUPPORTED_EVENT)
+    override suspend fun loadForCreate(target: CalendarIdentity): MeetingReadResult<MeetingCreation> = creation.loadForCreate(target)
     override suspend fun create(operationId: String, token: EditToken, draft: EventDraft,
-        guests: List<MeetingGuestInput>): MeetingMutationResult = MeetingMutationResult.Unsupported("Meeting creation is not implemented by this executor")
+        guests: List<MeetingGuestInput>): MeetingMutationResult = creation.create(operationId, token, draft, guests)
 
     override suspend fun loadForEdit(selected: EventRef): MeetingReadResult<EditableMeeting> = withContext(io + readBudgetContext(readBudgets.mutation)) {
         if (selected.recurrence != null) return@withContext series.loadForEdit(selected)
@@ -162,7 +162,11 @@ class CalendarMeetingWriter(
         try {
             if (store.operationHeader(operationId)?.phase == "ABANDONED") return@withLock common(MutationResult.Retired(operationId))
             ensureRead()
-            store.operation(operationId)?.let { if (CalendarMeetingSeriesWriter.handles(it.kind)) series.recover(operationId) else recover(it, true) } ?: common(MutationResult.Unavailable)
+            store.operation(operationId)?.let { when {
+                CalendarMeetingCreateWriter.handles(it.kind) -> creation.recover(operationId)
+                CalendarMeetingSeriesWriter.handles(it.kind) -> series.recover(operationId)
+                else -> recover(it, true)
+            } } ?: common(MutationResult.Unavailable)
         } catch (_: SecurityException) { common(MutationResult.PermissionRequired) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { common(MutationResult.Uncertain(operationId, null)) }

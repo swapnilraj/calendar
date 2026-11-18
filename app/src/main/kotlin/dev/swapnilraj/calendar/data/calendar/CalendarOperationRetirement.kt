@@ -39,7 +39,7 @@ class CalendarOperationRetirement(
                     is RetirableOperation.Delete -> CalendarWriter.deleteFingerprint(request.ref, request.token)
                     is RetirableOperation.Series -> CalendarSeriesWriter.retirementFingerprint(request.selected, request.token, request.command)
                     is RetirableOperation.Meeting -> CalendarMeetingWriter.retirementFingerprint(request.selected, request.token, request.command)
-                    is RetirableOperation.MeetingCreate -> null // No provider create encoder exists yet.
+                    is RetirableOperation.MeetingCreate -> CalendarMeetingCreateWriter.fingerprint(request.token, request.draft, request.guests, readBudgets.maxCanonicalBytes)
                 } ?: return@withContext OperationRetirementResult.Unsupported
                 val result = store.retirement(request.operationId, fingerprint.first, fingerprint.second, write)
                 currentCoroutineContext().ensureActive()

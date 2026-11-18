@@ -31,6 +31,11 @@ class CalendarRecurringCreateTest {
      * fixed elapsed Duration arithmetic; this fixture does not claim cloud or full-rule expansion. */
     internal class Provider : ContentProvider() {
         var allowUpdates = false
+        var nativeMeetingMode = false
+        var malformedAttendeeAck = false
+        var rejectEventUidProjection = false
+        val insertedEventValues = mutableListOf<ContentValues>()
+        var failAttendee = false
         var expandInstances = false
         var afterCommit: (() -> Unit)? = null
         var afterQuery: ((String) -> Unit)? = null
@@ -60,8 +65,8 @@ class CalendarRecurringCreateTest {
                 selfAttendeeStatus INTEGER DEFAULT 0,displayColor INTEGER DEFAULT 123,original_id INTEGER,original_sync_id TEXT,originalInstanceTime INTEGER,originalAllDay INTEGER,_sync_id TEXT,uid2445 TEXT,
                 customAppPackage TEXT,customAppUri TEXT,hasExtendedProperties INTEGER DEFAULT 0,native_duration_ms INTEGER DEFAULT 0,CHECK(rrule IS NULL OR (dtend IS NULL AND duration IS NOT NULL)))""")
             db.execSQL("CREATE TABLE reminders (_id INTEGER PRIMARY KEY AUTOINCREMENT,event_id INTEGER,minutes INTEGER,method INTEGER)")
-            db.execSQL("CREATE TABLE attendees (_id INTEGER,event_id INTEGER,attendeeName TEXT,attendeeEmail TEXT,attendeeStatus INTEGER,attendeeRelationship INTEGER,attendeeType INTEGER,attendeeIdentity TEXT,attendeeIdNamespace TEXT)")
-            db.execSQL("CREATE TABLE extendedproperties (_id INTEGER,event_id INTEGER,name TEXT,value TEXT)")
+            db.execSQL("CREATE TABLE attendees (_id INTEGER PRIMARY KEY AUTOINCREMENT,event_id INTEGER,attendeeName TEXT,attendeeEmail TEXT,attendeeStatus INTEGER,attendeeRelationship INTEGER,attendeeType INTEGER,attendeeIdentity TEXT,attendeeIdNamespace TEXT)")
+            db.execSQL("CREATE TABLE extendedproperties (_id INTEGER PRIMARY KEY AUTOINCREMENT,event_id INTEGER,name TEXT,value TEXT)")
             db.execSQL("CREATE VIEW instance_view AS SELECT _id AS event_id,dtstart AS begin,COALESCE(dtend,dtstart+native_duration_ms) AS end,e.* FROM events e WHERE deleted=0")
         }
         fun setCalendar(column: String, value: String?) = db.update("calendars", ContentValues().apply { if (value == null) putNull(column) else put(column, value) }, "_id=2", null)
@@ -72,6 +77,7 @@ class CalendarRecurringCreateTest {
         override fun query(uri: Uri, fields: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor {
             if (failReadsAfterCommit && committed) error("Synthetic post-commit read failure")
             val path = uri.pathSegments.first(); queries += Query(path, fields?.toList(), selection)
+            if(rejectEventUidProjection && path=="events" && fields?.contains("uid2445")==true)throw IllegalArgumentException("Synthetic missing uid2445 projection")
             if (path == "instances" && delayedInstances) return MatrixCursor(fields!!)
             if (path == "instances" && expandInstances) return expanded(uri, fields!!, selection, args)
             val where = mutableListOf<String>(); val bind = mutableListOf<String>()
@@ -83,15 +89,27 @@ class CalendarRecurringCreateTest {
                 while (cursor.moveToNext()) cursor.getString(1).takeIf { it != "native_duration_ms" }?.let(::add)
             }.toTypedArray() } else null
             if (path == "instances") { where += "(begin+$beginDelta) < CAST(? AS INTEGER) AND (end+$endDelta) > CAST(? AS INTEGER)"; bind += uri.pathSegments[3]; bind += uri.pathSegments[2] }
-            val result = db.query(if (path == "instances") "instance_view" else path, projected, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
+            val effective = if (nativeMeetingMode && path == "events") projected?.map { field ->
+                if (field == "isOrganizer") "COALESCE(isOrganizer, organizer = (SELECT ownerAccount FROM calendars WHERE calendars._id = events.calendar_id)) AS isOrganizer" else field
+            }?.toTypedArray() else projected
+            val result = db.query(if (path == "instances") "instance_view" else path, effective, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
             afterQuery?.invoke(path)
             return result
         }
         override fun insert(uri: Uri, values: ContentValues?): Uri {
             val path = uri.pathSegments.first()
             if (path == "reminders" && failReminder) throw OperationApplicationException("Synthetic reminder rollback")
-            check(path == "events" || path == "reminders")
+            check(path == "events" || path == "reminders" || nativeMeetingMode && path == "attendees")
+            if(path == "attendees" && failAttendee) throw OperationApplicationException("Synthetic attendee rollback")
             val inserted = ContentValues(values)
+            if(path == "events")insertedEventValues += ContentValues(values)
+            if(nativeMeetingMode && path == "events") {
+                if(!inserted.containsKey("organizer"))inserted.put("organizer", "owner@example.invalid")
+                if(!inserted.containsKey("eventStatus"))inserted.putNull("eventStatus")
+                if(!inserted.containsKey("isOrganizer"))inserted.putNull("isOrganizer")
+                // Native normal insert strips caller HAS_ALARM and reminder rows later compute it.
+                inserted.put("hasAlarm",0)
+            }
             if (path == "events" && !inserted.getAsString("rrule").isNullOrBlank()) {
                 val raw = inserted.getAsString("duration") ?: error("Recurring duration required")
                 // Native Duration accumulates Int seconds. Only PTseconds/Pdays are authored here.
@@ -102,6 +120,12 @@ class CalendarRecurringCreateTest {
                 inserted.put("native_duration_ms", Math.multiplyExact(seconds, 1000))
             }
             val id = db.insertOrThrow(path, null, inserted)
+            if(nativeMeetingMode && path == "events" && values!!.containsKey("selfAttendeeStatus")) {
+                db.insertOrThrow("attendees",null,ContentValues().apply {put("event_id",id);put("attendeeEmail","owner@example.invalid");put("attendeeStatus",values.getAsInteger("selfAttendeeStatus"));put("attendeeRelationship",1);put("attendeeType",0)})
+            }
+            if(nativeMeetingMode && path == "attendees" && inserted.getAsString("attendeeEmail") == "owner@example.invalid")
+                db.execSQL("UPDATE events SET selfAttendeeStatus = ? WHERE _id = ?",arrayOf(inserted.getAsInteger("attendeeStatus") ?: if(inserted.getAsInteger("attendeeRelationship")==2)1 else 0,inserted.getAsLong("event_id")))
+            if(nativeMeetingMode && path == "reminders")db.execSQL("UPDATE events SET hasAlarm=1 WHERE _id = ?",arrayOf(inserted.getAsLong("event_id")))
             return ContentUris.withAppendedId(uri, id)
         }
         override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?): Int {
@@ -170,6 +194,7 @@ class CalendarRecurringCreateTest {
             committed = true
             afterCommit?.invoke()
             if (lostAck) error("Synthetic lost acknowledgement")
+            if (malformedAttendeeAck) results[2] = ContentProviderResult(Uri.parse("content://${CalendarContract.AUTHORITY}/attendees/not-an-id"))
             if (malformedAck) results[1] = ContentProviderResult(Uri.parse("content://${CalendarContract.AUTHORITY}/events/not-an-id"))
             return results
         }

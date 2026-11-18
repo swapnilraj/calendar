@@ -36,7 +36,7 @@ class CalendarWriter(
 ) : CalendarMutations {
     private val mutex = Mutex()
     private class Denial(val reason: MutationDenial) : Exception()
-    private class Invalid(val fields: Set<InvalidEventField>) : Exception()
+    internal class Invalid(val fields: Set<InvalidEventField>) : Exception()
     private class Stale : Exception()
     private data class Source(val event: Map<String, String?>, val calendar: Map<String, String?>,
         val alerts: List<Map<String, String?>>, val attendees: List<Map<String, String?>>, val maxCanonicalBytes: Int = 1024 * 1024) {
@@ -516,6 +516,14 @@ class CalendarWriter(
         if (invalid.isNotEmpty()) throw Invalid(invalid)
     }
 
+    /** Shared authored-field validation/encoding only; meeting creation owns its own provider transaction. */
+    internal fun meetingOneOffValues(draft: EventDraft, calendar: Map<String, String?>): ContentValues {
+        if (draft.recurrence != null) throw Invalid(setOf(InvalidEventField.RECURRENCE))
+        validate(draft, calendar, 0, initial = true)
+        val zone = draft.eventZone
+        if (draft.time is EventTime.Timed && zone != null && !ProviderTimeZoneCompatibility.isCompatible(zone)) throw Invalid(setOf(InvalidEventField.ZONE))
+        return values(draft).apply { remove(CalendarContract.Events.HAS_ALARM) }
+    }
     private fun values(draft: EventDraft) = timeValues(draft).apply {
         put(CalendarContract.Events.CALENDAR_ID, draft.calendarId.value); put(CalendarContract.Events.TITLE, draft.title)
         put(CalendarContract.Events.HAS_ALARM, if (draft.alertMinutes.isNotEmpty()) 1 else 0)
@@ -648,6 +656,8 @@ class CalendarWriter(
             return CalendarIdentity(CalendarId(json.getLong("calendar")), CalendarAccount(json.getString("name"), json.getString("type")),
                 if (json.isNull("owner")) null else json.getString("owner"), if (json.isNull("providerId")) null else json.getString("providerId"))
         }
+        internal fun frozenDraftIdentity(json: JSONObject) = parseIdentity(json)
+        internal fun frozenDraftJson(draft: EventDraft, maxBytes: Int) = draftJson(draft, maxBytes)
         internal fun createFingerprint(draft: EventDraft, maxBytes: Int): Pair<String, String> = "CREATE" to signature("CREATE", draftJson(draft, maxBytes))
         internal fun updateFingerprint(ref: EventRef, token: EditToken, patch: EventPatch, maxBytes: Int): Pair<String, String> =
             "UPDATE" to signature("UPDATE", patchJson(ref, token, patch, maxBytes))
