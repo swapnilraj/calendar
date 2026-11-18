@@ -30,6 +30,8 @@ class CalendarReaderTest {
     private class Fixture : ContentProvider() {
         val calendars = mutableListOf<Map<String, Any?>>()
         val events = mutableListOf<Map<String, Any?>>()
+        val metadataEvents = mutableListOf<Map<String, Any?>>()
+        var eventQueries = 0
         var detailOverride: Map<String, Any?>? = null
         val attendees = mutableListOf<Map<String, Any?>>()
         val reminders = mutableListOf<Map<String, Any?>>()
@@ -50,7 +52,7 @@ class CalendarReaderTest {
             val rows = when (uri.pathSegments.firstOrNull()) {
                 "calendars" -> calendars
                 "instances" -> { instanceQueries++; this.uri = uri; this.selection = selection; this.args = args; events }
-                "events" -> detailOverride?.let { listOf(it) } ?: events
+                "events" -> { eventQueries++; detailOverride?.let { listOf(it) } ?: metadataEvents.takeIf { it.isNotEmpty() } ?: events }
                 "attendees" -> { attendeeQueries++; attendees }
                 "reminders" -> { reminderQueries++; reminders }
                 else -> emptyList()
@@ -302,6 +304,42 @@ class CalendarReaderTest {
             val ref = reader.observeEvents(request).ready().occurrences.single().ref
             assertEquals(RecurrenceRef(10, Instant.parse("2026-11-16T10:00:00Z")), ref.recurrence)
             assertEquals(Instant.parse("2026-11-17T10:00:00Z"), ref.instanceStart)
+        }
+    }
+
+    @Test fun rDateOnlyMasterRetainsRecurrenceIdentityInListAndDetails() = runBlocking {
+        fixture { provider, reader, _ ->
+            provider.events += event(10, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") + mapOf("rdate" to "20261117T100000Z")
+            val occurrence = reader.observeEvents(request).ready().occurrences.single()
+            assertEquals(RecurrenceRef(10, occurrence.ref.instanceStart), occurrence.ref.recurrence)
+            provider.detailOverride = provider.events.single() + mapOf("dtstart" to instant("2026-11-16T10:00:00Z"), "dtend" to null)
+            assertTrue(reader.readDetails(occurrence.ref) is CalendarReadState.Ready)
+        }
+    }
+
+    @Test fun syncOnlyExceptionsResolveParentsOncePerBatchWithoutBecomingStandalone() = runBlocking {
+        fixture { provider, reader, _ ->
+            repeat(12) { index -> provider.events += event(100L + index, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") +
+                mapOf("original_sync_id" to "opaque-master-A", "originalInstanceTime" to instant("2026-11-16T10:00:00Z")) }
+            provider.metadataEvents += mapOf("_id" to 10L, "calendar_id" to 2L, "_sync_id" to "opaque-master-A", "deleted" to 0)
+            val result = reader.observeEvents(request).ready()
+            assertEquals(12, result.occurrences.size)
+            assertTrue(result.occurrences.all { it.ref.recurrence == RecurrenceRef(10, Instant.parse("2026-11-16T10:00:00Z")) })
+            assertEquals(1, provider.eventQueries)
+        }
+    }
+
+    @Test fun ambiguousOrContradictorySyncParentIsUnavailableRatherThanGuessed() = runBlocking {
+        fixture { provider, reader, _ ->
+            provider.events += event(11, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") +
+                mapOf("original_sync_id" to "opaque-A", "original_id" to 20L, "originalInstanceTime" to instant("2026-11-16T10:00:00Z"))
+            provider.metadataEvents += mapOf("_id" to 10L, "calendar_id" to 2L, "_sync_id" to "opaque-A", "deleted" to 0)
+            assertEquals(CalendarReadState.Unavailable, withTimeout(10_000) { reader.observeEvents(request).first { it != CalendarReadState.Loading } })
+        }
+        fixture { provider, reader, _ ->
+            provider.events += event(11, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") +
+                mapOf("original_sync_id" to "opaque-A", "originalInstanceTime" to instant("2026-11-16T10:00:00Z"))
+            assertEquals(CalendarReadState.Unavailable, withTimeout(10_000) { reader.observeEvents(request).first { it != CalendarReadState.Loading } })
         }
     }
 

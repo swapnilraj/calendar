@@ -68,6 +68,7 @@ class CalendarSeriesReaderTest {
         var signal: CancellationSignal? = null
         var blocked: CountDownLatch? = null
         var closes = 0
+        val privateCalendars = mutableSetOf<String?>()
         override fun onCreate() = true
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?, cancellationSignal: CancellationSignal?): Cursor? {
             signal = cancellationSignal
@@ -84,8 +85,15 @@ class CalendarSeriesReaderTest {
                 "calendars" -> listOf(calendar).filter { id == null || it["_id"] == id.toString() }
                 "events" -> events.filter { row -> when {
                     id != null -> row["_id"] == id.toString()
-                    selection?.contains("original_id") == true -> (row["_id"] == args!!.last() || row["original_id"] == args.last()) &&
-                        (!selection.startsWith("calendar_id") || row["calendar_id"] == args.first())
+                    selection?.contains("_sync_id IN") == true -> row["calendar_id"] == args!![0] && row["_sync_id"] in args.drop(1)
+                    selection?.contains("original_id IS NULL") == true -> row["calendar_id"] == args!![0] && row["original_id"] == null && row["original_sync_id"] != null
+                    selection?.contains("original_id") == true -> {
+                        val scoped = selection.startsWith("calendar_id")
+                        val master = args!![if (scoped) 1 else 0]
+                        val sync = args.lastOrNull().takeIf { args.size == 4 }
+                        (row["_id"] == master || row["original_id"] == master || (sync != null && row["original_sync_id"] == sync && row["calendar_id"] == args[if (scoped) 0 else 2])) &&
+                            (!scoped || row["calendar_id"] == args.first())
+                    }
                     else -> true
                 } }
                 "instances" -> instances.filter { row ->
@@ -98,6 +106,7 @@ class CalendarSeriesReaderTest {
                 else -> error("Unexpected table")
             }
             afterQuery?.invoke(path)
+            if (path == "events" && projection == null) privateCalendars += rows.map { it["calendar_id"] }
             val fields = projection ?: rows.flatMap { it.keys }.toSortedSet().toTypedArray().takeIf { it.isNotEmpty() } ?: arrayOf("_id", "event_id")
             return object : MatrixCursor(fields) {
                 override fun onMove(oldPosition: Int, newPosition: Int): Boolean {
@@ -185,6 +194,66 @@ class CalendarSeriesReaderTest {
             assertEquals("FREQ=HOURLY;INTERVAL=3", result.snapshot.ruleRaw)
             assertTrue(RecurrencePlanning.plan(result.snapshot, selected, RecurrenceScope.ALL,
                 RecurrenceMutation.Edit(EventPatch(title = FieldChange.Set("Only title")))) is RecurrencePlanningResult.Ready)
+        }
+    }
+
+    @Test fun syncOnlyCancelledAndMovedExceptionsAreIncludedInCompleteGraph() = runBlocking {
+        fixture { p, source, _, _ ->
+            p.events[0]["_sync_id"] = "master-A"
+            p.events += exception(11, 2, 200).apply { put("original_id", null); put("original_sync_id", "master-A") }
+            p.events += exception(12, 3, cancelled = true).apply { put("original_id", null); put("original_sync_id", "master-A") }
+            val result = source.ready()
+            assertEquals(setOf(11L, 12L), result.snapshot.exceptions.map { it.ref.eventId }.toSet())
+            assertTrue(result.snapshot.exceptions.all { it.ref.recurrence!!.masterEventId == 10L })
+            assertTrue(result.snapshot.exceptions.single { it.ref.eventId == 12L }.cancelled)
+            val canonical = source.checkedSource(selected, result.token).canonical()
+            assertTrue(canonical.contains("original_sync_id"))
+            p.events[1]["original_sync_id"] = "different-parent"
+            try { source.checkedSource(selected, result.token); fail("Removing sync-linked member must conflict") } catch (_: SeriesSourceConflict) { }
+        }
+    }
+
+    @Test fun syncOnlySelectedExceptionResolvesActualMasterAndOriginalBoundary() = runBlocking {
+        fixture { p, source, _, _ ->
+            p.events[0]["_sync_id"] = "master-A"
+            p.events += exception(11, 2, 200).apply { put("original_id", null); put("original_sync_id", "master-A") }
+            val moved = EventRef(CalendarId(2), 11, start.plusSeconds(200 * 86_400), start.plusSeconds(200 * 86_400 + 3_600), RecurrenceRef(10, start.plusSeconds(2 * 86_400)))
+            p.instances.clear(); p.instances += instance(moved).apply { put("original_id", null); put("original_sync_id", "master-A") }
+            assertEquals(moved, source.ready(moved).selectedDetails.occurrence.ref)
+        }
+    }
+
+    @Test fun contradictoryParentLinksAndUnprovableSyncCoverageRequireReview() = runBlocking {
+        for (numeric in listOf("10", "20")) fixture { p, source, _, _ ->
+            p.events[0]["_sync_id"] = "master-A"
+            p.events += exception(11, 2).apply { put("original_id", numeric); put("original_sync_id", if (numeric == "10") "wrong-parent" else "master-A") }
+            assertTrue(source.loadForEdit(selected) is SeriesReadResult.NeedsReview)
+            assertEquals(0, p.childReads())
+        }
+        fixture { p, source, _, _ ->
+            p.events += exception(11, 2).apply { put("original_id", null); put("original_sync_id", "unknown-parent") }
+            assertTrue(source.loadForEdit(selected) is SeriesReadResult.NeedsReview)
+            assertEquals(0, p.childReads())
+        }
+    }
+
+    @Test fun sameSyncIdInAnotherCalendarNeverExposesForeignPayloadOrJoinsItsGraph() = runBlocking {
+        fixture { p, source, _, _ ->
+            p.events[0]["_sync_id"] = "master-A"
+            p.events += exception(11, 2).apply { put("calendar_id", "999"); put("original_id", null); put("original_sync_id", "master-A") }
+            assertTrue(source.ready().snapshot.exceptions.isEmpty())
+            assertEquals(setOf("2"), p.privateCalendars)
+        }
+    }
+
+    @Test fun rDateOnlyMasterRemainsARecurringTemplateAndSelectedIdentity() = runBlocking {
+        fixture { p, source, _, _ ->
+            p.events[0]["rrule"] = null; p.events[0]["rdate"] = "20261118T090000Z"
+            p.instances[0]["rrule"] = null; p.instances[0]["rdate"] = "20261118T090000Z"
+            val result = source.ready()
+            assertNull(result.snapshot.ruleRaw)
+            assertEquals("20261118T090000Z", result.snapshot.rDatesRaw)
+            assertEquals(selected, result.selectedDetails.occurrence.ref)
         }
     }
 

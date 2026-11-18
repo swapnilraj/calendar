@@ -57,22 +57,41 @@ class CalendarSeriesReader(
             ?: throw SeriesSourceConflict()
         if (calendar.long(CalendarContract.Calendars._ID) != selected.calendarId.value) throw SeriesSourceConflict()
         writable(calendar)
+        val masterIdentity = rows(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, identity.masterEventId), maxRows = 1,
+            fields = arrayOf("_id", "calendar_id", "_sync_id", "original_id", "original_sync_id", "deleted")).singleOrNull()
+            ?: throw SeriesSourceConflict()
+        if (masterIdentity.long("calendar_id") != identity.calendarId.value || masterIdentity["deleted"] != "0" ||
+            !masterIdentity["original_id"].isNullOrBlank() || !masterIdentity["original_sync_id"].isNullOrBlank())
+            throw SeriesSourceReview("Invalid master identity")
+        val syncId = masterIdentity[CalendarContract.Events._SYNC_ID]?.takeIf { it.isNotBlank() }
+        if (syncId == null && rows(CalendarContract.Events.CONTENT_URI,
+                "calendar_id = ? AND original_id IS NULL AND original_sync_id IS NOT NULL", arrayOf(identity.calendarId.value.toString()),
+                budget.maxExceptions + 1, arrayOf("_id", "calendar_id", "original_id", "original_sync_id", "deleted"))
+                .any { it["deleted"] != "1" && !it["original_sync_id"].isNullOrBlank() })
+            throw SeriesSourceReview("Sync-linked exception coverage cannot be proven without a master sync identity")
+        val membershipSelection = "(_id = ? OR original_id = ?" + if (syncId == null) ")" else " OR (calendar_id = ? AND original_sync_id = ?))"
+        val membershipArgs = listOf(identity.masterEventId.toString(), identity.masterEventId.toString()) +
+            if (syncId == null) emptyList() else listOf(identity.calendarId.value.toString(), syncId)
         // Read the complete graph, not Instances or display-filtered rows. Unknown provider columns
         // are retained privately for assertions and preserved by field-only master/exception updates.
-        val membership = rows(CalendarContract.Events.CONTENT_URI, "(_id = ? OR original_id = ?)",
-            arrayOf(identity.masterEventId.toString(), identity.masterEventId.toString()), budget.maxExceptions + 1,
-            arrayOf("_id", "calendar_id", "original_id", "deleted"))
+        val membership = rows(CalendarContract.Events.CONTENT_URI, membershipSelection,
+            membershipArgs.toTypedArray(), budget.maxExceptions + 1,
+            arrayOf("_id", "calendar_id", "_sync_id", "original_id", "original_sync_id", "deleted"))
         if (membership.any { it["deleted"] !in setOf("0", "1") }) throw SeriesSourceReview("Unknown deletion state")
         if (membership.any { it["deleted"] == "0" && it.long("calendar_id") != identity.calendarId.value })
             throw SeriesSourceReview("Exception calendar identity changed")
-        val graph = rows(CalendarContract.Events.CONTENT_URI, "calendar_id = ? AND (_id = ? OR original_id = ?)",
-            arrayOf(identity.calendarId.value.toString(), identity.masterEventId.toString(), identity.masterEventId.toString()), budget.maxExceptions + 1)
+        val graphSelection = "calendar_id = ? AND (_id = ? OR original_id = ?" + if (syncId == null) ")" else " OR original_sync_id = ?)"
+        val graphArgs = listOf(identity.calendarId.value.toString(), identity.masterEventId.toString(), identity.masterEventId.toString()) +
+            if (syncId == null) emptyList() else listOf(syncId)
+        val graph = rows(CalendarContract.Events.CONTENT_URI, graphSelection, graphArgs.toTypedArray(), budget.maxExceptions + 1)
         if (membership.filter { it["deleted"] == "0" }.map { it.long("_id") }.toSet() !=
             graph.filter { it["deleted"] == "0" }.map { it.long("_id") }.toSet()) throw SeriesSourceConflict()
         if (graph.any { it[CalendarContract.Events.DELETED] !in setOf("0", "1") }) throw SeriesSourceReview("Unknown deletion state")
         val master = graph.singleOrNull { it.long(CalendarContract.Events._ID) == identity.masterEventId && it[CalendarContract.Events.DELETED] == "0" }
             ?: throw SeriesSourceConflict()
-        if (master.long(CalendarContract.Events.CALENDAR_ID) != identity.calendarId.value || !master[CalendarContract.Events.ORIGINAL_ID].isNullOrBlank())
+        if (master[CalendarContract.Events._SYNC_ID]?.takeIf { it.isNotBlank() } != syncId) throw SeriesSourceConflict()
+        if (master.long(CalendarContract.Events.CALENDAR_ID) != identity.calendarId.value || !master[CalendarContract.Events.ORIGINAL_ID].isNullOrBlank() ||
+            !master[CalendarContract.Events.ORIGINAL_SYNC_ID].isNullOrBlank())
             throw SeriesSourceReview("Invalid master identity")
         if (master[CalendarContract.Events.RRULE].isNullOrBlank() && master[CalendarContract.Events.RDATE].isNullOrBlank())
             throw SeriesSourceDenied(MutationDenial.RECURRENCE)
@@ -87,7 +106,11 @@ class CalendarSeriesReader(
         val start = masterStart(master)
         val masterAllDay = start is RecurrenceStart.AllDay
         val exceptionModels = exceptions.map { event ->
-            if (event.long(CalendarContract.Events.ORIGINAL_ID) != identity.masterEventId ||
+            val parentId = event.long(CalendarContract.Events.ORIGINAL_ID)
+            val parentSync = event[CalendarContract.Events.ORIGINAL_SYNC_ID]?.takeIf { it.isNotBlank() }
+            if ((parentId != null && parentId != identity.masterEventId) ||
+                (parentSync != null && parentSync != syncId) || (parentId == null && parentSync == null) ||
+                (!event[CalendarContract.Events.ORIGINAL_ID].isNullOrBlank() && parentId == null) ||
                 event.flag(CalendarContract.Events.ORIGINAL_ALL_DAY) != masterAllDay) throw SeriesSourceReview("Exception original identity is incomplete")
             if (listOf(CalendarContract.Events.RRULE, CalendarContract.Events.RDATE, CalendarContract.Events.EXRULE, CalendarContract.Events.EXDATE)
                     .any { !event[it].isNullOrBlank() }) throw SeriesSourceReview("Nested exception recurrence is unsupported")
@@ -122,7 +145,12 @@ class CalendarSeriesReader(
         val details = when (val read = reader.readDetails(selected)) {
             is CalendarReadState.Ready -> read.value
             CalendarReadState.PermissionRequired -> throw SecurityException()
-            else -> throw SeriesSourceConflict()
+            else -> {
+                val selectedRow = live.singleOrNull { it.long("_id") == selected.eventId }
+                if (selectedRow?.long("original_id") == null && !selectedRow?.get("original_sync_id").isNullOrBlank())
+                    throw SeriesSourceReview("Selected sync-linked occurrence identity cannot be proven")
+                throw SeriesSourceConflict()
+            }
         }
         ensureRead()
         if (details.occurrence.ref != selected) throw SeriesSourceConflict()
