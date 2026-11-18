@@ -676,10 +676,17 @@ internal fun LiveCalendarDay(
                                     }
                                 } else if (mutations != null && ref.recurrence == null) {
                                     val eligible = mutations.loadForEdit(ref)
-                                    val value = if (eligible is EditReadResult.Ready && eligible.event.details.occurrence.ref == ref)
-                                        eligible.event.details.copy(canEdit = AccessDecision.ALLOWED)
-                                    else result.value.copy(canEdit = AccessDecision.DENIED)
-                                    CalendarReadState.Ready(NativeDetails(value))
+                                    val identity = result.value.calendar?.identity?.takeIf {
+                                        it.calendarId == ref.calendarId && it.account.name.isNotBlank() && it.account.type.isNotBlank()
+                                    }
+                                    when {
+                                        eligible == EditReadResult.PermissionRequired -> CalendarReadState.PermissionRequired
+                                        eligible is EditReadResult.Ready -> if (eligible.event.details.occurrence.ref == ref &&
+                                            identity != null && eligible.event.details.calendar?.identity == identity)
+                                            CalendarReadState.Ready(NativeDetails(eligible.event.details.copy(canEdit = AccessDecision.ALLOWED)))
+                                        else CalendarReadState.Unavailable
+                                        else -> CalendarReadState.Ready(NativeDetails(result.value.copy(canEdit = AccessDecision.DENIED)))
+                                    }
                                 } else CalendarReadState.Ready(NativeDetails(result.value.copy(canEdit = AccessDecision.DENIED)))
                             }
                             CalendarReadState.Loading -> CalendarReadState.Loading

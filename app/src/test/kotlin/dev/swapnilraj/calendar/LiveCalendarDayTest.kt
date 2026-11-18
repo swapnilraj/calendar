@@ -363,6 +363,8 @@ class LiveCalendarDayTest {
         val context = RuntimeEnvironment.getApplication()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         var eligible = false
+        var foreignNamespace = false
+        var lostReadAuthority = false
         var deletes = 0
         val ref = EventRef(CalendarId(3), 7, Instant.parse("2026-11-17T09:00:00Z"), Instant.parse("2026-11-17T10:00:00Z"))
         val source = EditableEvent(EventDetails(EventOccurrence(ref, EventTime.Timed(ref.instanceStart, ref.instanceEnd), "Fixture meeting", 1),
@@ -370,7 +372,12 @@ class LiveCalendarDayTest {
                 "owner@example.invalid", java.time.ZoneId.of("Europe/London"), CalendarContract.Calendars.CAL_ACCESS_OWNER, true, true),
             eventZone = java.time.ZoneId.of("Europe/London")), EditToken("fixture-token"), EditableField.entries.toSet())
         val writer = object : CalendarMutations {
-            override suspend fun loadForEdit(ref: EventRef): EditReadResult = if (eligible) EditReadResult.Ready(source) else EditReadResult.Denied(MutationDenial.OWNERSHIP_UNKNOWN)
+            override suspend fun loadForEdit(ref: EventRef): EditReadResult = when {
+                lostReadAuthority -> EditReadResult.PermissionRequired
+                eligible -> EditReadResult.Ready(if (foreignNamespace) source.copy(details = source.details.copy(
+                    calendar = source.details.calendar!!.copy(providerId = "foreign-calendar-namespace"))) else source)
+                else -> EditReadResult.Denied(MutationDenial.OWNERSHIP_UNKNOWN)
+            }
             override suspend fun create(operationId: String, draft: EventDraft): MutationResult = error("Unexpected create")
             override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult = error("Unexpected update")
             override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult {
@@ -390,7 +397,15 @@ class LiveCalendarDayTest {
             compose.onNodeWithText("Fixture meeting").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Join meeting").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithContentDescription("Edit event").assertDoesNotExist()
-            compose.runOnIdle { eligible = true; reader.refresh() }
+            compose.runOnIdle { eligible = true; foreignNamespace = true; reader.refresh() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.events_unavailable)).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("Edit event").assertDoesNotExist()
+            compose.onNodeWithText("Join meeting").assertDoesNotExist(); assertEquals(0, deletes)
+            compose.runOnIdle { foreignNamespace = false; lostReadAuthority = true; reader.refresh() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.events_permission_required)).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("Edit event").assertDoesNotExist()
+            compose.onNodeWithText("Join meeting").assertDoesNotExist(); assertEquals(0, deletes)
+            compose.runOnIdle { lostReadAuthority = false; reader.refresh() }
             compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Edit event").fetchSemanticsNodes().isNotEmpty() }
             compose.onNode(hasContentDescription("More event actions") and hasAnyAncestor(phoneDetailsRoot())).performClick()
             compose.onNode(hasText("Delete event") and hasAnyAncestor(isPopup())).performClick()

@@ -27,7 +27,11 @@ close/Save or close/edit/overflow controls. Date/time and repeat inputs open foc
 raw invalid input and explicit offset choices retained for review. This presentation delegates the
 existing draft, permission, conflict and recovery rules; it does not authorize writes on opening or
 dismissing. Details lose their old payload and actions immediately when the read state loses
-authority. Standalone legacy sheets remain available to existing component fixtures.
+authority. Ordinary edit eligibility must match the exact occurrence and non-empty full calendar
+identity of the freshly read details. A writer-side READ denial clears the details payload and links;
+it does not leave old private fields visible with disabled buttons. Phone row subtitles use content
+direction so English numeric phrases keep their order in RTL layouts. Standalone legacy sheets
+remain available to existing component fixtures.
 
 Private CREATE/EDIT review activities retain the exact native editor owner while an accepted write
 or known local outcome awaits cleanup acknowledgment, including stop/resume transitions. Fresh

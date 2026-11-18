@@ -174,7 +174,7 @@ internal fun PhoneEditorRow(icon: PhoneEventGlyph, title: String, subtitle: Stri
     Row(Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick) else Modifier)
         .padding(horizontal = 24.dp, vertical = 12.dp).heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         PhoneEventIcon(icon)
-        Column(Modifier.weight(1f)) { Text(title, style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr)); if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Column(Modifier.weight(1f)) { Text(title, style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr)); if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.ContentOrLtr), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         swatch?.let { Box(Modifier.size(16.dp).background(it, CircleShape)) }
     }
 }
