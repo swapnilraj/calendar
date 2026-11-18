@@ -104,6 +104,7 @@ internal fun LiveCalendarDay(
     var writeRequestText by rememberSaveable { mutableStateOf<String?>(null) }
     var seriesScopeText by rememberSaveable { mutableStateOf<String?>(null) }
     var meetingWriteText by rememberSaveable { mutableStateOf<String?>(null) }
+    var meetingCreationText by rememberSaveable { mutableStateOf<String?>(null) }
     var seriesWriteText by rememberSaveable { mutableStateOf<String?>(null) }
     var showDrafts by rememberSaveable { mutableStateOf(false) }
     var showSearch by rememberSaveable { mutableStateOf(false) }
@@ -711,9 +712,23 @@ internal fun LiveCalendarDay(
             recurringCreationSupported = recurringCreationSupported,
             retirement = operationRetirement, requestWritePermission = requestMeetingWritePermission,
             onReplacedLaunch = { launch -> writeRequestText = EventWriteRequest.fromLaunch(launch, visibleDate, displayNow.zone, request.delete).encode() },
+            onPromotedMeeting = if (meetingWritable) ({ launch ->
+                meetingCreationText = MeetingCreationRouteCodec.encode(launch)
+                writeRequestText = null
+            }) else null,
             onDismiss = { writeRequestText = null },
             onSaved = { writeRequestText = null; reader.refresh(); onLocalSaved() },
             onDeleted = { writeRequestText = null; reader.refresh(); onLocalDeleted() })
+    }
+    if (meetingWritable) meetingCreationText?.let { raw ->
+        val route = remember(raw) { runCatching { MeetingCreationRouteCodec.decode(raw) }.getOrNull() }
+        if (route == null) AlertDialog(onDismissRequest = { meetingCreationText = null },
+            text = { Text(stringResource(R.string.navigation_draft_unavailable)) },
+            confirmButton = { TextButton(onClick = { meetingCreationText = null }) { Text(stringResource(R.string.events_close)) } })
+        else MeetingCreationWorkflow(route, requireNotNull(meetings), requireNotNull(atomicDrafts), calendars,
+            operationRetirement, requireNotNull(requestMeetingWritePermission), use24Hour,
+            onDismiss = { meetingCreationText = null },
+            onSaved = { meetingCreationText = null; reader.refresh(); onLocalSaved() }, clock = draftClock)
     }
     if (showSearch && search != null) {
         val searchRange = remember(searchRangeText, displayNow.toLocalDate()) {
@@ -802,6 +817,9 @@ internal fun LiveCalendarDay(
         }) else null, onOpenMeeting = if (meetingWritable) ({ launch ->
             showDrafts = false
             meetingWriteText = MeetingResponseRouteCodec.encode(launch)
+        }) else null, onOpenMeetingCreation = if (meetingWritable) ({ launch ->
+            showDrafts = false
+            meetingCreationText = MeetingCreationRouteCodec.encode(launch)
         }) else null, onOpenSeedReview = { record ->
             val intent = CalendarSeedReviewActivity.intentFromDraft(context, record)
             if (intent == null) onDraftFailure() else try {

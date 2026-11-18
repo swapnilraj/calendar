@@ -15,6 +15,7 @@ import dev.swapnilraj.calendar.core.DraftRecord
 import dev.swapnilraj.calendar.android.navigation.*
 import dev.swapnilraj.calendar.core.EventTime
 import dev.swapnilraj.calendar.ui.events.meetings.MeetingResponseLaunch
+import dev.swapnilraj.calendar.ui.events.meetings.create.MeetingCreationLaunch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -36,7 +37,8 @@ sealed interface DraftBrowserState {
 fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorDraftLaunch) -> Unit,
     displayZone: ZoneId = ZoneId.systemDefault(), onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null,
     onOpenMeeting: ((MeetingResponseLaunch) -> Unit)? = null,
-    onOpenSeedReview: ((DraftRecord) -> Unit)? = null) {
+    onOpenSeedReview: ((DraftRecord) -> Unit)? = null,
+    onOpenMeetingCreation: ((MeetingCreationLaunch) -> Unit)? = null) {
     var revision by remember { mutableIntStateOf(0) }
     val state by produceState<DraftBrowserState>(DraftBrowserState.Loading, store, revision) {
         value = DraftBrowserState.Loading
@@ -60,7 +62,7 @@ fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorD
         catch (_: Exception) { value = DraftBrowserState.Unavailable }
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone, onOpenSeries, onOpenMeeting, onOpenSeedReview)
+        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone, onOpenSeries, onOpenMeeting, onOpenSeedReview, onOpenMeetingCreation)
     }
 }
 
@@ -68,7 +70,8 @@ fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorD
 fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen: (EditorDraftLaunch) -> Unit,
     onRefresh: () -> Unit, displayZone: ZoneId = ZoneId.systemDefault(), onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null,
     onOpenMeeting: ((MeetingResponseLaunch) -> Unit)? = null,
-    onOpenSeedReview: ((DraftRecord) -> Unit)? = null) {
+    onOpenSeedReview: ((DraftRecord) -> Unit)? = null,
+    onOpenMeetingCreation: ((MeetingCreationLaunch) -> Unit)? = null) {
     val locale = LocalLocale.current.platformLocale
     val formatter = remember(locale, displayZone) { DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
         .withLocale(locale).withZone(displayZone) }
@@ -91,7 +94,15 @@ fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen:
                             val series = item.seriesLaunch
                             val meeting = item.meetingPreview
                             val seed = item.seedReview
-                            if (seed != null && item.seedRecord != null) {
+                            val creation = item.meetingCreation
+                            if (creation != null) {
+                                Text(item.meetingCreationTitle.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.phone_meeting_create_title))
+                                if (creation.needsRecovery) Text(stringResource(R.string.events_drafts_needs_recovery))
+                                if (onOpenMeetingCreation != null) TextButton(onClick = { onOpenMeetingCreation(creation) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                                    Text(stringResource(if (creation.needsRecovery) R.string.events_drafts_recover else R.string.events_drafts_open))
+                                }
+                            } else if (seed != null && item.seedRecord != null) {
                                 Text(seed.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
                                 Text(stringResource(R.string.incoming_draft_review))
                                 Text(if (seed.rawDate.isBlank()) stringResource(R.string.events_drafts_date_unfinished)

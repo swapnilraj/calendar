@@ -2,6 +2,7 @@ package dev.swapnilraj.calendar.ui.events
 
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.meetings.*
+import dev.swapnilraj.calendar.ui.events.meetings.create.*
 import dev.swapnilraj.calendar.android.navigation.CalendarSeedReviewPreview
 import dev.swapnilraj.calendar.android.navigation.calendarSeedReviewPreview
 import java.time.*
@@ -37,7 +38,8 @@ data class EditorDraftLaunch internal constructor(
 data class DraftBrowserItem(val recordId: String, val updatedAt: Instant,
     val launch: EditorDraftLaunch?, val issue: DraftReadIssue?, val seriesLaunch: SeriesEditorLaunch? = null,
     val meetingPreview: MeetingResponseDraftPreview? = null, val seedReview: CalendarSeedReviewPreview? = null,
-    val seedRecord: DraftRecord? = null)
+    val seedRecord: DraftRecord? = null, val meetingCreation: MeetingCreationLaunch? = null,
+    val meetingCreationTitle: String = "")
 
 /** Reads the feature's versioned opaque payload without normalizing or saving incomplete fields. */
 object DraftBrowserCodec {
@@ -45,6 +47,12 @@ object DraftBrowserCodec {
         // Identify the feature before overlapping legacy version numbers. A damaged invitation
         // response must never be interpreted as an ordinary editor or series draft.
         val feature = try { JSONObject(record.payload).opt("feature") } catch (_: Exception) { null }
+        if (record.version == MeetingCreationDraftCodec.VERSION || feature == "meeting-create") {
+            val document = try { MeetingCreationDraftCodec.decode(record) } catch (_: Exception) { null }
+            return DraftBrowserItem(record.id, record.updatedAt, null,
+                if (document == null) DraftReadIssue.UNREADABLE else null,
+                meetingCreation = document?.launch(), meetingCreationTitle = document?.fields?.event?.title.orEmpty())
+        }
         if (record.version == 7 || feature == "calendar-seed-review") {
             val preview = calendarSeedReviewPreview(record)
             return DraftBrowserItem(record.id, record.updatedAt, null,

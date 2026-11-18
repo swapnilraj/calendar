@@ -388,7 +388,8 @@ meeting creation has a bounded provider executor: exact owner/account identity, 
 row, required/optional invited guests and reminders are inserted and asserted atomically. It omits
 implicit self-row and organizer flags, journals exact requests, and verifies native rows/occurrence
 before local success. Recurring or delegated meeting creation remains review-only. The guest-creation
-interface is not yet connected, and invitation delivery still requires controlled account verification.
+interface is connected through eligible unsaved ordinary events; invitation delivery still requires
+controlled account verification.
 
 Owned one-off organizer edits, guest add/type/remove and cancellation also have a bounded provider
 executor behind the meeting port. It issues THIS-only rights after exact owner/account/organizer and
@@ -399,16 +400,29 @@ yet provide an organizer-edit screen. Recurring/delegated organizer changes rema
 
 The dedicated version6 meeting-creation draft/controller retains raw guest and event inputs with
 exact generation/CAS ownership. Frozen typed requests include a stable raw fingerprint and recover
-without reparsing mutable input using a newer validator. It is not yet connected to a guest-entry
-screen, incoming guest requests or the draft browser. Source/controller tests are not delivery proof.
+without reparsing mutable input using a newer validator. A full-height phone guest-entry screen
+and generation-checked draft-browser route use this dedicated controller. Incoming guest requests
+remain separate and unsupported; source/controller tests are not delivery proof.
+
+Eligible live ordinary CREATE editors expose Add people through explicit host opt-in. This action
+atomically replaces the same modern version5 raw draft with a version6 meeting draft, using a fresh
+generation, revision and operation ID. Every raw event field is preserved; organizer authority,
+guests and policy acknowledgement start empty. The meeting controller requires a fresh eligible
+calendar source before submission. The old controller becomes inert once the conditional swap
+starts; exact replacement readback is required before navigation, including acknowledged writes.
+An uncertain swap leaves one browser-recoverable record and never seeds a second draft. Competing
+freezes or autosaves must lose exact-record CAS. Edit, incoming/pinned, legacy, recovery and copied
+warning-bearing drafts cannot promote. Opening a meeting route reloads the durable feature and
+generation; missing, replaced or corrupt records never create another draft. Local success remains
+separate from invitation delivery.
 New meeting editors require atomic complete-record draft comparison for creation, replacement and
 deletion. A storage/acknowledgement failure requires readback before dispatch; a mismatch retains inputs
 for review. Exact normalized no-op callbacks preserve a reviewed command and its draft revision;
 actual edits invalidate review. Once a local draft compare-and-set starts, its receipt and local
 ownership adoption finish together before caller cancellation is honored. Provider operations remain
 cancellable; cancelling during local freeze retains the original request without dispatching it. A sequence of separate load/upsert calls is not atomic. Series/response editors use atomic
-records and generations; ordinary-editor migration and connected frozen-command retirement workflows
-remain pending. A malformed child acknowledgement must never trigger a replay; where only a parent
+records and generations; ordinary editors and connected frozen-command retirement workflows also
+use exact-record ownership. A malformed child acknowledgement must never trigger a replay; where only a parent
 ID was acknowledged, conservative uncertainty may outlive that partial in-memory identity until a
 durable partial-receipt workflow is implemented.
 
