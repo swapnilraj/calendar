@@ -69,6 +69,7 @@ fun MultiDayView(
     showWeekends: Boolean = true,
     interactions: TimedGridInteractions? = null,
     onCancelPendingEdit: (() -> Unit)? = null,
+    showNavigationChrome: Boolean = true,
 ) {
     require(initialHourHeight.isFinite())
     require(initialScrollMinute == null || initialScrollMinute.isFinite())
@@ -157,6 +158,7 @@ fun MultiDayView(
     }
     Surface(modifier.fillMaxSize()) {
         Column {
+            if (showNavigationChrome) {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(if (rangeDates.size == 3) R.string.multiday_three_days else R.string.multiday_week),
                     style = MaterialTheme.typography.titleLarge.copy(textDirection = TextDirection.Content), modifier = Modifier.weight(1f))
@@ -175,6 +177,7 @@ fun MultiDayView(
                     Text(stringResource(R.string.multiday_next))
                 }
             }
+            }
             if (hiddenSelection) {
                 val label = stringResource(R.string.calendar_view_day_events, selectedDate.format(fullDates))
                 TextButton(onClick = { cancelGesture(); onShowDateEvents(selectedDate) }, modifier = Modifier.fillMaxWidth()
@@ -182,6 +185,7 @@ fun MultiDayView(
                     Text(label, style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content))
                 }
             }
+            if (showNavigationChrome) {
             // Explicit controls are the keyboard/TalkBack alternative to a two-finger zoom gesture.
             val zoomOutLabel = stringResource(R.string.multiday_zoom_out)
             val zoomInLabel = stringResource(R.string.multiday_zoom_in)
@@ -193,6 +197,7 @@ fun MultiDayView(
                     textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
                 TextButton(enabled = hourHeight < 160f, onClick = { zoom(hourHeight + 16); onSaveHourHeight(hourHeight) },
                     modifier = Modifier.semantics { contentDescription = zoomInLabel }) { Text("+") }
+            }
             }
             if (effective != null) TimedGridFeedback(selectedDate, displayZone, use24Hour, effective,
                 sharedPreview?.second?.takeIf { it.contextKey == effective.contextKey }) { cancelGesture() }
