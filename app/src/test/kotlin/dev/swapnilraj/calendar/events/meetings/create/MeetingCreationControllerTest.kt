@@ -120,6 +120,14 @@ class MeetingCreationControllerTest {
             f.recovery=result; c.recover(); c.retryOriginal(); assertFalse(c.state.retryReady); assertEquals(exact,f.record()); assertEquals(1,f.calls.size)
         }
     }
+    @Test fun failedRawPersistenceKeepsInputVisibleAndBlocksDismissUntilExactFlush() = runBlocking {
+        val f=Fixture(); val c=f.open(); val old=f.record(); f.store.unknownBefore=true
+        val raw=f.fields.copy(startDate="2028-",title="Unsaved raw")
+        c.changeFields(raw); assertEquals(raw,c.state.fields!!.event); assertFalse(c.prepareDismiss()); assertEquals(old,f.record())
+        assertEquals(MeetingCreationProblem.DRAFT_UNAVAILABLE,c.state.problem)
+        f.store.unknownBefore=false; c.flushDraft(); assertTrue(c.prepareDismiss())
+        val restored=f.controller(f.launch()); restored.load(); assertEquals(raw,restored.state.fields!!.event)
+    }
     @Test fun staleControllerCasAndUnknownReadbackNeverDispatchOrOverwriteSuccessor() = runBlocking {
         val f=Fixture(); val a=f.ready(); val b=f.controller(f.launch()); b.load()
         a.changeFields(a.state.fields!!.event.copy(title="New raw")); val newest=f.record(); b.save()

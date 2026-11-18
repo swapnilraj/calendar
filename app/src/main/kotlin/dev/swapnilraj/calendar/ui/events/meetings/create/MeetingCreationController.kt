@@ -37,6 +37,7 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
     private var stopped = false
     private var verified = false
     private var retirementProven = false
+    private var pendingRaw: MeetingCreationDocument? = null
     val frozen: Boolean get() = document?.frozen != null
     val canChange: Boolean get() = !state.busy && canChangeIgnoringBusy()
     val canSave: Boolean get() = canChange && verified && document?.authority != null && state.problem !in setOf(MeetingCreationProblem.STALE_DRAFT, MeetingCreationProblem.DRAFT_UNAVAILABLE)
@@ -77,15 +78,15 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
         val doc = document!!
         // Calendar authority can only come from selectCalendar's fresh backend response.
         val event = fields.copy(calendarId = doc.fields.event.calendarId, targetIdentity = doc.fields.event.targetIdentity)
-        replace(doc.copy(fields = doc.fields.copy(event = event)))
+        persistRaw(doc.copy(fields = doc.fields.copy(event = event)))
     }
     suspend fun changeGuests(guests: List<MeetingCreationGuestFields>) = exclusive {
         if (!canChangeIgnoringBusy() || guests.map { it.rowId }.distinct().size != guests.size) return@exclusive
         if (guests.any { runCatching { require(java.util.UUID.fromString(it.rowId).toString() == it.rowId) }.isFailure }) return@exclusive
-        replace(document!!.copy(fields = document!!.fields.copy(guests = guests.toList())))
+        persistRaw(document!!.copy(fields = document!!.fields.copy(guests = guests.toList())))
     }
     suspend fun acceptFixedGuestPolicy(accepted: Boolean) = exclusive {
-        if (canChangeIgnoringBusy()) replace(document!!.copy(policyAccepted = accepted))
+        if (canChangeIgnoringBusy()) persistRaw(document!!.copy(policyAccepted = accepted))
     }
     suspend fun selectCalendar(calendar: CalendarInfo) = exclusive {
         if (!canChangeIgnoringBusy() || !validIdentity(calendar.identity)) return@exclusive
@@ -97,7 +98,7 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
                 }
                 val doc = document!!
                 val authority = MeetingCreationAuthority(calendar.identity, source.token, source.allowedGuestTypes.toSet())
-                if (replace(doc.copy(authority = authority, fields = doc.fields.copy(event = doc.fields.event.copy(
+                if (persistRaw(doc.copy(authority = authority, fields = doc.fields.copy(event = doc.fields.event.copy(
                         calendarId = calendar.id.value.toString(), targetIdentity = calendar.identity))))) verified = true
             }
             else -> { verified = false; state = state.copy(problem = readProblem(result)) }
@@ -165,14 +166,28 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
             }
             retirementProven = true; state = state.copy(retryReady = false, problem = MeetingCreationProblem.RETIRED)
         }
-        if (deleteExact()) { stopped = true; state = state.copy(discarded = true, retryReady = false) }
+        if (deleteExact()) { stopped = true; pendingRaw = null; state = state.copy(discarded = true, retryReady = false) }
     }
     /** Commit acknowledgment is cleanup, not retirement and never another create. */
     suspend fun acknowledgeLocalSave() = exclusive {
         if (state.localSaved == null || stopped) return@exclusive
         if (deleteExact()) stopped = true
     }
-    suspend fun prepareDismiss(): Boolean = !action.get() && !state.loading
+    suspend fun flushDraft() = exclusive {
+        val candidate = pendingRaw ?: return@exclusive
+        if (!stopped && state.problem != MeetingCreationProblem.STALE_DRAFT && replace(candidate)) {
+            pendingRaw = null
+            if (!verified && candidate.authority != null) state = state.copy(problem = MeetingCreationProblem.SOURCE_CHANGED)
+        }
+    }
+    suspend fun prepareDismiss(): Boolean = !action.get() && !state.loading && pendingRaw == null
+
+    private suspend fun persistRaw(candidate: MeetingCreationDocument): Boolean {
+        pendingRaw = candidate
+        state = state.copy(fields = candidate.fields, policyAccepted = candidate.policyAccepted,
+            allowedGuestTypes = candidate.authority?.allowedTypes.orEmpty())
+        return replace(candidate).also { if (it) pendingRaw = null }
+    }
 
     private suspend fun dispatch(frozen: FrozenMeetingCreation) {
         if (stopped || retirementProven || !ownsRecord()) return
