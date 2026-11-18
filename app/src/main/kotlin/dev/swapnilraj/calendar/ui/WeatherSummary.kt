@@ -10,21 +10,31 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.stringResource
+import dev.swapnilraj.calendar.R
+import dev.swapnilraj.calendar.ui.settings.WeatherUnits
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.swapnilraj.calendar.weather.*
 import kotlin.math.*
 
 @Composable
-fun RowScope.WeatherSummary(summary: DaySummary, stale: Boolean = false) {
+fun RowScope.WeatherSummary(summary: DaySummary, stale: Boolean = false, units: WeatherUnits = WeatherUnits.CELSIUS) {
     WeatherIcon(summary.condition)
     Spacer(Modifier.width(6.dp))
-    Text("${summary.high.toInt()}° / ${summary.low.toInt()}°", style = MaterialTheme.typography.labelMedium,
-        modifier = Modifier.semantics { contentDescription = "High ${summary.high.toInt()} degrees, low ${summary.low.toInt()} degrees${if(stale) ", cached forecast" else ""}" })
+    val (high, highSpoken) = weatherTemperature(summary.high, units)
+    val (low, lowSpoken) = weatherTemperature(summary.low, units)
+    val description = stringResource(R.string.weather_high_low_accessible, highSpoken, lowSpoken)
+    val spoken = if (stale) stringResource(R.string.weather_cached, description) else description
+    Text(stringResource(R.string.weather_high_low, high, low), style = if (units == WeatherUnits.FAHRENHEIT) MaterialTheme.typography.labelMedium.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Content) else MaterialTheme.typography.labelMedium,
+        modifier = (if (units == WeatherUnits.FAHRENHEIT) Modifier.weight(1f, fill = false) else Modifier).semantics { contentDescription = spoken })
     if (summary.condition.wet && summary.precipProbability != null) {
         Spacer(Modifier.width(8.dp))
-        Text("${summary.precipProbability!!.toInt()}%", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.semantics { contentDescription = "Precipitation chance ${summary.precipProbability!!.toInt()} percent" })
+        // Keep the original summary's 11sp probability geometry.
+        val probability = java.text.NumberFormat.getIntegerInstance(androidx.compose.ui.platform.LocalLocale.current.platformLocale).format(summary.precipProbability!!.toInt())
+        val chance = stringResource(R.string.weather_probability_accessible, probability)
+        Text(stringResource(R.string.weather_probability, probability), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.semantics { contentDescription = chance })
     }
 }
 
@@ -33,7 +43,8 @@ fun RowScope.WeatherSummary(summary: DaySummary, stale: Boolean = false) {
 private fun WeatherIcon(condition: Condition) {
     val cloud = MaterialTheme.colorScheme.onSurfaceVariant
     val accent = MaterialTheme.colorScheme.primary
-    Canvas(Modifier.size(20.dp).semantics { contentDescription = condition.label }) {
+    val description = weatherConditionLabel(condition)
+    Canvas(Modifier.size(20.dp).semantics { contentDescription = description }) {
         val unit = size.width / 20
         fun pt(x: Float,y: Float) = Offset(x * unit,y * unit)
         if (condition == Condition.CLEAR || condition == Condition.PARTLY_CLOUDY) {
