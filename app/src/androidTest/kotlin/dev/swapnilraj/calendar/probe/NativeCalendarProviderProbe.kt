@@ -237,8 +237,10 @@ class NativeCalendarProviderProbe : Instrumentation() {
                 }
             }
             val expectedPrefix = source.toMutableMap().apply { put(E.RRULE, prefixRule) }
+            // Native EVENTS_ID updates forbid a selection. The preceding complete source
+            // assertion pins this exact ID/calendar/UID in the same non-yielding transaction.
             val operations = arrayListOf(calendarAssertion(), eventAssertion(master, uid, source),
-                ContentProviderOperation.newUpdate(eventUri(master)).withSelection(eventSelection(), eventArgs(master, uid))
+                ContentProviderOperation.newUpdate(eventUri(master))
                     .withValues(prefix).withExpectedCount(1).withYieldAllowed(false).build(),
                 eventAssertion(master, uid, expectedPrefix),
                 ContentProviderOperation.newInsert(E.CONTENT_URI)
