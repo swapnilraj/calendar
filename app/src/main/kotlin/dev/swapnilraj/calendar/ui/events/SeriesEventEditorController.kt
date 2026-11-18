@@ -290,7 +290,8 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
     private suspend fun finish(received: SeriesMutationResult, recovery: Boolean = false) {
         val doc = document ?: return
         val successMatches = when (received) {
-            is SeriesMutationResult.LocalSaved -> doc.action == SeriesEditorAction.EDIT && received.identity == doc.identity
+            is SeriesMutationResult.LocalSaved -> doc.action == SeriesEditorAction.EDIT &&
+                if (doc.scope == RecurrenceScope.FOLLOWING) followingResultMatches(doc, received) else received.identity == doc.identity
             is SeriesMutationResult.LocalDeleted -> doc.action == SeriesEditorAction.DELETE && received.identity == doc.identity && received.scope == doc.scope && received.selected == doc.selected
             else -> true
         }
@@ -323,6 +324,30 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
                 else -> SeriesEditorProblem.UNCERTAIN
             })
     }
+    /** Following edits may allocate a new master. Prove the scope from the frozen original context,
+     * including during source-free recovery, without predicting a provider-generated tail ID. */
+    private fun followingResultMatches(doc: SeriesDraftDocument, result: SeriesMutationResult.LocalSaved): Boolean { return try {
+        val frozen = requireNotNull(doc.frozen)
+        val command = frozen.command as? SeriesCommand.FollowingEdit ?: return false
+        val context = requireNotNull(doc.context)
+        require(frozen.scope == RecurrenceScope.FOLLOWING && frozen.action == SeriesEditorAction.EDIT)
+        require(frozen.followingMasterStart == doc.masterStart && context.start == doc.masterStart)
+        require(context.calendar.calendarId == doc.identity.calendarId)
+        val boundary = requireNotNull(seriesOriginalBoundary(doc.selected, doc.masterStart))
+        require(command.intent.expectedOriginalBoundary == boundary)
+        val raw = requireNotNull(context.ruleRaw)
+        val mapping = RecurrenceOrdinalMapping.map(raw, context.start, boundary, raw, context.start) as? RecurrenceOrdinalResult.Ready ?: return false
+        require(mapping.occurrence != null)
+        if (result.identity.calendarId != doc.identity.calendarId) return false
+        if (mapping.ordinal == 0) {
+            if (result.identity != doc.identity) return false
+        } else if (result.identity.masterEventId <= 0 || result.identity.masterEventId == doc.identity.masterEventId) return false
+        result.selected?.let { selected ->
+            require(selected.calendarId == result.identity.calendarId && selected.eventId == result.identity.masterEventId &&
+                selected.recurrence?.masterEventId == result.identity.masterEventId)
+        }
+        true
+    } catch (_: Exception) { false } }
     private suspend fun removeExact(expected: DraftRecord): Boolean = storage.withLock {
         val result = try { atomic?.compareAndSet(launch.draftId, expected, null) ?: DraftChangeResult.Unavailable }
             catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { DraftChangeResult.Unavailable }

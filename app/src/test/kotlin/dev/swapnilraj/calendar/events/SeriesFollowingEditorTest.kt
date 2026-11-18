@@ -227,4 +227,78 @@ class SeriesFollowingEditorTest {
         assertEquals(oldTemporal, temporal.encode().toString())
         assertEquals(oldTemporal, FrozenSeriesSubmission.decode(JSONObject(oldTemporal)).encode().toString())
     }
+
+    private fun tailResult(calendar: Long = 2, master: Long = 99, selected: EventRef? = EventRef(CalendarId(calendar), master,
+        f.original, f.original.plusSeconds(3600), RecurrenceRef(master, f.original))) =
+        SeriesMutationResult.LocalSaved(SeriesIdentity(CalendarId(calendar), master), selected)
+
+    @Test fun verifiedNewTailIdentityCompletesAndDeletesOnlyItsExactDraft() = runBlocking {
+        val editor = editor(); val saved = tailResult()
+        f.next = saved
+        editor.change { it.copy(title = "New tail") }; editor.save(); editor.confirmFollowingReview()
+        assertEquals(saved, editor.state.result); assertEquals(saved, editor.state.localOutcome)
+        assertFalse(editor.state.recoveryRequired); assertFalse(f.store.records.containsKey("series"))
+        assertEquals(1, f.calls.size)
+    }
+
+    @Test fun verifiedNewTailWithoutSelectedOrdinalCanStillComplete() = runBlocking {
+        val editor = editor(); val saved = tailResult(selected = null)
+        f.next = saved
+        editor.change { it.copy(title = "Tail with exhausted selected ordinal") }; editor.save(); editor.confirmFollowingReview()
+        assertEquals(saved, editor.state.result); assertFalse(f.store.records.containsKey("series"))
+    }
+
+    @Test fun foreignOldZeroOrContradictoryTailResultsRemainUncertainAndKeepFrozenDraft() = runBlocking {
+        val baseRef = tailResult().selected!!
+        val invalid = listOf(tailResult(calendar = 3), tailResult(master = 41), tailResult(master = 0, selected = null),
+            tailResult(selected = baseRef.copy(calendarId = CalendarId(3))),
+            tailResult(selected = baseRef.copy(recurrence = RecurrenceRef(41, f.original))),
+            tailResult(selected = baseRef.copy(recurrence = null)), tailResult(selected = baseRef.copy(eventId = 41)))
+        for (result in invalid) {
+            f.store.records.clear(); f.calls.clear()
+            val editor = editor(); f.next = result
+            editor.change { it.copy(title = "Held tail") }; editor.save(); editor.confirmFollowingReview()
+            assertTrue(editor.state.recoveryRequired); assertNull(editor.state.localOutcome)
+            assertTrue(editor.state.result is SeriesMutationResult.Common)
+            assertEquals(SeriesEditorProblem.UNCERTAIN, editor.state.problem)
+            assertTrue(SeriesDraftCodec.decode(f.store.records.getValue("series")).submitted)
+            assertEquals(1, f.calls.size)
+        }
+    }
+
+    @Test fun firstOrdinalAcceptsOnlyOriginalMasterAndConsistentSelectedReference() = runBlocking {
+        val base = f.followingEditSource(); val instant = (base.snapshot.start as RecurrenceStart.Timed).instant
+        val ref = EventRef(CalendarId(2), 41, instant, instant.plusSeconds(3600), RecurrenceRef(41, instant))
+        val source = base.copy(snapshot = base.snapshot.copy(validatedSelection = ref), selectedDetails = base.selectedDetails.copy(
+            occurrence = base.selectedDetails.occurrence.copy(ref = ref, time = EventTime.Timed(ref.instanceStart, ref.instanceEnd))))
+        val invalid = editor(source); f.next = tailResult()
+        invalid.change { it.copy(title = "First changes") }; invalid.save(); invalid.confirmFollowingReview()
+        assertTrue(invalid.state.recoveryRequired); assertNull(invalid.state.localOutcome)
+        f.store.records.clear(); f.calls.clear()
+        val valid = editor(source); val saved = SeriesMutationResult.LocalSaved(source.snapshot.identity, ref); f.next = saved
+        valid.change { it.copy(title = "First changes") }; valid.save(); valid.confirmFollowingReview()
+        assertEquals(saved, valid.state.result); assertTrue(f.store.records.isEmpty())
+    }
+
+    @Test fun sourceFreeRecoveryAcceptsVerifiedReceiptBoundTailAndCleansDraft() = runBlocking {
+        val source = f.followingEditSource(); val editor = editor(source)
+        f.next = SeriesMutationResult.Common(MutationResult.Uncertain("ignored", null))
+        editor.change { it.copy(title = "Interrupted tail") }; editor.save(); editor.confirmFollowingReview()
+        val restored = f.controller(SeriesDraftCodec.describe(f.store.records.getValue("series"))!!, null)
+        val saved = tailResult(); f.recovered = saved
+        restored.recover()
+        assertEquals(saved, restored.state.result); assertEquals(saved, restored.state.localOutcome)
+        assertTrue(f.store.records.isEmpty()); assertEquals(1, f.calls.size)
+        assertEquals(listOf(editor.operationId), f.recoveryIds)
+    }
+
+    @Test fun sourceFreeRecoveryRejectsContradictoryTailWithoutCleanup() = runBlocking {
+        val editor = editor(); f.next = SeriesMutationResult.Common(MutationResult.Uncertain("ignored", null))
+        editor.change { it.copy(title = "Interrupted tail") }; editor.save(); editor.confirmFollowingReview()
+        val record = f.store.records.getValue("series")
+        val restored = f.controller(SeriesDraftCodec.describe(record)!!, null)
+        f.recovered = tailResult(calendar = 3); restored.recover()
+        assertTrue(restored.state.recoveryRequired); assertNull(restored.state.localOutcome)
+        assertEquals(record, f.store.records.getValue("series")); assertEquals(1, f.calls.size)
+    }
 }
