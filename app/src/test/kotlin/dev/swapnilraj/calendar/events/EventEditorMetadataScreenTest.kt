@@ -32,7 +32,7 @@ class EventEditorMetadataScreenTest {
                 "fixture@example.test", ZoneOffset.UTC, 700, true, true, CalendarCapabilities(createEvents = AccessDecision.ALLOWED))
             val initial = EventDraft(calendar.id, EventTime.Timed(Instant.parse("2028-06-15T09:00:00Z"), Instant.parse("2028-06-15T10:00:00Z")),
                 ZoneOffset.UTC, "Private appointment", availability = 0, privacy = 2, targetIdentity = calendar.identity)
-            val controller = EventEditorController(initial, null, "metadata-ui", writer, EventEditorControllerTest.Store(), scope)
+            val controller = preparedEditor(initial, null, "metadata-ui", writer, EventEditorControllerTest.Store(), scope)
             compose.setContent { DaylightTheme { Surface(Modifier.fillMaxSize()) {
                 EventEditorContent(controller, listOf(calendar), {}, {}, {})
             } } }

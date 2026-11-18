@@ -35,7 +35,7 @@ class DuplicateDraftScreenTest {
             val details = EventDetails(EventOccurrence(ref, time, "Team planning", 1), null, eventZone = ZoneOffset.UTC,
                 reminders = listOf(EventReminder(-1, 1), EventReminder(15, 2)), recurrenceRule = "FREQ=WEEKLY")
             val launch = (prepareDuplicateDraft(details, calendar.id, "copy-ui", store, targetIdentity = calendar.identity) as DraftPreparationResult.Ready).launch
-            val controller = EventEditorController(launch.seed(LocalDate.parse("2040-01-01"), ZoneOffset.UTC), null,
+            val controller = preparedEditor(launch.seed(LocalDate.parse("2040-01-01"), ZoneOffset.UTC), null,
                 launch.draftId, writer, store, scope, requireStoredDraft = true)
             compose.setContent { DaylightTheme { Surface(Modifier.fillMaxSize()) {
                 EventEditorContent(controller, listOf(calendar), {}, {}, {})

@@ -23,7 +23,7 @@ class CreateCalendarIdentityTest {
     private val ref = EventRef(a.id, 42, (initial.time as EventTime.Timed).start, (initial.time as EventTime.Timed).end)
     private val fixture = EventEditorControllerTest(); private val writer = fixture.Writer(); private val store = EventEditorControllerTest.Store()
     private fun editor(seed: EventDraft = initial, existing: EditableEvent? = null, recovery: Boolean = false) =
-        EventEditorController(seed, existing, "namespace", writer, store, scope, recoveryOnly = recovery, requireStoredDraft = true)
+        preparedEditor(seed, existing, "namespace", writer, store, scope, recoveryOnly = recovery, requireStoredDraft = true)
     private suspend fun prepare(seed: EventDraft = initial) = (prepareNewDraft(seed, "namespace", true, store) as DraftPreparationResult.Ready).launch
     private fun saved() = store.records.getValue("namespace")
     private fun legacyPending(rawBinding: Boolean = false) {
@@ -149,10 +149,10 @@ class CreateCalendarIdentityTest {
         val boundA = FrozenEditorSubmission.Create("operation", initial); val boundB = boundA.copy(draft = initial.copy(targetIdentity = b.identity))
         assertNotEquals(boundA.encode().toString(), boundB.encode().toString()); assertEquals(boundA, FrozenEditorSubmission.decode(boundA.encode()))
     }
-    @Test fun explicitNamespaceChangeAfterDefiniteFailureRotatesOperationId() = runBlocking {
+    @Test fun namespaceChangeAfterFrozenFailureRequiresRetirementBeforeAnyNewOperation() = runBlocking {
         prepare(); writer.next = MutationResult.PermissionRequired; val controller = editor(); controller.save()
         val old = writer.ids.single(); controller.observeCalendars(listOf(b)); controller.selectCalendar(b); controller.save()
-        assertNotEquals(old, writer.ids.last()); assertEquals(listOf(a.identity, b.identity), writer.createdDrafts.map { it.targetIdentity })
+        assertEquals(old, writer.ids.last()); assertEquals(listOf(a.identity), writer.createdDrafts.map { it.targetIdentity }); assertTrue(controller.state.recoveryRequired)
     }
     @Test fun blankAccountNamespaceIsUnprovenAndCannotBeIssuedBySelection() = runBlocking {
         val blank = a.copy(account = a.account.copy(name = ""))

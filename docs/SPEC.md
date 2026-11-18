@@ -511,6 +511,18 @@ default sentinel without authoring TIME or ZONE. Imported NULL zones, native tim
 metadata and non-alert reminder rows remain unchanged. Creating an event or explicitly changing its
 time still requires the existing temporal validation.
 
+## Atomic ordinary drafts and retirement
+
+New ordinary create/edit/duplicate drafts use strict version5 generations and exact-record local
+compare-and-set. Opening a missing or replaced route never recreates it. Existing version1 raw drafts
+require an explicit upgrade; their frozen create/update/delete commands retain the original version1
+JSON and journal identity. Frozen recovery is source-free and cannot silently return to editing.
+The existing editor sheet offers explicit local discard, permanent retirement before replacement,
+and cleanup acknowledgment after a known local outcome. Dispatch or recorded commits block retirement;
+unknown acknowledgments and foreign successors retain the draft instead of permitting another save.
+Permission grants, replacement preparation and reopening never submit automatically. Recurrence
+controls and other feature workflows remain unactivated by this ordinary-draft migration.
+
 ## Signed candidate release process
 
 A manual release workflow must use an owner-controlled stable key held outside Git, verify its

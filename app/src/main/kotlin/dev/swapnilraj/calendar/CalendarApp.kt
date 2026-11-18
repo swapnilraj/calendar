@@ -9,6 +9,7 @@ import dev.swapnilraj.calendar.weather.OpenMeteo
 import dev.swapnilraj.calendar.data.calendar.CalendarReader
 import dev.swapnilraj.calendar.data.calendar.CalendarLocalStore
 import dev.swapnilraj.calendar.data.calendar.CalendarWriter
+import dev.swapnilraj.calendar.data.calendar.CalendarOperationRetirement
 import dev.swapnilraj.calendar.data.calendar.CalendarReminderSource
 import dev.swapnilraj.calendar.data.calendar.SqliteReminderLedger
 import dev.swapnilraj.calendar.android.navigation.ReminderOpenResolver
@@ -38,6 +39,7 @@ class CalendarApp : Application(), ReminderRuntimeOwner {
     val calendarLocalStore by lazy { CalendarLocalStore(this) }
     val calendarWriter by lazy { CalendarWriter(contentResolver, calendarReader, calendarLocalStore,
         { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
+    val operationRetirement by lazy { CalendarOperationRetirement(calendarLocalStore) }
     val settings by lazy { Settings(this) }
     val weather by lazy {
         val client = OpenMeteo(::fetchWeather)
