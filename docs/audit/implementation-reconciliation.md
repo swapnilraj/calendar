@@ -1,10 +1,12 @@
-# Connected implementation reconciliation at bf2ef3f
+# Implementation reconciliation: completed checkpoint and later source review
 
 This snapshot reconciles all **151 historical inventory IDs**, in their original order, against
 integrated source at **bf2ef3f**. The companion [CSV](implementation-reconciliation.csv) records
 bounded behavior, source/test evidence and remaining acceptance. The original
 [feature inventory](feature-inventory.csv), baseline audit/probes and physical `NOT_RUN` evidence
-are unchanged. This is a current reconciliation, not a rewrite of the audited `23808c1` baseline.
+are unchanged. The CSV remains a historical reconciliation at `bf2ef3f`, not a rewrite of the audited
+`23808c1` baseline. The later source review below records bounded changes at `e1877a4` without
+changing those CSV rows.
 
 The lead reports that the complete required test, debug APK assembly and lint gate passed at
 `bf2ef3f`, with no failures, errors or skipped tests. This is local synthetic-provider evidence,
@@ -38,7 +40,76 @@ SQL and synthetic provider transactions. `live-synthetic` may use injected mutat
 app action is discoverable or enabled. Read each row's remaining acceptance; test totals are not a
 completion measure. A SQLite reopen or Activity recreation is not an actual process-kill test.
 
-## Connected application behavior
+## Later integrated source review at e1877a4
+
+The following corrections supersede the corresponding pending-implementation statements in the
+historical sections below. This is a source/test-evidence review, not a new complete acceptance
+checkpoint. The latest required aggregate attempt at `e1877a4` failed
+`AtomicDraftStoreTest.concurrentAbsentCreatesHaveExactlyOneWinnerAndNeverReplaceIt`; the current
+full test/debug APK/lint gate remains pending. No Gradle or device/account tests were run for this
+documentation update.
+
+- **Public incoming entry points (OS-03/04/05):** VIEW event/date and INSERT are manifest-enabled
+  through `android/navigation/CalendarEntryActivity.kt`. INSERT uses the private
+  `CalendarSeedReviewActivity.kt`, durable version-7 raw review, and permanent handoff receipts;
+  arrival, permission grant and reopening do not submit an event. Evidence:
+  `PublicCalendarEntryJourneyTest.kt`, `CalendarEntryActivityTest.kt`,
+  `CalendarSeedReviewServicesTest.kt` and `CalendarSeedRefreshActivityTest.kt` under
+  `app/src/test/kotlin/dev/swapnilraj/calendar/`. Public EDIT is still unadvertised and unintegrated
+  at this source cutoff. External callers, device lifecycle and real-provider occurrence handling
+  remain acceptance work; OS-05 is not complete merely because INSERT is connected.
+- **Ordinary drafts and retirement (EDIT-16/17/18):** ordinary editor CAS, generation-bound raw
+  persistence, frozen-command retirement/replacement and legacy review escape UI are now connected.
+  `ui/events/EventEditorController.kt` adopts the local CAS result and matching in-memory receipt
+  before honoring cancellation, while provider dispatch remains cancellable. `PhoneEventEditor.kt`
+  exposes the supported retirement/replacement actions. Evidence: `events/OrdinaryAtomicSqlTest.kt`,
+  `events/OrdinaryAtomicRetirementTest.kt`, `events/OrdinaryRetirementScreenTest.kt`,
+  `events/DraftCasCancellationTest.kt` and `NativeOrdinaryRetirementJourneyTest.kt`. These replace
+  the older “remaining ordinary CAS migration” and “backend retirement only” descriptions. The
+  aggregate concurrency failure above and physical process-kill/storage/offline/upgrade acceptance
+  remain unresolved; no general persistence-completion claim follows.
+- **Authored zones (EDIT-08):** `data/calendar/CalendarWriter.kt` now uses the core
+  `ProviderTimeZoneCompatibility.kt` guard for ordinary creation and explicit authored time/zone
+  changes. Unsupported imported zones can remain unchanged for supported non-time edits. Evidence:
+  `calendar-core/src/test/kotlin/dev/swapnilraj/calendar/core/ProviderTimeZoneCompatibilityTest.kt`
+  and `app/src/test/kotlin/dev/swapnilraj/calendar/events/NullZoneTravelEditTest.kt`. The historical
+  missing-guard statement is obsolete. Explicitly authoring the same displayed zone for an imported
+  NULL-zone source still needs distinct zone-intent handling; physical provider/DST round trips
+  remain pending.
+- **Recurrence and generated response (REC-03/04/05/06, GUEST-01):** bounded FOLLOWING editing and
+  generated THIS RSVP have integrated executors, UI and actual-app synthetic-provider journeys in
+  `NativeFollowingJourneyTest.kt` and `NativeGeneratedRsvpJourneyTest.kt`. They are not generally
+  enabled production clone capabilities. `CalendarApp.kt` supplies `ProviderClonePolicy.Unverified`
+  from `data/calendar/ProviderClonePolicy.kt`, and no production profile is admitted. Generated
+  THIS edit/cancellation/response and nonzero independent-tail splits therefore require review on
+  unverified providers; `ProviderClonePolicyTest.kt` covers the gate. Existing materialized THIS,
+  ALL, bounded FOLLOWING deletion and ordinal-zero behavior retain their separate eligibility.
+  Wider exception/date-set transformations and real Google/Workspace occurrence sets remain pending.
+- **Meeting backend versus interfaces (GUEST-04/06, DET-13):**
+  `data/calendar/CalendarOwnedMeetingWriter.kt` now supports bounded owned one-off field/guest
+  changes and cancellation, with `CalendarOwnedMeetingWriterTest.kt` evidence. The dedicated
+  `ui/events/meetings/create/MeetingCreationController.kt` and its durable codec have
+  `events/meetings/create/MeetingCreationControllerTest.kt` evidence. Guest creation and organizer
+  editing/cancellation interfaces are still unconnected at this cutoff; the live details meeting
+  mutation path in `ui/LiveCalendarDay.kt` is for invitees. Keep these requirements partial and
+  distinguish existing backend support from the missing user-facing routes. No local receipt
+  establishes invitation/update/cancellation delivery to a second account.
+- **Phone presentation and navigation (CAL/VIEW/DET/EDIT):** the production routes now use
+  `ui/events/PhoneEventEditor.kt` and `PhoneEventDetails.kt` through `ui/EventWriteWorkflow.kt` and
+  `ui/LiveCalendarDay.kt`, including the private reminder/widget detail routes. Their fixed toolbar,
+  focused pickers, raw-input retention and privacy scrubbing have component/screenshot evidence in
+  `events/PhoneEventEditorScreenTest.kt`, `events/PhoneEventEditorPresentationTest.kt` and
+  `events/PhoneEventDetailsTest.kt`. `CalendarPhoneNavigationTest.kt` and
+  `PhoneCalendarNavigationJourneyTest.kt` cover the shared navigation across all five views. These
+  are newer evidence for the bounded app routes; they do not prove Google Calendar interaction or
+  pixel parity, physical accessibility, or the full daily-driver acceptance criteria.
+
+Unless a module is stated explicitly, source paths above are relative to
+`app/src/main/kotlin/dev/swapnilraj/calendar/`, and test paths are relative to
+`app/src/test/kotlin/dev/swapnilraj/calendar/`. Manifest activation is in
+`app/src/main/AndroidManifest.xml`. Account/device/beta/signing/release gates below remain pending.
+
+## Historical connected application behavior at bf2ef3f
 
 The app routes day, three-day, week, month and agenda views, calendar/account filtering, default
 destination selection, date navigation, native details and filtered ranged search. Live settings
@@ -95,7 +166,7 @@ implemented. Limit failures remain explicit; incomplete reminder discovery does 
 These are app-side bounds, not a guarantee about the provider's first CursorWindow allocation or
 real-account/device performance.
 
-## Backend work and remaining interfaces
+## Historical backend work and remaining interfaces at bf2ef3f
 
 SQLite CAS is used by meeting response drafts, series editor generation/revision leases and atomic
 grid preparation. Ordinary drafts still need the remaining CAS migration. Review/reload now refuses
