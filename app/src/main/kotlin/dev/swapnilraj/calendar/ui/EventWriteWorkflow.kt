@@ -176,7 +176,7 @@ internal fun EventWriteWorkflow(
         if (!state.loading && state.problem == null && !state.recoveryRequired && !state.reviewRequired && !state.draftReadFailed && request.delete)
             controller.requestDelete()
     }
-    EventEditorSheet(controller, calendars, onDismiss, onSaved, onDeleted,
+    PhoneEventEditor(controller, calendars, onDismiss, onSaved, onDeleted,
         use24Hour = use24Hour,
         onReplacedLaunch = if (onReplacedLaunch != null) ({ value -> latestReplacement?.invoke(value) }) else null,
         onDiscarded = onDismiss)
