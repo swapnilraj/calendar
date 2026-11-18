@@ -7,9 +7,11 @@ an Actions artifact. The draft release assets provide durable storage; this does
 account/device/beta gates or publish a production release.
 
 GitHub requires the workflow file on the repository's default branch before manual dispatch is
-available. Its integration-branch publication does not satisfy that prerequisite; the separate
-CI-only default-branch bootstrap remains pending. This does not require merging an unaccepted
-application release.
+available. The CI-only bootstrap merged in [PR59](https://github.com/swapnilraj/calendar/pull/59)
+and GitHub reports the workflow active (ID423203007). This made manual dispatch available without
+merging the application into main. The signing pipeline also merged into the integration branch
+in [PR58](https://github.com/swapnilraj/calendar/pull/58). No release workflow has been dispatched;
+stable owner-key provisioning and release acceptance remain pending.
 
 Provision the GitHub `release-signing` environment before running it. An owner must supply these
 secrets through GitHub's settings or a trusted local CLI, never a chat, source file, commit or log:

@@ -4,6 +4,22 @@ Audit date: 2026-11-18. Scope: generated-occurrence RSVP (A28), independent FOLL
 creation (A26), and the older guest-free single-exception path (A14). This is a static source
 and fixture audit. It does not establish Android-device or Google/Workspace compatibility.
 
+### Implementation follow-up, 18 November 2026
+
+The findings below preserve the original audit. Subsequent implementation added
+`ProviderClonePolicy` with production default `Unverified`, fresh clone gates in the readers and
+writers, and the projection-limited hidden-payload fixture in `CalendarSeriesWriterTest`.
+`ProviderClonePolicyTest` checks that implicit or incomplete evidence cannot admit cloning. No production
+profile is admitted. The native API35 LOCAL experiment in [the runbook](NATIVE_PROVIDER_PROBE.md)
+does not establish physical-schema completeness or Google/Workspace round-trip compatibility.
+
+The separate A14 acknowledgement defect is also corrected: `CalendarSeriesWriter` now delegates
+to `CalendarExceptionAcknowledgement.read`, requiring the exact canonical
+`content://com.android.calendar/exception/<master>/<positive new ID>` URI, no query or fragment,
+and an ID outside the retained source set. The historical recommendation at the end of this audit
+therefore describes the original defect rather than an outstanding parser change. These fixes do
+not remove the underlying clone-observability limitation.
+
 ## Finding
 
 A null ContentResolver projection is not evidence that the cursor contains every physical
