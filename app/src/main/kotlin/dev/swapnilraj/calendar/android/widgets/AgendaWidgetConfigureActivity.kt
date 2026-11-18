@@ -61,7 +61,14 @@ class AgendaWidgetConfigureActivity : ComponentActivity() {
                         saving = saving, saveError = saveError,
                         onRequestPermission = { calendarPermission.launch(Manifest.permission.READ_CALENDAR) }) }
                     else Column(Modifier.fillMaxSize().systemBarsPadding()) {
-                        Text(stringResource(if (environment == CalendarReadState.Loading) R.string.widget_setup_loading else R.string.widget_unavailable))
+                        Text(stringResource(when (environment) {
+                            CalendarReadState.Loading -> R.string.widget_setup_loading
+                            CalendarReadState.PermissionRequired -> R.string.widget_setup_permission
+                            else -> R.string.widget_unavailable
+                        }))
+                        if (environment == CalendarReadState.PermissionRequired) TextButton(onClick = {
+                            calendarPermission.launch(Manifest.permission.READ_CALENDAR)
+                        }) { Text(stringResource(R.string.widget_setup_allow)) }
                         Text(stringResource(R.string.widget_reconfigure_reboot_note))
                         TextButton(onClick = ::reload) { Text(stringResource(R.string.widget_setup_retry)) }
                         TextButton(onClick = ::finish) { Text(stringResource(R.string.widget_setup_cancel)) }

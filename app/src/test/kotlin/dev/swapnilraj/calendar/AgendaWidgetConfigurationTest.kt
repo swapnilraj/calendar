@@ -100,6 +100,31 @@ class AgendaWidgetConfigurationTest {
         fun close() = scope.cancel()
     }
 
+    @Test fun changesInvalidateSynchronouslyAndAgainAfterCancelledUnknownSaveActuallySettles() = runBlocking {
+        val f = Fixture()
+        var revision = f.runtime.changes.value
+        f.runtime.invalidate()
+        assertTrue(f.runtime.changes.value > revision); revision = f.runtime.changes.value
+        val removal = f.runtime.removed(setOf(1))
+        assertTrue(f.runtime.changes.value > revision)
+        assertFalse(f.text().contains("synthetic secret"))
+        f.commitRemoval(0); removal.join()
+        revision = f.runtime.changes.value
+        val session = f.session()
+        assertTrue(f.runtime.changes.value > revision); revision = f.runtime.changes.value
+        val saving = async { f.runtime.saveFreshConfiguration(session, WidgetConfigurationChoice()) }
+        yield()
+        assertTrue(f.runtime.changes.value > revision)
+        val accepted = f.save(1)
+        saving.cancelAndJoin()
+        revision = f.runtime.changes.value
+        f.commitSave(1, deliver = false) // Durable state may change after the cancelled UI stopped awaiting.
+        accepted.receipt.complete(WidgetSaveReceipt.Unavailable) // Ended operation, unknown ACK.
+        assertTrue(f.runtime.changes.value > revision)
+        assertNotEquals(original.generation, (f.row as AgendaWidgetConfigurationState.Ready).value.generation)
+        f.close()
+    }
+
     @Test fun delayedCleanupIsEnqueuedBeforeObserverLaunchAndSaveCannotOvertakeIt() = runBlocking {
         val paused = Paused(); val f = Fixture(paused)
         f.runtime.removed(setOf(1))

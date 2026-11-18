@@ -9,6 +9,10 @@ import java.time.Clock
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 /** No provider engine, settings defaults, manifest registration, or autonomous application scope.
  * Root wires a bounded shared CalendarReader snapshot adapter and an independent widget job queue.
@@ -27,6 +31,10 @@ class AgendaWidgetRuntime(
         ids.associateWith { WidgetEpoch(it, UUID.randomUUID().toString()) }
     },
 ) {
+    private val mutableChanges = MutableStateFlow(0L)
+    /** A revision trigger, not authority or a successful IO receipt. Readers must revalidate proof. */
+    val changes: StateFlow<Long> = mutableChanges.asStateFlow()
+    private fun changed() { mutableChanges.update { it + 1 } }
     private val revisions = ConcurrentHashMap<Int, Long>()
     private data class Removal(val epoch: WidgetEpoch, val receipt: Deferred<WidgetRemovalReceipt>,
         val display: AgendaWidgetDisplay = AgendaWidgetDisplay.SetupRequired)
@@ -46,6 +54,7 @@ class AgendaWidgetRuntime(
         val ids = widgetIds.intersect(host.widgetIds()).filter { it > 0 }.toSet()
         synchronized(publication) {
             ids.forEach { id -> revisions.merge(id, 1L, Long::plus); publish(id, AgendaWidgetDisplay.Loading) }
+            if (ids.isNotEmpty()) changed()
         }
         val scheduled = ids.isEmpty() || try { scheduler.requestRefresh(ids) } catch (_: RuntimeException) { false }
         if (!scheduled) synchronized(publication) { ids.forEach { publish(it, AgendaWidgetDisplay.Unavailable) } }
@@ -107,8 +116,9 @@ class AgendaWidgetRuntime(
                 val removal = Removal(epoch, receipt)
                 removals[id] = removal
                 cleanup.getOrPut(id) { mutableListOf() }.add(receipt)
+                receipt.invokeOnCompletion { synchronized(publication) { changed() } }
                 removal
-            }
+            }.also { if (ids.isNotEmpty()) changed() }
         }
         val once = AtomicBoolean()
         fun finishOnce() { if (once.compareAndSet(false, true)) finished() }
@@ -125,6 +135,7 @@ class AgendaWidgetRuntime(
                             AgendaWidgetDisplay.SetupRequired else AgendaWidgetDisplay.Unavailable
                         removals[id] = current.copy(display = display)
                         publish(id, display)
+                        changed()
                     }
                 }
             }
@@ -136,7 +147,7 @@ class AgendaWidgetRuntime(
         return job
     }
 
-    suspend fun beginConfiguration(widgetId: Int): WidgetConfigurationSessionResult = try {
+    suspend fun beginConfiguration(widgetId: Int): WidgetConfigurationSessionResult = (try {
         withTimeout(timeoutMillis) {
             require(widgetId in host.widgetIds())
             if (widgetId in blocked) return@withTimeout WidgetConfigurationSessionResult.Unavailable
@@ -157,7 +168,9 @@ class AgendaWidgetRuntime(
         }
     } catch (_: TimeoutCancellationException) { WidgetConfigurationSessionResult.Unavailable }
     catch (cancelled: CancellationException) { throw cancelled }
-    catch (_: Exception) { WidgetConfigurationSessionResult.Unavailable }
+    catch (_: Exception) { WidgetConfigurationSessionResult.Unavailable }).also {
+        if (it is WidgetConfigurationSessionResult.Ready) synchronized(publication) { changed() }
+    }
 
     /** All UI writes use this path. No raw save callback can remove quarantine. Awaiting a receipt
      * does not own/cancel the actor operation; a bounded UI timeout leaves shared cleanup pending.
@@ -170,6 +183,7 @@ class AgendaWidgetRuntime(
                 saves[epoch.widgetId] = it
                 revisions.merge(epoch.widgetId, 1L, Long::plus)
                 publish(epoch.widgetId, AgendaWidgetDisplay.Loading)
+                changed()
             }
         }
         val result = try {
@@ -191,7 +205,11 @@ class AgendaWidgetRuntime(
                     choice.expectedCalendarIdentities.toMap())
                 val receipt = synchronized(publication) {
                     if (!current(attempt)) return@withTimeout WidgetConfigurationSaveResult.Stale
-                    writer.enqueueSave(epoch, configuration)
+                    writer.enqueueSave(epoch, configuration).also { receipt ->
+                        // Independent of the UI coroutine: even an unknown/cancelled ACK must
+                        // invalidate readers once the accepted durable operation actually ends.
+                        receipt.invokeOnCompletion { synchronized(publication) { changed() } }
+                    }
                 }
                 val committed = receipt.await()
                 currentCoroutineContext().ensureActive()
@@ -224,6 +242,7 @@ class AgendaWidgetRuntime(
         if (current(attempt)) {
             saves[attempt.epoch.widgetId] = attempt.copy(display = AgendaWidgetDisplay.Unavailable)
             publish(attempt.epoch.widgetId, AgendaWidgetDisplay.Unavailable)
+            changed()
         }
     }
 
@@ -245,7 +264,11 @@ class AgendaWidgetRuntime(
         if (expected != verified) return AgendaWidgetDisplay.SetupRequired
         val config = stored.value
         if (!validWidgetPins(config.selection, config.expectedCalendarIdentities)) return AgendaWidgetDisplay.SetupRequired
-        val environment = (settings.environment() as? CalendarReadState.Ready)?.value ?: return AgendaWidgetDisplay.Unavailable
+        val environment = when (val state = settings.environment()) {
+            CalendarReadState.PermissionRequired -> return AgendaWidgetDisplay.PermissionRequired
+            is CalendarReadState.Ready -> state.value
+            else -> return AgendaWidgetDisplay.Unavailable
+        }
         val today = clock.instant().atZone(environment.displayZone).toLocalDate()
         require(today.year in 1..9999)
         val selection = when (val choice = config.selection) {
@@ -295,9 +318,14 @@ class AgendaWidgetRuntime(
             else -> AgendaWidgetDisplay.Unavailable
         }
         // A preference failure/change during the query cannot publish old titles or old filters.
+        val latestEnvironment = when (val latest = settings.environment()) {
+            CalendarReadState.PermissionRequired -> return AgendaWidgetDisplay.PermissionRequired
+            is CalendarReadState.Ready -> latest.value
+            else -> return AgendaWidgetDisplay.Unavailable
+        }
         if (clock.instant().atZone(environment.displayZone).toLocalDate() != today ||
             settings.configuration(id) != state || settings.lifecycle(id) != WidgetLifecycleProof.Verified(expected) ||
-            (settings.environment() as? CalendarReadState.Ready)?.value != environment) {
+            latestEnvironment != environment) {
             scheduler.requestRefresh(setOf(id))
             return AgendaWidgetDisplay.Unavailable
         }

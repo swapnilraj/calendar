@@ -115,6 +115,20 @@ class AgendaWidgetTest {
         }
     }
 
+    @Test fun permissionEnvironmentOnEitherSideOfQueryAlwaysShowsPermissionPlaceholder() = runBlocking {
+        for (afterLookup in listOf(false, true)) {
+            val f = Fixture()
+            f.configuration = ready(config.copy(privacy = WidgetPrivacy.EVENT_TITLES))
+            if (afterLookup) f.duringRead = { f.env = CalendarReadState.PermissionRequired }
+            else f.env = CalendarReadState.PermissionRequired
+            assertTrue(f.runtime.refresh())
+            assertEquals(if (afterLookup) 1 else 0, f.reads)
+            assertTrue(text(f.host.last()).contains(context.getString(R.string.widget_permission)))
+            assertFalse(text(f.host.last()).contains("confidential"))
+            f.close()
+        }
+    }
+
     @Test fun busyOnlyIsDefaultAndRenderedTextAccessibilityAndColorRevealNoTitle() = runBlocking {
         val f = Fixture(); f.runtime.refresh()
         val view = f.host.last()

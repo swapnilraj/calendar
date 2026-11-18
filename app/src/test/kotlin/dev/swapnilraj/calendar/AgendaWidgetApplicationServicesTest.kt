@@ -17,6 +17,7 @@ import dev.swapnilraj.calendar.ui.widgets.WidgetSetupChoice
 import java.time.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Before
@@ -29,7 +30,7 @@ import org.robolectric.annotation.Config
 
 /** File-backed app services with an explicit synthetic host-marker boundary, not OS host proof. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = Application::class)
 class AgendaWidgetApplicationServicesTest {
     private val context: Context get() = RuntimeEnvironment.getApplication()
     private val now = Instant.parse("2026-11-18T09:00:00Z")
@@ -66,6 +67,7 @@ class AgendaWidgetApplicationServicesTest {
             }, Clock.fixed(now, ZoneOffset.UTC), bootstrapDispatcher)
         suspend fun configure(privacy: WidgetPrivacy = WidgetPrivacy.BUSY_ONLY): AgendaWidgetConfiguration {
             val result = services.configure(1, WidgetSetupChoice(WidgetCalendarSelection.Explicit(setOf(calendar.id)), privacy), listOf(calendar))
+            services.framework.health.first { it != AgendaWidgetFrameworkHealth.STARTING }
             return (result as WidgetConfigurationSaveResult.Saved).configuration
         }
         suspend fun close() { services.closeAndJoin(); scope.coroutineContext[Job]!!.cancelAndJoin() }
@@ -200,6 +202,7 @@ class AgendaWidgetApplicationServicesTest {
         val restarted = services(restartedScope, Dispatchers.IO)
         try {
             assertEquals(AgendaWidgetConfigurationState.SetupRequired, restarted.configuration(1))
+            restarted.framework.health.first { it != AgendaWidgetFrameworkHealth.STARTING }
             assertTrue(restarted.runtime.refresh()); assertEquals(0, reads)
         } finally { restarted.closeAndJoin(); restartedScope.coroutineContext[Job]!!.cancelAndJoin() }
     }
@@ -251,6 +254,37 @@ class AgendaWidgetApplicationServicesTest {
             val result = f.services.configure(1, WidgetSetupChoice(WidgetCalendarSelection.Explicit(setOf(calendar.id)), WidgetPrivacy.EVENT_TITLES), f.metadata)
             assertEquals(WidgetConfigurationSaveResult.Stale, result)
             assertEquals(saved, (f.services.configuration(1) as AgendaWidgetConfigurationState.Ready).value)
+        } finally { f.close() }
+    }
+
+    @Test fun missingReadEnvironmentPreservesPermissionResultBeforeAndAfterLookup() = runBlocking {
+        val f = Fixture()
+        try {
+            val saved = f.configure()
+            val route = AgendaWidgetRoute.OpenEvent(1, saved.generation, ref,
+                now.atZone(ZoneOffset.UTC).toLocalDate(), widgetCalendarFingerprint(calendar.identity))
+            f.env = CalendarReadState.PermissionRequired
+            assertEquals(AgendaWidgetRouteResult.PermissionRequired, f.services.validateRoute(AgendaWidgetRoute.Today(1, saved.generation)))
+            assertEquals(0, f.reads)
+            f.env = CalendarReadState.Ready(environment)
+            f.afterRead = { f.env = CalendarReadState.PermissionRequired }
+            assertEquals(AgendaWidgetRouteResult.PermissionRequired, f.services.validateRoute(route))
+            assertTrue(f.services.runtime.refresh())
+            assertTrue(f.text().contains(context.getString(R.string.widget_permission)))
+            assertFalse(f.text().contains(event.title))
+        } finally { f.close() }
+    }
+
+    @Test fun allExplicitRoutesCheckFreshNamespaceWhileFollowAppDateRoutesStayDynamic() = runBlocking {
+        val f = Fixture()
+        try {
+            val saved = f.configure()
+            f.metadata = listOf(calendar.copy(account = CalendarAccount("replacement@example.invalid", "local")))
+            val date = now.atZone(ZoneOffset.UTC).toLocalDate()
+            for (route in listOf(AgendaWidgetRoute.Today(1, saved.generation), AgendaWidgetRoute.Create(1, saved.generation),
+                AgendaWidgetRoute.More(1, saved.generation, date)))
+                assertEquals(AgendaWidgetRouteResult.SetupRequired(1), f.services.validateRoute(route))
+            assertEquals(0, f.reads)
         } finally { f.close() }
     }
 

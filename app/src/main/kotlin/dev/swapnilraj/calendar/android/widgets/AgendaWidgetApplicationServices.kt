@@ -178,7 +178,19 @@ class AgendaWidgetApplicationServices internal constructor(
                 return@withTimeout AgendaWidgetRouteResult.SetupRequired(route.widgetId)
             val proof = settings.lifecycle(route.widgetId)
             if (proof != WidgetLifecycleProof.Verified(ready.epoch)) return@withTimeout AgendaWidgetRouteResult.SetupRequired(route.widgetId)
-            val environment = (readEnvironment() as? CalendarReadState.Ready)?.value ?: return@withTimeout AgendaWidgetRouteResult.Unavailable
+            val environment = when (val state = readEnvironment()) {
+                CalendarReadState.PermissionRequired -> return@withTimeout AgendaWidgetRouteResult.PermissionRequired
+                is CalendarReadState.Ready -> state.value
+                else -> return@withTimeout AgendaWidgetRouteResult.Unavailable
+            }
+            if (route !is AgendaWidgetRoute.OpenEvent && ready.value.selection is WidgetCalendarSelection.Explicit) {
+                val metadata = when (val read = readMetadata()) {
+                    CalendarReadState.PermissionRequired -> return@withTimeout AgendaWidgetRouteResult.PermissionRequired
+                    is CalendarReadState.Ready -> read.value
+                    else -> return@withTimeout AgendaWidgetRouteResult.Unavailable
+                }
+                if (!widgetPinsAuthorize(ready.value, metadata)) return@withTimeout AgendaWidgetRouteResult.SetupRequired(route.widgetId)
+            }
             if (route is AgendaWidgetRoute.OpenEvent) {
                 if (route.calendarFingerprint == null) return@withTimeout AgendaWidgetRouteResult.Stale
                 val selection = when (val selected = ready.value.selection) {
@@ -216,8 +228,13 @@ class AgendaWidgetApplicationServices internal constructor(
                     else -> return@withTimeout AgendaWidgetRouteResult.Unavailable
                 }
             }
+            val latestEnvironment = when (val latest = readEnvironment()) {
+                CalendarReadState.PermissionRequired -> return@withTimeout AgendaWidgetRouteResult.PermissionRequired
+                is CalendarReadState.Ready -> latest.value
+                else -> return@withTimeout AgendaWidgetRouteResult.Unavailable
+            }
             if (!isOwnWidget(route.widgetId) || settings.configuration(route.widgetId) != state ||
-                settings.lifecycle(route.widgetId) != proof || (readEnvironment() as? CalendarReadState.Ready)?.value != environment)
+                settings.lifecycle(route.widgetId) != proof || latestEnvironment != environment)
                 return@withTimeout AgendaWidgetRouteResult.Stale
             AgendaWidgetRouteResult.Ready(route, environment)
         } }

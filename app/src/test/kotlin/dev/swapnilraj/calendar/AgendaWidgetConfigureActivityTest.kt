@@ -46,14 +46,19 @@ class AgendaWidgetConfigureActivityTest {
     }
     private fun services(scope: CoroutineScope, markers: Markers,
         metadata: MutableStateFlow<CalendarReadState<List<CalendarInfo>>> = MutableStateFlow(CalendarReadState.Ready(emptyList())),
-        beforeObserve: suspend () -> Unit = {}): AgendaWidgetApplicationServices {
+        beforeObserve: suspend () -> Unit = {},
+        requireEnvironmentPermission: Boolean = false): AgendaWidgetApplicationServices {
         shadowOf(app).grantPermissions(Manifest.permission.READ_CALENDAR)
         shadowOf(app).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
         app.noBackupFilesDir.deleteRecursively(); app.noBackupFilesDir.mkdirs()
         return AgendaWidgetApplicationServices(app, scope,
             AgendaWidgetSnapshotReader { CalendarReadState.Ready(CalendarSnapshot(it, emptyList(), emptyList())) },
             { flow { beforeObserve(); emitAll(metadata) } }, { metadata.value },
-            { CalendarReadState.Ready(AgendaWidgetEnvironment(CalendarSelection.ProviderVisible, ZoneOffset.UTC, true, true)) },
+            {
+                if (requireEnvironmentPermission && app.checkSelfPermission(Manifest.permission.READ_CALENDAR) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                    CalendarReadState.PermissionRequired
+                else CalendarReadState.Ready(AgendaWidgetEnvironment(CalendarSelection.ProviderVisible, ZoneOffset.UTC, true, true))
+            },
             ComponentName(app, MainActivity::class.java), object : AgendaWidgetHost {
                 override fun widgetIds() = setOf(41)
                 override fun size(widgetId: Int) = AgendaWidgetSize(240, 240)
@@ -91,7 +96,7 @@ class AgendaWidgetConfigureActivityTest {
             CalendarAccount("sensitive@example.invalid", "local"), null, null, 700, true, true)
         val metadata = MutableStateFlow<CalendarReadState<List<CalendarInfo>>>(CalendarReadState.Ready(listOf(calendar)))
         var gate: CompletableDeferred<Unit>? = null
-        val services = services(scope, markers, metadata) { gate?.await() }; app.agendaWidgetServices = services
+        val services = services(scope, markers, metadata, beforeObserve = { gate?.await() }); app.agendaWidgetServices = services
         val activity = open()
         try {
             compose.waitUntil { compose.onAllNodesWithText(calendar.displayName).fetchSemanticsNodes().isNotEmpty() }
@@ -133,6 +138,28 @@ class AgendaWidgetConfigureActivityTest {
             compose.onNodeWithTag("widget_setup_follow").assertIsSelected()
             compose.onNodeWithTag("widget_setup_fields").performScrollToNode(hasTestTag("widget_privacy_busy"))
             compose.onNodeWithTag("widget_privacy_busy").assertIsSelected()
+        } finally {
+            compose.runOnUiThread { activity.pause().stop().destroy() }
+            runBlocking { services.closeAndJoin(); scope.coroutineContext[Job]!!.cancelAndJoin() }
+        }
+    }
+
+    @Test fun unavailableCalendarEnvironmentOffersOnlyExplicitReadPermissionRequest() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO); val markers = Markers()
+        val services = services(scope, markers, requireEnvironmentPermission = true); app.agendaWidgetServices = services
+        shadowOf(app).denyPermissions(Manifest.permission.READ_CALENDAR)
+        lateinit var activity: ActivityController<AgendaWidgetConfigureActivity>
+        compose.runOnUiThread {
+            activity = Robolectric.buildActivity(AgendaWidgetConfigureActivity::class.java,
+                Intent(app, AgendaWidgetConfigureActivity::class.java).setAction(AppWidgetManager.ACTION_APPWIDGET_CONFIGURE)
+                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, 41)).setup().visible()
+        }
+        try {
+            compose.waitUntil { compose.onAllNodesWithText(app.getString(R.string.widget_setup_allow)).fetchSemanticsNodes().isNotEmpty() }
+            assertNull(shadowOf(activity.get()).lastRequestedPermission)
+            compose.onNodeWithText(app.getString(R.string.widget_setup_allow)).performClick()
+            assertArrayEquals(arrayOf(Manifest.permission.READ_CALENDAR), shadowOf(activity.get()).lastRequestedPermission.requestedPermissions)
+            assertTrue(markers.values.isEmpty()); assertEquals(Activity.RESULT_CANCELED, shadowOf(activity.get()).resultCode)
         } finally {
             compose.runOnUiThread { activity.pause().stop().destroy() }
             runBlocking { services.closeAndJoin(); scope.coroutineContext[Job]!!.cancelAndJoin() }
