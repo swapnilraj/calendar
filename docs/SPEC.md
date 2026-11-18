@@ -73,6 +73,12 @@ A bounded discovery absence never proves a tracked event disappeared; tracked ke
 separately. Private SQLite delivery history retains generation/post identity and rejects stale action
 tokens after snooze reposts. Background app delivery is not enabled by these components alone.
 
+Native editing retains known visibility and availability and distinguishes unchanged fields from an
+explicit clear. Unknown source metadata is preserved. Duplicate-draft components copy one occurrence
+without guests/recurrence, retaining explicit Private/Public/Confidential choices. Inherited Calendar
+default visibility needs target-calendar-specific approval when its calendar changes; unproven frozen
+legacy commands stay recovery-only. The app duplication action is a separate routing packet.
+
 ## Approved daily-driver target (18 November 2026)
 
 This target supersedes the original phase roadmap and its widget/notification exclusions below.

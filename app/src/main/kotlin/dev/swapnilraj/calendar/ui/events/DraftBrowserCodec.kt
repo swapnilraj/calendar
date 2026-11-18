@@ -18,6 +18,7 @@ data class EditorDraftLaunch internal constructor(
     val rawDate: String,
     val calendarSelected: Boolean,
     private val normalizedSeed: EventDraft?,
+    val notices: List<EditorNotice> = emptyList(),
 ) {
     /** A seed never replaces stored raw fields. No current-date fallback is implicit. */
     fun seed(fallbackDate: LocalDate, fallbackZone: ZoneId): EventDraft = normalizedSeed ?: EventDraft(
@@ -75,7 +76,7 @@ object DraftBrowserCodec {
             val launch = EditorDraftLaunch(record.id, kind, ref,
                 submitted || retained != null && frozen == null,
                 raw.optString("title"), raw.optString("startDate"),
-                raw.getString("calendarId").toLongOrNull()?.let { it >= 0 } == true, seed)
+                raw.getString("calendarId").toLongOrNull()?.let { it >= 0 } == true, seed, EditorNoticeCodec.read(raw))
             DraftBrowserItem(record.id, record.updatedAt, launch, null)
         } catch (_: Exception) { DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNREADABLE) }
     }
@@ -91,7 +92,8 @@ object DraftBrowserCodec {
                 fun <T> matches(change: FieldChange<T>, actual: T): Boolean = change == FieldChange.Keep || (change as? FieldChange.Set)?.value == actual
                 matches(patch.title, normalized.title) && matches(patch.location, normalized.location) &&
                     matches(patch.description, normalized.description) && matches(patch.time, normalized.time) &&
-                    matches(patch.eventZone, normalized.eventZone) && matches(patch.alertMinutes, normalized.alertMinutes)
+                    matches(patch.eventZone, normalized.eventZone) && matches(patch.alertMinutes, normalized.alertMinutes) &&
+                    matches(patch.availability, normalized.availability) && matches(patch.privacy, normalized.privacy)
             }
             is FrozenEditorSubmission.Delete -> true // Unsaved raw fields are not part of a deletion request.
         }
@@ -118,7 +120,9 @@ object DraftBrowserCodec {
         val alerts = value.getJSONArray("alerts")
         EventDraft(CalendarId(value.getLong("calendarId")), time,
             value.optString("zone").takeIf(String::isNotBlank)?.let(ZoneId::of), value.getString("title"),
-            value.getString("location"), value.getString("description"), (0 until alerts.length()).map(alerts::getInt))
+            value.getString("location"), value.getString("description"), (0 until alerts.length()).map(alerts::getInt),
+            if (value.has("availability") && !value.isNull("availability")) value.getInt("availability") else null,
+            if (value.has("privacy") && !value.isNull("privacy")) value.getInt("privacy") else null)
     } catch (_: Exception) { null }
 }
 
