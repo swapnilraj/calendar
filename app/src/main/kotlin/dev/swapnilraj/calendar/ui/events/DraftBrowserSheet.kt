@@ -17,6 +17,7 @@ import dev.swapnilraj.calendar.android.navigation.*
 import dev.swapnilraj.calendar.core.EventTime
 import dev.swapnilraj.calendar.ui.events.meetings.MeetingResponseLaunch
 import dev.swapnilraj.calendar.ui.events.meetings.create.MeetingCreationLaunch
+import dev.swapnilraj.calendar.ui.events.meetings.owned.OwnedMeetingLaunch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -40,7 +41,8 @@ fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorD
     onOpenMeeting: ((MeetingResponseLaunch) -> Unit)? = null,
     onOpenSeedReview: ((DraftRecord) -> Unit)? = null,
     onOpenEditReview: ((DraftRecord, DraftRecord?) -> Unit)? = null,
-    onOpenMeetingCreation: ((MeetingCreationLaunch) -> Unit)? = null) {
+    onOpenMeetingCreation: ((MeetingCreationLaunch) -> Unit)? = null,
+    onOpenOwnedMeeting: ((OwnedMeetingLaunch) -> Unit)? = null) {
     val context = LocalContext.current
     var revision by remember { mutableIntStateOf(0) }
     val state by produceState<DraftBrowserState>(DraftBrowserState.Loading, store, revision) {
@@ -76,7 +78,7 @@ fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorD
         catch (_: Exception) { value = DraftBrowserState.Unavailable }
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone, onOpenSeries, onOpenMeeting, onOpenSeedReview, onOpenEditReview, onOpenMeetingCreation)
+        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone, onOpenSeries, onOpenMeeting, onOpenSeedReview, onOpenEditReview, onOpenMeetingCreation, onOpenOwnedMeeting)
     }
 }
 
@@ -86,7 +88,8 @@ fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen:
     onOpenMeeting: ((MeetingResponseLaunch) -> Unit)? = null,
     onOpenSeedReview: ((DraftRecord) -> Unit)? = null,
     onOpenEditReview: ((DraftRecord, DraftRecord?) -> Unit)? = null,
-    onOpenMeetingCreation: ((MeetingCreationLaunch) -> Unit)? = null) {
+    onOpenMeetingCreation: ((MeetingCreationLaunch) -> Unit)? = null,
+    onOpenOwnedMeeting: ((OwnedMeetingLaunch) -> Unit)? = null) {
     val locale = LocalLocale.current.platformLocale
     val formatter = remember(locale, displayZone) { DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
         .withLocale(locale).withZone(displayZone) }
@@ -110,6 +113,7 @@ fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen:
                             val meeting = item.meetingPreview
                             val seed = item.seedReview
                             val creation = item.meetingCreation
+                            val owned = item.ownedMeeting
                             val edit = item.editReview
                             val editLaunch = item.editLaunch
                             if (item.editRecord != null && (edit != null || editLaunch != null)) {
@@ -118,6 +122,13 @@ fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen:
                                 if (editLaunch?.needsRecovery == true) Text(stringResource(R.string.events_drafts_needs_recovery))
                                 if (onOpenEditReview != null) TextButton(onClick = { onOpenEditReview(item.editRecord, item.editCompanion) }, modifier = Modifier.heightIn(min = 48.dp)) {
                                     Text(stringResource(if (editLaunch?.needsRecovery == true) R.string.events_drafts_recover else R.string.events_drafts_open))
+                                }
+                            } else if (owned != null) {
+                                Text(owned.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.owned_meeting_edit))
+                                if (owned.launch.needsRecovery) Text(stringResource(R.string.events_drafts_needs_recovery))
+                                if (onOpenOwnedMeeting != null) TextButton(onClick = { onOpenOwnedMeeting(owned.launch) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                                    Text(stringResource(if (owned.launch.needsRecovery) R.string.events_drafts_recover else R.string.events_drafts_open))
                                 }
                             } else if (creation != null) {
                                 Text(item.meetingCreationTitle.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)

@@ -29,6 +29,16 @@ existing draft, permission, conflict and recovery rules; it does not authorize w
 dismissing. Details lose their old payload and actions immediately when the read state loses
 authority. Standalone legacy sheets remain available to existing component fixtures.
 
+Owned one-off meeting details open a dedicated full-height organizer editor after exact occurrence,
+calendar namespace and issued-rights checks. Existing guest identity and response metadata are
+read-only; supported guest additions, removals and role changes produce sparse native commands.
+Unknown values remain unchanged. Cancellation is a separate confirmed action and excludes unsaved
+field/guest edits. Opening, closing, granting permission and restoring a draft never submit a write.
+The browser restores the exact owned feature/generation; frozen recovery keeps its original command.
+Read-permission loss masks the presentation while retaining in-flight cleanup. A draft replaced by
+another session cannot be overwritten or deleted; an explicit close warning permits leaving it.
+These local organizer actions do not establish server delivery or recurring meeting support.
+
 The live native creation editor supports authored daily, weekly, monthly and yearly rules with
 interval, count or inclusive date limits, explicit master-time review and durable frozen recovery.
 A recurring local save is reported only after known-master journal receipt and actual first native

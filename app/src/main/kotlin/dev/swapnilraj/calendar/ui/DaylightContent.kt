@@ -68,6 +68,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
     val preferencesUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_preferences_unavailable)
     val localSaved = stringResource(dev.swapnilraj.calendar.R.string.navigation_local_saved)
     val localDeleted = stringResource(dev.swapnilraj.calendar.R.string.navigation_local_deleted)
+    val localCancelled = stringResource(dev.swapnilraj.calendar.R.string.owned_meeting_cancelled)
     val draftUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_draft_unavailable)
     val scope = rememberCoroutineScope()
     var remindersOpen by rememberSaveable { mutableStateOf(false) }
@@ -165,6 +166,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
                         drafts = app.calendarLocalStore,
                         onLocalSaved = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localSaved) } },
                         onLocalDeleted = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localDeleted) } },
+                        onLocalCancelled = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localCancelled) } },
                         onDraftFailure = { scope.launch { snackbar.showSnackbar(draftUnavailable) } },
                         onPreferenceFailure = { scope.launch { snackbar.showSnackbar(preferencesUnavailable) } },
                         background = { date ->

@@ -2,6 +2,7 @@ package dev.swapnilraj.calendar.ui.events
 
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.meetings.*
+import dev.swapnilraj.calendar.ui.events.meetings.owned.*
 import dev.swapnilraj.calendar.android.navigation.CalendarEditReviewPreview
 import dev.swapnilraj.calendar.android.navigation.calendarEditReviewPreview
 import dev.swapnilraj.calendar.ui.events.meetings.create.*
@@ -43,7 +44,8 @@ data class DraftBrowserItem(val recordId: String, val updatedAt: Instant,
     val seedRecord: DraftRecord? = null, val editReview: CalendarEditReviewPreview? = null,
     val editRecord: DraftRecord? = null, val editCompanion: DraftRecord? = null,
     val editLaunch: EditorDraftLaunch? = null,
-    val meetingCreation: MeetingCreationLaunch? = null, val meetingCreationTitle: String = "")
+    val meetingCreation: MeetingCreationLaunch? = null, val meetingCreationTitle: String = "",
+    val ownedMeeting: OwnedMeetingDraftPreview? = null)
 
 /** Reads the feature's versioned opaque payload without normalizing or saving incomplete fields. */
 object DraftBrowserCodec {
@@ -51,6 +53,11 @@ object DraftBrowserCodec {
         // Identify the feature before overlapping legacy version numbers. A damaged invitation
         // response must never be interpreted as an ordinary editor or series draft.
         val feature = try { JSONObject(record.payload).opt("feature") } catch (_: Exception) { null }
+        if (record.version == OwnedMeetingDraftCodec.VERSION || feature == "owned-meeting-edit") {
+            val preview = OwnedMeetingDraftCodec.preview(record)
+            return DraftBrowserItem(record.id, record.updatedAt, null,
+                if (preview == null) DraftReadIssue.UNREADABLE else null, ownedMeeting = preview)
+        }
         if (record.version == 8 || feature == "calendar-edit-review") {
             val preview = calendarEditReviewPreview(record)
             return DraftBrowserItem(record.id, record.updatedAt, null,
