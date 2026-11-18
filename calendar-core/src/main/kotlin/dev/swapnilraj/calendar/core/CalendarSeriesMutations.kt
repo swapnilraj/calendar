@@ -10,6 +10,16 @@ data class SeriesMasterFields(
     val privacy: Int? = null,
 )
 
+enum class SeriesActionLimitation { UNKNOWN, UNSUPPORTED, READ_ONLY, REVIEW_REQUIRED }
+
+/** Issued by the mutation adapter, not inferred from a readable graph or guest-policy flags. */
+data class SeriesScopeCapabilities(
+    val edit: AccessDecision = AccessDecision.UNKNOWN,
+    val fields: Set<EditableField> = emptySet(),
+    val delete: AccessDecision = AccessDecision.UNKNOWN,
+    val limitation: SeriesActionLimitation = SeriesActionLimitation.UNKNOWN,
+)
+
 /** The opaque token binds selected identity, the complete master/exception graph and child sets. */
 data class EditableSeries(
     val selectedDetails: EventDetails,
@@ -17,6 +27,7 @@ data class EditableSeries(
     val snapshot: RecurrenceSeriesSnapshot,
     val token: EditToken,
     val allowedFields: Set<EditableField>,
+    val scopes: Map<RecurrenceScope, SeriesScopeCapabilities> = emptyMap(),
 )
 
 sealed interface SeriesReadResult {
