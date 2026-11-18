@@ -1,5 +1,10 @@
 # Google Calendar Android feature and workflow audit
 
+This document preserves the original audit baseline. For the later implementation, see the
+[151-item reconciliation](audit/implementation-reconciliation.md) and the
+[current progress ledger](DAILY_DRIVER_PROGRESS.md). Historical defect probes and totals below are
+not current feature-completion counts.
+
 Daylight needs a broader read/write calendar product to satisfy the expected everyday workflows:
 choosing calendars, navigating months, creating appointments, managing meetings and receiving
 reminders. The present implementation is a read-only day screen with weather. Its successful build

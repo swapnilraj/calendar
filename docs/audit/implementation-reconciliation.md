@@ -64,8 +64,8 @@ bounds, not a guarantee about the provider's first CursorWindow allocation or re
   Runtime wiring exists, but user-facing setup/test-alert enablement and exact notification open
   routing are unfinished. No actual delivery, sound, vibration, Doze, reboot or duplicate-alert-device
   claim is made. The setup screen alone does not enable reminders.
-- **Widgets:** agenda renderer/configuration/framework/runtime components are tested. Durable FIFO
-  configuration/host-bootstrap proof and live application/manifest/navigation integration remain
+- **Widgets:** agenda renderer/configuration/framework/runtime and durable FIFO configuration storage
+  components are tested. Concrete host-bootstrap proof and live application/manifest/navigation integration remain
   unfinished. The launcher cannot be called an enabled schedule widget. No month widget exists.
 - **Meetings:** exposed organizers, guests, responses and existing links are readable. Dedicated
   rights/token/guest-delta contracts exist, but no enabled invitation, RSVP, guest-management or
@@ -94,7 +94,7 @@ in the CSV rather than silently counted as implemented.
 | Durable APK release | Pending | Stable signing and upgrade/install verification, checksum, accurate limitations/release notes and a durable downloadable APK. A debug APK is not this gate. |
 
 Implementation priority follows dependencies: atomic durable draft/fencing and remaining recurrence
-execution; meeting backend/drafts/native UI; reminder setup/open routing and widget actor/bootstrap/
+execution; meeting backend/drafts/native UI; reminder setup/open routing and widget bootstrap/
 application integration; slot/drag/resize, external intents and remaining settings/weather behaviors.
 Account/device gates proceed only with dedicated authorized fixtures. A blocked external gate does
 not turn a component test into device proof or prevent independent implementation work.
