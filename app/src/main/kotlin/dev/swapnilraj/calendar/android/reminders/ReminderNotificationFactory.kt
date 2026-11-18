@@ -31,9 +31,10 @@ class ReminderNotificationFactory(private val context: Context, private val targ
     }
 
     fun build(details: EventDetails, due: Instant, displayZone: ZoneId,
-        use24Hour: Boolean = DateFormat.is24HourFormat(context)): ReminderNotification {
+        use24Hour: Boolean = DateFormat.is24HourFormat(context),
+        notificationIdentity: ReminderIdentity = ReminderIdentity(details.occurrence.ref, due)): ReminderNotification {
         createChannel()
-        val identity = ReminderIdentity(details.occurrence.ref, due)
+        val identity = notificationIdentity
         val open = ReminderIntents.intent(context, targets, identity, ReminderIntents.ACTION_OPEN)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
