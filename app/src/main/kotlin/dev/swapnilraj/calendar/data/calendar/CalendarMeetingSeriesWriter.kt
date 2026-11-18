@@ -28,6 +28,7 @@ internal class CalendarMeetingSeriesWriter(
 ) {
     private val sourceReader = CalendarMeetingSeriesReader(resolver, reader, hasPermission, readBudgets, planningBudget)
     private val mutex = Mutex()
+    private val generated = CalendarMeetingGeneratedResponseWriter(resolver, reader, sourceReader, store, hasPermission, this, io, readBudgets, planningBudget)
     suspend fun loadForEdit(selected: EventRef): MeetingReadResult<EditableMeeting> = withContext(io + readBudgetContext(readBudgets.mutation)) {
         try {
             ensureRead()
@@ -36,11 +37,22 @@ internal class CalendarMeetingSeriesWriter(
             if (sourceReader.capture(selected, meetingIdentity(before.calendar), false).canonical(readBudgets.maxCanonicalBytes) != canonical) throw MeetingSeriesConflict()
             val scopes = listOf(RecurrenceScope.THIS, RecurrenceScope.ALL).associateWith { scope ->
                 MeetingScopeAccess(respond = if (before.targets(scope) != null) AccessDecision.ALLOWED else AccessDecision.DENIED)
+            }.toMutableMap()
+            var finalRaw = canonical
+            var token = EditToken(MeetingSeriesSource.token(canonical))
+            val audit = generated.audit(before)
+            if (audit != null) {
+                val fresh = sourceReader.capture(selected, meetingIdentity(before.calendar), false)
+                if (fresh.canonical(readBudgets.maxCanonicalBytes) != canonical) throw MeetingSeriesConflict()
+                val afterAudit = generated.audit(fresh) ?: throw MeetingSeriesConflict()
+                if (audit.canonical(readBudgets.maxCanonicalBytes) != afterAudit.canonical(readBudgets.maxCanonicalBytes)) throw MeetingSeriesConflict()
+                finalRaw = audit.canonical(readBudgets.maxCanonicalBytes)
+                token = EditToken(MeetingGeneratedSource.token(finalRaw))
+                scopes[RecurrenceScope.THIS] = MeetingScopeAccess(respond = AccessDecision.ALLOWED)
             }
             if (scopes.values.none { it.respond == AccessDecision.ALLOWED }) return@withContext MeetingReadResult.NeedsReview("No implemented response scope has complete self-attendee proof")
-            val token = EditToken(MeetingSeriesSource.token(canonical))
             ensureRead()
-            store.saveEdit(token.value, canonical)
+            store.saveEdit(token.value, finalRaw)
             MeetingReadResult.Ready(EditableMeeting(requireNotNull(before.details).copy(canEdit = AccessDecision.DENIED,
                 canRespond = AccessDecision.ALLOWED), token, scopes))
         } catch (_: ProviderReadLimitExceeded) { MeetingReadResult.LimitExceeded }
@@ -58,7 +70,7 @@ internal class CalendarMeetingSeriesWriter(
         if (command !is MeetingCommand.Respond || command.scope == RecurrenceScope.FOLLOWING)
             return@withLock MeetingMutationResult.Unsupported("Only existing THIS and complete ALL series responses are implemented")
         if (command.scope == RecurrenceScope.THIS && selected.eventId == selected.recurrence?.masterEventId)
-            return@withLock MeetingMutationResult.Unsupported("A generated occurrence needs a separately verified new exception")
+            return@withLock generated.mutate(id, selected, token, command)
         if (!permissions()) return@withLock common(MutationResult.PermissionRequired)
         var attempted = false
         var dispatch: CalendarLocalStore.Operation? = null
@@ -74,11 +86,12 @@ internal class CalendarMeetingSeriesWriter(
                 if (proof(existing) == null) return@withLock common(MutationResult.Uncertain(id, null))
             }
             val raw = store.edit(token.value) ?: throw MeetingSeriesConflict()
-            if (MeetingSeriesSource.token(raw) != token.value) throw MeetingSeriesConflict()
-            val old = MeetingSeriesSource.decode(raw, readBudgets.maxCanonicalBytes)
+            val authority = MeetingSeriesAuthority.decode(raw, token, readBudgets.maxCanonicalBytes)
+            val old = authority.base
             if (old.selected != selected) throw MeetingSeriesConflict()
-            val current = sourceReader.capture(selected, meetingIdentity(old.calendar))
-            if (current.canonical(readBudgets.maxCanonicalBytes) != raw) throw MeetingSeriesConflict()
+            val current = sourceReader.capture(selected, meetingIdentity(old.calendar), authority.generated == null)
+            if (authority.generated != null) generated.validateNativeSelection(current)
+            if (current.canonical(readBudgets.maxCanonicalBytes) != authority.baseRaw) throw MeetingSeriesConflict()
             val targets = current.targets(command.scope) ?: return@withLock MeetingMutationResult.NeedsReview("The selected scope lacks complete self-attendee proof")
             val status = CalendarMeetingWriter.responseStatus(command.response)
             val operations = assertions(current)
@@ -136,7 +149,7 @@ internal class CalendarMeetingSeriesWriter(
 
     suspend fun recover(id: String): MeetingMutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
         try { if (store.operationHeader(id)?.phase == "ABANDONED") return@withLock common(MutationResult.Retired(id))
-            ensureRead(); store.operation(id)?.let { recover(it, true) } ?: common(MutationResult.Unavailable) }
+            ensureRead(); store.operation(id)?.let { if (CalendarMeetingGeneratedResponseWriter.handles(it.kind)) generated.recover(id) else recover(it, true) } ?: common(MutationResult.Unavailable) }
         catch (_: SecurityException) { common(MutationResult.PermissionRequired) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { common(MutationResult.Uncertain(id, null)) }
@@ -151,8 +164,7 @@ internal class CalendarMeetingSeriesWriter(
         require(scope != RecurrenceScope.FOLLOWING && operation.kind == kind(scope))
         val token = command.getString("token")
         val raw = store.edit(token) ?: error("Missing source")
-        require(MeetingSeriesSource.token(raw) == token)
-        val old = MeetingSeriesSource.decode(raw, readBudgets.maxCanonicalBytes)
+        val old = MeetingSeriesAuthority.decode(raw, EditToken(token), readBudgets.maxCanonicalBytes).base
         require(old.selected == meetingParseRef(command.getJSONObject("selected")) && old.masterId == receipt.getLong("master"))
         require(meetingIdentity(old.calendar) == meetingParseIdentity(receipt.getJSONObject("identity")))
         val targets = old.targets(scope) ?: error("Scope not proven")
@@ -172,10 +184,11 @@ internal class CalendarMeetingSeriesWriter(
             else if (safeRetry) MutationResult.SafeToRetry(operation.id) else MutationResult.Unavailable)
         if (operation.phase !in setOf("COMMITTED", "VERIFIED") || proof.getString("stage") != "committed") return common(MutationResult.Uncertain(operation.id, null))
         val command = proof.getJSONObject("command")
-        val old = MeetingSeriesSource.decode(store.edit(command.getString("token")) ?: return common(MutationResult.Uncertain(operation.id, null)), readBudgets.maxCanonicalBytes)
+        val authority = MeetingSeriesAuthority.decode(store.edit(command.getString("token")) ?: return common(MutationResult.Uncertain(operation.id, null)), EditToken(command.getString("token")), readBudgets.maxCanonicalBytes)
+        val old = authority.base
         val uncertain = common(MutationResult.Uncertain(operation.id, old.selected.eventId))
         val targetIdentity = meetingParseIdentity(proof.getJSONObject("identity"))
-        val current = try { sourceReader.capture(old.selected, targetIdentity) }
+        val current = try { sourceReader.capture(old.selected, targetIdentity, authority.generated == null).also { if (authority.generated != null) generated.validateNativeSelection(it) } }
             catch (_: MeetingSeriesDenied) { return uncertain }
             catch (_: MeetingSeriesReview) { return uncertain }
             catch (_: MeetingSeriesConflict) { return uncertain }
@@ -192,6 +205,8 @@ internal class CalendarMeetingSeriesWriter(
         return MeetingMutationResult.LocalSaved(old.selected, RecurrenceScope.valueOf(command.getString("scope")))
     }
 
+    internal fun generatedAssertions(source: MeetingSeriesSource) = assertions(source)
+    internal fun generatedCandidates(operations: ArrayList<ContentProviderOperation>, source: MeetingSeriesSource) = addCandidateAssertions(operations, source)
     private fun assertions(source: MeetingSeriesSource) = arrayListOf(assertRow(ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI, source.selected.calendarId.value), source.calendar)).apply {
         addMembershipAssertions(this, source)
         source.events.forEach { add(assertRow(eventUri(requireNotNull(it.meetingLong("_id"))), it)) }
@@ -232,14 +247,16 @@ internal class CalendarMeetingSeriesWriter(
         private const val ThisKind = "MEETING_SERIES_V1_THIS_RESPOND_EXISTING"
         private const val AllKind = "MEETING_SERIES_V1_ALL_RESPOND"
         private val Bookkeeping = setOf("dirty", "mutators")
-        fun handles(kind: String) = kind == ThisKind || kind == AllKind
+        fun handles(kind: String) = kind == ThisKind || kind == AllKind || CalendarMeetingGeneratedResponseWriter.handles(kind)
         internal fun retirementFingerprint(selected: EventRef, token: EditToken, command: MeetingCommand): Pair<String, String>? {
             val recurrence = selected.recurrence ?: return null
-            if (command !is MeetingCommand.Respond || command.scope == RecurrenceScope.FOLLOWING ||
-                command.scope == RecurrenceScope.THIS && selected.eventId == recurrence.masterEventId) return null
+            if (command !is MeetingCommand.Respond || command.scope == RecurrenceScope.FOLLOWING) return null
+            if (command.scope == RecurrenceScope.THIS && selected.eventId == recurrence.masterEventId)
+                return CalendarMeetingGeneratedResponseWriter.fingerprint(selected, token, command)
             return kind(command.scope) to meetingHash(CommandFeature + commandJson(selected, token, command).toString())
         }
         private fun kind(scope: RecurrenceScope) = if (scope == RecurrenceScope.THIS) ThisKind else AllKind
+        internal fun frozenCommandJson(selected: EventRef, token: EditToken, command: MeetingCommand.Respond) = commandJson(selected, token, command)
         private fun commandJson(selected: EventRef, token: EditToken, command: MeetingCommand.Respond) = JSONObject().put("selected", meetingRefJson(selected))
             .put("token", token.value).put("scope", command.scope.name).put("response", command.response.name)
         private fun common(result: MutationResult) = MeetingMutationResult.Common(result)

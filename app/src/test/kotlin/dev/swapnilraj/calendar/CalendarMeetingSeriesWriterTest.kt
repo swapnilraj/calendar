@@ -23,10 +23,17 @@ class CalendarMeetingSeriesWriterTest {
     private val start = Instant.parse("2026-11-18T09:00:00Z")
     private val generated = EventRef(CalendarId(2), 10, start.plusSeconds(86_400), start.plusSeconds(90_000), RecurrenceRef(10, start.plusSeconds(86_400)))
     private val moved = EventRef(CalendarId(2), 11, start.plusSeconds(20 * 86_400), start.plusSeconds(20 * 86_400 + 3_600), RecurrenceRef(10, start.plusSeconds(2 * 86_400)))
-    private class Provider(val start: Instant) : ContentProvider() {
+    internal class Provider(val start: Instant) : ContentProvider() {
         val db = SQLiteDatabase.create(null)
         data class Query(val path: String, val fields: List<String>?, val where: String?, val args: List<String>)
         val queries = mutableListOf<Query>()
+        var generatedMode = false
+        var nextGeneratedId = 1000L
+        var failCorrection = false
+        var generatedEndDelta = 0L
+        var generatedAck: ((Uri) -> Uri)? = null
+        var delayGeneratedInstance = false
+        val correctionValues = mutableListOf<ContentValues>()
         var batchCount = 0
         var updateCount = 0
         var failUpdateAt: Int? = null
@@ -49,6 +56,21 @@ class CalendarMeetingSeriesWriterTest {
             // must not capture them as child metadata or read private nonself guest payloads.
             db.execSQL("CREATE VIEW attendee_view AS SELECT a.*, e.selfAttendeeStatus AS selfAttendeeStatus, e.rrule AS rrule, e.eventStatus AS eventStatus FROM attendees a JOIN events e ON a.event_id=e._id")
             addGuest(10, 999)
+        }
+        fun enableGenerated() {
+            generatedMode = true
+            db.execSQL("ALTER TABLE events ADD COLUMN hasExtendedProperties INTEGER DEFAULT 0")
+            db.execSQL("ALTER TABLE events ADD COLUMN hasAlarm INTEGER DEFAULT 0")
+            (1..10).forEach { db.execSQL("ALTER TABLE events ADD COLUMN sync_data$it TEXT") }
+            db.execSQL("UPDATE events SET opaque_event=NULL")
+            db.execSQL("UPDATE attendees SET opaque_child=NULL")
+            db.execSQL("UPDATE events SET guestsCanSeeGuests=1,hasAlarm=1 WHERE _id=10")
+            db.execSQL("CREATE TABLE extendedproperties (_id INTEGER,event_id INTEGER,name TEXT,value TEXT)")
+            db.execSQL("DROP VIEW attendee_view")
+            db.execSQL("CREATE VIEW attendee_view AS SELECT a.*, e.selfAttendeeStatus,e.rrule,e.eventStatus,e.guestsCanSeeGuests,e.dtstart,e.dtend FROM attendees a JOIN events e ON a.event_id=e._id")
+            db.execSQL("DROP VIEW instance_view")
+            db.execSQL("""CREATE VIEW instance_view AS SELECT i.event_id,i.begin,i.end,e.* FROM instances i JOIN events e ON i.event_id=e._id
+                WHERE e.original_id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM events x WHERE x.original_id=e._id AND x.originalInstanceTime=i.begin AND x.deleted=0)""")
         }
         private fun event(id: Long, original: Long? = null, actual: Long = 0, cancelled: Boolean = false, deleted: Boolean = false): Map<String, Any?> = mapOf(
             "_id" to id, "calendar_id" to 2L, "_sync_id" to if (id == 10L) "master-A" else "exception-$id", "uid2445" to "uid-$id",
@@ -93,16 +115,58 @@ class CalendarMeetingSeriesWriterTest {
             if (selection != null) { where += "($selection)"; bind += args.orEmpty() }
             if (path == "instances") { where += "begin < ? AND end > ?"; bind += uri.pathSegments[3]; bind += uri.pathSegments[2] }
             if (path == "attendees") {
-                check(fields != null) { "No raw joined attendee payload" }
-                val explicitlyVisible = selection == "event_id = ?" && args?.firstOrNull()?.toLongOrNull()?.let { value("events", "guestsCanSeeGuests", it) == "1" } == true
-                check(item != null || selection?.startsWith("_id IN") == true || selection?.contains("TRIM(attendeeEmail") == true || explicitlyVisible) { "No complete hidden guest list" }
+                val explicitlyVisible = selection?.startsWith("event_id = ?") == true && args?.firstOrNull()?.toLongOrNull()?.let { value("events", "guestsCanSeeGuests", it) == "1" } == true
+                check(fields != null || generatedMode && explicitlyVisible) { "No raw hidden joined attendee payload" }
+                check(item != null || selection?.startsWith("_id IN") == true || generatedMode && selection?.startsWith("_id = ? AND event_id = ?") == true || selection?.contains("TRIM(attendeeEmail") == true || explicitlyVisible || generatedMode && db.inTransaction()) { "No complete hidden guest list" }
             }
             val table = when (path) { "attendees" -> "attendee_view"; "instances" -> "instance_view"; else -> path }
             return db.query(table, fields, where.joinToString(" AND ").takeIf(String::isNotEmpty), bind.toTypedArray(), null, null, sort)
         }
-        override fun insert(uri: Uri, values: ContentValues?): Uri? = error("Existing RSVP must not insert")
+        override fun insert(uri: Uri, values: ContentValues?): Uri {
+            check(generatedMode && uri == ContentUris.withAppendedId(CalendarContract.Events.CONTENT_EXCEPTION_URI, 10))
+            val supplied = requireNotNull(values)
+            val allowed = setOf("originalInstanceTime","selfAttendeeStatus","dtstart","duration","eventTimezone","allDay","eventStatus")
+            check(supplied.keySet().all { it in allowed }) { "Native exception whitelist rejects DTEND/RRULE" }
+            val master = db.query("events", null, "_id=10", null, null, null, null).use { c -> check(c.moveToFirst()); ContentValues().apply {
+                c.columnNames.forEachIndexed { i, key -> if (c.isNull(i)) putNull(key) else put(key, c.getString(i)) }
+            } }
+            val id = nextGeneratedId++
+            master.put("_id",id); master.putNull("_sync_id"); (1..10).forEach { master.putNull("sync_data$it") }
+            listOf("rrule","rdate","exrule","exdate","duration").forEach(master::putNull)
+            master.put("original_id",10); master.put("original_sync_id",value("events","_sync_id",10)); master.put("originalAllDay",supplied.getAsInteger("allDay"))
+            master.putAll(supplied); master.putNull("duration")
+            val duration = supplied.getAsString("duration")
+            val seconds = Regex("PT([0-9]+)S").matchEntire(duration)?.groupValues?.get(1)?.toLong()
+                ?: Regex("P([0-9]+)D").matchEntire(duration)!!.groupValues[1].toLong().times(86400)
+            check(seconds in 1..Int.MAX_VALUE.toLong())
+            master.put("dtend",Math.addExact(supplied.getAsLong("dtstart"),Math.multiplyExact(seconds,1000)))
+            db.insertOrThrow("events",null,master)
+            fun clone(table: String, fields: Array<String>) {
+                val rows = db.query(table,fields,"event_id=10",null,null,null,null).use { c -> buildList {
+                    while(c.moveToNext())add(ContentValues().apply { fields.forEachIndexed { i,k -> if(c.isNull(i))putNull(k)else put(k,c.getString(i)) } })
+                } }
+                for(row in rows) { row.put("_id",nextGeneratedId++);row.put("event_id",id)
+                    if(table=="attendees" && row.getAsString("attendeeEmail")=="actor@example.invalid")row.put("attendeeStatus",supplied.getAsInteger("selfAttendeeStatus"))
+                    db.insertOrThrow(table,null,row)
+                }
+            }
+            clone("attendees", CalendarMeetingWriter.attendeeFields.filter { it !in setOf("_id","event_id") }.toTypedArray())
+            clone("reminders",arrayOf("minutes","method"));clone("extendedproperties",arrayOf("name","value"))
+            if(!delayGeneratedInstance)insertRow("instances",mapOf("event_id" to id,"begin" to supplied.getAsLong("dtstart"),"end" to master.getAsLong("dtend")))
+            val result=ContentUris.withAppendedId(uri,id)
+            return generatedAck?.invoke(result) ?: result
+        }
         override fun delete(uri: Uri, selection: String?, args: Array<out String>?): Int = error("Existing RSVP must not delete")
         override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<out String>?): Int {
+            if(generatedMode && uri == CalendarContract.Events.CONTENT_URI) {
+                if(failCorrection)throw OperationApplicationException("Synthetic correction rollback")
+                check(values!!.keySet()==setOf("dtstart","dtend","eventTimezone","allDay","originalInstanceTime","originalAllDay"))
+                correctionValues+=ContentValues(values)
+                val id=db.query("events",arrayOf("_id"),selection,args,null,null,null).use { c -> if(c.moveToFirst())c.getLong(0)else null }
+                val count=db.update("events",values,selection,args)
+                if(id!=null)db.update("instances",ContentValues().apply {put("end",values.getAsLong("dtend")+generatedEndDelta)},"event_id=?",arrayOf(id.toString()))
+                return count
+            }
             check(uri == CalendarContract.Attendees.CONTENT_URI) { "No attendee item URI selection or event response update" }
             check(values!!.keySet() == setOf("attendeeStatus"))
             updateCount++
