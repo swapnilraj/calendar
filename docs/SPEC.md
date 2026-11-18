@@ -29,6 +29,15 @@ existing draft, permission, conflict and recovery rules; it does not authorize w
 dismissing. Details lose their old payload and actions immediately when the read state loses
 authority. Standalone legacy sheets remain available to existing component fixtures.
 
+New ordinary UPDATE/DELETE operations store self-contained receipt4 source and native write plans
+before dispatch. Their exact commands and retirement fingerprints remain unchanged. Explicit retry
+adopts the winning prepared plan and rechecks its original source; uncertain attempted operations
+never replay. READ-only recovery can survive local edit-snapshot loss and requires exact namespace,
+native result, child membership and complete acknowledgements. Changed or missing proof remains
+uncertain. Legacy receipt2/3 recovery stays on its existing protocol; receipt2 edits still need their
+retained snapshots. Providers that assign or change a formerly NULL event UID/sync identity after
+commit cannot be inferred to match; their recovery stays conservative pending account verification.
+
 Owned one-off meeting details open a dedicated full-height organizer editor after exact occurrence,
 calendar namespace and issued-rights checks. Existing guest identity and response metadata are
 read-only; supported guest additions, removals and role changes produce sparse native commands.
