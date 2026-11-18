@@ -334,7 +334,9 @@ survive. Before production activation, new-exception THIS edit/cancel/RSVP and n
 FOLLOWING splits must default to review for an unverified provider, both when issuing capabilities
 and before dispatch/retry. In-place updates, ordinal-zero ALL-equivalent edits, read-only recovery
 and typed retirement retain their independent policies. See PROVIDER_CLONE_OBSERVABILITY_AUDIT.md
-for the concrete static finding and required evidence; the profile gate is pending implementation.
+for the concrete static finding and required evidence. The gate is implemented; production has no
+admitted profiles. Explicit SDK-only synthetic fixture profiles are test evidence, not device
+compatibility proof.
 
 Support confirmed deletion, duplicate-as-draft (guests omitted by default), and verified copy/delete
 moves for guest-free non-recurring events. Cross-account moves of meetings/series are excluded. Timed

@@ -33,7 +33,7 @@ import org.robolectric.shadows.ShadowContentResolver
  * Dedicated plain owned source has no exceptions, date sets or opaque clone payload. Synthetic
  * DAILY/WEEKLY expansion is explicitly bounded; SQL reopen is not OS process-kill or Google proof. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], qualifiers = "en-rUS-w393dp-h851dp-mdpi")
+@Config(application = SyntheticCloneCalendarApp::class, sdk = [35], qualifiers = "en-rUS-w393dp-h851dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class NativeFollowingJourneyTest {
     @get:Rule val compose = createEmptyComposeRule()

@@ -3,11 +3,12 @@
 Public-projection limitation (18 November 2026): references below to rejecting unknown fields
 mean fields actually exposed by the provider. They do not establish complete physical-schema
 visibility. New clone activation also requires the provider-profile gate in SPEC.md; see
-[the observability audit](PROVIDER_CLONE_OBSERVABILITY_AUDIT.md). The gate is not yet implemented.
+[the observability audit](PROVIDER_CLONE_OBSERVABILITY_AUDIT.md). The gate is implemented; no production provider profile is admitted.
 
-Status: bounded next-packet design, not implemented or Google-device verified. Existing recurring
-RSVP supports materialized THIS and complete ALL self-attendee updates. Generated THIS is rejected.
-This packet adds response-exception creation through the public provider API; it does not add
+Status: backend implemented and focused-tested behind default-review provider clone admission;
+no production profile or Google-device compatibility is verified. Existing recurring RSVP supports
+materialized THIS and complete ALL self-attendee updates independently. This design describes
+response-exception creation through the public provider API; it does not add
 FOLLOWING response, organizer changes, guest editing, recurrence changes, or invitation delivery.
 
 ## Admission and privacy

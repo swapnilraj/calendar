@@ -3,7 +3,7 @@
 Public-projection limitation (18 November 2026): references below to rejecting unknown fields
 mean fields actually exposed by the provider. They do not establish complete physical-schema
 visibility. New clone activation also requires the provider-profile gate in SPEC.md; see
-[the observability audit](PROVIDER_CLONE_OBSERVABILITY_AUDIT.md). The gate is not yet implemented.
+[the observability audit](PROVIDER_CLONE_OBSERVABILITY_AUDIT.md). The gate is implemented; no production provider profile is admitted.
 
 Status: proposed implementation packet, not an enabled feature or Google compatibility result.
 This design extends `CalendarSeriesWriter` using the existing `SeriesCommand.FollowingEdit`,
