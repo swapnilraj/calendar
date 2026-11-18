@@ -49,7 +49,7 @@ class MultiDayViewTest {
         direction: LayoutDirection = LayoutDirection.Ltr, minute: Double = 480.0,
         onSelect: (LocalDate) -> Unit = {}, onOpen: (EventRef) -> Unit = {}, onDay: (LocalDate) -> Unit = {},
         onRange: (CalendarDateRange) -> Unit = {}, onAnchor: (Double) -> Unit = {}, onZoom: (Float) -> Unit = {},
-        background: @Composable BoxScope.(LocalDate) -> Unit = {}) {
+        background: @Composable BoxScope.(LocalDate) -> Unit = {}, showWeekends: Boolean = true) {
         compose.setContent {
             var current by remember { mutableStateOf(window) }
             var selection by remember { mutableStateOf(date) }
@@ -57,11 +57,34 @@ class MultiDayViewTest {
                 CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale), LocalLayoutDirection provides direction) {
                     MultiDayView(current, selection, events, date.atTime(8, 30).atZone(zone), zone, true, 64f, onZoom,
                         onSelectDate = { selection = it; onSelect(it) }, onOpenEvent = onOpen, onShowDateEvents = onDay,
-                        onNavigateRange = { current = it; onRange(it) }, initialScrollMinute = minute, onScrollMinuteChanged = onAnchor, background = background)
+                        onNavigateRange = { current = it; onRange(it) }, initialScrollMinute = minute, onScrollMinuteChanged = onAnchor, background = background, showWeekends = showWeekends)
                 }
             }
         }
         compose.waitForIdle()
+    }
+    @Test fun weekHidesOnlyWeekendColumnsAndKeepsSevenDateNavigationAndSelectionAccess() {
+        var requested: CalendarDateRange? = null
+        var shown: LocalDate? = null
+        val week = CalendarDateRange(date, date.plusDays(7))
+        show(window = week, showWeekends = false, onRange = { requested = it }, onDay = { shown = it })
+        compose.onNodeWithTag("multiday_grid_$date").assertDoesNotExist()
+        compose.onNodeWithTag("multiday_grid_${date.plusDays(1)}").assertDoesNotExist()
+        (2L..6L).forEach { compose.onNodeWithTag("multiday_grid_${date.plusDays(it)}").assertExists() }
+        compose.onNodeWithTag("multiday_hidden_selection").assertIsDisplayed().assertIsSelected().performClick()
+        assertEquals(date, shown)
+        assertNull(requested)
+        compose.onNodeWithText("Later").performClick()
+        assertEquals(CalendarDateRange(week.endExclusive, week.endExclusive.plusDays(7)), requested)
+    }
+    @Test fun threeDayViewKeepsWeekendsEvenWhenWeekendsAreHiddenInWeekAndMonth() {
+        show(showWeekends = false)
+        multiDayDates(range).forEach { compose.onNodeWithTag("multiday_grid_$it").assertExists() }
+        compose.onNodeWithTag("multiday_hidden_selection").assertDoesNotExist()
+    }
+    @Test @Config(qualifiers = "+notnight") fun weekdaysOnlyWeekPreservesOriginalRangeLabel() {
+        show(window = CalendarDateRange(date, date.plusDays(7)), showWeekends = false)
+        compose.onRoot().captureRoboImage("src/test/screenshots/multiday_weekdays_light.png")
     }
     @Test fun threeAndSevenDayMatricesCrossYearBoundariesWithoutLocaleAssumptions() {
         assertEquals(listOf(LocalDate.of(2026, 12, 30), LocalDate.of(2026, 12, 31), LocalDate.of(2027, 1, 1)),

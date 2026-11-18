@@ -4,6 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
@@ -46,18 +47,61 @@ class MonthViewTest {
     private fun show(displayMonth: YearMonth = month, selection: LocalDate = date, first: DayOfWeek = DayOfWeek.MONDAY,
         fontScale: Float = 1f, direction: LayoutDirection = LayoutDirection.Ltr,
         onSelect: (LocalDate) -> Unit = {}, onOpen: (EventRef) -> Unit = {},
-        onCreate: (LocalDate) -> Unit = {}, onNavigate: (YearMonth) -> Unit = {}) {
+        onCreate: (LocalDate) -> Unit = {}, onNavigate: (YearMonth) -> Unit = {},
+        showWeekends: Boolean = true, events: List<EventOccurrence> = fixtures(), onShowDate: ((LocalDate) -> Unit)? = null) {
         compose.setContent {
             DaylightTheme {
                 CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale), LocalLayoutDirection provides direction) {
-                    MonthView(displayMonth, selection, first, fixtures(), zone, onSelect, onOpen, onCreate, onNavigate,
-                        today = date.plusDays(1))
+                    MonthView(displayMonth, selection, first, events, zone, onSelect, onOpen, onCreate, onNavigate,
+                        today = date.plusDays(1), showWeekends = showWeekends, onShowDateEvents = onShowDate)
                 }
             }
         }
         compose.waitForIdle()
     }
 
+    @Test fun hiddenWeekendsKeepSixFiveColumnRowsAndOriginalQueryBoundaries() {
+        val all = monthDates(month, DayOfWeek.SUNDAY)
+        show(first = DayOfWeek.SUNDAY, showWeekends = false)
+        val collection = compose.onNodeWithTag("month_grid").fetchSemanticsNode().config[SemanticsProperties.CollectionInfo]
+        assertEquals(6, collection.rowCount)
+        assertEquals(5, collection.columnCount)
+        assertEquals(42, all.size)
+        all.forEach { day ->
+            if (day.dayOfWeek in setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)) compose.onNodeWithTag("month_date_$day").assertDoesNotExist()
+            else compose.onNodeWithTag("month_date_$day").assertExists()
+        }
+        compose.onNodeWithContentDescription("Monday").assertExists()
+        compose.onNodeWithContentDescription("Sunday").assertDoesNotExist()
+    }
+    @Test fun hiddenSelectedWeekendRoutesEventAccessWithoutChangingMonthOrSelection() {
+        val weekend = date.with(java.time.temporal.TemporalAdjusters.next(DayOfWeek.SATURDAY))
+        var shown: LocalDate? = null
+        var navigated: YearMonth? = null
+        var selected: LocalDate? = null
+        show(selection = weekend, showWeekends = false, onShowDate = { shown = it }, onNavigate = { navigated = it }, onSelect = { selected = it })
+        compose.onNodeWithTag("month_hidden_selection").assertIsDisplayed().assertIsSelected().performClick()
+        assertEquals(weekend, shown)
+        assertNull(navigated)
+        assertNull(selected)
+    }
+    @Test fun hiddenSelectedDateFallbackSheetPreservesRecurringOccurrenceIdentity() {
+        val weekend = date.with(java.time.temporal.TemporalAdjusters.next(DayOfWeek.SATURDAY))
+        val start = weekend.atTime(9, 0).atZone(zone).toInstant()
+        val ref = recurring.copy(instanceStart = start, instanceEnd = start.plusSeconds(3600))
+        val event = EventOccurrence(ref, EventTime.Timed(ref.instanceStart, ref.instanceEnd), "Weekend review", 0xff526e9e.toInt())
+        var opened: EventRef? = null
+        show(selection = weekend, showWeekends = false, events = listOf(event), onOpen = { opened = it })
+        compose.onNodeWithTag("month_hidden_selection").performClick()
+        compose.onNodeWithText("Weekend review").performClick()
+        assertEquals(ref, opened)
+    }
+    @Test @Config(qualifiers = "+notnight") fun weekdaysOnlyMonthRetainsHiddenDateAccessAtLargeRtl() {
+        val weekend = date.with(java.time.temporal.TemporalAdjusters.next(DayOfWeek.SATURDAY))
+        show(selection = weekend, showWeekends = false, fontScale = 2f, direction = LayoutDirection.Rtl)
+        compose.onNodeWithTag("month_hidden_selection").assertIsDisplayed()
+        compose.onRoot().captureRoboImage("src/test/screenshots/month_weekdays_large_rtl.png")
+    }
     @Test fun leapFebruaryContainsTheLeapDateAndExactlySixCompleteWeeks() {
         val dates = monthDates(YearMonth.of(2028, 2), DayOfWeek.MONDAY)
         assertEquals(42, dates.size)
