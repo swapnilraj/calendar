@@ -273,6 +273,10 @@ unambiguous mapping and preserve other guests, responses and overrides. Unsuppor
 before dispatch. Organizer cancellation and attendee decline are distinct commands. Dedicated durable
 meeting drafts freeze the exact command before submission; recovery is read-only. Local outcomes do
 not establish invitation delivery. The interface is a dependency contract, not enabled meeting writes.
+New meeting editors require atomic complete-record draft comparison for creation, replacement and
+deletion. A storage/acknowledgement failure requires readback before dispatch; a mismatch retains inputs
+for review. A sequence of separate load/upsert calls is not atomic. Existing ordinary/series editor
+fences still need migration to this storage capability; its introduction does not certify them.
 
 ### M8 — Search, preferences and Android entry points
 
