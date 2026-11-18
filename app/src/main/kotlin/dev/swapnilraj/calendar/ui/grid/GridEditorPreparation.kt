@@ -142,7 +142,16 @@ internal suspend fun prepareGridEditor(
     return try {
         if (!valid()) return GridEditorPreparation.Stale
         val prepared = prepareEditorFieldsDraft(initial, source, id, selected, fields, atomic, clock)
-        if (!valid()) return GridEditorPreparation.Stale
+        if (!valid()) {
+            // A canceled, unpublished gesture may clean up only its acknowledged exact candidate.
+            // A revised/frozen record belongs to its new controller; unknown outcomes remain retained.
+            (prepared as? DraftPreparationResult.Ready)?.exactRecord?.let { created ->
+                try { atomic.compareAndSet(id, created, null) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { /* No proof of cleanup; leave any retained draft discoverable. */ }
+            }
+            return GridEditorPreparation.Stale
+        }
         val launch = (prepared as? DraftPreparationResult.Ready)?.launch
         if (launch != null && launch.generation != null && launch.ref == source?.details?.occurrence?.ref)
             GridEditorPreparation.Ready(launch) else GridEditorPreparation.Unavailable
