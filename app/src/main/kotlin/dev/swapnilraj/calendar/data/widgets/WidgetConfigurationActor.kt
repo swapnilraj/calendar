@@ -77,7 +77,7 @@ internal class WidgetConfigurationActor(
             WidgetCalendarSelection.FollowApp -> selection
             is WidgetCalendarSelection.Explicit -> WidgetCalendarSelection.Explicit(selection.ids.toSet())
         }
-        val command = Command.Save(++serial, epoch, configuration.copy(selection = selected), result)
+        val command = Command.Save(++serial, epoch, configuration.copy(selection = selected, expectedCalendarIdentities = configuration.expectedCalendarIdentities.toMap()), result)
         pending[epoch.widgetId] = command.sequence
         check(queue.trySend(command).isSuccess)
         result

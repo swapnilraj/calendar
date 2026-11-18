@@ -51,7 +51,7 @@ class AgendaWidgetRenderer(private val context: Context, private val activity: C
             val dateFormatter = DateTimeFormatter.ofPattern("EEE, MMM d", locale)
             val timeFormatter = DateTimeFormatter.ofPattern(if (display.environment.use24Hour) "HH:mm" else "h:mm a", locale)
             display.rows.take(rowCapacity(size)).forEach { row ->
-                val private = display.configuration.privacy == WidgetPrivacy.BUSY_ONLY
+                val private = display.configuration.privacy == WidgetPrivacy.BUSY_ONLY || row.availabilityOnly
                 val title = if (private) context.getString(R.string.widget_busy) else
                     row.occurrence.title.takeIf { it.isNotBlank() }?.let(::boundedTitle) ?: context.getString(R.string.widget_untitled)
                 val time = when (val eventTime = row.occurrence.time) {
@@ -74,8 +74,9 @@ class AgendaWidgetRenderer(private val context: Context, private val activity: C
                 child.setViewVisibility(R.id.widget_row_time, if (compact) View.GONE else View.VISIBLE)
                 child.setContentDescription(R.id.widget_row, "$title, $label")
                 child.setInt(R.id.widget_color, "setBackgroundColor", if (private) 0xff7d857f.toInt() else row.occurrence.color)
-                child.setOnClickPendingIntent(R.id.widget_row, pending(AgendaWidgetRoute.OpenEvent(widgetId,
-                    generation, row.occurrence.ref, row.date)))
+                val route = row.calendarFingerprint?.let { AgendaWidgetRoute.OpenEvent(widgetId,
+                    generation, row.occurrence.ref, row.date, it) } ?: AgendaWidgetRoute.More(widgetId, generation, row.date)
+                child.setOnClickPendingIntent(R.id.widget_row, pending(route))
                 views.addView(R.id.widget_rows, child)
             }
         }

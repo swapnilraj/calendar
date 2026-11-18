@@ -18,7 +18,7 @@ sealed interface AgendaWidgetRoute {
     data class Today(override val widgetId: Int, val generation: String) : AgendaWidgetRoute
     data class Create(override val widgetId: Int, val generation: String) : AgendaWidgetRoute
     data class More(override val widgetId: Int, val generation: String, val date: LocalDate) : AgendaWidgetRoute
-    data class OpenEvent(override val widgetId: Int, val generation: String, val ref: EventRef, val date: LocalDate) : AgendaWidgetRoute
+    data class OpenEvent(override val widgetId: Int, val generation: String, val ref: EventRef, val date: LocalDate, val calendarFingerprint: String? = null) : AgendaWidgetRoute
 }
 
 object AgendaWidgetIntents {
@@ -51,6 +51,11 @@ object AgendaWidgetIntents {
                         .appendPath(ref.recurrence?.originalStart?.toString() ?: "-")
                     putExtra(PREFIX + "calendar", ref.calendarId.value); putExtra(PREFIX + "event", ref.eventId)
                     putExtra(PREFIX + "start", ref.instanceStart.toString()); putExtra(PREFIX + "end", ref.instanceEnd.toString())
+                    route.calendarFingerprint?.let {
+                        require(Regex("[0-9a-f]{64}").matches(it))
+                        uri.appendPath("calendar").appendPath(it)
+                        putExtra(PREFIX + "calendar_fingerprint", it)
+                    }
                     ref.recurrence?.let {
                         putExtra(PREFIX + "master", it.masterEventId); putExtra(PREFIX + "original", it.originalStart.toString())
                     }
@@ -86,7 +91,8 @@ object AgendaWidgetIntents {
                 val recurrence = if (extras.containsKey(PREFIX + "master"))
                     RecurrenceRef(value("master") as Long, instant("original")) else null
                 AgendaWidgetRoute.OpenEvent(id, generation(), EventRef(CalendarId(value("calendar") as Long),
-                    value("event") as Long, instant("start"), instant("end"), recurrence), date())
+                    value("event") as Long, instant("start"), instant("end"), recurrence), date(),
+                    if (extras.containsKey(PREFIX + "calendar_fingerprint")) string("calendar_fingerprint") else null)
             }
             else -> error("Unsupported widget route")
         }

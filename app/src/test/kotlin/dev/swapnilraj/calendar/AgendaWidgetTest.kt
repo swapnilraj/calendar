@@ -29,6 +29,8 @@ class AgendaWidgetTest {
     private val now = Instant.parse("2026-11-18T09:00:00Z")
     private val today = LocalDate.of(2026, 11, 18)
     private val config = AgendaWidgetConfiguration("configuration-generation")
+    private fun calendar(id: Long) = CalendarInfo(CalendarId(id), "Synthetic calendar", 123,
+        CalendarAccount("synthetic@example.invalid", "local"), null, null, 700, true, true)
     private val epoch = WidgetEpoch(1, "verified-initial-binding")
     private fun ready(value: AgendaWidgetConfiguration) = AgendaWidgetConfigurationState.Ready(value, epoch)
     private val environment = AgendaWidgetEnvironment(CalendarSelection.Explicit(setOf(CalendarId(1))), ZoneOffset.UTC, false, true)
@@ -58,6 +60,7 @@ class AgendaWidgetTest {
         var requested: CalendarRequest? = null
         var reads = 0; var scheduled = 0; var deletes = 0
         var rows = listOf(event())
+        var calendars = listOf(calendar(1), calendar(2))
         var failure: CalendarReadState<CalendarSnapshot>? = null
         var duringRead: (suspend () -> Unit)? = null
         var deleteFailure = false
@@ -65,7 +68,7 @@ class AgendaWidgetTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val runtime = AgendaWidgetRuntime(AgendaWidgetSnapshotReader { request ->
             reads++; requested = request; duringRead?.invoke()
-            failure ?: CalendarReadState.Ready(CalendarSnapshot(request, emptyList(), rows))
+            failure ?: CalendarReadState.Ready(CalendarSnapshot(request, calendars, rows))
         }, object : AgendaWidgetSettings {
             override suspend fun configuration(widgetId: Int) = configuration
             override suspend fun environment() = env
@@ -87,6 +90,29 @@ class AgendaWidgetTest {
             override fun instant() = clockInstant
         }, 50)
         fun close() = scope.cancel()
+    }
+
+    @Test fun explicitLegacyOrReplacedNamespacesNeverRenderTitles() = runBlocking {
+        val f = Fixture()
+        val explicit = config.copy(selection = WidgetCalendarSelection.Explicit(setOf(CalendarId(1))), privacy = WidgetPrivacy.EVENT_TITLES)
+        f.configuration = ready(explicit)
+        f.runtime.refresh(); assertEquals(0, f.reads); assertFalse(text(f.host.last()).contains("confidential"))
+        f.configuration = ready(explicit.copy(expectedCalendarIdentities = mapOf(CalendarId(1) to calendar(1).identity)))
+        f.runtime.refresh(); assertTrue(text(f.host.last()).contains("Synthetic confidential title"))
+        f.calendars = listOf(calendar(1).copy(account = CalendarAccount("replacement@example.invalid", "local")))
+        f.runtime.refresh(); assertFalse(text(f.host.last()).contains("confidential"))
+        f.close()
+    }
+
+    @Test fun availabilityOnlyAndUnknownAclAlwaysMaskSourceTitlesAndColors() = runBlocking {
+        for (access in listOf(100, null)) {
+            val f = Fixture(); f.configuration = ready(config.copy(privacy = WidgetPrivacy.EVENT_TITLES))
+            f.calendars = listOf(calendar(1).copy(accessLevel = access))
+            f.runtime.refresh(); assertFalse(text(f.host.last()).contains("confidential")); assertTrue(text(f.host.last()).contains("Busy"))
+            val row = f.host.last().findViewById<LinearLayout>(R.id.widget_rows).getChildAt(0)
+            assertEquals(0xff7d857f.toInt(), (row.findViewById<View>(R.id.widget_color).background as android.graphics.drawable.ColorDrawable).color)
+            f.close()
+        }
     }
 
     @Test fun busyOnlyIsDefaultAndRenderedTextAccessibilityAndColorRevealNoTitle() = runBlocking {
@@ -128,7 +154,7 @@ class AgendaWidgetTest {
     @Test fun followAppAndExplicitOverrideAreIndependentAndEmptyNeverBroadens() = runBlocking {
         val f = Fixture(); f.runtime.refresh()
         assertEquals(environment.appSelection, f.requested!!.selection)
-        f.configuration = ready(config.copy(selection = WidgetCalendarSelection.Explicit(setOf(CalendarId(2)))))
+        f.configuration = ready(config.copy(selection = WidgetCalendarSelection.Explicit(setOf(CalendarId(2))), expectedCalendarIdentities = mapOf(CalendarId(2) to calendar(2).identity)))
         f.rows = listOf(event(calendar = 2)); f.runtime.refresh()
         assertEquals(CalendarSelection.Explicit(setOf(CalendarId(2))), f.requested!!.selection)
         assertTrue(text(f.host.last()).contains("Busy"))
@@ -225,6 +251,7 @@ class AgendaWidgetTest {
         assertNotNull(pending)
         assertTrue(shadowOf(pending).flags and android.app.PendingIntent.FLAG_IMMUTABLE != 0)
         assertEquals(recurring.ref, decoded.ref)
+        assertEquals(widgetCalendarFingerprint(calendar(1).identity), decoded.calendarFingerprint)
         assertEquals(config.generation, decoded.generation)
         assertFalse(started.extras!!.keySet().any { it.contains("title") })
         f.close()
@@ -258,11 +285,13 @@ class AgendaWidgetTest {
     }
 
     @Test fun widgetClickDecoderRejectsSpoofsMalformedTypesAndTamperedIdentityWithoutCrash() {
-        val route = AgendaWidgetRoute.OpenEvent(1, "generation", event().ref, today)
+        val route = AgendaWidgetRoute.OpenEvent(1, "generation", event().ref, today, widgetCalendarFingerprint(calendar(1).identity))
         val valid = AgendaWidgetIntents.intent(context, activity, route)
         assertEquals(route, AgendaWidgetIntents.decode(context, valid, activity))
         assertNull(AgendaWidgetIntents.decode(context, Intent(valid).setData(android.net.Uri.parse("https://example.com")), activity))
         assertNull(AgendaWidgetIntents.decode(context, Intent(valid).putExtra("agenda_widget.event", "7"), activity))
+        assertNull(AgendaWidgetIntents.decode(context, Intent(valid).putExtra("agenda_widget.calendar_fingerprint", 1), activity))
+        assertNull(AgendaWidgetIntents.decode(context, Intent(valid).putExtra("agenda_widget.calendar_fingerprint", "different"), activity))
         assertNull(AgendaWidgetIntents.decode(context, Intent(valid).putExtra("agenda_widget.generation", "different"), activity))
         assertNull(AgendaWidgetIntents.decode(context, Intent(valid).setComponent(ComponentName("outside", "Activity")), activity))
         assertNull(AgendaWidgetIntents.decode(context, Intent(valid).setData(valid.data!!.buildUpon().appendPath("extra").build()), activity))

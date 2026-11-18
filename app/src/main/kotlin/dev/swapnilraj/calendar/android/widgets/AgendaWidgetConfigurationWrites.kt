@@ -1,6 +1,8 @@
 package dev.swapnilraj.calendar.android.widgets
 
 import kotlinx.coroutines.Deferred
+import dev.swapnilraj.calendar.core.CalendarId
+import dev.swapnilraj.calendar.core.CalendarIdentity
 
 /** A lifecycle/host-binding epoch, distinct from a configuration generation or numeric widget ID. */
 data class WidgetEpoch(val widgetId: Int, val token: String) {
@@ -14,6 +16,7 @@ sealed interface WidgetLifecycleProof {
 data class WidgetConfigurationChoice(
     val selection: WidgetCalendarSelection = WidgetCalendarSelection.FollowApp,
     val privacy: WidgetPrivacy = WidgetPrivacy.BUSY_ONLY,
+    val expectedCalendarIdentities: Map<CalendarId, CalendarIdentity> = emptyMap(),
 )
 class WidgetConfigurationSession internal constructor(val epoch: WidgetEpoch)
 sealed interface WidgetConfigurationSessionResult {

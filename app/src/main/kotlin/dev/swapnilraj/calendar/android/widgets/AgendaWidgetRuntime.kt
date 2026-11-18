@@ -186,7 +186,9 @@ class AgendaWidgetRuntime(
                     WidgetCalendarSelection.FollowApp -> selected
                     is WidgetCalendarSelection.Explicit -> WidgetCalendarSelection.Explicit(selected.ids.toSet())
                 }
-                val configuration = AgendaWidgetConfiguration(UUID.randomUUID().toString(), selection, choice.privacy)
+                if (!validWidgetPins(selection, choice.expectedCalendarIdentities)) return@withTimeout WidgetConfigurationSaveResult.Unavailable
+                val configuration = AgendaWidgetConfiguration(UUID.randomUUID().toString(), selection, choice.privacy,
+                    choice.expectedCalendarIdentities.toMap())
                 val receipt = synchronized(publication) {
                     if (!current(attempt)) return@withTimeout WidgetConfigurationSaveResult.Stale
                     writer.enqueueSave(epoch, configuration)
@@ -242,6 +244,7 @@ class AgendaWidgetRuntime(
         }
         if (expected != verified) return AgendaWidgetDisplay.SetupRequired
         val config = stored.value
+        if (!validWidgetPins(config.selection, config.expectedCalendarIdentities)) return AgendaWidgetDisplay.SetupRequired
         val environment = (settings.environment() as? CalendarReadState.Ready)?.value ?: return AgendaWidgetDisplay.Unavailable
         val today = clock.instant().atZone(environment.displayZone).toLocalDate()
         require(today.year in 1..9999)
@@ -259,6 +262,7 @@ class AgendaWidgetRuntime(
             is CalendarReadState.Ready -> {
                 require(result.value.request == request)
                 val snapshot = result.value
+                if (!widgetPinsAuthorize(config, snapshot.calendars)) return AgendaWidgetDisplay.SetupRequired
                 val allowed = when (selection) {
                     is CalendarSelection.Explicit -> selection.ids
                     CalendarSelection.ProviderVisible -> snapshot.calendars.filter { it.providerVisible }.map { it.id }.toSet()
@@ -275,7 +279,9 @@ class AgendaWidgetRuntime(
                     .map { event -> AgendaWidgetRow(event, when (val time = event.time) {
                         is EventTime.AllDay -> maxOf(today, time.dates.start)
                         is EventTime.Timed -> maxOf(today, time.start.atZone(environment.displayZone).toLocalDate())
-                    }) }.sortedWith(compareBy<AgendaWidgetRow> { it.date }
+                    }, snapshot.calendars.singleOrNull { it.id == event.ref.calendarId }?.accessLevel
+                        ?.let { it < android.provider.CalendarContract.Calendars.CAL_ACCESS_READ } != false,
+                        snapshot.calendars.singleOrNull { it.id == event.ref.calendarId }?.identity?.let(::widgetCalendarFingerprint)) }.sortedWith(compareBy<AgendaWidgetRow> { it.date }
                         .thenBy { it.occurrence.time !is EventTime.AllDay }
                         .thenBy { it.occurrence.ref.instanceStart }
                         .thenBy { it.occurrence.ref.calendarId.value }

@@ -2,6 +2,8 @@ package dev.swapnilraj.calendar
 
 import dev.swapnilraj.calendar.android.widgets.*
 import dev.swapnilraj.calendar.core.CalendarId
+import dev.swapnilraj.calendar.core.CalendarIdentity
+import dev.swapnilraj.calendar.core.CalendarAccount
 import dev.swapnilraj.calendar.data.widgets.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -24,6 +26,22 @@ class WidgetConfigurationDocumentTest {
             val original = document(selection)
             assertEquals(WidgetDocumentRead.Ready(original), WidgetConfigurationDocuments.decode(WidgetConfigurationDocuments.encode(original), "installation"))
         }
+    }
+    @Test fun namespacePinsRoundTripStrictlyAndLegacyExplicitNeverInventsPins() {
+        val id = CalendarId(7)
+        val pin = CalendarIdentity(id, CalendarAccount("synthetic@example.invalid", "local"), "owner", "provider-uid")
+        val configuration = AgendaWidgetConfiguration("generation", WidgetCalendarSelection.Explicit(setOf(id)),
+            WidgetPrivacy.EVENT_TITLES, mapOf(id to pin))
+        val document = WidgetConfigurationDocument("installation", mapOf(1 to WidgetConfigurationRow(epoch, configuration)))
+        val encoded = WidgetConfigurationDocuments.encode(document)
+        assertEquals(WidgetDocumentRead.Ready(document), WidgetConfigurationDocuments.decode(encoded, "installation"))
+        invalid(encoded.replace("\"id\":7,\"accountName\"", "\"id\":\"7\",\"accountName\""))
+        invalid(encoded.replace("\"providerId\":\"provider-uid\"", "\"providerId\":false"))
+        invalid(encoded.replace("synthetic@example.invalid", ""))
+        invalid(encoded.replace("\"accountType\":\"local\"", "\"accountType\":\"\""))
+        val legacy = encoded.replace(Regex(",\"pins\":\\[.*?\\]"), "")
+        val read = WidgetConfigurationDocuments.decode(legacy, "installation") as WidgetDocumentRead.Ready
+        assertTrue(read.document.rows.getValue(1).configuration!!.expectedCalendarIdentities.isEmpty())
     }
     @Test fun absentIsEmptyButNotLifecycleProofAndWrongInstallationNeverAdopts() {
         assertEquals(WidgetDocumentRead.Ready(WidgetConfigurationDocument("installation")), WidgetConfigurationDocuments.decode(null, "installation"))

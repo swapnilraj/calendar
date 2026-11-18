@@ -19,6 +19,7 @@ data class AgendaWidgetConfiguration(
     val generation: String,
     val selection: WidgetCalendarSelection = WidgetCalendarSelection.FollowApp,
     val privacy: WidgetPrivacy = WidgetPrivacy.BUSY_ONLY,
+    val expectedCalendarIdentities: Map<CalendarId, CalendarIdentity> = emptyMap(),
 ) { init { require(generation.isNotBlank()) } }
 sealed interface AgendaWidgetConfigurationState {
     data object SetupRequired : AgendaWidgetConfigurationState
@@ -50,7 +51,7 @@ interface AgendaWidgetHost {
     fun publish(widgetId: Int, views: RemoteViews)
 }
 
-data class AgendaWidgetRow(val occurrence: EventOccurrence, val date: LocalDate)
+data class AgendaWidgetRow(val occurrence: EventOccurrence, val date: LocalDate, val availabilityOnly: Boolean = false, val calendarFingerprint: String? = null)
 sealed interface AgendaWidgetDisplay {
     data object Loading : AgendaWidgetDisplay
     data object SetupRequired : AgendaWidgetDisplay
