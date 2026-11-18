@@ -11,11 +11,17 @@ Day/three-day/week timed editor gestures. Screens for cross-column and larger-te
 were recorded and inspected. This is local synthetic-provider evidence, not physical-device or
 Google delivery certification.
 
-The subsequent widget setup-context lease fix (`fc68d9d`) passed96 focused checks including the
-six actual widget journeys. Pure master-template/ordinal helpers passed215 core checks. These
-later packets are separate from the `5bd64d4` full checkpoint. Whole-series temporal/rule edits
-are being implemented behind explicit adapter-issued rights; guest/organizer workflows, remaining
-recurrence scopes, incoming public intents, device/account/beta and signed-release gates remain.
+Subsequent packets have focused evidence: widget setup-context lease validation, portable event-zone
+checks, whole-series temporal/rule editing with explicit review, namespace/generation-bound restored
+editors, and permanent journal retirement of exact frozen requests. The whole-series review screenshot
+was recorded and visually inspected. These packets are separate from the `5bd64d4` full checkpoint.
+
+The next full-gate attempt at `bdc3f1c` failed two of 1,218 app tests: existing native recurring journey
+fixtures omitted the newly required explicit permission preflight. Commit `60502c4` supplies the
+authorized fixture callback and both journeys pass focused checks; the complete gate must be rerun.
+Do not describe the newer aggregate as fully verified until that succeeds. Guest/organizer workflows,
+remaining recurrence scopes, incoming public intents, device/account/beta and signed-release gates
+remain. PR #48 (bounded provider/authority foundation) passed CI and is merged into integration.
 
 Earlier local checkpoints:
 
@@ -85,7 +91,7 @@ wiring and integration; workers do not overwrite shared contracts or each other'
 | M3 planning views | Partial: all five views routed and tested; device/dense acceptance pending | Day/three-day/week/month/agenda, date navigation, leap/six-row/dense/RTL cases |
 | M4 native details | Partial: live native context and guest-visibility rules verified locally | Complete readable event context, correct occurrence identity and meeting links |
 | M5 native ordinary writes | Partial: native one-off create/edit/delete/duplicate, durable drafts and metadata verified locally | Batched create/edit/delete/duplicate, conflict/draft/uncertain-create and offline recovery |
-| M6 recurrence | Partial: authored recurring creation, ALL non-temporal edits/delete, THIS exception edits/cancel and FOLLOWING delete verified locally; temporal/pattern/following edits pending | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
+| M6 recurrence | Partial: authored recurring creation, ALL edits/delete including bounded temporal/rule changes, THIS exception edits/cancel and FOLLOWING delete have local evidence; FOLLOWING edit/split and wider exception support pending | This/future/all scopes preserve exceptions/limits/zones and Google occurrence sets |
 | M7 meetings | Partial: single and existing-exception/whole-series RSVP connected and tested; generated-exception response, guests/organizer flows and external verification pending | Invitation/RSVP/reschedule/recurrence-change/cancellation observed in second account |
 | M8 search/Android entry points | Partial: settings, filtered search and agenda widget app flows wired/tested; public incoming intents and device/host acceptance pending | Filtered ranged search, settings, agenda widget and safe occurrence-preserving intents |
 | M9 reminders | Partial: application runtime, setup/navigation and private recovery wired and tested; device acceptance pending | App-owned alerts/snooze and permission/background/Doze/reboot/timezone/upgrade recovery |

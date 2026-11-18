@@ -1,7 +1,8 @@
 # Frozen-command retirement implementation packet
 
-Status: approved design, not implemented. Atomic draft storage exists; ordinary/series editor
-migration and the journal fence below remain required before claiming safe frozen-draft replacement.
+Status: the typed contract and SQLite journal fence are implemented and covered by focused tests.
+Connected ordinary/series/meeting discard-and-replace workflows remain incomplete; the backend
+fence alone does not establish safe user-facing frozen-draft replacement.
 
 ## Problem and boundary
 
@@ -80,5 +81,7 @@ The shared port is now `OperationRetirement.retire/inspect(RetirableOperation)` 
 backend arguments. Only `Retired(operationId)` confirms a permanent fence; inspect-only `NotRetired`
 is not no-dispatch or retry proof. Blocked results distinguish possible dispatch from a recorded
 commit. A matching late `MutationResult.Retired` stops an ordinary editor without rewriting or
-deleting its raw record; mismatched IDs remain uncertain. Backend/store fencing and user-facing
-retirement workflows are still implementation work, not established by the port alone.
+deleting its raw record; mismatched IDs remain uncertain. Backend/store fencing now includes exact
+request comparison, permanent ABANDONED handling before provider access, guarded journal transitions,
+and independent SQLite-helper race/reopen tests. Meeting creation remains unsupported by retirement
+until its actual backend command encoder exists. User-facing retirement workflows remain pending.
