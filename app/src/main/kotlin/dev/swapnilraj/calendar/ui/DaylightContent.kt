@@ -42,9 +42,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
-fun DaylightContent(app: CalendarApp, widgetNavigation: WidgetCalendarNavigation? = null, onWidgetNavigationConsumed: (String) -> Unit = {}) {
+fun DaylightContent(app: CalendarApp, widgetNavigation: WidgetCalendarNavigation? = null, onWidgetNavigationConsumed: (String) -> Unit = {}, dateNavigation: CalendarDateNavigation? = null, onDateNavigationConsumed: (String) -> Unit = {}) {
     val preferences by app.settings.calendarPreferences.collectAsStateWithLifecycle(initialValue = CalendarPreferenceState.Loading)
-    CalendarPreferenceTheme(preferences) { DaylightBody(app, preferences, widgetNavigation, onWidgetNavigationConsumed) }
+    CalendarPreferenceTheme(preferences) { DaylightBody(app, preferences, widgetNavigation, onWidgetNavigationConsumed, dateNavigation, onDateNavigationConsumed) }
 }
 
 @Composable
@@ -59,7 +59,7 @@ internal fun CalendarPreferenceTheme(preferences: CalendarPreferenceState, conte
 }
 
 @Composable
-private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState, widgetNavigation: WidgetCalendarNavigation?, onWidgetNavigationConsumed: (String) -> Unit) {
+private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState, widgetNavigation: WidgetCalendarNavigation?, onWidgetNavigationConsumed: (String) -> Unit, dateNavigation: CalendarDateNavigation?, onDateNavigationConsumed: (String) -> Unit) {
     val options = (preferences as? CalendarPreferenceState.Ready)?.value?.options ?: CalendarSettingsOptions()
     val weatherVisible = preferences is CalendarPreferenceState.Ready && options.weatherVisible
     val context = LocalContext.current
@@ -152,6 +152,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
                         seriesMutations = seriesMutations,
                         search = app.calendarSearch,
                         widgetNavigation = widgetNavigation,
+                        dateNavigation = dateNavigation, onDateNavigationConsumed = onDateNavigationConsumed,
                         recurringCreationSupported = true,
                         onWidgetNavigationConsumed = onWidgetNavigationConsumed,
                         meetings = app.calendarMeetings,

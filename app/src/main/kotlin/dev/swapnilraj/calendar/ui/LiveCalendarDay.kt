@@ -10,6 +10,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.LocalContext
+import dev.swapnilraj.calendar.android.navigation.CalendarSeedReviewActivity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -93,8 +95,11 @@ internal fun LiveCalendarDay(
     onWidgetNavigationConsumed: (String) -> Unit = {},
     recurringCreationSupported: Boolean = false,
     operationRetirement: OperationRetirement? = null,
+    dateNavigation: CalendarDateNavigation? = null,
+    onDateNavigationConsumed: (String) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val selectedDateState = rememberSaveable { mutableStateOf<String?>(null) }
     var writeRequestText by rememberSaveable { mutableStateOf<String?>(null) }
     var seriesScopeText by rememberSaveable { mutableStateOf<String?>(null) }
@@ -366,6 +371,17 @@ internal fun LiveCalendarDay(
         if (view == CalendarViewOption.AGENDA) agendaWindow(selected, 31).let { agendaRangeText = "${it.start}/${it.endExclusive}" }
         if (view == CalendarViewOption.THREE_DAY || view == CalendarViewOption.WEEK)
             planningMultiDayRange(selected, multiDays, firstWeekday).let { multiDayRangeText = "${it.start}/${it.endExclusive}" }
+    }
+    var handledDateNavigation by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(dateNavigation, displayNow.zone) {
+        val navigation = dateNavigation ?: return@LaunchedEffect
+        if (handledDateNavigation != navigation.id) {
+            val date = runCatching { navigation.instant.atZone(displayNow.zone).toLocalDate() }.getOrNull()
+            if (date != null && date in MultiDayMinDate..MultiDayMaxDate) navigatePhoneDate(date)
+            else onDraftFailure()
+            handledDateNavigation = navigation.id
+        }
+        onDateNavigationConsumed(navigation.id)
     }
     BackHandler(enabled = phoneMonthExpanded || phoneDatePicker || phoneZoomOpen) {
         cancelPhoneNavigation(); phoneMonthExpanded = false; phoneDatePicker = false; phoneZoomOpen = false
@@ -781,7 +797,13 @@ internal fun LiveCalendarDay(
         }) else null, onOpenMeeting = if (meetingWritable) ({ launch ->
             showDrafts = false
             meetingWriteText = MeetingResponseRouteCodec.encode(launch)
-        }) else null)
+        }) else null, onOpenSeedReview = { record ->
+            val intent = CalendarSeedReviewActivity.intentFromDraft(context, record)
+            if (intent == null) onDraftFailure() else try {
+                context.startActivity(intent); showDrafts = false
+            } catch (_: android.content.ActivityNotFoundException) { onDraftFailure() }
+            catch (_: SecurityException) { onDraftFailure() }
+        })
 }
 
 /** Locale week alignment is a navigation policy, independent of event/recurrence expansion. */

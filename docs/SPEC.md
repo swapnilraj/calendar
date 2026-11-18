@@ -415,6 +415,15 @@ provider-expanded Instances; recurring/detached event IDs require an explicit oc
 app/provider display filters do not authorize or prevent a directly requested readable link. Missing
 or canceled/deleted rows, ambiguous identity, and insufficient read authority do not open stale details.
 
+Incoming Android VIEW event/date and INSERT event intents use an exported read-only entry activity.
+Explicit Create review opens a private native-editor activity; arrival, Cancel and permission grants
+never submit provider writes. Incomplete inputs remain durable, unsupported recurrence and guests stay
+visible, and an exact permanent handoff receipt precedes Save access. The browser hides only strictly
+recognized handoff receipts, routes unfinished incoming inputs back through their private review,
+and blocks generic incoming-native launches without a matching receipt. Date navigation consumes its
+session once and converts the original instant using fresh display-zone settings. Proposed EDIT
+inputs are not yet applied; recurring/guest editing and live Google UX verification remain separate.
+
 ### M9 — App-owned reminders
 
 - Own notification presentation, dismissals, snoozes and delivery tracking. Guide setup for notification
