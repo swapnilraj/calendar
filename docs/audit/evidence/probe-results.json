@@ -1,0 +1,15 @@
+{
+  "baseline_commit": "0ab431a",
+  "runtime": "Robolectric API 35; 393 by 851 dp; synthetic events only",
+  "tests": 5,
+  "failures": 0,
+  "errors": 0,
+  "meaning": "A passing defect probe reproduces the defect; it does not establish correct behavior.",
+  "observations": [
+    "AUDIT dst_fall_back: actualDurationMinutes=30 startMinute=105 renderedDurationBeforeMinimum=0",
+    "AUDIT all_day_overflow: total=5 visible=3 overflowClickAction=false",
+    "AUDIT rtl: eventBounds=Rect.fromLTRB(4.0, 207.0, 335.0, 271.0); grid vertical gutter is drawn at physical x=56",
+    "AUDIT all_day_accessibility: UTC all-day date announced as Holiday 1, 16:00 \u2013 16:00 in Los Angeles",
+    "AUDIT large_font: fontScale=2 textLayoutHeight=18 overflowHeight=true"
+  ]
+}

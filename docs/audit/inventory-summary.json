@@ -1,0 +1,43 @@
+{
+  "baseline_commit": "0ab431a",
+  "total_checks": 151,
+  "status_counts": {
+    "implemented": 14,
+    "provider-dependent": 5,
+    "delegated": 2,
+    "missing": 110,
+    "unverified": 10,
+    "partial": 5,
+    "defect": 5
+  },
+  "area_counts": {
+    "Existing foundation": 14,
+    "Calendar sidebar and identity": 13,
+    "Views and date navigation": 14,
+    "Native event details": 13,
+    "Create edit and delete": 18,
+    "Recurrence and calendar correctness": 10,
+    "Invitations and scheduling": 9,
+    "Reminders and notifications": 9,
+    "Android entry points and accessibility": 9,
+    "Preferences and presentation": 9,
+    "Weather differentiation": 8,
+    "Google account and Workspace capabilities": 13,
+    "Reliability and device coverage": 8,
+    "Wider Google ecosystem exclusions": 4
+  },
+  "priority_counts": {
+    "P1": 88,
+    "P2": 43,
+    "P3": 20
+  },
+  "scope_counts": {
+    "Android baseline": 77,
+    "Quality": 34,
+    "Daylight extension": 9,
+    "Provider contract": 14,
+    "Google service": 13,
+    "Google web": 4
+  },
+  "note": "Checks include existing capabilities, missing workflows, quality requirements and optional ecosystem scope; this is not a percent-parity score."
+}

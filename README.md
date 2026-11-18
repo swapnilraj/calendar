@@ -34,6 +34,9 @@ Events always win: weather is painted under the grid, and nothing ever covers an
 The phase 1 day view is implemented and tested on the JVM. Real-phone acceptance and polish are still
 pending. See [docs/SPEC.md](docs/SPEC.md) for the full spec and phases.
 
+The [Google Calendar workflow audit](docs/GOOGLE_CALENDAR_AUDIT.md) records the broader feature gaps,
+reproduced defects and acceptance criteria for the next implementation stages.
+
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Day view with weather (read-only) | Implemented: events, paging, zoom, weather, offline fallback. Device verification pending. See [docs/TASKS.md](docs/TASKS.md) |
