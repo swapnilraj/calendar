@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
  * Caller owns data coverage/loading, range alignment, and the shared selected date. Selecting a column
  * never shifts the range. All columns share a wall-clock anchor (minutes from midnight), zoom and
  * vertical scroll; readable columns pan horizontally when they do not fit. No provider queries.
+ * [showWeekends] omits Saturday/Sunday only from a seven-date week; three-day ranges keep every date.
  * Weather/summary slots must contain only actual forecast coverage for their supplied date.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,11 +59,17 @@ fun MultiDayView(
     summary: @Composable RowScope.(LocalDate) -> Unit = {},
     background: @Composable BoxScope.(LocalDate) -> Unit = {},
     modifier: Modifier = Modifier,
+    showWeekends: Boolean = true,
 ) {
     require(initialHourHeight.isFinite())
     require(initialScrollMinute == null || initialScrollMinute.isFinite())
     require(selectedDate in MultiDayMinDate..MultiDayMaxDate)
-    val dates = remember(range) { multiDayDates(range) }
+    val rangeDates = remember(range) { multiDayDates(range) }
+    val dates = remember(rangeDates, showWeekends) {
+        if (rangeDates.size == 7 && !showWeekends) rangeDates.filter { it.dayOfWeek != DayOfWeek.SATURDAY && it.dayOfWeek != DayOfWeek.SUNDAY }
+        else rangeDates
+    }
+    val hiddenSelection = selectedDate in range && selectedDate !in dates
     val byDate = remember(range, events, displayZone) { multiDayEvents(range, events, displayZone) }
     val localNow = now.withZoneSameInstant(displayZone)
     val today = localNow.toLocalDate()
@@ -87,7 +95,7 @@ fun MultiDayView(
     val later = adjacentMultiDayRange(range, true)
     fun navigate(date: LocalDate) {
         onSelectDate(date)
-        if (date !in range) onNavigateRange(multiDayWindow(date, dates.size))
+        if (date !in range) onNavigateRange(multiDayWindow(date, rangeDates.size))
     }
     fun zoom(next: Float, pivot: Float = 0f) {
         val clamped = next.coerceIn(32f, 160f)
@@ -115,7 +123,7 @@ fun MultiDayView(
     Surface(modifier.fillMaxSize()) {
         Column {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(if (dates.size == 3) R.string.multiday_three_days else R.string.multiday_week),
+                Text(stringResource(if (rangeDates.size == 3) R.string.multiday_three_days else R.string.multiday_week),
                     style = MaterialTheme.typography.titleLarge.copy(textDirection = TextDirection.Content), modifier = Modifier.weight(1f))
                 TextButton(enabled = today in MultiDayMinDate..MultiDayMaxDate, onClick = { navigate(today) }) { Text(stringResource(R.string.multiday_today)) }
             }
@@ -130,6 +138,13 @@ fun MultiDayView(
                 }
                 TextButton(enabled = later != null, onClick = { later?.let { onSelectDate(it.start); onNavigateRange(it) } }, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.multiday_next))
+                }
+            }
+            if (hiddenSelection) {
+                val label = stringResource(R.string.calendar_view_day_events, selectedDate.format(fullDates))
+                TextButton(onClick = { onShowDateEvents(selectedDate) }, modifier = Modifier.fillMaxWidth()
+                    .testTag("multiday_hidden_selection").semantics { contentDescription = label; selected = true }) {
+                    Text(label, style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content))
                 }
             }
             // Explicit controls are the keyboard/TalkBack alternative to a two-finger zoom gesture.
@@ -148,7 +163,7 @@ fun MultiDayView(
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val columnWidth = maxOf((96f * density.fontScale.coerceAtLeast(1f)).dp, (maxWidth - gutter).coerceAtLeast(0.dp) / dates.size)
                 val horizontalViewport = with(density) { (maxWidth - gutter).coerceAtLeast(0.dp).toPx() }
-                LaunchedEffect(range, selectedDate, columnWidth, horizontalViewport) {
+                LaunchedEffect(range, dates, selectedDate, columnWidth, horizontalViewport) {
                     val index = dates.indexOf(selectedDate)
                     if (index >= 0) {
                         withFrameNanos { }

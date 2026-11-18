@@ -44,6 +44,7 @@ import java.util.Locale
 
 /**
  * Provider reads and persistent navigation state belong to the caller, never individual cells.
+ * [showWeekends] changes columns only; the full six-week range and week boundaries remain intact.
  * [onCreateDate] requests an all-day draft on the selected date. Pass [today] from the app clock.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -62,11 +63,17 @@ fun MonthView(
     modifier: Modifier = Modifier,
     allowCreation: Boolean = true,
     onShowDateEvents: ((LocalDate) -> Unit)? = null,
+    showWeekends: Boolean = true,
 ) {
     val locale = LocalLocale.current.platformLocale
     val chooseDateLabel = stringResource(R.string.month_choose_date)
     val dates = remember(month, firstDayOfWeek) { monthDates(month, firstDayOfWeek) }
-    val byDate = remember(dates, events, displayZone) { monthEventsByDate(dates, events, displayZone) }
+    val visibleWeeks = remember(dates, showWeekends) { dates.chunked(7).map { week ->
+        if (showWeekends) week else week.filter { it.dayOfWeek != DayOfWeek.SATURDAY && it.dayOfWeek != DayOfWeek.SUNDAY }
+    } }
+    val columns = if (showWeekends) 7 else 5
+    val hiddenSelection = !showWeekends && selectedDate.dayOfWeek in setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY)
+    val byDate = remember(dates, selectedDate, events, displayZone) { monthEventsByDate(dates + selectedDate, events, displayZone) }
     var sheetDate by remember { mutableStateOf<LocalDate?>(null) }
     var pickingDate by remember { mutableStateOf(false) }
     val horizontalScroll = rememberScrollState()
@@ -93,15 +100,24 @@ fun MonthView(
             }
             if (fontScale > 1.3f) TextButton(onClick = { sheetDate = null; onSelectDate(today); onNavigateMonth(YearMonth.from(today)) },
                 modifier = Modifier.align(Alignment.End).padding(end = 8.dp)) { Text(stringResource(R.string.month_today)) }
+            if (hiddenSelection) {
+                val label = stringResource(R.string.month_events_on_date,
+                    selectedDate.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale)))
+                TextButton(onClick = {
+                    if (onShowDateEvents != null) onShowDateEvents(selectedDate) else sheetDate = selectedDate
+                }, modifier = Modifier.fillMaxWidth().testTag("month_hidden_selection").semantics { contentDescription = label; selected = true }) {
+                    Text(label, style = MaterialTheme.typography.bodyMedium.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Content))
+                }
+            }
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                val cellWidth = maxOf(maxWidth / 7, (56f * fontScale).dp)
-                val tableWidth = cellWidth * 7
+                val cellWidth = maxOf(maxWidth / columns, (56f * fontScale).dp)
+                val tableWidth = cellWidth * columns
                 val cellHeight = maxOf((112f * fontScale).dp, (maxHeight - (16f * fontScale + 16f).dp) / 6)
                 Box(Modifier.fillMaxSize().horizontalScroll(horizontalScroll).testTag("month_horizontal_scroll")) {
                     Column(Modifier.width(tableWidth).fillMaxHeight()) {
                         Row(Modifier.width(tableWidth)) {
-                            repeat(7) { column ->
-                                val weekday = firstDayOfWeek.plus(column.toLong())
+                            visibleWeeks.first().forEach { date ->
+                                val weekday = date.dayOfWeek
                                 Text(weekday.getDisplayName(TextStyle.SHORT, locale), style = MaterialTheme.typography.labelMedium,
                                     modifier = Modifier.width(cellWidth).padding(vertical = 8.dp).semantics {
                                         contentDescription = weekday.getDisplayName(TextStyle.FULL, locale)
@@ -110,8 +126,8 @@ fun MonthView(
                             }
                         }
                         Column(Modifier.weight(1f).verticalScroll(verticalScroll).testTag("month_grid")
-                            .semantics { collectionInfo = CollectionInfo(6, 7) }) {
-                            dates.chunked(7).forEachIndexed { row, week ->
+                            .semantics { collectionInfo = CollectionInfo(6, columns) }) {
+                            visibleWeeks.forEachIndexed { row, week ->
                                 Row(Modifier.width(tableWidth).height(IntrinsicSize.Min)) {
                                     week.forEachIndexed { column, date ->
                                         key(date) {
