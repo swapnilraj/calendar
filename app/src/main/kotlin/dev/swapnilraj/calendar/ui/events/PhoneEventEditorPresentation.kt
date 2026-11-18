@@ -15,6 +15,7 @@ internal class PhoneEventEditorPresentation(val controller: EventEditorControlle
         state.problem in setOf(EditorProblem.UNSUPPORTED, EditorProblem.DRAFT_VERSION, EditorProblem.DRAFT_RETIRED) ||
         state.result is MutationResult.LocalSaved || state.result is MutationResult.LocalDeleted
     fun canEdit(field: EditableField) = !blocked && (!controller.isEditing || field in controller.existing?.allowedFields.orEmpty())
+    val needsAttention get() = state.legacy || state.reviewRequired || state.recoveryRequired || controller.hasFrozenSubmission || state.draftReadFailed || state.localOutcome != null
     val canChooseCalendar get() = !blocked && !controller.isEditing
     val canSave get() = !blocked && !controller.calendarSelectionRequired && !controller.visibilityChoiceRequired &&
         (controller.isEditing || calendars.any { it.identity == fields.targetIdentity && it.id.value.toString() == fields.calendarId && it.capabilities.createEvents == AccessDecision.ALLOWED })
@@ -30,7 +31,12 @@ internal object PhoneEventEditorText {
         val pattern = android.text.format.DateFormat.getBestDateTimePattern(locale, if (use24Hour) "Hm" else "hm")
         LocalTime.parse(raw).format(DateTimeFormatter.ofPattern(pattern, locale))
     }.getOrNull()
-    fun zone(raw: String): String? = runCatching { ZoneId.of(raw).id.replace('_', ' ') }.getOrNull()
+    fun zone(raw: String): String? = runCatching {
+        val zone = ZoneId.of(raw)
+        when { zone == ZoneOffset.UTC || zone.id in setOf("UTC", "Etc/UTC", "GMT") -> "UTC"
+            zone is ZoneOffset -> "UTC${zone.id}"
+            else -> zone.id.replace('_', ' ') }
+    }.getOrNull()
     fun offsets(date: String, time: String, zone: String): List<ZoneOffset> = runCatching {
         ZoneId.of(zone).rules.getValidOffsets(LocalDate.parse(date).atTime(LocalTime.parse(time)))
     }.getOrDefault(emptyList())

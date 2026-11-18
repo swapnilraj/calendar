@@ -44,7 +44,7 @@ internal fun PhoneEditorPanelContent(panel: PhoneEditorPanel, view: PhoneEventEd
             LazyColumn(Modifier.fillMaxSize()) { items(view.calendars.filter { it.capabilities.createEvents == AccessDecision.ALLOWED }, key = { "${it.id}:${it.identity}" }) { calendar ->
                 val selected = fields.targetIdentity == calendar.identity && fields.calendarId == calendar.id.value.toString()
                 Row(Modifier.fillMaxWidth().selectable(selected = selected, enabled = view.canChooseCalendar && calendar.account.name.isNotBlank() && calendar.account.type.isNotBlank(), role = Role.RadioButton) { controller.selectCalendar(calendar); onDismiss() }.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Box(Modifier.size(16.dp).background(Color(calendar.color), CircleShape))
+                    Box(Modifier.size(16.dp).background(Color(calendar.color or 0xff000000.toInt()), CircleShape))
                     Column(Modifier.weight(1f)) { Text(calendar.displayName, style = MaterialTheme.typography.bodyLarge); Text(calendar.account.name, style = MaterialTheme.typography.bodyMedium) }
                     RadioButton(selected, onClick = null, enabled = view.canChooseCalendar)
                 }

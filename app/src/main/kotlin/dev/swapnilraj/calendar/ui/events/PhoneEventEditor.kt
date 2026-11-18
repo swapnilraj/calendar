@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.swapnilraj.calendar.R
@@ -95,7 +96,7 @@ internal fun PhoneEventEditorContent(
                         focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent))
                 PhoneEditorRow(PhoneEventGlyph.CALENDAR, view.calendar?.displayName ?: stringResource(if (controller.isEditing) R.string.events_drafts_calendar_unavailable else R.string.phone_event_choose_calendar),
                     view.calendar?.account?.name ?: controller.boundCalendarIdentity?.account?.name,
-                    enabled = view.canChooseCalendar, onClick = { panel = PhoneEditorPanel.CALENDAR }, swatch = view.calendar?.color?.let(::Color))
+                    enabled = view.canChooseCalendar, onClick = { panel = PhoneEditorPanel.CALENDAR }, swatch = view.calendar?.color?.let { Color(it or 0xff000000.toInt()) })
                 HorizontalDivider(Modifier.padding(start = 64.dp))
                 Row(Modifier.fillMaxWidth().toggleable(value = fields.allDay, enabled = view.canEdit(EditableField.TIME), role = Role.Switch, onValueChange = { value -> controller.change { it.copy(allDay = value) } }).padding(start = 64.dp, end = 24.dp).heightIn(min = 64.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.events_all_day), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
@@ -119,6 +120,7 @@ internal fun PhoneEventEditorContent(
                 HorizontalDivider(Modifier.padding(start = 64.dp))
                 PhoneEditorRow(PhoneEventGlyph.AVAILABILITY, stringResource(R.string.events_availability), phoneMetadataLabel(fields.availability, false), view.canEdit(EditableField.AVAILABILITY), { panel = PhoneEditorPanel.AVAILABILITY })
                 PhoneEditorRow(PhoneEventGlyph.VISIBILITY, stringResource(R.string.events_visibility), phoneMetadataLabel(fields.privacy, true), view.canEdit(EditableField.PRIVACY), { panel = PhoneEditorPanel.PRIVACY })
+                if (!view.needsAttention && controller.canDiscard && onDiscard != null) TextButton(onClick = { confirm = "discard" }, modifier = Modifier.padding(start = 52.dp)) { Text(stringResource(R.string.phone_event_discard)) }
                 Text(stringResource(R.string.phone_event_local_save), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 64.dp, end = 24.dp, top = 20.dp))
                 if (controller.isEditing && controller.existing != null && !controller.recoveryOnly) TextButton(onClick = controller::requestDelete, enabled = !view.blocked, modifier = Modifier.padding(start = 52.dp)) { Text(stringResource(R.string.events_editor_delete)) }
             }
@@ -143,7 +145,7 @@ internal fun PhoneEditorRow(icon: PhoneEventGlyph, title: String, subtitle: Stri
     Row(Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick) else Modifier)
         .padding(horizontal = 24.dp, vertical = 12.dp).heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         PhoneEventIcon(icon)
-        Column(Modifier.weight(1f)) { Text(title, style = MaterialTheme.typography.bodyLarge); if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Column(Modifier.weight(1f)) { Text(title, style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr)); if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         swatch?.let { Box(Modifier.size(16.dp).background(it, CircleShape)) }
     }
 }
@@ -151,6 +153,7 @@ internal fun PhoneEditorRow(icon: PhoneEventGlyph, title: String, subtitle: Stri
 @Composable
 private fun PhoneEditorStatus(controller: EventEditorController, onReview: (() -> Unit)?, onUpgrade: (() -> Unit)?, onReplace: (() -> Unit)?, onDiscard: (() -> Unit)?, onRetryDelete: () -> Unit, use24Hour: Boolean) {
     val state = controller.state; val scope = rememberCoroutineScope()
+    val attention = state.legacy || state.reviewRequired || state.recoveryRequired || controller.hasFrozenSubmission || state.draftReadFailed || state.localOutcome != null
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         state.problem?.let { Text(stringResource(phoneEditorProblem(it)), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }
         state.localOutcome?.let { Text(stringResource(if (it is MutationResult.LocalDeleted) R.string.phone_event_local_deleted else R.string.phone_event_local_saved), style = MaterialTheme.typography.bodyMedium) }
@@ -158,10 +161,10 @@ private fun PhoneEditorStatus(controller: EventEditorController, onReview: (() -
         state.notices.forEach { Text(stringResource(phoneEditorNotice(it)), style = MaterialTheme.typography.bodyMedium) }
         if (state.recoveryRequired && !state.draftReadFailed) TextButton(onClick = controller::recover, enabled = !state.saving) { Text(stringResource(R.string.phone_event_check_save)) }
         if (state.retryReady) TextButton(onClick = { if (controller.pendingOperationKind == "delete") onRetryDelete() else controller.retryOriginal() }, enabled = !state.saving) { Text(stringResource(if (controller.pendingOperationKind == "delete") R.string.phone_event_retry_delete else R.string.phone_event_retry_save)) }
-        if (controller.canReviewLatest && onReview != null) TextButton(onClick = onReview) { Text(stringResource(R.string.events_editor_review)) }
+        if (state.reviewRequired && controller.canReviewLatest && onReview != null) TextButton(onClick = onReview) { Text(stringResource(R.string.events_editor_review)) }
         if (controller.canUpgrade && onUpgrade != null) TextButton(onClick = onUpgrade) { Text(stringResource(R.string.phone_event_continue)) }
-        if (controller.canReplace && onReplace != null) TextButton(onClick = onReplace) { Text(stringResource(R.string.phone_event_replace)) }
-        if (controller.canDiscard && onDiscard != null) TextButton(onClick = onDiscard) { Text(stringResource(R.string.phone_event_discard)) }
+        if (attention && controller.canReplace && onReplace != null) TextButton(onClick = onReplace) { Text(stringResource(R.string.phone_event_replace)) }
+        if (attention && controller.canDiscard && onDiscard != null) TextButton(onClick = onDiscard) { Text(stringResource(R.string.phone_event_discard)) }
         if (controller.canInspectRetirement) TextButton(onClick = { scope.launch { controller.inspectRetirement() } }, enabled = !state.saving) { Text(stringResource(R.string.phone_event_check_discard)) }
         if (controller.canAcknowledge) TextButton(onClick = { scope.launch { controller.acknowledgeLocalOutcome() } }) { Text(stringResource(R.string.phone_event_finish_close)) }
     }

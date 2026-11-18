@@ -19,6 +19,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -34,6 +35,7 @@ class PhoneEventEditorScreenTest {
         "Planning for next week", location = "Garden room", alertMinutes = listOf(10), targetIdentity = eventTestIdentity())
     private fun editor() = preparedEditor(draft, null, "phone", writer, store, scope, recurringCreationSupported = true)
     private fun show(controller: EventEditorController, dark: Boolean = false, largeRtl: Boolean = false, onDismiss: () -> Unit = {}, onSaved: (EventRef) -> Unit = {}) {
+        RuntimeEnvironment.setFontScale(if (largeRtl) 2f else 1f)
         compose.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, if (largeRtl) 2f else density.fontScale), LocalLayoutDirection provides if (largeRtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
@@ -42,7 +44,7 @@ class PhoneEventEditorScreenTest {
         }
         compose.waitForIdle()
     }
-    @After fun stop() { scope.cancel() }
+    @After fun stop() { scope.cancel(); RuntimeEnvironment.setFontScale(1f) }
     @Test fun toolbarSaveRemainsVisibleAfterScrollingAndOnlyExplicitSaveWrites() {
         var saved: EventRef? = null; val controller = editor(); show(controller, onSaved = { saved = it })
         compose.onNodeWithText("Saving updates this device. Your calendar account handles sync.").performScrollTo()
