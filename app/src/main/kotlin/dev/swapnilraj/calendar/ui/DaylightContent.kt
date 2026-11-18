@@ -41,9 +41,8 @@ fun DaylightContent(app: CalendarApp) {
     val context = LocalContext.current
     val noLinkHandler = stringResource(dev.swapnilraj.calendar.R.string.navigation_no_link_handler)
     val linkUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_link_unavailable)
+    val preferencesUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_preferences_unavailable)
     val scope = rememberCoroutineScope()
-    val savedHeight by app.settings.hourHeight.collectAsStateWithLifecycle(initialValue = null)
-    val calendarSelection by app.settings.calendarSelection.collectAsStateWithLifecycle(initialValue = null)
     var now by remember { mutableStateOf(ZonedDateTime.now()) }
     LaunchedEffect(Unit) {
         while (true) { now = ZonedDateTime.now(); delay(60_000 - System.currentTimeMillis() % 60_000) }
@@ -80,10 +79,9 @@ fun DaylightContent(app: CalendarApp) {
                     while (true) { delay(30 * 60_000L); app.weather.refresh(now.zone) }
                 }
             }
-            savedHeight?.let { initialHeight ->
-              calendarSelection?.let { selectedCalendars ->
                 Box(Modifier.fillMaxSize()) {
-                    LiveCalendarDay(app.calendarReader, selectedCalendars, now, DateFormat.is24HourFormat(context), initialHeight,
+                    LiveCalendarDay(app.calendarReader, dev.swapnilraj.calendar.core.CalendarSelection.Explicit(emptySet()),
+                        now, DateFormat.is24HourFormat(context), 64f,
                         onSaveHourHeight = { height -> scope.launch { app.settings.setHourHeight(height) } },
                         onOpenLink = { value ->
                             val uri = Uri.parse(value)
@@ -103,6 +101,8 @@ fun DaylightContent(app: CalendarApp) {
                             val summary = remember(weather.forecast, date, now.zone) { daySummary(weather.forecast, date, now.zone) }
                             summary?.let { WeatherSummary(it, weather.stale) }
                         },
+                        settings = app.settings,
+                        onPreferenceFailure = { scope.launch { snackbar.showSnackbar(preferencesUnavailable) } },
                         background = { date ->
                             val hours = remember(weather.forecast, date, now.zone) { hoursForDay(weather.forecast, date, now.zone) }
                             // DayScreen owns the zoom; the layer derives hour height from its measured full-day height.
@@ -110,8 +110,6 @@ fun DaylightContent(app: CalendarApp) {
                         })
                     SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
                 }
-              }
-            }
         }
     }
 }

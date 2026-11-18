@@ -10,6 +10,12 @@ and opens native details, including existing meeting links. Changing its calenda
 context closes old details. These automated read workflows do not establish real Google sync, native
 editing, all planned views, or reminder delivery; see DAILY_DRIVER_PROGRESS.md for remaining gates.
 
+The live app now exposes Day and Month through its view chooser and an app-local calendar drawer.
+Calendar selection, creation default, view and zoom are read as one preference snapshot before any
+calendar subscriptions begin. An unavailable preference store shows Retry instead of substituting
+provider visibility. Month date sheets survive adjacent-month range loading; supported date picking
+and navigation span years 1–9999. Creation controls appear only when a working editor route exists.
+
 1. **Events always win.** Weather is painted under the hour lines and events. Nothing covers an event
    or its text, and event colours are never tinted.
 2. **Glanceable, not readable.** "Rainy evening, dark by five" should land in under a second without

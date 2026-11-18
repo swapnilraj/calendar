@@ -38,7 +38,9 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
     summary: @Composable RowScope.(LocalDate) -> Unit = {},
     background: @Composable BoxScope.(LocalDate) -> Unit = {},
     onVisibleDateChanged: (LocalDate) -> Unit = {},
-    onRetry: () -> Unit = {}) {
+    onRetry: () -> Unit = {},
+    leadingActions: @Composable RowScope.() -> Unit = {},
+    compactTitle: Boolean = false) {
     val zone = now.zone
     val anchorText = rememberSaveable { initialDate.toString() }
     val anchor = LocalDate.parse(anchorText)
@@ -57,7 +59,9 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
               style = MaterialTheme.typography.titleLarge, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
           Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
               horizontalArrangement = Arrangement.End) {
-            if (fontScale <= 1.3f) Text(visibleDate.format(DateTimeFormatter.ofPattern("MMMM yyyy", locale)), style = MaterialTheme.typography.titleLarge,
+            leadingActions()
+            if (fontScale > 1.3f) Spacer(Modifier.weight(1f))
+            if (fontScale <= 1.3f) Text(visibleDate.format(DateTimeFormatter.ofPattern(if (compactTitle) "MMM yyyy" else "MMMM yyyy", locale)), style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             actions()
             IconButton(onClick = { scope.launch { pager.animateScrollToPage((pager.currentPage - 1).coerceAtLeast(0)) } }) {
