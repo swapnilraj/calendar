@@ -5,10 +5,20 @@ mean fields actually exposed by the provider. They do not establish complete phy
 visibility. New clone activation also requires the provider-profile gate in SPEC.md; see
 [the observability audit](PROVIDER_CLONE_OBSERVABILITY_AUDIT.md). The gate is implemented; no production provider profile is admitted.
 
-Status: proposed implementation packet, not an enabled feature or Google compatibility result.
-This design extends `CalendarSeriesWriter` using the existing `SeriesCommand.FollowingEdit`,
-`RecurrenceEditing`, `RecurrencePlanning`, and pinned lib-recur 0.17.1. It does not replace their
-source-validation model. The writer currently rejects FollowingEdit before preparation.
+Current source status, 18 November 2026: the bounded exception-free executor is implemented in
+`CalendarFollowingSeriesWriter`, routed through `CalendarSeriesWriter`, with component and actual-app
+synthetic-provider checks. Nonzero independent tails remain gated by `ProviderClonePolicy.Unverified`
+in production. The design below records its original implementation contract and extension work;
+it is not Google compatibility evidence. Existing materialized exceptions, ALL and ordinal-zero
+operations retain their separate eligibility.
+
+`RecurrenceFollowingMetadata` supplies pure metadata-only partition plans, but the Android executor
+does not consume it and still rejects exception transfer. Before expanding or admitting that executor,
+a new versioned preparation/receipt protocol must freeze the winning native plan instead of
+recompiling it during recovery, bind exact child insert acknowledgements, and check tail UID/calendar
+authority before reading child payloads. Legacy receipts retain their existing conservative recovery;
+new code must not reinterpret them or change frozen command/signature bytes. This is remaining source
+work, separate from the provider-implementation and Google/Workspace acceptance gates.
 
 ## First packet and authority
 
