@@ -113,13 +113,13 @@ class SeriesEditorScreenTest {
     }
     @Test fun failedSwipeDismissReshowsNativeSheetAndRawFieldsRemainReachable() = runBlocking<Unit> {
         val launch = f.prepare(); var failedWrites = 0; var fail = true; var closed = false
-        val tracked = object : DraftStore by f.store {
-            override suspend fun upsert(record: DraftRecord) {
+        val tracked = object : AtomicDraftStore by f.store {
+            override suspend fun compareAndSet(id: String, expected: DraftRecord?, replacement: DraftRecord?): DraftChangeResult {
                 if (fail) { failedWrites++; error("fixture draft unavailable") }
-                f.store.upsert(record)
+                return f.store.compareAndSet(id, expected, replacement)
             }
         }
-        val controller = SeriesEventEditorController(launch, f.source, f.port, tracked, f.scope)
+        val controller = SeriesEventEditorController(launch, f.source, f.port, tracked, f.scope, requestWritePermission = { true })
         compose.setContent { DaylightTheme { SeriesEventEditorSheet(controller, { closed = true }, {}, {}, {}) } }
         controller.change { it.copy(title = "Unpersisted swipe draft") }; assertFalse(controller.flushDraft())
         compose.waitForIdle(); val beforeSwipe = failedWrites

@@ -126,7 +126,7 @@ class SeriesFollowingDeleteTest {
             JSONObject(original.payload).put("futureTemporalIntent", JSONObject()),
             JSONObject(original.payload).apply { getJSONObject("fields").put("newTailStart", "2030-01-01") },
             JSONObject(original.payload).apply { getJSONObject("rights").put("futurePermission", "ALLOWED") },
-            JSONObject(original.payload).put("schema", 2),
+            JSONObject(original.payload).put("schema", 3),
             JSONObject(original.payload).apply { getJSONObject("rights").put("delete", "UNKNOWN") })
         edits.forEach { assertNull(SeriesDraftCodec.describe(original.copy(payload = it.toString()))) }
         assertEquals(original, f.store.records.getValue("series")); assertTrue(f.calls.isEmpty())

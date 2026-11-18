@@ -21,7 +21,7 @@ internal class SeriesEditorFixture {
     val identity = SeriesIdentity(CalendarId(2), 41)
     val rights = SeriesScopeCapabilities(AccessDecision.ALLOWED, seriesUiFields, AccessDecision.ALLOWED)
     val source = EditableSeries(
-        EventDetails(EventOccurrence(selected, EventTime.Timed(actual, actual.plusSeconds(3600)), "Override title", 1), null,
+        EventDetails(EventOccurrence(selected, EventTime.Timed(actual, actual.plusSeconds(3600)), "Override title", 1), eventTestCalendar(),
             location = "Override room", description = "Override notes", eventZone = ZoneId.of("UTC"),
             reminders = listOf(EventReminder(30, 1)), privacy = 3, availability = 0),
         SeriesMasterFields("Master title", "Master room", "Master notes", listOf(EventReminder(10, 1), EventReminder(-1, 1), EventReminder(60, 2)), 91, 2),
@@ -30,7 +30,7 @@ internal class SeriesEditorFixture {
         EditToken("graph-token"), seriesUiFields,
         mapOf(RecurrenceScope.ALL to rights, RecurrenceScope.THIS to rights,
             RecurrenceScope.FOLLOWING to SeriesScopeCapabilities(limitation = SeriesActionLimitation.UNSUPPORTED)))
-    val store = EventEditorControllerTest.Store()
+    val store = SeriesAtomicStore()
     data class Call(val id: String, val selected: EventRef, val token: EditToken, val command: SeriesCommand)
     val calls = mutableListOf<Call>(); val recoveryIds = mutableListOf<String>(); var reads = 0
     var next: SeriesMutationResult = SeriesMutationResult.LocalSaved(identity, selected)
@@ -50,7 +50,7 @@ internal class SeriesEditorFixture {
         source: EditableSeries = this.source, id: String = "series"): SeriesEditorLaunch =
         (prepareSeriesDraft(source, scope, action, id, store) as SeriesDraftPreparationResult.Ready).launch
     fun controller(launch: SeriesEditorLaunch, source: EditableSeries? = this.source, recoveryOnly: Boolean = source == null) =
-        SeriesEventEditorController(launch, source, port, store, scope, recoveryOnly)
+        SeriesEventEditorController(launch, source, port, store, scope, recoveryOnly, requestWritePermission = { true })
     fun launch() = SeriesDraftCodec.describe(store.records.getValue("series"))!!
     fun pending(scope: RecurrenceScope = RecurrenceScope.ALL, action: SeriesEditorAction = SeriesEditorAction.EDIT): SeriesEventEditorController = runBlocking {
         val editor = controller(prepare(scope, action)); next = SeriesMutationResult.Common(MutationResult.Uncertain("ignored", selected.eventId))
@@ -168,18 +168,22 @@ class SeriesEditorTest {
             assertEquals("My draft", restored.state.fields.title); restored.save(); assertTrue(f.calls.isEmpty())
         }
     }
-    @Test fun backendReviewPersistsAcrossRestoreWithoutShowingTechnicalReasons() = runBlocking {
+    @Test fun backendReviewRetainsFrozenOriginalWithoutShowingTechnicalReasons() = runBlocking {
         f.next = SeriesMutationResult.PlanningReview("SECRET provider-id 41")
         val first = f.controller(f.prepare()); first.change { it.copy(title = "Draft") }; first.save()
-        assertTrue(first.state.reviewRequired); val restored = f.controller(f.launch())
-        assertTrue(restored.state.reviewRequired); restored.save(); assertEquals(1, f.calls.size)
-        assertEquals(SeriesEditorProblem.SOURCE_CHANGED, restored.state.problem)
+        assertTrue(first.state.recoveryRequired); val record = f.store.records.getValue("series")
+        val restored = f.controller(f.launch()); restored.save()
+        assertTrue(restored.state.recoveryRequired); assertFalse(restored.canChange)
+        assertEquals(1, f.calls.size); assertEquals(record, f.store.records.getValue("series"))
     }
-    @Test fun conflictRetainsDraftAndOnlyExplicitDiscardLoadsFreshSource() = runBlocking {
+    @Test fun dispatchedConflictRetainsOriginalAndCannotBeDiscardedOrReissued() = runBlocking {
         f.next = SeriesMutationResult.Common(MutationResult.Conflict(null))
         val editor = f.controller(f.prepare()); editor.change { it.copy(title = "Draft") }; editor.save()
-        assertTrue(editor.state.reviewRequired); assertFalse(editor.flushDraft()); assertEquals(0, f.reads)
-        assertTrue(editor.discardAndReload() is SeriesReadResult.Ready); assertEquals(1, f.reads); assertTrue(f.store.records.isEmpty())
+        val record = f.store.records.getValue("series")
+        assertTrue(editor.state.recoveryRequired); assertFalse(editor.canReviewDraft)
+        assertNull(editor.discardAndReload()); assertEquals(0, f.reads)
+        editor.change { it.copy(title = "Replacement") }; editor.save()
+        assertEquals(record, f.store.records.getValue("series")); assertEquals(1, f.calls.size)
     }
     @Test fun unknownRecoveryAndWrongProofStayLockedWithoutNewOperation() {
         val pending = f.pending(); val id = pending.operationId
@@ -194,7 +198,7 @@ class SeriesEditorTest {
         assertEquals(1, f.calls.size); assertTrue(restored.state.retryReady)
         restored.change { it.copy(title = "Unsafe") }; restored.save(); restored.requestDelete(); restored.confirmDelete()
         f.next = SeriesMutationResult.Common(MutationResult.PermissionRequired); restored.retryOriginal()
-        assertEquals(listOf(command, command), f.calls); assertTrue(restored.state.retryReady)
+        assertEquals(listOf(command, command), f.calls); assertFalse(restored.state.retryReady); assertTrue(restored.state.recoveryRequired)
         assertEquals("Pending title", restored.state.fields.title)
     }
     @Test fun exactRetryStillHasDoubleTapGuard() = runBlocking {
@@ -235,12 +239,13 @@ class SeriesEditorTest {
         assertTrue(f.calls.isEmpty()); assertEquals(SeriesEditorProblem.DRAFT_UNAVAILABLE, editor.state.problem)
         assertFalse(editor.state.recoveryRequired); f.store.failWrites = false; editor.save(); assertEquals(1, f.calls.size)
     }
-    @Test fun permissionFailureCanRetrySameExactCommandWhileChangedPayloadRotatesIdentity() = runBlocking {
+    @Test fun dispatchedPermissionFailureRequiresJournalProofAndNeverMintsReplacementOperation() = runBlocking {
         f.next = SeriesMutationResult.Common(MutationResult.PermissionRequired)
         val editor = f.controller(f.prepare()); editor.change { it.copy(title = "Changed") }; editor.save(); editor.save()
-        assertEquals(2, f.calls.size); assertEquals(1, f.calls.map { it.id }.distinct().size)
-        editor.change { it.copy(title = "Another change") }; editor.save()
-        assertNotEquals(f.calls.first().id, f.calls.last().id)
+        assertEquals(1, f.calls.size); assertTrue(editor.state.recoveryRequired)
+        editor.change { it.copy(title = "Another change") }; assertNull(editor.discardAndReload())
+        f.proveSafe = true; editor.recover(); editor.retryOriginal()
+        assertEquals(2, f.calls.size); assertEquals(f.calls.first(), f.calls.last())
     }
     @Test fun concurrentConfirmedDiscardsCannotDeleteReplacementRawDraft() = runBlocking {
         val old = f.controller(f.prepare(), f.source.copy(token = EditToken("fresh-token")))

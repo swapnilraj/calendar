@@ -68,6 +68,7 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
         Text(stringResource(if (controller.recoveryOnly) R.string.events_drafts_recover else if (launch.action == SeriesEditorAction.EDIT) R.string.series_editor_edit else R.string.series_editor_delete), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(scopeLabel(launch.scope)), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(if (launch.scope == RecurrenceScope.ALL) R.string.series_master_origin else R.string.series_selected_origin))
+        if (controller.temporalPresented || controller.rulePresented) controller.masterContext?.calendar?.let { Text(it.account.name) }
         if (controller.recoveryOnly) Text(stringResource(R.string.series_recovery_only))
         if (state.loading || state.reviewing) CircularProgressIndicator()
         state.problem?.let { Text(stringResource(seriesProblem(it)), color = MaterialTheme.colorScheme.error) }
@@ -93,7 +94,17 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
                 Text(stringResource(R.string.series_master_start_timed, bidi.unicodeWrap(label), bidi.unicodeWrap(zone)))
             } else Text(stringResource(R.string.series_master_start, bidi.unicodeWrap(label)))
         }
-        Text(stringResource(if (launch.action == SeriesEditorAction.EDIT) R.string.series_time_unchanged else R.string.series_delete_read_only), style = MaterialTheme.typography.bodySmall)
+        if (launch.action == SeriesEditorAction.DELETE || !controller.temporalPresented && !controller.rulePresented)
+            Text(stringResource(if (launch.action == SeriesEditorAction.EDIT) R.string.series_time_unchanged else R.string.series_delete_read_only), style = MaterialTheme.typography.bodySmall)
+        if (launch.scope == RecurrenceScope.ALL && launch.action == SeriesEditorAction.EDIT) {
+            if (controller.temporalPresented && fields.temporal != null) SeriesTemporalControls(controller)
+            if (controller.rulePresented && fields.recurrence != null) {
+                SeriesExistingLimit(requireNotNull(controller.masterContext))
+                RecurrenceEditorControls(fields.recurrence.values, fields.temporal?.startDate ?: controller.masterStart?.date.toString(),
+                    controller.canChangeRule, allowNone = false, allowKeepEnd = true, onChange = controller::changeRule)
+            }
+        }
+        if (state.localOutcome != null) Text(stringResource(R.string.events_editor_local_save))
         OutlinedTextField(fields.title, { value -> controller.change { it.copy(title = value) } }, enabled = editable(EditableField.TITLE), label = { Text(stringResource(R.string.events_editor_title)) }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(fields.location, { value -> controller.change { it.copy(location = value) } }, enabled = editable(EditableField.LOCATION), label = { Text(stringResource(R.string.events_location)) }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(fields.description, { value -> controller.change { it.copy(description = value) } }, enabled = editable(EditableField.DESCRIPTION), label = { Text(stringResource(R.string.events_notes)) }, modifier = Modifier.fillMaxWidth())
@@ -119,6 +130,7 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
         }
         TextButton(onClick = onClose, enabled = !state.saving && !state.reviewing) { Text(stringResource(R.string.events_editor_cancel)) }
     }
+    state.wholeReview?.let { review -> SeriesWholeReviewDialog(review, fields.title, controller::confirmWholeReview, controller::dismissWholeReview) }
     if (state.confirmDelete || retryDelete) AlertDialog(onDismissRequest = { controller.cancelDelete(); retryDelete = false },
         title = { Text(stringResource(R.string.series_confirm_delete)) },
         text = { Text(when (launch.scope) {

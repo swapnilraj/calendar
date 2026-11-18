@@ -11,12 +11,13 @@ import org.json.JSONObject
 enum class SeriesEditorAction { EDIT, DELETE }
 
 data class SeriesEditorFields(val title: String = "", val location: String = "", val description: String = "",
-    val alerts: String = "", val replaceAlerts: Boolean = false, val availability: String = "", val privacy: String = "")
+    val alerts: String = "", val replaceAlerts: Boolean = false, val availability: String = "", val privacy: String = "",
+    val temporal: SeriesTemporalFields? = null, val recurrence: SeriesRuleFields? = null)
 
 @ConsistentCopyVisibility
 data class SeriesEditorLaunch internal constructor(val draftId: String, val selected: EventRef,
     val scope: RecurrenceScope, val action: SeriesEditorAction, val needsRecovery: Boolean,
-    val title: String, val rawDate: String)
+    val title: String, val rawDate: String, val generation: String? = null)
 
 sealed interface SeriesDraftPreparationResult {
     data class Ready(val launch: SeriesEditorLaunch) : SeriesDraftPreparationResult
@@ -32,7 +33,8 @@ fun canPrepareSeriesScope(source: EditableSeries, scope: RecurrenceScope, action
     val rights = source.scopes[scope] ?: return false
     return when (action) {
         SeriesEditorAction.EDIT -> rights.edit == AccessDecision.ALLOWED &&
-            rights.fields.intersect(source.allowedFields).intersect(seriesUiFields).isNotEmpty()
+            (rights.fields.intersect(source.allowedFields).intersect(seriesUiFields + if (scope == RecurrenceScope.ALL) setOf(EditableField.TIME, EditableField.ZONE) else emptySet()).isNotEmpty() ||
+                scope == RecurrenceScope.ALL && rights.recurrence == AccessDecision.ALLOWED)
         SeriesEditorAction.DELETE -> rights.delete == AccessDecision.ALLOWED
     }
 }
@@ -45,12 +47,24 @@ suspend fun prepareSeriesDraft(source: EditableSeries, scope: RecurrenceScope, a
     require(source.snapshot.validatedSelection == selected)
     require(canPrepareSeriesScope(source, scope, action))
     val existing = store.load(draftId)
-    val document = if (existing != null) SeriesDraftCodec.decode(existing) else SeriesDraftDocument.initial(source, scope, action, draftId)
-    require(document.selected == selected && document.scope == scope && document.action == action)
-    val record = existing ?: SeriesDraftCodec.record(document, clock.instant()).also { store.upsert(it) }
-    val durable = store.load(draftId)
-    if (durable != null && durable.id == draftId && durable.version == record.version && durable.payload == record.payload)
-        SeriesDraftPreparationResult.Ready(document.launch()) else SeriesDraftPreparationResult.Unavailable
+    if (existing != null) {
+        val document = SeriesDraftCodec.decode(existing)
+        require(document.selected == selected && document.scope == scope && document.action == action)
+        SeriesDraftPreparationResult.Ready(document.launch())
+    } else {
+        val atomic = store as? AtomicDraftStore ?: error("Atomic draft storage required")
+        val document = SeriesDraftDocument.initial(source, scope, action, draftId)
+        val record = SeriesDraftCodec.record(document, clock.instant())
+        val result = try { atomic.compareAndSet(draftId, null, record) } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { DraftChangeResult.Unavailable }
+        val durable = store.load(draftId)
+        if (result != DraftChangeResult.Changed && durable == record) SeriesDraftPreparationResult.Ready(document.launch())
+        else if (result == DraftChangeResult.Changed && durable != null) {
+            val collision = SeriesDraftCodec.decode(durable)
+            require(collision.selected == selected && collision.scope == scope && collision.action == action)
+            SeriesDraftPreparationResult.Ready(collision.launch())
+        } else SeriesDraftPreparationResult.Unavailable
+    }
 } catch (cancelled: CancellationException) { throw cancelled }
 catch (_: Exception) { SeriesDraftPreparationResult.Unavailable }
 
@@ -59,8 +73,10 @@ internal data class SeriesDraftDocument(val id: String, val selected: EventRef, 
     val masterStart: RecurrenceStart, val rights: SeriesScopeCapabilities, val allowedFields: Set<EditableField>,
     val baseline: SeriesEditorFields, val fields: SeriesEditorFields, val rawDate: String,
     val hasDefaultAlerts: Boolean, val operationId: String, val submitted: Boolean = false,
-    val frozen: FrozenSeriesSubmission? = null, val reviewRequired: Boolean = false) {
-    fun launch() = SeriesEditorLaunch(id, selected, scope, action, submitted, fields.title, rawDate)
+    val frozen: FrozenSeriesSubmission? = null, val reviewRequired: Boolean = false,
+    val schema: Int = 2, val generation: String? = UUID.randomUUID().toString(), val revision: String? = UUID.randomUUID().toString(),
+    val context: SeriesMasterContext? = null) {
+    fun launch() = SeriesEditorLaunch(id, selected, scope, action, submitted, fields.title, if (scope == RecurrenceScope.ALL) fields.temporal?.startDate ?: rawDate else rawDate, generation)
     companion object {
         fun initial(source: EditableSeries, scope: RecurrenceScope, action: SeriesEditorAction, id: String): SeriesDraftDocument {
             val master = source.masterFields
@@ -71,7 +87,10 @@ internal data class SeriesDraftDocument(val id: String, val selected: EventRef, 
             else SeriesEditorFields(details.occurrence.title, details.location, details.description,
                 availability = details.availability?.toString().orEmpty(), privacy = details.privacy?.toString().orEmpty())
             val local = reminders.filter { it.method == CalendarContract.Reminders.METHOD_ALERT }
-            val raw = fields.copy(alerts = local.filter { it.minutesBefore != CalendarContract.Reminders.MINUTES_DEFAULT }
+            val context = SeriesMasterContext.from(source)
+            val raw = fields.copy(temporal = if (scope == RecurrenceScope.ALL && action == SeriesEditorAction.EDIT) SeriesTemporalFields.from(context) else null,
+                recurrence = if (scope == RecurrenceScope.ALL && action == SeriesEditorAction.EDIT) SeriesRuleFields.from(context) else null,
+                alerts = local.filter { it.minutesBefore != CalendarContract.Reminders.MINUTES_DEFAULT }
                 .joinToString(",") { it.minutesBefore.toString() })
             val date = if (scope == RecurrenceScope.ALL) source.snapshot.start.date.toString()
             else if (scope == RecurrenceScope.FOLLOWING) when (val boundary = seriesOriginalBoundary(details.occurrence.ref, source.snapshot.start)) {
@@ -84,7 +103,7 @@ internal data class SeriesDraftDocument(val id: String, val selected: EventRef, 
             }
             return SeriesDraftDocument(id, details.occurrence.ref, source.snapshot.identity, scope, action, source.token,
                 source.snapshot.start, source.scopes.getValue(scope), source.allowedFields, raw, raw, date,
-                local.any { it.minutesBefore == CalendarContract.Reminders.MINUTES_DEFAULT }, UUID.randomUUID().toString())
+                local.any { it.minutesBefore == CalendarContract.Reminders.MINUTES_DEFAULT }, UUID.randomUUID().toString(), context = context)
         }
     }
 }
@@ -93,8 +112,11 @@ internal data class SeriesDraftDocument(val id: String, val selected: EventRef, 
 object SeriesDraftCodec {
     const val VERSION = 2
     fun describe(record: DraftRecord): SeriesEditorLaunch? = try { decode(record).launch() } catch (_: Exception) { null }
-    internal fun record(value: SeriesDraftDocument, now: Instant) = DraftRecord(value.id, VERSION, JSONObject().apply {
-        put("feature", "series-editor"); put("schema", 1); put("selected", SeriesJson.ref(value.selected))
+    internal fun record(value: SeriesDraftDocument, now: Instant): DraftRecord {
+        require(value.schema == 2 && value.generation != null && value.revision != null && value.context != null)
+        return DraftRecord(value.id, VERSION, JSONObject().apply {
+        put("feature", "series-editor"); put("schema", 2)
+        put("generation", value.generation); put("revision", value.revision); put("context", SeriesTemporalJson.context(value.context)); put("selected", SeriesJson.ref(value.selected))
         put("calendar", value.identity.calendarId.value); put("master", value.identity.masterEventId)
         put("scope", value.scope.name); put("action", value.action.name); put("token", value.token.value)
         put("masterStart", SeriesJson.start(value.masterStart)); put("rights", rights(value.rights))
@@ -103,11 +125,13 @@ object SeriesDraftCodec {
         put("hasDefaultAlerts", value.hasDefaultAlerts); put("operationId", value.operationId); put("submitted", value.submitted); put("reviewRequired", value.reviewRequired)
         value.frozen?.let { put("frozen", it.encode()) }
     }.toString(), now)
+    }
     internal fun decode(record: DraftRecord): SeriesDraftDocument {
         require(record.version == VERSION && record.id.isNotBlank())
         val json = JSONObject(record.payload)
-        require(json.getString("feature") == "series-editor" && json.getInt("schema") == 1)
-        require(json.keys().asSequence().all { it in setOf("feature", "schema", "selected", "calendar", "master", "scope", "action", "token", "masterStart", "rights", "allowedFields", "baseline", "fields", "rawDate", "hasDefaultAlerts", "operationId", "submitted", "frozen", "reviewRequired") })
+        val schema = (json.get("schema") as? Int) ?: error("Invalid schema")
+        require(json.getString("feature") == "series-editor" && schema in 1..2)
+        require(json.keys().asSequence().all { it in setOf("feature", "schema", "selected", "calendar", "master", "scope", "action", "token", "masterStart", "rights", "allowedFields", "baseline", "fields", "rawDate", "hasDefaultAlerts", "operationId", "submitted", "frozen", "reviewRequired") + if (schema == 2) setOf("generation", "revision", "context") else emptySet() })
         val selected = SeriesJson.ref(json.getJSONObject("selected"))
         val identity = SeriesIdentity(CalendarId(json.getLong("calendar")), json.getLong("master"))
         require(selected.calendarId == identity.calendarId && (selected.recurrence?.masterEventId ?: selected.eventId) == identity.masterEventId)
@@ -120,7 +144,7 @@ object SeriesDraftCodec {
         val submitted = json.getBoolean("submitted"); require(!submitted || frozen != null)
         val masterStart = SeriesJson.start(json.getJSONObject("masterStart"))
         require(scope != RecurrenceScope.FOLLOWING || seriesOriginalBoundary(selected, masterStart) != null)
-        val fields = fields(json.getJSONObject("fields"))
+        val fields = fields(json.getJSONObject("fields"), schema)
         frozen?.let {
             require(it.operationId == id && it.selected == selected && it.identity == identity && it.token == token)
             require(it.scope == scope && it.action == action)
@@ -128,8 +152,13 @@ object SeriesDraftCodec {
             require(it.command !is SeriesCommand.WholeEdit || it.command.intent.expectedMasterStart == masterStart)
         }
         val document = SeriesDraftDocument(record.id, selected, identity, scope, action, token, masterStart,
-            rights(json.getJSONObject("rights")), enums(json.getJSONArray("allowedFields")),
-            fields(json.getJSONObject("baseline")), fields, json.getString("rawDate"), json.getBoolean("hasDefaultAlerts"), id, submitted, frozen, json.getBoolean("reviewRequired"))
+            rights(json.getJSONObject("rights"), schema), enums(json.getJSONArray("allowedFields")),
+            fields(json.getJSONObject("baseline"), schema), fields, json.getString("rawDate"), json.getBoolean("hasDefaultAlerts"), id, submitted, frozen, json.getBoolean("reviewRequired"),
+            schema, if (schema == 2) json.getString("generation").also { require(UUID.fromString(it).toString() == it) } else null,
+            if (schema == 2) json.getString("revision").also { require(UUID.fromString(it).toString() == it) } else null,
+            if (schema == 2) SeriesTemporalJson.context(json.getJSONObject("context")) else null)
+        document.context?.let { require(it.start == masterStart && it.calendar.calendarId == identity.calendarId && it.calendar.account.name.isNotBlank() && it.calendar.account.type.isNotBlank()) }
+        require(scope == RecurrenceScope.ALL && action == SeriesEditorAction.EDIT || fields.temporal == null && fields.recurrence == null)
         require(scope != RecurrenceScope.FOLLOWING || document.rights.delete == AccessDecision.ALLOWED)
         if (submitted && action == SeriesEditorAction.EDIT) require(frozen?.command == seriesCommand(document))
         return document
@@ -137,17 +166,23 @@ object SeriesDraftCodec {
     private fun fields(value: SeriesEditorFields) = JSONObject().put("title", value.title).put("location", value.location)
         .put("description", value.description).put("alerts", value.alerts).put("replaceAlerts", value.replaceAlerts)
         .put("availability", value.availability).put("privacy", value.privacy)
-    private fun fields(value: JSONObject): SeriesEditorFields {
-        require(value.keys().asSequence().toSet() == setOf("title", "location", "description", "alerts", "replaceAlerts", "availability", "privacy"))
-        return SeriesEditorFields(value.getString("title"), value.getString("location"), value.getString("description"),
-            value.getString("alerts"), value.getBoolean("replaceAlerts"), value.getString("availability"), value.getString("privacy"))
+        .put("temporal", value.temporal?.let(SeriesTemporalJson::fields) ?: JSONObject.NULL)
+        .put("recurrence", value.recurrence?.let(SeriesTemporalJson::rule) ?: JSONObject.NULL)
+    private fun fields(value: JSONObject, schema: Int): SeriesEditorFields {
+        require(value.keys().asSequence().toSet() == setOf("title", "location", "description", "alerts", "replaceAlerts", "availability", "privacy") + if (schema == 2) setOf("temporal", "recurrence") else emptySet())
+        fun text(key: String) = if (schema == 2) SeriesTemporalJson.text(value, key) else value.getString(key)
+        return SeriesEditorFields(text("title"), text("location"), text("description"),
+            text("alerts"), if (schema == 2) value.get("replaceAlerts") as? Boolean ?: error("Invalid alert choice") else value.getBoolean("replaceAlerts"), text("availability"), text("privacy"),
+            if (schema == 2 && !value.isNull("temporal")) SeriesTemporalJson.fields(value.getJSONObject("temporal")) else null,
+            if (schema == 2 && !value.isNull("recurrence")) SeriesTemporalJson.rule(value.getJSONObject("recurrence")) else null)
     }
     private fun rights(value: SeriesScopeCapabilities) = JSONObject().put("edit", value.edit.name).put("delete", value.delete.name)
-        .put("fields", JSONArray(value.fields.map { it.name }.sorted())).put("limitation", value.limitation.name)
-    private fun rights(value: JSONObject): SeriesScopeCapabilities {
-        require(value.keys().asSequence().toSet() == setOf("edit", "delete", "fields", "limitation"))
+        .put("fields", JSONArray(value.fields.map { it.name }.sorted())).put("limitation", value.limitation.name).put("recurrence", value.recurrence.name)
+    private fun rights(value: JSONObject, schema: Int): SeriesScopeCapabilities {
+        require(value.keys().asSequence().toSet() == setOf("edit", "delete", "fields", "limitation") + if (schema == 2) setOf("recurrence") else emptySet())
         return SeriesScopeCapabilities(AccessDecision.valueOf(value.getString("edit")), enums(value.getJSONArray("fields")),
-            AccessDecision.valueOf(value.getString("delete")), SeriesActionLimitation.valueOf(value.getString("limitation")))
+            AccessDecision.valueOf(value.getString("delete")), SeriesActionLimitation.valueOf(value.getString("limitation")),
+            if (schema == 2) AccessDecision.valueOf(value.getString("recurrence")) else AccessDecision.UNKNOWN)
     }
     private fun enums(value: JSONArray): Set<EditableField> = (0 until value.length()).map { EditableField.valueOf(value.getString(it)) }.toSet()
 }
@@ -175,7 +210,12 @@ internal fun seriesCommand(document: SeriesDraftDocument): SeriesCommand {
             metadata(fields.privacy).also { require(it == null || it in 0..3) }
         },
     )
-    return if (document.scope == RecurrenceScope.ALL) SeriesCommand.WholeEdit(RecurrenceEditIntent.WholeSeriesEdit(document.masterStart, fields = patch))
+    return if (document.scope == RecurrenceScope.ALL) {
+        val context = document.context
+        val temporal = if (context != null) seriesTemporalIntent(context, fields.temporal, document.rights.copy(fields = allowed + document.rights.fields.intersect(document.allowedFields).intersect(setOf(EditableField.TIME, EditableField.ZONE)))) else FieldChange.Keep to RecurrenceDurationChange.KeepRaw
+        val rule = if (context?.parsed != null && document.rights.recurrence == AccessDecision.ALLOWED) fields.recurrence?.changes(requireNotNull(context.parsed)) ?: RecurrenceRuleChanges() else RecurrenceRuleChanges()
+        SeriesCommand.WholeEdit(RecurrenceEditIntent.WholeSeriesEdit(document.masterStart, fields = patch, newMasterStart = temporal.first, duration = temporal.second, rule = rule))
+    }
         else SeriesCommand.OccurrenceEdit(patch)
 }
 
@@ -184,7 +224,8 @@ internal data class FrozenSeriesSubmission(val operationId: String, val selected
     val deleteMasterStart: RecurrenceStart? = null) {
     suspend fun execute(port: CalendarSeriesMutations) = port.mutate(operationId, selected, token, command)
     fun encode(): JSONObject = JSONObject().apply {
-        put("schema", 1); put("operationId", operationId); put("selected", SeriesJson.ref(selected))
+        val temporal = command is SeriesCommand.WholeEdit && (command.intent.newMasterStart != FieldChange.Keep || command.intent.duration != RecurrenceDurationChange.KeepRaw || command.intent.rule != RecurrenceRuleChanges())
+        put("schema", if (temporal) 2 else 1); put("operationId", operationId); put("selected", SeriesJson.ref(selected))
         put("calendar", identity.calendarId.value); put("master", identity.masterEventId); put("token", token.value)
         put("scope", scope.name); put("action", action.name)
         when (val command = command) {
@@ -196,27 +237,29 @@ internal data class FrozenSeriesSubmission(val operationId: String, val selected
             }
             is SeriesCommand.OccurrenceEdit -> { require(scope == RecurrenceScope.THIS); put("kind", "occurrence"); put("patch", SeriesJson.patch(command.patch, selected, token)) }
             is SeriesCommand.WholeEdit -> {
-                require(scope == RecurrenceScope.ALL && command.intent.newMasterStart == FieldChange.Keep &&
-                    command.intent.duration == RecurrenceDurationChange.KeepRaw && command.intent.rule == RecurrenceRuleChanges())
-                put("kind", "whole"); put("patch", SeriesJson.patch(command.intent.fields, selected, token)); put("masterStart", SeriesJson.start(command.intent.expectedMasterStart))
+                require(scope == RecurrenceScope.ALL)
+                put("kind", "whole")
+                if (temporal) put("intent", SeriesWholeEditJson.encode(command.intent, selected, token))
+                else { put("patch", SeriesJson.patch(command.intent.fields, selected, token)); put("masterStart", SeriesJson.start(command.intent.expectedMasterStart)) }
             }
             is SeriesCommand.FollowingEdit -> throw IllegalArgumentException()
         }
     }
     companion object {
         fun decode(value: JSONObject): FrozenSeriesSubmission {
-            require(value.getInt("schema") == 1)
+            val schema = (value.get("schema") as? Int) ?: error("Invalid frozen schema"); require(schema in 1..2)
             val selected = SeriesJson.ref(value.getJSONObject("selected")); val token = EditToken(value.getString("token"))
             val scope = RecurrenceScope.valueOf(value.getString("scope")); val action = SeriesEditorAction.valueOf(value.getString("action"))
             val kind = value.getString("kind")
             val allowedKeys = setOf("schema", "operationId", "selected", "calendar", "master", "token", "scope", "action", "kind") +
-                when (kind) { "whole" -> setOf("patch", "masterStart"); "occurrence" -> setOf("patch"); "delete" -> if (scope == RecurrenceScope.FOLLOWING) setOf("masterStart") else emptySet(); else -> emptySet() }
+                when (kind) { "whole" -> if (schema == 2) setOf("intent") else setOf("patch", "masterStart"); "occurrence" -> setOf("patch"); "delete" -> if (scope == RecurrenceScope.FOLLOWING) setOf("masterStart") else emptySet(); else -> emptySet() }
             require(value.keys().asSequence().all { it in allowedKeys })
+            require(schema == 1 || kind == "whole" && scope == RecurrenceScope.ALL && action == SeriesEditorAction.EDIT)
             val command = when (kind) {
                 "delete" -> { require(action == SeriesEditorAction.DELETE); SeriesCommand.Delete(scope) }
                 "occurrence" -> { require(action == SeriesEditorAction.EDIT && scope == RecurrenceScope.THIS); SeriesCommand.OccurrenceEdit(SeriesJson.patch(value.getJSONObject("patch"), selected, token)) }
                 "whole" -> { require(action == SeriesEditorAction.EDIT && scope == RecurrenceScope.ALL)
-                    SeriesCommand.WholeEdit(RecurrenceEditIntent.WholeSeriesEdit(SeriesJson.start(value.getJSONObject("masterStart")),
+                    SeriesCommand.WholeEdit(if (schema == 2) SeriesWholeEditJson.decode(value.getJSONObject("intent"), selected, token) else RecurrenceEditIntent.WholeSeriesEdit(SeriesJson.start(value.getJSONObject("masterStart")),
                         fields = SeriesJson.patch(value.getJSONObject("patch"), selected, token))) }
                 else -> throw IllegalArgumentException()
             }

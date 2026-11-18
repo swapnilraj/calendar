@@ -126,8 +126,15 @@ unknown rights. Entire-series non-temporal edits use the master template and ret
 payloads; selected existing-exception edits use that occurrence. Supported RRULE templates can create a new linked this-occurrence edit/cancellation through one
 asserted public exception transaction, preserving observed bounds and cloned child data. Following
 deletion truncates at the original recurrence identity and removes only future exception originals;
-raw exclusions and past overrides stay intact. Following edits and temporal/pattern changes remain
-unavailable until their executors are integrated. Opening an editor
+raw exclusions and past overrides stay intact. Following edits remain unavailable. Whole-series temporal and pattern changes require explicit
+provider-issued TIME/ZONE/rule rights and a proven owned guest-free single-RRULE master without
+exceptions or exclusions. Their native editor uses the master DTSTART and logical duration, never
+the selected occurrence's day; timed/all-day conversion remains unsupported. Independent rule parts
+retain unchanged COUNT, imported exact UNTIL and raw recurrence data. An explicit before/after review
+precedes the exact durable WholeEdit command. New series drafts use atomic record comparison with
+immutable source namespace, generation and unique revision proofs; missing legacy temporal context
+requires explicit review. Submitted legacy/new commands remain read-only recovery operations and
+cannot be discarded or reissued under a new ID without a durable retirement fence. Opening an editor
 requires its exact durable series draft; submitted operations recover without a live source, and a
 missing completed draft never becomes a fresh request. Write grants never automatically resubmit.
 Explicit discard retires the old controller so it cannot delete a newly prepared replacement draft.
