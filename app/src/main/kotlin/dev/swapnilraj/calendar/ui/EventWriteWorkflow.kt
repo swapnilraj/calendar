@@ -93,6 +93,7 @@ internal fun EventWriteWorkflow(
     onSaved: (EventRef) -> Unit,
     onDeleted: (EventRef) -> Unit,
     clock: Clock = Clock.systemUTC(),
+    recurringCreationSupported: Boolean = false,
 ) {
     var retry by remember(request) { mutableIntStateOf(0) }
     var replacement by remember(request) { mutableStateOf<EditableEvent?>(null) }
@@ -147,10 +148,11 @@ internal fun EventWriteWorkflow(
         existing?.details?.editorSeed() ?: launch.seed(request.date, request.zone)
     }
     val scope = rememberCoroutineScope()
-    val controller = remember(request, existing, replacementVersion, mutations, drafts, recoveryOnly) {
+    val controller = remember(request, existing, replacementVersion, mutations, drafts, recoveryOnly, recurringCreationSupported) {
         EventEditorController(initial, existing, request.draftId, mutations, drafts, scope, clock = clock,
             initialCalendarSelected = launch.calendarSelected, recoveryOnly = recoveryOnly,
-            recoveryRef = if (recoveryOnly) launch.ref else null, requireStoredDraft = true)
+            recoveryRef = if (recoveryOnly) launch.ref else null, requireStoredDraft = true,
+            recurringCreationSupported = recurringCreationSupported)
     }
     var preparingReview by remember(controller) { mutableStateOf(false) }
     var preparationFailed by remember(controller) { mutableStateOf(false) }

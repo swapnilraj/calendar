@@ -90,6 +90,7 @@ internal fun LiveCalendarDay(
     requestMeetingWritePermission: (suspend () -> Boolean)? = null,
     widgetNavigation: WidgetCalendarNavigation? = null,
     onWidgetNavigationConsumed: (String) -> Unit = {},
+    recurringCreationSupported: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val selectedDateState = rememberSaveable { mutableStateOf<String?>(null) }
@@ -607,6 +608,7 @@ internal fun LiveCalendarDay(
     if (mutations != null && drafts != null) writeRequestText?.let { raw ->
         val request = remember(raw) { EventWriteRequest.decode(raw) }
         EventWriteWorkflow(request, mutations, drafts, calendars, use24Hour, clock = draftClock,
+            recurringCreationSupported = recurringCreationSupported,
             onDismiss = { writeRequestText = null },
             onSaved = { writeRequestText = null; reader.refresh(); onLocalSaved() },
             onDeleted = { writeRequestText = null; reader.refresh(); onLocalDeleted() })

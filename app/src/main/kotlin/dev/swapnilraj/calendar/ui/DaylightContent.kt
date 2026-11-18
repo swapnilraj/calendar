@@ -152,6 +152,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
                         seriesMutations = seriesMutations,
                         search = app.calendarSearch,
                         widgetNavigation = widgetNavigation,
+                        recurringCreationSupported = true,
                         onWidgetNavigationConsumed = onWidgetNavigationConsumed,
                         meetings = app.calendarMeetings,
                         requestMeetingWritePermission = {
