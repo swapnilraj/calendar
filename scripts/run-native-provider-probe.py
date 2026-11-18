@@ -128,10 +128,12 @@ def guard_device(adb, args):
     boot = adb.read(["cat", "/proc/sys/kernel/random/boot_id"], shell=True)
     if boot != args.expected_boot_id:
         raise Refusal("emulator boot UUID mismatch")
+    if adb.read(["am", "get-current-user"], shell=True) != "0":
+        raise Refusal("owned emulator must have Android user 0 active")
     fingerprint = adb.read(["getprop", "ro.build.fingerprint"], shell=True)
     if not fingerprint or "\n" in fingerprint or len(fingerprint) > 4096:
         raise Refusal("invalid build fingerprint")
-    return {"serial": args.serial, "avd": args.expected_avd, "bootId": boot, "buildFingerprint": fingerprint, "qemu": "1"}
+    return {"serial": args.serial, "avd": args.expected_avd, "bootId": boot, "buildFingerprint": fingerprint, "qemu": "1", "androidUser": 0}
 
 
 def validate_descriptor(value):
@@ -275,7 +277,7 @@ def instrument(adb, run_id, mode, pins, output, label, end_zone_mode="distinct")
                        "expectedSplitsJson": json.dumps(pins["splits"], separators=(",", ":")),
                        "expectedSignersJson": json.dumps(pins["signers"], separators=(",", ":")),
                        "expectedSigningHistoryJson": json.dumps(pins["signingHistory"], separators=(",", ":"))})
-    tokens = ["am", "instrument", "-w", "-r"]
+    tokens = ["am", "instrument", "--user", "0", "-w", "-r"]
     for key, value in extras.items():
         tokens += ["-e", key, value]
     tokens.append(COMPONENT)
@@ -365,14 +367,14 @@ def run(args):
         if args.run_id == prior.get("runId") or prior.get("apks") != apks:
             raise Refusal("fixtures require a new run UUID and the same frozen APK pair")
         expected = prior.get("guard", {})
-        if expected.get("qemu") != "1" or expected.get("buildFingerprint") != pins["buildFingerprint"]:
+        if expected.get("qemu") != "1" or expected.get("buildFingerprint") != pins["buildFingerprint"] or type(expected.get("androidUser")) is not int or expected["androidUser"] != 0:
             raise Refusal("identity artifact guard/build evidence is incomplete")
         if (expected.get("serial"), expected.get("avd"), expected.get("bootId")) != (args.serial, args.expected_avd, args.expected_boot_id):
             raise Refusal("identity artifact belongs to another emulator or boot")
     args.output_dir.mkdir(mode=0o700, parents=False, exist_ok=False)
     state = {"schema": 1, "mode": args.mode, "runId": args.run_id, "apks": apks,
              "component": COMPONENT, "status": "FAIL", "guard": None, "probeReport": None,
-             "expectedGuard": {"serial": args.serial, "avd": args.expected_avd, "bootId": args.expected_boot_id},
+             "expectedGuard": {"serial": args.serial, "avd": args.expected_avd, "bootId": args.expected_boot_id, "androidUser": 0},
              "acceptanceScope": "provider identity only" if args.mode == "identity" else "native LOCAL fixture matrix only",
              "googleWorkspaceRoundTrip": "NOT_RUN", "productionProfileActivation": "NONE"}
     if args.mode == "fixtures":
@@ -399,7 +401,7 @@ def run(args):
             guard_device(adb, args)
             if sha256(path) != metadata["sha256"]:
                 raise Refusal("APK changed before install")
-            adb.mutation(["install", "-r", str(path)])
+            adb.mutation(["install", "--user", "0", "-r", str(path)])
             if sha256(path) != metadata["sha256"]:
                 raise Refusal("APK changed during install; no retry attempted")
         guard_device(adb, args)
@@ -411,7 +413,7 @@ def run(args):
                 raise Refusal("provider binary/build/signing identity changed before permission grants")
             for permission in ("android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR"):
                 guard_device(adb, args)
-                adb.mutation(["pm", "grant", APP, permission], shell=True)
+                adb.mutation(["pm", "grant", "--user", "0", APP, permission], shell=True)
         guard_device(adb, args)
         report = guarded_instrument(args.mode, pins, "instrumentation")
         state["probeReport"] = report

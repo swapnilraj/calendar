@@ -15,7 +15,9 @@ Keep APK files unchanged while the script runs. Only use the reviewed app/probe 
 The stdlib-only host script accepts only the owned AVD `daylight_google_reference_userdebug_api35`
 and an explicit `emulator-N` serial. Obtain the current boot UUID from the already authorized owned
 emulator; never substitute an arbitrary device. Every install/grant and instrumentation phase is
-preceded by serial, exact AVD, QEMU and boot-UUID checks. Instrumentation is checked again afterward.
+preceded by serial, exact AVD, QEMU, boot-UUID and active Android user-0 checks. Installs,
+permission grants and instrumentation explicitly target `--user 0`; there is no arbitrary user option.
+Instrumentation is checked again afterward.
 No device enumeration or physical-device fallback occurs.
 
 First capture identity. Supply existing built APK files and an unused output directory whose parent
@@ -32,7 +34,7 @@ python3 scripts/run-native-provider-probe.py identity \
 ```
 
 Identity mode performs no calendar permission grant or calendar query. The script normally installs
-both supplied APKs using only `adb install -r`; matching signatures preserve existing app data.
+both supplied APKs using only `adb install --user 0 -r`; matching signatures preserve existing app data.
 An install/signature/version failure stops the run. There is no uninstall, downgrade, root, reboot,
 cache wipe, signature workaround or alternate installation path.
 
