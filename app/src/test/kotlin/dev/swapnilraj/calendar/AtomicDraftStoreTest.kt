@@ -53,6 +53,10 @@ class AtomicDraftStoreTest {
 
     @Test fun concurrentAbsentCreatesHaveExactlyOneWinnerAndNeverReplaceIt() = runBlocking {
         fixture { first, second ->
+            // Isolate concurrent conditional changes from independent helpers' first schema open.
+            // Opening failure has its own unavailable/readback test below.
+            first.writableDatabase
+            second.writableDatabase
             val other = original.copy(payload = "competing editor")
             val gate = CompletableDeferred<Unit>()
             val a = async(Dispatchers.IO) { gate.await(); first.compareAndSet(original.id, null, original) }
@@ -93,6 +97,24 @@ class AtomicDraftStoreTest {
             first.writableDatabase.execSQL("UPDATE drafts SET updated_nano = 0 WHERE id = ?", arrayOf(original.id))
             assertEquals(DraftChangeResult.Unavailable, second.compareAndSet(original.id, original, null))
             assertEquals(original, first.load(original.id))
+        }
+    }
+
+    @Test fun databaseOpenFailureReturnsUnavailableAndExplicitRetryDoesNotReplaceADraft() = runBlocking {
+        fixture { first, second ->
+            val path = RuntimeEnvironment.getApplication().getDatabasePath(first.databaseName)
+            path.parentFile!!.mkdirs()
+            assertTrue(path.mkdir())
+            try {
+                assertEquals(DraftChangeResult.Unavailable, first.compareAndSet(original.id, null, original))
+                assertTrue(path.isDirectory)
+            } finally {
+                assertTrue(path.delete())
+            }
+            assertNull(first.load(original.id))
+            assertEquals(DraftChangeResult.Applied, first.compareAndSet(original.id, null, original))
+            assertEquals(DraftChangeResult.Changed, second.compareAndSet(original.id, null, original.copy(payload = "retry")))
+            assertEquals(original, second.load(original.id))
         }
     }
 
