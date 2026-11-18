@@ -387,7 +387,20 @@ not establish invitation delivery. Eligible RSVP is connected to the native inte
 meeting creation has a bounded provider executor: exact owner/account identity, one explicit organizer
 row, required/optional invited guests and reminders are inserted and asserted atomically. It omits
 implicit self-row and organizer flags, journals exact requests, and verifies native rows/occurrence
-before local success. Recurring or delegated meeting creation remains review-only. The guest-creation
+before local success. Delegated meeting creation remains review-only.
+
+A separate V2 backend supports authored recurring meeting creation only with freshly issued recurring
+creation eligibility. Old V1 authority, commands and receipts remain one-off-compatible. The winning
+prepared operation stores the exact compiled RRULE/DURATION/first bounds and generated UID once;
+retry and recovery adopt that stored plan without recompiling under newer timezone rules. Native
+acknowledged parent and child IDs are persisted before post-read verification. A valid parent with
+malformed child acknowledgement becomes a self-contained COMMITTED receipt with incomplete-ACK
+proof and remains Uncertain without replay or child-ID reconstruction. Reminder verification reads
+only bounded ID/event membership from the raw collection and payloads from UID-guarded joined item
+queries, followed by repeated membership and parent checks. Source eligibility is advisory; the
+actual authored event, guests and batch/receipt budgets are separately validated. Schema1 meeting
+drafts and the connected editor still block recurrence; V2 authoring UI and real account delivery
+verification remain separate. The guest-creation
 interface is not yet connected, and invitation delivery still requires controlled account verification.
 
 Owned one-off organizer edits, guest add/type/remove and cancellation also have a bounded provider
@@ -411,6 +424,12 @@ records and generations; ordinary-editor migration and connected frozen-command 
 remain pending. A malformed child acknowledgement must never trigger a replay; where only a parent
 ID was acknowledged, conservative uncertainty may outlive that partial in-memory identity until a
 durable partial-receipt workflow is implemented.
+
+A pure metadata-only FOLLOWING helper proves its own bounded nominal COUNT/UNTIL partition and
+literal native EXDATE groups without trusting a caller-supplied plan. It preserves exception original
+identity, actual bounds, untouched metadata and selected dirty-field merge/conflict semantics. Its
+output is semantic planning only. Native exception transfer/cache invalidation and independently
+admitted provider profiles remain separate execution gates; this helper enables no new capability.
 
 ### M8 — Search, preferences and Android entry points
 
@@ -448,8 +467,9 @@ never submit provider writes. Incomplete inputs remain durable, unsupported recu
 visible, and an exact permanent handoff receipt precedes Save access. The browser hides only strictly
 recognized handoff receipts, routes unfinished incoming inputs back through their private review,
 and blocks generic incoming-native launches without a matching receipt. Date navigation consumes its
-session once and converts the original instant using fresh display-zone settings. Proposed EDIT
-inputs are not yet applied; recurring/guest editing and live Google UX verification remain separate.
+session once and converts the original instant using fresh display-zone settings. Eligible EDIT
+suggestions use the separate source-pinned version8 review above; recurring/guest editing and live
+Google UX verification remain separate.
 
 ### M9 — App-owned reminders
 
