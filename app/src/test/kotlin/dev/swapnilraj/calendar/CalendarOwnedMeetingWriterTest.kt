@@ -28,6 +28,7 @@ class CalendarOwnedMeetingWriterTest {
         val db get()=base.db
         data class Write(val path:String,val values:Set<String>,val selection:String?)
         val writes=mutableListOf<Write>();val guestQueries=mutableListOf<List<String>?>();val guestReadCounts=mutableListOf<Int>()
+        val guestGuards=mutableListOf<Pair<String?,List<String>>>()
         var batchCount=0;var failGuest=false;var lostAck=false;var badGuestAck=false;var beforeBatch:(()->Unit)?=null;var afterBatch:(()->Unit)?=null
         var committed=false;var failReadsAfterCommit=false;var beforeGuestRead:(()->Unit)?=null
         init{
@@ -36,7 +37,8 @@ class CalendarOwnedMeetingWriterTest {
             db.execSQL("ALTER TABLE events ADD COLUMN dirty INTEGER DEFAULT 0")
             db.execSQL("ALTER TABLE attendees ADD COLUMN opaque_guest TEXT")
             db.execSQL("ALTER TABLE reminders ADD COLUMN opaque_reminder TEXT")
-            db.execSQL("CREATE VIEW owned_attendees AS SELECT a.*,e.calendar_id,e.organizer,e.selfAttendeeStatus,e.rrule,e.dtstart,e.dtend FROM attendees a JOIN events e ON a.event_id=e._id")
+            // Native Attendees queries expose joined Events.UID_2445 for exact-parent guards.
+            db.execSQL("CREATE VIEW owned_attendees AS SELECT a.*,e.calendar_id,e.organizer,e.uid2445,e.selfAttendeeStatus,e.rrule,e.dtstart,e.dtend FROM attendees a JOIN events e ON a.event_id=e._id")
         }
         override fun onCreate()=true
         override fun getType(uri:Uri):String?=null
@@ -44,6 +46,7 @@ class CalendarOwnedMeetingWriterTest {
             if(committed&&failReadsAfterCommit)error("Synthetic read unavailable")
             if(uri.pathSegments.first()!="attendees")return base.query(uri,fields,where,args,sort)
             guestQueries+=fields?.toList();beforeGuestRead?.also{beforeGuestRead=null}?.invoke()
+            guestGuards+=where to args.orEmpty().toList()
             val item=uri.lastPathSegment?.toLongOrNull();val selection=listOfNotNull(item?.let{"_id = ?"},where?.let{"($it)"}).joinToString(" AND ").takeIf(String::isNotEmpty)
             return db.query("owned_attendees",fields,selection,(listOfNotNull(item?.toString())+args.orEmpty()).toTypedArray(),null,null,sort).also{guestReadCounts+=it.count}
         }
@@ -89,7 +92,9 @@ class CalendarOwnedMeetingWriterTest {
         val writer=CalendarMeetingWriter(context.contentResolver,reader,store,grants::contains)
         try{
             val creation=(writer.loadForCreate(identity) as MeetingReadResult.Ready).value
-            val seed=writer.create("seed",creation.token,draft,inputs) as MeetingMutationResult.LocalSaved
+            val outcome=writer.create("seed",creation.token,draft,inputs)
+            assertTrue(outcome.toString(),outcome is MeetingMutationResult.LocalSaved)
+            val seed=outcome as MeetingMutationResult.LocalSaved
             p.db.execSQL("UPDATE events SET _sync_id='owned-event-A',uid2445='owned-public-A',opaque_event='Synthetic opaque event'")
             p.db.execSQL("UPDATE attendees SET opaque_guest='Synthetic opaque guest'")
             p.batchCount=0;p.committed=false;p.writes.clear();p.guestQueries.clear();p.base.queries.clear()
@@ -100,6 +105,20 @@ class CalendarOwnedMeetingWriterTest {
     private fun edit(patch:EventPatch=EventPatch(),guests:List<MeetingGuestChange> = emptyList())=MeetingCommand.EditOwned(RecurrenceScope.THIS,patch,guests)
     private fun common(result:MutationResult)=MeetingMutationResult.Common(result)
     private fun Fixture.rows()=p.db.rawQuery("SELECT _id,attendeeEmail,attendeeStatus,attendeeType,opaque_guest FROM attendees ORDER BY _id",null).use{c->buildList{while(c.moveToNext())add(List(c.columnCount){if(c.isNull(it))null else c.getString(it)})}}
+
+    @Test fun nativeJoinedUidGuardMatchesOnlyTheExactParentThroughDocumentedGuestFields()=runBlocking{fixture{f->
+        val createdUid=org.json.JSONObject(f.store.operation("seed")!!.resultRef!!).getJSONObject("plan").getJSONObject("event").getString("uid2445")
+        assertTrue(f.p.guestGuards.any{(selection,args)->selection?.contains("uid2445 = ?")==true&&args.lastOrNull()==createdUid})
+        val guard="event_id = ? AND calendar_id = ? AND organizer = ? AND uid2445 = ?"
+        fun count(uid:String)=RuntimeEnvironment.getApplication().contentResolver.query(CalendarContract.Attendees.CONTENT_URI,
+            CalendarMeetingWriter.attendeeFields,guard,arrayOf(f.selected.eventId.toString(),identity.calendarId.value.toString(),identity.owner!!,uid),null)!!.use{cursor->
+            assertEquals(CalendarMeetingWriter.attendeeFields.toList(),cursor.columnNames.toList())
+            cursor.count
+        }
+        assertEquals(3,count("owned-public-A"));assertEquals(0,count("foreign-parent-uid"))
+        assertTrue(f.p.guestQueries.all{fields->fields!=null&&fields.all{it in CalendarMeetingWriter.attendeeFields}})
+        assertEquals(0,f.p.batchCount)
+    }}
 
     @Test fun eligibilityIsReadOnlyAndUnknownClonePolicyDoesNotBlockOwnedSparseEdits()=runBlocking{fixture{f->
         f.grants.remove(Manifest.permission.WRITE_CALENDAR);val e=f.edit();assertTrue(e.token.value.startsWith("meeting-owned-edit-v1:"));val rights=e.scopes.getValue(RecurrenceScope.THIS)

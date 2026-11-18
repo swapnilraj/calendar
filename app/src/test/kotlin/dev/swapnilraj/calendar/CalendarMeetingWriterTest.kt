@@ -174,7 +174,7 @@ class CalendarMeetingWriterTest {
         }
     }
 
-    @Test fun unsupportedCommandsAndScopesNeverReadOrJournalOrFallBackToOrdinaryGuestWrites() = runBlocking {
+    @Test fun unissuedCommandsScopesAndCreateTokensNeverReadJournalOrFallBackToOrdinaryGuestWrites() = runBlocking {
         fixture { f ->
             val editable = f.editable()
             f.provider.queries.clear()
@@ -185,7 +185,13 @@ class CalendarMeetingWriterTest {
                 assertNull(f.store.operation("unsupported-$index"))
             }
             val draft = EventDraft(CalendarId(2), EventTime.Timed(start, start.plusSeconds(3600)), java.time.ZoneOffset.UTC, "no")
-            assertTrue(f.writer.create("create", editable.token, draft.copy(recurrence = RecurrenceSpec(RecurrencePattern.Daily)), emptyList()) is MeetingMutationResult.Unsupported)
+            val invalid = f.writer.create("invalid-create", editable.token, draft.copy(recurrence = RecurrenceSpec(RecurrencePattern.Daily)), emptyList())
+            assertTrue(invalid.toString(), invalid is MeetingMutationResult.Invalid)
+            assertNull(f.store.operation("invalid-create"))
+            val unissued = f.writer.create("create", editable.token, draft.copy(targetIdentity = editable.details.calendar!!.identity,
+                recurrence = RecurrenceSpec(RecurrencePattern.Daily)), emptyList())
+            assertTrue(unissued.toString(), unissued is MeetingMutationResult.NeedsReview)
+            assertNull(f.store.operation("create"))
             assertTrue(f.provider.queries.isEmpty())
             assertFalse(f.writer.loadForCreate(editable.details.calendar!!.identity) is MeetingReadResult.Ready)
             assertEquals(0, f.provider.batchCount)
