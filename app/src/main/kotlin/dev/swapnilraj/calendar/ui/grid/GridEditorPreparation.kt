@@ -5,12 +5,12 @@ import dev.swapnilraj.calendar.data.CalendarPreferences
 import dev.swapnilraj.calendar.ui.editorSeed
 import dev.swapnilraj.calendar.ui.verifiedCreationCalendar
 import dev.swapnilraj.calendar.ui.eventCreationDraft
-import dev.swapnilraj.calendar.ui.events.DraftBrowserCodec
 import dev.swapnilraj.calendar.ui.events.EditorDraftLaunch
 import dev.swapnilraj.calendar.ui.events.EventEditorController
+import dev.swapnilraj.calendar.ui.events.prepareEditorFieldsDraft
+import dev.swapnilraj.calendar.ui.events.DraftPreparationResult
 import dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions
 import kotlinx.coroutines.CancellationException
-import org.json.JSONObject
 import java.time.*
 import java.util.UUID
 
@@ -128,32 +128,27 @@ internal suspend fun prepareGridEditor(
     // carry the proposed time; restoration then compares fresh source values with the real baseline.
     val initial = if (source == null) original.copy(time = proposedTime) else original
     val id = "grid:${UUID.randomUUID()}"
-    val record = EventEditorController.initialRecord(initial, source, id, source != null || calendar != null, clock)
-    val raw = JSONObject(record.payload)
-    if (source != null && !editorAlternative) {
-        val fields = EventEditorController.fieldsFor(original.copy(time = proposedTime))
-        listOf("startDate" to fields.startDate, "endDate" to fields.endDate, "startTime" to fields.startTime,
-            "endTime" to fields.endTime, "startOffset" to fields.startOffset, "endOffset" to fields.endOffset).forEach { (key, value) -> raw.put(key, value) }
+    val selected = source != null || calendar != null
+    var fields = EventEditorController.fieldsFor(initial).let {
+        if (!selected) it.copy(calendarId = "", targetIdentity = null) else it
     }
-    val pending = record.copy(payload = raw.toString())
+    if (source != null && !editorAlternative) {
+        val proposed = EventEditorController.fieldsFor(original.copy(time = proposedTime))
+        fields = fields.copy(startDate = proposed.startDate, endDate = proposed.endDate,
+            startTime = proposed.startTime, endTime = proposed.endTime,
+            startOffset = proposed.startOffset, endOffset = proposed.endOffset)
+    }
+    val atomic = store as? AtomicDraftStore ?: return GridEditorPreparation.Unavailable
     return try {
-        val old = store.load(id)
         if (!valid()) return GridEditorPreparation.Stale
-        if (old != null) return GridEditorPreparation.Unavailable // Never replace a retained raw/frozen draft.
-        if (store is AtomicDraftStore) {
-            val saved = store.compareAndSet(id, null, pending)
-            if (!valid()) return GridEditorPreparation.Stale
-            if (saved != DraftChangeResult.Applied) return GridEditorPreparation.Unavailable
-        } else {
-            store.upsert(pending)
-            if (!valid()) return GridEditorPreparation.Stale
-        }
-        val durable = store.load(id)
+        val prepared = prepareEditorFieldsDraft(initial, source, id, selected, fields, atomic, clock)
         if (!valid()) return GridEditorPreparation.Stale
-        val launch = durable?.takeIf { it == pending }?.let { DraftBrowserCodec.read(it).launch }
-        if (launch != null && launch.ref == source?.details?.occurrence?.ref) GridEditorPreparation.Ready(launch) else GridEditorPreparation.Unavailable
+        val launch = (prepared as? DraftPreparationResult.Ready)?.launch
+        if (launch != null && launch.generation != null && launch.ref == source?.details?.occurrence?.ref)
+            GridEditorPreparation.Ready(launch) else GridEditorPreparation.Unavailable
     } catch (cancelled: CancellationException) { throw cancelled }
     catch (_: Exception) { GridEditorPreparation.Unavailable }
+
 }
 
 /** Subminute durations remain positive even at nanosecond precision; no zero-minute claim. */

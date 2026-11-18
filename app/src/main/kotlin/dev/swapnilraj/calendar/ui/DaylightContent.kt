@@ -155,6 +155,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
                         recurringCreationSupported = true,
                         onWidgetNavigationConsumed = onWidgetNavigationConsumed,
                         meetings = app.calendarMeetings,
+                        operationRetirement = app.operationRetirement,
                         requestMeetingWritePermission = {
                             if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED) true
                             else { writeRequest.launch(Manifest.permission.WRITE_CALENDAR); false }

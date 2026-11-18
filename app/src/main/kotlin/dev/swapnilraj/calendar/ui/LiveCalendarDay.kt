@@ -91,6 +91,7 @@ internal fun LiveCalendarDay(
     widgetNavigation: WidgetCalendarNavigation? = null,
     onWidgetNavigationConsumed: (String) -> Unit = {},
     recurringCreationSupported: Boolean = false,
+    operationRetirement: OperationRetirement? = null,
 ) {
     val scope = rememberCoroutineScope()
     val selectedDateState = rememberSaveable { mutableStateOf<String?>(null) }
@@ -609,9 +610,14 @@ internal fun LiveCalendarDay(
                 ({ value -> if (value == meetingSource.details.occurrence.ref) beginRespond(meetingSource) }) else null)
     }
     if (mutations != null && drafts != null) writeRequestText?.let { raw ->
-        val request = remember(raw) { EventWriteRequest.decode(raw) }
-        EventWriteWorkflow(request, mutations, drafts, calendars, use24Hour, clock = draftClock,
+        val request = remember(raw) { runCatching { EventWriteRequest.decode(raw) }.getOrNull() }
+        if (request == null) AlertDialog(onDismissRequest = { writeRequestText = null },
+            text = { Text(stringResource(R.string.navigation_draft_unavailable)) },
+            confirmButton = { TextButton(onClick = { writeRequestText = null }) { Text(stringResource(R.string.events_close)) } })
+        else EventWriteWorkflow(request, mutations, drafts, calendars, use24Hour, clock = draftClock,
             recurringCreationSupported = recurringCreationSupported,
+            retirement = operationRetirement, requestWritePermission = requestMeetingWritePermission,
+            onReplacedLaunch = { launch -> writeRequestText = EventWriteRequest.fromLaunch(launch, visibleDate, displayNow.zone, request.delete).encode() },
             onDismiss = { writeRequestText = null },
             onSaved = { writeRequestText = null; reader.refresh(); onLocalSaved() },
             onDeleted = { writeRequestText = null; reader.refresh(); onLocalDeleted() })
