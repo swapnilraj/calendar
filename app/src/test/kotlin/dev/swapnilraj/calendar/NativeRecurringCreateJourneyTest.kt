@@ -5,12 +5,15 @@ import android.provider.CalendarContract
 import androidx.compose.ui.test.*
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.data.calendar.CalendarLocalStore
 import dev.swapnilraj.calendar.data.calendar.CalendarWriter
 import dev.swapnilraj.calendar.data.reminders.SavedReminderSettings
 import dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions
+import dev.swapnilraj.calendar.ui.settings.DisplayZoneOption
+import java.time.ZoneId
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -116,7 +119,11 @@ class NativeRecurringCreateJourneyTest {
         compose.onNodeWithText("Does not repeat").performScrollTo().performClick()
         compose.onNodeWithText("Daily").performScrollTo().performClick()
         compose.onNodeWithText("After a number of occurrences").performScrollTo().performClick()
-        compose.onNode(hasSetTextAction() and hasText("Occurrences (1–10000)")).performScrollTo().performTextReplacement("4")
+        val countField = hasSetTextAction() and hasText("Occurrences (1–10000)")
+        compose.onNode(countField).performScrollTo().performClick()
+        compose.waitUntil(15_000) { compose.onAllNodes(countField and isFocused()).fetchSemanticsNodes().size == 1 }
+        compose.onNode(countField).performTextReplacement("4")
+        compose.waitUntil(15_000) { compose.onAllNodes(countField and SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("4"))).fetchSemanticsNodes().size == 1 }
         compose.onNodeWithText("Done").performClick()
         assertUnsubmitted(f)
     }
@@ -164,8 +171,11 @@ class NativeRecurringCreateJourneyTest {
         runBlocking {
             app.settings.saveReminderSettings(app.settings.readReminderSettings(), SavedReminderSettings())
             app.reminderRuntime.onResume().join()
-            app.settings.setDisplaySettings(CalendarSettingsOptions(weatherVisible = false, defaultDurationMinutes = 60))
+            app.settings.setDisplaySettings(CalendarSettingsOptions(weatherVisible = false, defaultDurationMinutes = 60, displayZone = DisplayZoneOption.Fixed(ZoneId.of("UTC"))))
+            assertTrue(app.settings.setCalendarView("DAY"))
             val metadata = app.calendarReader.readCalendars() as CalendarReadState.Ready
+            assertTrue(app.settings.setDefaultCalendar(null, metadata.value))
+            app.calendarReader.refresh()
             assertTrue(app.settings.setCalendarSelection(CalendarSelection.Explicit(setOf(CalendarId(2))), metadata.value))
         }
         lateinit var activity: ActivityController<MainActivity>
