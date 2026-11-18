@@ -137,7 +137,7 @@ class CalendarWriter(
                 val existing = store.operation(id)
                 if (existing != null) {
                     if (existing.signature != signature || existing.kind != kind) return@withLock MutationResult.Conflict(null)
-                    if (existing.phase in setOf("ATTEMPTED", "COMMITTED", "VERIFIED")) return@withLock recover(existing)
+                    if (existing.phase in setOf("ATTEMPTED", "COMMITTED", "VERIFIED")) return@withLock recover(existing, allowSafeRetry = false)
                 }
                 val prepared = prepare()
                 // These checks are repeated immediately before crossing the provider boundary.
@@ -146,7 +146,7 @@ class CalendarWriter(
                 store.prepare(id, signature, kind)
                 val persisted = store.operation(id) ?: error("Operation journal unavailable")
                 if (persisted.signature != signature || persisted.kind != kind) return@withLock MutationResult.Conflict(null)
-                if (!store.attempt(id)) return@withLock recover(store.operation(id)!!)
+                if (!store.attempt(id)) return@withLock recover(store.operation(id)!!, allowSafeRetry = false)
                 attempted = true
                 submitted = prepared
                 val results = resolver.applyBatch(CalendarContract.AUTHORITY, prepared.operations)
@@ -154,7 +154,7 @@ class CalendarWriter(
                     ?: error("Provider did not identify created event")
                 val ref = reference(prepared.calendarId, knownId, prepared.time)
                 store.mark(id, "COMMITTED", refJson(ref).toString())
-                recover(store.operation(id)!!)
+                recover(store.operation(id)!!, allowSafeRetry = false)
             } catch (denied: Denial) { MutationResult.Denied(denied.reason) }
             catch (invalid: Invalid) { MutationResult.ValidationFailed(invalid.fields) }
             catch (_: Stale) { MutationResult.Conflict(null) }
@@ -184,10 +184,18 @@ class CalendarWriter(
         catch (_: Exception) { MutationResult.Unavailable }
     } }
 
-    private suspend fun recover(operation: CalendarLocalStore.Operation): MutationResult {
-        if (operation.phase in setOf("PREPARED", "FAILED")) return MutationResult.Unavailable
+    private suspend fun recover(operation: CalendarLocalStore.Operation, allowSafeRetry: Boolean = true): MutationResult {
         val ref = operation.resultRef?.let { runCatching { parseRef(JSONObject(it)) }.getOrNull() }
-        if (operation.phase == "ATTEMPTED" || ref == null) return MutationResult.Uncertain(operation.id, ref?.eventId)
+        // Only durable, internally consistent evidence permits retrying the exact command.
+        // Missing journals and IO errors are handled by the public recovery entry point and
+        // are never converted into retry permission. Recovery itself never calls applyBatch.
+        if (operation.kind !in setOf("CREATE", "UPDATE", "DELETE")) return MutationResult.Uncertain(operation.id, ref?.eventId)
+        if (operation.phase in setOf("PREPARED", "FAILED")) {
+            return if (operation.resultRef != null) MutationResult.Uncertain(operation.id, ref?.eventId)
+                else if (allowSafeRetry) MutationResult.SafeToRetry(operation.id) else MutationResult.Unavailable
+        }
+        if (operation.phase !in setOf("COMMITTED", "VERIFIED") || ref == null)
+            return MutationResult.Uncertain(operation.id, ref?.eventId)
         if (operation.kind == "DELETE") {
             val rows = rows(eventUri(ref.eventId), arrayOf(CalendarContract.Events.DELETED))
             if (rows.isNotEmpty() && rows.single()[CalendarContract.Events.DELETED] != "1") return MutationResult.Uncertain(operation.id, ref.eventId)

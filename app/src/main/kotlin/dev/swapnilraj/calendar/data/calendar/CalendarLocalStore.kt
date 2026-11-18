@@ -17,6 +17,14 @@ class CalendarLocalStore(
     databaseName: String = "daylight-local.db",
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : SQLiteOpenHelper(context.applicationContext, databaseName, null, 1), DraftStore {
+    override fun onConfigure(db: SQLiteDatabase) {
+        super.onConfigure(db)
+        // ATTEMPTED must be durably committed before a separate provider transaction begins.
+        // Future WAL/pool reconfiguration must preserve this setting. SQLite's crash guarantees
+        // cannot compensate for hardware or filesystems that do not honour flush requests.
+        db.execSQL("PRAGMA synchronous=FULL")
+    }
+
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE drafts (id TEXT PRIMARY KEY, version INTEGER NOT NULL, payload TEXT NOT NULL, updated_at TEXT NOT NULL, updated_epoch INTEGER NOT NULL, updated_nano INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE edit_snapshots (token TEXT PRIMARY KEY, snapshot TEXT NOT NULL)")

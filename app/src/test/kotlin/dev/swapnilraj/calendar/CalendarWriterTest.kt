@@ -230,12 +230,93 @@ class CalendarWriterTest {
     @Test fun journalRecoveryDistinguishesDefiniteFailureFromCorruptCommittedMetadata() = runBlocking {
         fixture { provider, writer, store, _ ->
             store.prepare("prepared", "test-signature", "CREATE")
-            assertEquals(MutationResult.Unavailable, writer.recover("prepared"))
+            assertEquals(MutationResult.SafeToRetry("prepared"), writer.recover("prepared"))
             store.mark("prepared", "FAILED")
-            assertEquals(MutationResult.Unavailable, writer.recover("prepared"))
+            assertEquals(MutationResult.SafeToRetry("prepared"), writer.recover("prepared"))
             store.mark("prepared", "COMMITTED", "not-json")
             assertEquals(MutationResult.Uncertain("prepared", null), writer.recover("prepared"))
             assertEquals(0, provider.batchCount)
+        }
+    }
+
+    @Test fun journalConnectionsUseFullSynchronousDurability() = runBlocking {
+        fixture { _, _, store, _ ->
+            fun assertFull(database: android.database.sqlite.SQLiteDatabase) {
+                database.rawQuery("PRAGMA synchronous", null).use {
+                    assertTrue(it.moveToFirst())
+                    assertEquals(2, it.getInt(0))
+                }
+            }
+            assertFull(store.writableDatabase)
+            val reopened = CalendarLocalStore(RuntimeEnvironment.getApplication(), store.databaseName)
+            try { assertFull(reopened.writableDatabase) } finally { reopened.close() }
+        }
+    }
+
+    @Test fun preDispatchJournalFailureOffersOnlyAnExplicitSameCommandRetry() = runBlocking {
+        fixture { provider, writer, store, permissions ->
+            // Simulate failure after PREPARED is durable but before ATTEMPTED can be claimed.
+            store.writableDatabase.execSQL("""CREATE TRIGGER interrupt_dispatch BEFORE UPDATE OF phase ON mutation_journal
+                WHEN NEW.phase = 'ATTEMPTED' BEGIN SELECT RAISE(FAIL, 'Synthetic pre-dispatch interruption'); END""")
+            assertEquals(MutationResult.Unavailable, writer.create("prepared-retry", draft))
+            assertEquals(0, provider.batchCount)
+            assertTrue(provider.events.isEmpty())
+            permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            assertEquals(MutationResult.SafeToRetry("prepared-retry"), writer.recover("prepared-retry"))
+            assertEquals(0, provider.batchCount) // Recovery never dispatches.
+            assertEquals(MutationResult.PermissionRequired, writer.create("prepared-retry", draft))
+            permissions += Manifest.permission.WRITE_CALENDAR
+            store.writableDatabase.execSQL("DROP TRIGGER interrupt_dispatch")
+            assertTrue(writer.create("prepared-retry", draft.copy(title = "Altered payload")) is MutationResult.Conflict)
+            assertEquals(0, provider.batchCount)
+            assertTrue(writer.create("prepared-retry", draft) is MutationResult.LocalSaved)
+            assertEquals(1, provider.batchCount)
+            assertEquals(1, provider.events.size)
+        }
+    }
+
+    @Test fun rolledBackBatchOffersRetryButUnknownAndContradictoryJournalStatesDoNot() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            provider.failReminder = true
+            assertEquals(MutationResult.Unavailable, writer.create("failed-retry", draft))
+            assertTrue(provider.events.isEmpty())
+            assertEquals(MutationResult.SafeToRetry("failed-retry"), writer.recover("failed-retry"))
+            assertEquals(1, provider.batchCount)
+            provider.failReminder = false
+            assertTrue(writer.create("failed-retry", draft) is MutationResult.LocalSaved)
+            assertEquals(2, provider.batchCount)
+            assertEquals(1, provider.events.size)
+
+            assertEquals(MutationResult.Unavailable, writer.recover("missing-operation"))
+            store.prepare("unknown", "synthetic-signature", "CREATE")
+            store.mark("unknown", "ATTEMPTED")
+            assertEquals(MutationResult.Uncertain("unknown", null), writer.recover("unknown"))
+            store.mark("unknown", "FUTURE_UNRECOGNIZED_PHASE")
+            assertEquals(MutationResult.Uncertain("unknown", null), writer.recover("unknown"))
+            store.mark("unknown", "PREPARED", "not-valid-result-metadata")
+            assertEquals(MutationResult.Uncertain("unknown", null), writer.recover("unknown"))
+            store.prepare("unknown-kind", "synthetic-signature", "UNRECOGNIZED_KIND")
+            assertEquals(MutationResult.Uncertain("unknown-kind", null), writer.recover("unknown-kind"))
+            assertEquals(2, provider.batchCount)
+            assertEquals(1, provider.events.size)
+        }
+    }
+
+    @Test fun safeRetryDoesNotBypassAnEditTokenConflict() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            val ref = (writer.create("existing", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            val patch = EventPatch(title = FieldChange.Set("Desired edit"))
+            store.writableDatabase.execSQL("""CREATE TRIGGER interrupt_dispatch BEFORE UPDATE OF phase ON mutation_journal
+                WHEN NEW.phase = 'ATTEMPTED' BEGIN SELECT RAISE(FAIL, 'Synthetic pre-dispatch interruption'); END""")
+            assertEquals(MutationResult.Unavailable, writer.update("retry-edit", ref, token, patch))
+            assertEquals(MutationResult.SafeToRetry("retry-edit"), writer.recover("retry-edit"))
+            assertEquals(1, provider.batchCount)
+            provider.events.single()["title"] = "Remote edit while interrupted"
+            store.writableDatabase.execSQL("DROP TRIGGER interrupt_dispatch")
+            assertTrue(writer.update("retry-edit", ref, token, patch) is MutationResult.Conflict)
+            assertEquals(1, provider.batchCount)
+            assertEquals("Remote edit while interrupted", provider.events.single()["title"])
         }
     }
 
