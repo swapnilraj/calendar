@@ -35,6 +35,13 @@ class AndroidReminderNotifications(
             // the injected health reader additionally guards calendar/global/channel settings.
             if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) return ReminderPostResult.PERMISSION_REQUIRED
+            // A snooze may commit before the process dies while cancelling the previous alert.
+            // Fresh durable posts must replace that old status, not silently update it under
+            // ONLY_ALERT_ONCE. Same-token metadata updates keep the existing status and stay quiet.
+            if (manager.activeNotifications.any { it.tag == notification.tag && it.id == notification.id &&
+                    it.notification.extras.getString(ReminderNotificationFactory.EXTRA_POST_TOKEN) != identity.token }) {
+                manager.cancel(notification.tag, notification.id)
+            }
             manager.notify(notification.tag, notification.id, notification.notification)
             // Accepted by NotificationManager, not a claim that sound/device delivery was observed.
             ReminderPostResult.POSTED

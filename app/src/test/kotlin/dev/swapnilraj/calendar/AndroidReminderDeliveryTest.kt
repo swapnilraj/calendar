@@ -15,17 +15,22 @@ import dev.swapnilraj.calendar.core.*
 import java.time.Instant
 import java.time.ZoneOffset
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowAlarmManager
+import org.robolectric.shadows.ShadowNotificationManager
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class AndroidReminderDeliveryTest {
+    @Before fun resetNotificationAudit() { AuditedNotificationManager.resetAudit() }
     private val context: Context get() = RuntimeEnvironment.getApplication()
     private val receiver get() = ComponentName(context.packageName, "PrivateReminderAlarmReceiver")
     private val identity = ReminderCalendarIdentity("calendar", "uid")
@@ -184,5 +189,80 @@ class AndroidReminderDeliveryTest {
         val decoded = ReminderIntents.identity(ReminderIntents.intent(context, targets, legacy, ReminderIntents.ACTION_DISMISS))!!
         assertNull(decoded.postToken)
         assertNull(decoded.postIdentityOrNull())
+    }
+
+    @Test @Config(shadows = [AuditedNotificationManager::class])
+    fun freshSnoozePostCancelsOldActiveStatusBeforeNotifyButSameTokenUpdateDoesNot() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val targets = ReminderIntentTargets(ComponentName(context.packageName, "MainActivity"), receiver)
+        val notifications = AndroidReminderNotifications(context, targets, { ZoneOffset.UTC }, { ready })
+        val alias = ReminderNotificationAlias(ref, now, "snooze-cancel-crash")
+        val first = ReminderPostIdentity(alias, "old-post")
+        val fresh = ReminderPostIdentity(alias, "fresh-post")
+        notifications.post(candidate(), first)
+        notifications.post(candidate(), fresh)
+        assertEquals(listOf("notify", "cancel", "notify"), AuditedNotificationManager.operations.map { it.kind })
+        assertEquals("old-post", AuditedNotificationManager.operations[1].previousToken)
+        assertNull(AuditedNotificationManager.operations[2].previousToken)
+        assertTrue(notifications.isActive(fresh))
+        val latest = candidate().let { it.copy(occurrence = it.occurrence.copy(title = "Updated visible title")) }
+        notifications.post(latest, fresh)
+        assertEquals(listOf("notify", "cancel", "notify", "notify"), AuditedNotificationManager.operations.map { it.kind })
+        assertEquals("fresh-post", AuditedNotificationManager.operations.last().previousToken)
+        val active = context.getSystemService(NotificationManager::class.java).activeNotifications.single()
+        assertTrue(active.notification.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
+    }
+
+    @Test @Config(shadows = [AuditedNotificationManager::class])
+    fun freshDurablePostAlsoRemovesAnOldSameTagStatusWithNoPrivatePostToken() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val targets = ReminderIntentTargets(ComponentName(context.packageName, "MainActivity"), receiver)
+        val alias = ReminderNotificationAlias(ref, now, "legacy-status")
+        val legacy = ReminderNotificationFactory(context, targets).build(EventDetails(candidate().occurrence, null), now,
+            ZoneOffset.UTC, notificationIdentity = ReminderIdentity(ref, now, alias.nonce))
+        context.getSystemService(NotificationManager::class.java).notify(legacy.tag, legacy.id, legacy.notification)
+        val notifications = AndroidReminderNotifications(context, targets, { ZoneOffset.UTC }, { ready })
+        val fresh = ReminderPostIdentity(alias, "new-token")
+        assertEquals(ReminderPostResult.POSTED, notifications.post(candidate(), fresh))
+        assertEquals(listOf("notify", "cancel", "notify"), AuditedNotificationManager.operations.map { it.kind })
+        assertTrue(notifications.isActive(fresh))
+    }
+
+    @Test @Config(shadows = [AuditedNotificationManager::class])
+    fun failureBetweenCancellationAndFreshPostIsUncertainAndNeverRetriedByAdapter() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val targets = ReminderIntentTargets(ComponentName(context.packageName, "MainActivity"), receiver)
+        val notifications = AndroidReminderNotifications(context, targets, { ZoneOffset.UTC }, { ready })
+        val alias = ReminderNotificationAlias(ref, now, "non-atomic-gap")
+        notifications.post(candidate(), ReminderPostIdentity(alias, "old-post"))
+        AuditedNotificationManager.failNextNotify = true
+        assertEquals(ReminderPostResult.UNCERTAIN, notifications.post(candidate(), ReminderPostIdentity(alias, "fresh-post")))
+        assertEquals(listOf("notify", "cancel", "notify"), AuditedNotificationManager.operations.map { it.kind })
+        assertTrue(context.getSystemService(NotificationManager::class.java).activeNotifications.isEmpty())
+    }
+}
+
+/** Keep real ShadowNotificationManager storage while auditing cancel/notify order and a Binder failure. */
+@Implements(NotificationManager::class)
+class AuditedNotificationManager : ShadowNotificationManager() {
+    data class Operation(val kind: String, val previousToken: String?)
+
+    @Implementation
+    override fun notify(tag: String?, id: Int, notification: Notification) {
+        operations.add(Operation("notify", getNotification(tag, id)?.extras?.getString(ReminderNotificationFactory.EXTRA_POST_TOKEN)))
+        if (failNextNotify) { failNextNotify = false; throw IllegalStateException("Synthetic post failure") }
+        super.notify(tag, id, notification)
+    }
+
+    @Implementation
+    override fun cancel(tag: String?, id: Int) {
+        operations.add(Operation("cancel", getNotification(tag, id)?.extras?.getString(ReminderNotificationFactory.EXTRA_POST_TOKEN)))
+        super.cancel(tag, id)
+    }
+
+    companion object {
+        val operations = mutableListOf<Operation>()
+        var failNextNotify = false
+        fun resetAudit() { operations.clear(); failNextNotify = false; ShadowNotificationManager.reset() }
     }
 }
