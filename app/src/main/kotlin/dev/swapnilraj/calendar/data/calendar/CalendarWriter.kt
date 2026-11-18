@@ -7,18 +7,25 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.OperationApplicationException
 import android.net.Uri
+import android.os.CancellationSignal
+import android.os.Parcel
 import android.provider.CalendarContract
 import dev.swapnilraj.calendar.core.*
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneOffset
+import java.time.ZoneId
+import java.time.LocalDate
+import java.time.MonthDay
+import java.time.DayOfWeek
+import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Ordinary, owned, guest-free one-offs only. Recurrence and invitations have separate contracts. */
+/** Owned, guest-free event creation and one-off edits. Existing series and invitations use separate contracts. */
 class CalendarWriter(
     private val resolver: ContentResolver,
     private val reader: CalendarReader,
@@ -66,8 +73,6 @@ class CalendarWriter(
     }
 
     override suspend fun create(operationId: String, draft: EventDraft): MutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) {
-        // Never silently downgrade authored recurrence before the series-create encoder is enabled.
-        if (draft.recurrence != null) return@withContext MutationResult.ValidationFailed(setOf(InvalidEventField.RECURRENCE))
         val target = draft.targetIdentity
         if (target == null || target.calendarId != draft.calendarId || target.account.name.isBlank() || target.account.type.isBlank()) return@withContext MutationResult.ValidationFailed(setOf(InvalidEventField.CALENDAR))
         if (!permissions()) return@withContext MutationResult.PermissionRequired
@@ -82,9 +87,17 @@ class CalendarWriter(
             if (calendarIdentity(calendar) != target) throw Invalid(setOf(InvalidEventField.CALENDAR))
             writable(calendar)
             validate(draft, calendar, 0, initial = true)
+            val recurring = compileRecurrence(draft)
             val operations = arrayListOf(assertCalendar(calendar))
+            val eventValues = values(draft).apply { recurring?.let { plan ->
+                putNull(CalendarContract.Events.DTEND)
+                put(CalendarContract.Events.DURATION, plan.durationRaw)
+                put(CalendarContract.Events.RRULE, plan.ruleRaw)
+                put(CalendarContract.Events.EVENT_TIMEZONE, providerZone(plan))
+                put(CalendarContract.Events.EVENT_END_TIMEZONE, providerZone(plan))
+            } }
             operations += ContentProviderOperation.newInsert(CalendarContract.Events.CONTENT_URI)
-                .withValues(values(draft)).withYieldAllowed(false).build()
+                .withValues(eventValues).withYieldAllowed(false).build()
             draft.alertMinutes.forEach { minutes ->
                 operations += ContentProviderOperation.newInsert(CalendarContract.Reminders.CONTENT_URI)
                     .withValueBackReference(CalendarContract.Reminders.EVENT_ID, 1)
@@ -92,7 +105,8 @@ class CalendarWriter(
                     .withValue(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
                     .withYieldAllowed(false).build()
             }
-            Prepared(operations, draft.time, draft.calendarId, null, target)
+            if (recurring != null) checkParcel(operations)
+            Prepared(operations, draft.time, draft.calendarId, null, target, recurrence = recurring)
         } } catch (_: ProviderReadLimitExceeded) { MutationResult.Unavailable }
     }
 
@@ -155,7 +169,7 @@ class CalendarWriter(
 
     private data class Prepared(val operations: ArrayList<ContentProviderOperation>, val time: EventTime,
         val calendarId: CalendarId, val eventId: Long?, val namespace: CalendarIdentity,
-        val originalRef: EventRef? = null, val expectedSource: Source? = null)
+        val originalRef: EventRef? = null, val expectedSource: Source? = null, val recurrence: RecurrenceCreationPlan? = null)
 
     private suspend fun mutate(id: String, payloadFactory: () -> JSONObject, kind: String, prepare: suspend () -> Prepared): MutationResult =
         withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
@@ -178,8 +192,9 @@ class CalendarWriter(
                 // These checks are repeated immediately before crossing the provider boundary.
                 if (!permissions()) return@withLock MutationResult.PermissionRequired
                 currentCoroutineContext().ensureActive()
-                val preparedProof = JSONObject().put("version", 2).put("stage", "prepared").put("kind", kind).put("signature", signature)
+                val preparedProof = JSONObject().put("version", if (prepared.recurrence == null) 2 else 3).put("stage", "prepared").put("kind", kind).put("signature", signature)
                     .put("command", payload).put("identity", identityJson(prepared.namespace))
+                prepared.recurrence?.let { preparedProof.put("provider", providerJson(it)) }
                 store.prepare(id, signature, kind, preparedProof.toString())
                 val persisted = store.operation(id) ?: error("Operation journal unavailable")
                 if (persisted.signature != signature || persisted.kind != kind) return@withLock MutationResult.Conflict(null)
@@ -192,10 +207,15 @@ class CalendarWriter(
                     return@withLock MutationResult.PermissionRequired
                 }
                 val results = resolver.applyBatch(CalendarContract.AUTHORITY, prepared.operations)
-                knownId = prepared.eventId ?: results.getOrNull(1)?.uri?.let(ContentUris::parseId)
+                knownId = if (prepared.recurrence == null) prepared.eventId ?: results.getOrNull(1)?.uri?.let(ContentUris::parseId)
                     ?: error("Provider did not identify created event")
-                val ref = reference(prepared.calendarId, knownId, prepared.time)
-                preparedProof.put("stage", "committed").put("ref", refJson(ref))
+                else results.getOrNull(1)?.uri?.let { uri ->
+                    require(uri.authority == CalendarContract.AUTHORITY && uri.pathSegments.size == 2 && uri.pathSegments.first() == "events")
+                    ContentUris.parseId(uri).also { require(it >= 0) }
+                } ?: error("Provider did not identify created series")
+                preparedProof.put("stage", "committed")
+                if (prepared.recurrence == null) preparedProof.put("ref", refJson(reference(prepared.calendarId, knownId, prepared.time)))
+                else preparedProof.put("master", knownId)
                 store.mark(id, "COMMITTED", preparedProof.toString())
                 recover(store.operation(id)!!, allowSafeRetry = false)
             } catch (_: ProviderReadLimitExceeded) { if (attempted) MutationResult.Uncertain(id, knownId) else MutationResult.Unavailable }
@@ -231,7 +251,8 @@ class CalendarWriter(
     /** Null means legacy, contradictory or unbound journal data; never dispatch or infer a target. */
     private fun proof(operation: CalendarLocalStore.Operation): JSONObject? = try {
         val json = JSONObject(operation.resultRef ?: error("Missing proof"))
-        require(json.getInt("version") == 2 && json.getString("kind") == operation.kind)
+        val version = json.getInt("version")
+        require(version in setOf(2, 3) && json.getString("kind") == operation.kind)
         val command = json.getJSONObject("command")
         require(json.getString("signature") == operation.signature && signature(operation.kind, command) == operation.signature)
         val target = parseIdentity(json.getJSONObject("identity"))
@@ -254,6 +275,20 @@ class CalendarWriter(
             }
             else -> error("Unknown kind")
         }
+        if (version == 3) {
+            require(operation.kind == "CREATE" && command.has("recurrence"))
+            val plan = requireNotNull(compileRecurrence(draftFromJson(command)))
+            require(json.getJSONObject("provider").toString() == providerJson(plan).toString())
+            when (json.getString("stage")) {
+                "prepared" -> require(!json.has("ref") && !json.has("master") && !json.has("firstRef"))
+                "committed" -> {
+                    require(!json.has("ref") && json.getLong("master") >= 0)
+                    if (json.has("firstRef")) require(parseRecurringRef(json.getJSONObject("firstRef")) == expectedFirstRef(target.calendarId, json.getLong("master"), plan))
+                }
+                else -> error("Unknown stage")
+            }
+        } else {
+        require(!command.has("recurrence"))
         when (json.getString("stage")) {
             "prepared" -> require(!json.has("ref"))
             "committed" -> {
@@ -264,6 +299,7 @@ class CalendarWriter(
                 if (operation.kind == "DELETE") require(ref == parseRef(command))
             }
             else -> error("Unknown stage")
+        }
         }
         json
     } catch (_: Exception) { null }
@@ -276,6 +312,13 @@ class CalendarWriter(
         }
         if (operation.phase !in setOf("COMMITTED", "VERIFIED") || proof.getString("stage") != "committed")
             return MutationResult.Uncertain(operation.id, null)
+        if (proof.getInt("version") == 3) {
+            val master = proof.getLong("master")
+            return try { recoverRecurring(operation, proof) }
+            catch (denied: SecurityException) { throw denied }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { MutationResult.Uncertain(operation.id, master) }
+        }
         val target = parseIdentity(proof.getJSONObject("identity"))
         val current = try { calendar(target.calendarId) } catch (_: Stale) { return MutationResult.Uncertain(operation.id, null) }
         if (calendarIdentity(current) != target ||
@@ -297,6 +340,69 @@ class CalendarWriter(
         store.mark(operation.id, "VERIFIED")
         reader.refresh()
         return MutationResult.LocalSaved(result.value.occurrence.ref)
+    }
+
+    /** v3 acknowledges a known master only after exact local row/alert/first-instance proof. */
+    private suspend fun recoverRecurring(operation: CalendarLocalStore.Operation, proof: JSONObject): MutationResult {
+        val master = proof.getLong("master")
+        fun uncertain() = MutationResult.Uncertain(operation.id, master)
+        val command = proof.getJSONObject("command")
+        val draft = draftFromJson(command)
+        val plan = requireNotNull(compileRecurrence(draft))
+        val target = parseIdentity(proof.getJSONObject("identity"))
+        val calendar = try { calendar(target.calendarId) } catch (_: Stale) { return uncertain() }
+        if (calendarIdentity(calendar) != target || (calendar[CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL]?.toIntOrNull() ?: -1) < CalendarContract.Calendars.CAL_ACCESS_READ) return uncertain()
+        val expected = values(draft).apply {
+            putNull(CalendarContract.Events.DTEND)
+            put(CalendarContract.Events.DURATION, plan.durationRaw); put(CalendarContract.Events.RRULE, plan.ruleRaw)
+            put(CalendarContract.Events.EVENT_TIMEZONE, providerZone(plan)); put(CalendarContract.Events.EVENT_END_TIMEZONE, providerZone(plan))
+        }
+        val fields = (expected.keySet() + listOf("_id", "calendar_id", "deleted", "rdate", "exrule", "exdate")).toTypedArray()
+        val actual = recurrenceRows(eventUri(master), fields, maxRows = 1).singleOrNull() ?: return uncertain()
+        if (actual["_id"]?.toLongOrNull() != master || actual["calendar_id"]?.toLongOrNull() != target.calendarId.value || actual["deleted"] != "0" ||
+            listOf("rdate", "exrule", "exdate").any { !actual[it].isNullOrBlank() } || expected.keySet().any { actual[it] != expected.get(it)?.toString() }) return uncertain()
+        val reminders = recurrenceRows(CalendarContract.Reminders.CONTENT_URI, reminderFields, "event_id = ?", arrayOf(master.toString()), readBudgets.maxSeriesChildren)
+        if (reminders.any { it["event_id"]?.toLongOrNull() != master || it["method"] != "1" || it["minutes"]?.toIntOrNull() == null } ||
+            reminders.map { it["minutes"]!!.toInt() }.sorted() != draft.alertMinutes.sorted()) return uncertain()
+        val expectedFirst = expectedFirstRef(target.calendarId, master, plan)
+        val bounds = CalendarContract.Instances.CONTENT_URI.buildUpon().apply {
+            ContentUris.appendId(this, minOf(plan.dtstart, expectedFirst.instanceStart).toEpochMilli())
+            ContentUris.appendId(this, Math.addExact(expectedFirst.instanceStart.toEpochMilli(), 1))
+        }.build()
+        val instances = recurrenceRows(bounds, arrayOf("event_id", "calendar_id", "begin", "end", "allDay", "original_id", "original_sync_id", "originalInstanceTime"),
+            "event_id = ? AND calendar_id = ?", arrayOf(master.toString(), target.calendarId.value.toString()), readBudgets.maxDetailInstances)
+        if (instances.size != 1) return uncertain()
+        val first = instances.single()
+        if (first["event_id"]?.toLongOrNull() != master || first["calendar_id"]?.toLongOrNull() != target.calendarId.value ||
+            first["begin"]?.toLongOrNull() != expectedFirst.instanceStart.toEpochMilli() || first["end"]?.toLongOrNull() != expectedFirst.instanceEnd.toEpochMilli() ||
+            first["allDay"] != (if (plan.allDay) "1" else "0")) return uncertain()
+        if (listOf("original_id", "original_sync_id", "originalInstanceTime").any { !first[it].isNullOrBlank() }) return uncertain()
+        if (calendarIdentity(calendar(target.calendarId)) != target || !hasPermission(Manifest.permission.READ_CALENDAR)) return uncertain()
+        store.mark(operation.id, "VERIFIED", JSONObject(proof.toString()).put("firstRef", recurringRefJson(expectedFirst)).toString())
+        reader.refresh()
+        return MutationResult.LocalSaved(expectedFirst)
+    }
+
+    private suspend fun recurrenceRows(uri: Uri, fields: Array<String>, selection: String? = null, args: Array<String>? = null, maxRows: Int): List<Map<String, String?>> {
+        if (!hasPermission(Manifest.permission.READ_CALENDAR)) throw SecurityException()
+        val cursor = suspendCancellableCoroutine { continuation ->
+            val signal = CancellationSignal(); continuation.invokeOnCancellation { signal.cancel() }
+            try {
+                if (!hasPermission(Manifest.permission.READ_CALENDAR)) throw SecurityException()
+                val value = (resolver.query(uri, fields, selection, args, null, signal) ?: error("Provider unavailable")).bounded(maxRows)
+                try { if (!hasPermission(Manifest.permission.READ_CALENDAR)) throw SecurityException() } catch (failure: Exception) { value.close(); throw failure }
+                continuation.resume(value, onCancellation = { _, resource, _ -> resource.close() })
+            } catch (failure: Exception) { continuation.resumeWithException(failure) }
+        }
+        return cursor.use { buildList { while (it.moveToNext()) {
+            currentCoroutineContext().ensureActive()
+            add(fields.associateWith { field -> it.getColumnIndexOrThrow(field).let { column -> if (it.isNull(column)) null else it.getString(column) } })
+        } } }
+    }
+    private fun checkParcel(operations: List<ContentProviderOperation>) {
+        val parcel = Parcel.obtain()
+        try { operations.forEach { it.writeToParcel(parcel, 0) }; if (parcel.dataSize() > 256 * 1024) throw Invalid(setOf(InvalidEventField.RECURRENCE)) }
+        finally { parcel.recycle() }
     }
 
     // Runtime WRITE is required only for provider mutation, not editor eligibility or recovery.
@@ -436,6 +542,86 @@ class CalendarWriter(
         }
 
     companion object {
+        private fun compileRecurrence(draft: EventDraft): RecurrenceCreationPlan? {
+            val spec = draft.recurrence ?: return null
+            val start = try { when (val time = draft.time) {
+                is EventTime.AllDay -> RecurrenceStart.AllDay(time.dates.start)
+                is EventTime.Timed -> {
+                    val zone = draft.eventZone ?: throw Invalid(setOf(InvalidEventField.ZONE))
+                    val local = time.start.atZone(zone)
+                    RecurrenceStart.Timed(local.toLocalDateTime(), zone, local.offset)
+                }
+            } } catch (invalid: Invalid) { throw invalid }
+            catch (_: Exception) { throw Invalid(setOf(InvalidEventField.RECURRENCE)) }
+            val result = RecurrenceCreation.compile(start, draft.time, spec)
+            val plan = (result as? RecurrenceCreationResult.Ready)?.plan ?: throw Invalid(setOf(InvalidEventField.RECURRENCE))
+            val first = when (val item = plan.preview.first()) {
+                is RecurrenceOccurrence.AllDay -> item.date.atStartOfDay(ZoneOffset.UTC).toInstant()
+                is RecurrenceOccurrence.Timed -> item.instant
+            }
+            // Current authored builder requires DTSTART to match the pattern. Never silently
+            // invent start-excluded support or normalize a provider-incompatible nominal duration.
+            if (first != plan.dtstart || java.time.Duration.between(plan.dtstart, first).abs().toDays() > 3660)
+                throw Invalid(setOf(InvalidEventField.RECURRENCE))
+            return plan
+        }
+        private fun providerZone(plan: RecurrenceCreationPlan) = if (plan.allDay) "UTC" else plan.eventZone.id
+        private fun providerJson(plan: RecurrenceCreationPlan) = JSONObject().put("dtstart", plan.dtstart.toString())
+            .put("allDay", plan.allDay).put("zone", providerZone(plan)).put("rrule", plan.ruleRaw).put("duration", plan.durationRaw)
+            .put("firstStart", reference(CalendarId(0), 0, plan.firstTime).instanceStart.toString())
+            .put("firstEnd", reference(CalendarId(0), 0, plan.firstTime).instanceEnd.toString())
+        private fun expectedFirstRef(calendar: CalendarId, master: Long, plan: RecurrenceCreationPlan): EventRef = reference(calendar, master, plan.firstTime)
+            .let { it.copy(recurrence = RecurrenceRef(master, it.instanceStart)) }
+        private fun recurringRefJson(ref: EventRef): JSONObject {
+            val recurrence = requireNotNull(ref.recurrence)
+            return refJson(ref).put("master", recurrence.masterEventId).put("original", recurrence.originalStart.toString())
+        }
+        private fun parseRecurringRef(json: JSONObject) = parseRef(json).copy(recurrence = RecurrenceRef(json.getLong("master"), Instant.parse(json.getString("original"))))
+        private fun specJson(spec: RecurrenceSpec): JSONObject {
+            val pattern = when (val p = spec.pattern) {
+                RecurrencePattern.Daily -> JSONObject().put("type", "daily")
+                is RecurrencePattern.Weekly -> JSONObject().put("type", "weekly").put("days", JSONArray(p.days.sortedBy { it.value }.map { it.name }))
+                is RecurrencePattern.MonthlyDate -> JSONObject().put("type", "monthlyDate").put("day", p.day)
+                is RecurrencePattern.MonthlyWeekday -> JSONObject().put("type", "monthlyWeekday").put("ordinal", p.ordinal).put("day", p.day.name)
+                is RecurrencePattern.Yearly -> JSONObject().put("type", "yearly").put("monthDay", p.monthDay.toString())
+            }
+            val end = when (val e = spec.end) {
+                RecurrenceEnd.Never -> JSONObject().put("type", "never")
+                is RecurrenceEnd.Count -> JSONObject().put("type", "count").put("count", e.count)
+                is RecurrenceEnd.ThroughDate -> JSONObject().put("type", "through").put("date", e.date.toString())
+                is RecurrenceEnd.ExactUntil -> JSONObject().put("type", "exact").put("instant", e.instant.toString())
+            }
+            return JSONObject().put("pattern", pattern).put("interval", spec.interval).put("end", end).put("weekStart", spec.weekStart.name)
+        }
+        private fun parseSpec(json: JSONObject): RecurrenceSpec {
+            val pattern = json.getJSONObject("pattern")
+            val parsed = when (pattern.getString("type")) {
+                "daily" -> RecurrencePattern.Daily
+                "weekly" -> { val days = pattern.getJSONArray("days"); require(days.length() in 1..7); RecurrencePattern.Weekly((0 until days.length()).map { DayOfWeek.valueOf(days.getString(it)) }.toSet()) }
+                "monthlyDate" -> RecurrencePattern.MonthlyDate(pattern.getInt("day"))
+                "monthlyWeekday" -> RecurrencePattern.MonthlyWeekday(pattern.getInt("ordinal"), DayOfWeek.valueOf(pattern.getString("day")))
+                "yearly" -> RecurrencePattern.Yearly(MonthDay.parse(pattern.getString("monthDay")))
+                else -> error("Unknown authored pattern")
+            }
+            val end = json.getJSONObject("end")
+            val limit = when (end.getString("type")) {
+                "never" -> RecurrenceEnd.Never
+                "count" -> RecurrenceEnd.Count(end.getInt("count"))
+                "through" -> RecurrenceEnd.ThroughDate(LocalDate.parse(end.getString("date")))
+                "exact" -> RecurrenceEnd.ExactUntil(Instant.parse(end.getString("instant")))
+                else -> error("Unknown authored end")
+            }
+            return RecurrenceSpec(parsed, json.getInt("interval"), limit, DayOfWeek.valueOf(json.getString("weekStart")))
+        }
+        private fun draftFromJson(command: JSONObject): EventDraft {
+            val ref = parseRef(command)
+            val time = if (command.getBoolean("allDay")) EventTime.AllDay.fromProvider(ref.instanceStart, ref.instanceEnd) else EventTime.Timed(ref.instanceStart, ref.instanceEnd)
+            val alerts = command.getJSONArray("alerts")
+            return EventDraft(ref.calendarId, time, if (command.isNull("zone")) null else ZoneId.of(command.getString("zone")),
+                command.getString("title"), command.getString("location"), command.getString("description"), (0 until alerts.length()).map { alerts.getInt(it) },
+                if (command.has("availability")) command.getInt("availability") else null, if (command.has("privacy")) command.getInt("privacy") else null,
+                parseIdentity(command.getJSONObject("targetIdentity")), parseSpec(command.getJSONObject("recurrence")))
+        }
         private fun calendarIdentity(values: Map<String, String?>) = CalendarIdentity(CalendarId(values.getValue(CalendarContract.Calendars._ID)!!.toLong()),
             CalendarAccount(values[CalendarContract.Calendars.ACCOUNT_NAME].orEmpty(), values[CalendarContract.Calendars.ACCOUNT_TYPE].orEmpty()),
             values[CalendarContract.Calendars.OWNER_ACCOUNT]?.takeIf(String::isNotBlank), values[CalendarContract.Calendars._SYNC_ID]?.takeIf(String::isNotBlank))
@@ -470,6 +656,7 @@ class CalendarWriter(
                 draft.availability?.let { put("availability", it) }
                 draft.privacy?.let { put("privacy", it) }
                 draft.targetIdentity?.let { put("targetIdentity", identityJson(it)) }
+                draft.recurrence?.let { put("recurrence", specJson(it)) }
             }
         }
         private fun patchJson(ref: EventRef, token: EditToken, patch: EventPatch, maxBytes: Int): JSONObject {
