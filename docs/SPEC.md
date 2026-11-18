@@ -531,3 +531,15 @@ with the APK and checksum after the complete automated gate. It must never gener
 key or publish automatically. Draft candidates remain pending until account/device/upgrade and
 seven-day beta acceptance is recorded. See [RELEASE_SIGNING.md](RELEASE_SIGNING.md) for provisioning
 and the one-time debug-to-stable certificate transition.
+
+## Familiar phone event presentation
+
+Ordinary event editing and details use a familiar full-height phone presentation with fixed close,
+Save or verified edit/overflow actions. Focused date/time, calendar, notification, text and metadata
+panels preserve raw input and explicit overlap choices while delegating all draft, permission,
+retirement and mutation authority to the existing controller. Details clear their payload and
+actions on loading, permission loss or unavailable reads; edit eligibility requires the same exact
+occurrence and non-empty full calendar namespace as the fresh details read. Daylight's own drawn
+glyphs and branding remain in use. Existing sheet fixtures are retained. This presentation does not
+activate repeat authoring, invitation responses or meeting creation. Exact Google Calendar Android
+visual and interaction parity remains **UNVERIFIED**, including the editor title bar.

@@ -7,6 +7,8 @@ import android.database.MatrixCursor
 import android.net.Uri
 import android.provider.CalendarContract
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.semantics.SemanticsActions
@@ -36,6 +38,17 @@ import org.robolectric.shadows.ShadowContentResolver
 class LiveCalendarDayTest {
     @get:Rule val compose = createComposeRule()
 
+    private fun choosePhoneCalendar() {
+        compose.onNodeWithText("Choose a calendar").performScrollTo().performClick()
+        compose.onNode(hasText("Fixture calendar") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton) and hasAnyAncestor(isDialog())).performClick()
+    }
+    private fun assertPhoneDates(record: DraftRecord, dateText: String) {
+        val raw = org.json.JSONObject(record.payload)
+        assertEquals(dateText, raw.getString("startDate")); assertEquals(dateText, raw.getString("endDate"))
+        val date = java.time.LocalDate.parse(dateText).format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.FULL).withLocale(java.util.Locale.US))
+        compose.onNodeWithContentDescription("Starts: $date").assertExists(); compose.onNodeWithContentDescription("Ends: $date").assertExists()
+    }
+
     @Test fun providerEventOpensNativeDetailsAndKeepsItsMeetingLink() {
         val provider = FixtureProvider()
         ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
@@ -57,7 +70,7 @@ class LiveCalendarDayTest {
             compose.onNodeWithText("Fixture meeting").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Join meeting").fetchSemanticsNodes().isNotEmpty() }
             compose.waitForIdle()
-            compose.onNode(isRoot() and hasAnyDescendant(hasText("Join meeting")))
+            compose.onNode(isDialog() and hasAnyDescendant(hasText("Join meeting")))
                 .captureRoboImage("src/test/screenshots/integration_live_details.png")
             compose.onNodeWithText("Join meeting").performClick()
             assertEquals("https://meet.google.com/aaa-bbbb-ccc", opened)
@@ -215,7 +228,7 @@ class LiveCalendarDayTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Join meeting").fetchSemanticsNodes().isNotEmpty() }
             assertEquals(1, provider.rangeQueries) // Selecting November17 must not slide the November16 window.
             val detailsRoot = isRoot() and hasAnyDescendant(hasText("Join meeting"))
-            compose.onNode(hasText("Close") and hasAnyAncestor(detailsRoot)).performScrollTo().performClick()
+            compose.onNode(hasContentDescription("Close") and hasAnyAncestor(detailsRoot)).performClick()
             compose.onNodeWithText("Later").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("No events in the displayed range.").fetchSemanticsNodes().isNotEmpty() }
             assertEquals(2, provider.rangeQueries)
@@ -262,10 +275,10 @@ class LiveCalendarDayTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Create event").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Create event").performClick()
             compose.onNodeWithText("New event").assertIsDisplayed()
-            compose.onAllNodesWithText("2026-11-17").assertCountEquals(2)
+            assertPhoneDates(store.records.values.single(), "2026-11-17")
             assertEquals(0, creates)
-            compose.onNodeWithText("Fixture calendar · owner@example.invalid").performScrollTo().performClick()
-            compose.onNodeWithText("Save").performScrollTo().performClick()
+            choosePhoneCalendar()
+            compose.onNodeWithText("Save").assertIsDisplayed().performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("New event").fetchSemanticsNodes().isEmpty() }
             assertEquals(1, creates)
             assertEquals(CalendarId(3), saved?.calendarId)
@@ -294,7 +307,7 @@ class LiveCalendarDayTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Join meeting").fetchSemanticsNodes().isNotEmpty() }
             assertEquals(1, provider.rangeQueries)
             val detailsRoot = isRoot() and hasAnyDescendant(hasText("Join meeting"))
-            compose.onNode(hasText("Close") and hasAnyAncestor(detailsRoot)).performScrollTo().performClick()
+            compose.onNode(hasContentDescription("Close") and hasAnyAncestor(detailsRoot)).performClick()
             compose.waitForIdle()
             compose.onRoot().captureRoboImage("src/test/screenshots/integration_live_three_day.png")
             compose.onNodeWithContentDescription("Change view. Current view: 3 days").performClick()
@@ -322,6 +335,8 @@ class LiveCalendarDayTest {
         val context = RuntimeEnvironment.getApplication()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         var eligible = false
+        var foreignNamespace = false
+        var lostReadAuthority = false
         var deletes = 0
         val ref = EventRef(CalendarId(3), 7, Instant.parse("2026-11-17T09:00:00Z"), Instant.parse("2026-11-17T10:00:00Z"))
         val source = EditableEvent(EventDetails(EventOccurrence(ref, EventTime.Timed(ref.instanceStart, ref.instanceEnd), "Fixture meeting", 1),
@@ -329,7 +344,12 @@ class LiveCalendarDayTest {
                 "owner@example.invalid", java.time.ZoneId.of("Europe/London"), CalendarContract.Calendars.CAL_ACCESS_OWNER, true, true),
             eventZone = java.time.ZoneId.of("Europe/London")), EditToken("fixture-token"), EditableField.entries.toSet())
         val writer = object : CalendarMutations {
-            override suspend fun loadForEdit(ref: EventRef): EditReadResult = if (eligible) EditReadResult.Ready(source) else EditReadResult.Denied(MutationDenial.OWNERSHIP_UNKNOWN)
+            override suspend fun loadForEdit(ref: EventRef): EditReadResult = when {
+                lostReadAuthority -> EditReadResult.PermissionRequired
+                eligible -> EditReadResult.Ready(if (foreignNamespace) source.copy(details = source.details.copy(
+                    calendar = source.details.calendar!!.copy(providerId = "foreign-calendar-namespace"))) else source)
+                else -> EditReadResult.Denied(MutationDenial.OWNERSHIP_UNKNOWN)
+            }
             override suspend fun create(operationId: String, draft: EventDraft): MutationResult = error("Unexpected create")
             override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult = error("Unexpected update")
             override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult {
@@ -348,10 +368,21 @@ class LiveCalendarDayTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Fixture meeting").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Join meeting").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Edit event").assertDoesNotExist()
-            compose.runOnIdle { eligible = true; reader.refresh() }
-            compose.waitUntil(10_000) { compose.onAllNodesWithText("Edit event").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Delete event").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("Edit event").assertDoesNotExist()
+            compose.runOnIdle { eligible = true; foreignNamespace = true; reader.refresh() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.events_unavailable)).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("Edit event").assertDoesNotExist()
+            compose.onNodeWithText("Join meeting").assertDoesNotExist()
+            assertEquals(0, deletes)
+            compose.runOnIdle { foreignNamespace = false; lostReadAuthority = true; reader.refresh() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.events_permission_required)).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("Edit event").assertDoesNotExist()
+            compose.onNodeWithText("Join meeting").assertDoesNotExist()
+            assertEquals(0, deletes)
+            compose.runOnIdle { lostReadAuthority = false; reader.refresh() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Edit event").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("More event actions").performClick()
+            compose.onNodeWithText("Delete event").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Delete this event?").fetchSemanticsNodes().isNotEmpty() }
             assertEquals(0, deletes)
             val confirmation = isRoot() and hasAnyDescendant(hasText("Delete this event?"))
@@ -388,8 +419,8 @@ class LiveCalendarDayTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Create event").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Create event").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("New event").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNode(hasSetTextAction() and hasText("Title")).performTextInput("Retained fixture draft")
-            compose.onNodeWithText("Cancel").performScrollTo().performClick()
+            compose.onNode(hasSetTextAction() and hasContentDescription("Title")).performTextInput("Retained fixture draft")
+            compose.onNodeWithContentDescription("Close event editor").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("New event").fetchSemanticsNodes().isEmpty() }
             compose.runOnIdle { provider.failCalendars = true; reader.refresh() }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Calendars couldn’t be read").fetchSemanticsNodes().isNotEmpty() }
@@ -402,7 +433,7 @@ class LiveCalendarDayTest {
             compose.onNodeWithText("Open draft").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("New event").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Retained fixture draft").assertIsDisplayed()
-            compose.onAllNodesWithText("2026-11-17").assertCountEquals(2)
+            assertPhoneDates(store.records.values.single(), "2026-11-17")
             assertEquals(0, writes)
             assertEquals(1, store.records.size)
         } finally {
@@ -453,8 +484,8 @@ class LiveCalendarDayTest {
             compose.onNodeWithText("Drafts").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Recover operation").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Recover operation").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.events_editor_recover)).fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText(context.getString(R.string.events_editor_recover)).performScrollTo().performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.phone_event_check_delete)).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(hasText(context.getString(R.string.phone_event_check_delete)) and hasClickAction()).performScrollTo().performClick()
             compose.waitUntil(10_000) { recoveries == 1 && store.records.isEmpty() }
             assertEquals(1, deletes)
             assertEquals(0, sourceLoads)
@@ -495,14 +526,15 @@ class LiveCalendarDayTest {
             } }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Fixture meeting").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithText("Duplicate as draft").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("More event actions").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithContentDescription("More event actions").performClick()
             val eligibilityLoads = sourceLoads
-            compose.onNodeWithText("Duplicate as draft").performScrollTo().performClick()
+            compose.onNodeWithText("Duplicate as draft").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("New event").fetchSemanticsNodes().isNotEmpty() }
             assertEquals(0, creates)
             assertEquals(eligibilityLoads, sourceLoads)
             assertEquals(1, store.records.size)
-            compose.onNodeWithText("Save").performScrollTo().performClick()
+            compose.onNodeWithText("Save").assertIsDisplayed().performClick()
             compose.waitUntil(10_000) { creates == 1 && store.records.isEmpty() }
             assertEquals(2, saved?.privacy)
             assertEquals(1, saved?.availability)

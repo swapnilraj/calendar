@@ -27,7 +27,7 @@ import dev.swapnilraj.calendar.ui.multiday.MultiDayView
 import dev.swapnilraj.calendar.ui.multiday.multiDayWindow
 import dev.swapnilraj.calendar.ui.multiday.MultiDayMinDate
 import dev.swapnilraj.calendar.ui.multiday.MultiDayMaxDate
-import dev.swapnilraj.calendar.ui.events.EventDetailsStateSheet
+import dev.swapnilraj.calendar.ui.events.PhoneEventDetails
 import dev.swapnilraj.calendar.ui.events.DraftBrowserSheet
 import dev.swapnilraj.calendar.ui.events.DraftPreparationResult
 import dev.swapnilraj.calendar.ui.events.prepareNewDraft
@@ -348,16 +348,24 @@ internal fun LiveCalendarDay(
                         val result = reader.readDetails(ref)
                         if (result is CalendarReadState.Ready && mutations != null) {
                             val eligible = mutations.loadForEdit(ref)
-                            if (eligible is EditReadResult.Ready && eligible.event.details.occurrence.ref == ref)
-                                CalendarReadState.Ready(eligible.event.details.copy(canEdit = AccessDecision.ALLOWED))
-                            else CalendarReadState.Ready(result.value.copy(canEdit = AccessDecision.DENIED))
+                            val freshIdentity = result.value.calendar?.identity?.takeIf {
+                                it.calendarId == ref.calendarId && it.account.name.isNotBlank() && it.account.type.isNotBlank()
+                            }
+                            when {
+                                eligible == EditReadResult.PermissionRequired -> CalendarReadState.PermissionRequired
+                                eligible is EditReadResult.Ready -> if (eligible.event.details.occurrence.ref == ref &&
+                                    freshIdentity != null && eligible.event.details.calendar?.identity == freshIdentity)
+                                    CalendarReadState.Ready(eligible.event.details.copy(canEdit = AccessDecision.ALLOWED))
+                                else CalendarReadState.Unavailable
+                                else -> CalendarReadState.Ready(result.value.copy(canEdit = AccessDecision.DENIED))
+                            }
                         } else result
                     } else CalendarReadState.Unavailable
                 })
             }
         }
         val state by key(details) { details.collectAsStateWithLifecycle(initialValue = CalendarReadState.Loading) }
-        EventDetailsStateSheet(state, onDismiss = { openedEvent = null }, onRetry = reader::refresh,
+        PhoneEventDetails(state, onDismiss = { openedEvent = null }, onRetry = reader::refresh,
             onOpenLink = onOpenLink, displayZone = displayNow.zone, use24Hour = use24Hour,
             onEdit = if (writable) ({ value -> beginEdit(value, false) }) else null,
             onDelete = if (writable) ({ value -> beginEdit(value, true) }) else null,

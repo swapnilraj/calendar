@@ -1,6 +1,8 @@
 package dev.swapnilraj.calendar
 
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.swapnilraj.calendar.core.*
@@ -86,20 +88,23 @@ class EventWriteWorkflowTest {
                 })
         } }
         compose.waitForIdle()
-        compose.onAllNodesWithText("2028-06-15").assertCountEquals(2)
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Starts: Thursday, June 15, 2028").assertExists()
+        compose.onNodeWithContentDescription("Ends: Thursday, June 15, 2028").assertExists()
+        assertEquals("2028-06-15", org.json.JSONObject(store.records.getValue(request.draftId).payload).getString("startDate"))
+        compose.onNodeWithText("Save").assertIsDisplayed().performClick()
         assertEquals(0, requests); assertEquals(0, writer.creates)
-        compose.onNodeWithText("Fixture calendar · owner@example.invalid").performScrollTo().performClick()
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        compose.onNodeWithText("Choose a calendar").performScrollTo().performClick()
+        compose.onNode(hasText("Fixture calendar") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton) and hasAnyAncestor(isDialog())).performClick()
+        compose.onNodeWithText("Save").assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { requests == 1 }
         assertEquals(0, writer.creates)
         compose.runOnIdle { permission = true }
         compose.waitForIdle()
         assertEquals(0, writer.creates)
-        compose.onNodeWithText("New event").performScrollTo()
-        compose.onNode(isRoot() and hasAnyDescendant(hasText("New event")))
+        compose.onNodeWithText("New event").assertIsDisplayed()
+        compose.onNode(isDialog() and hasAnyDescendant(hasText("New event")))
             .captureRoboImage("src/test/screenshots/integration_create_event.png")
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        compose.onNodeWithText("Save").assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { saved != null }
         assertEquals(1, writer.creates)
         assertEquals(calendar.id, writer.saved?.calendarId)
@@ -137,7 +142,7 @@ class EventWriteWorkflowTest {
             EventWriteWorkflow(request, writer, store, listOf(calendar), true, {}, {}, {}, requestWritePermission = { true })
         } }
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Save").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        compose.onNodeWithText("Save").assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { writer.creates == 1 && store.records.isEmpty() }
         restoration.emulateSavedInstanceStateRestore()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("This draft could not be opened.").fetchSemanticsNodes().isNotEmpty() }

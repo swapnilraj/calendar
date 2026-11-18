@@ -1,0 +1,8 @@
+<resources>
+    <string name="phone_details_more_actions">More event actions</string>
+    <string name="phone_details_more">More details</string>
+    <string name="phone_details_less">Fewer details</string>
+    <string name="phone_details_people">People</string>
+    <string name="phone_details_open_link">Open link</string>
+    <string name="phone_details_duration">Duration</string>
+</resources>
