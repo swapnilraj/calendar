@@ -135,7 +135,7 @@ class CalendarWriter(
                 .withValues(changes).withExpectedCount(1).withYieldAllowed(false).build()
             if (patch.alertMinutes is FieldChange.Set) {
                 val preserved = source.alerts.count { it[CalendarContract.Reminders.METHOD]?.toIntOrNull() != CalendarContract.Reminders.METHOD_ALERT }
-                validate(draft, source.calendar, preserved)
+                validateAlerts(draft.alertMinutes, source.calendar, preserved)
                 operations += ContentProviderOperation.newDelete(CalendarContract.Reminders.CONTENT_URI)
                     .withSelection("${CalendarContract.Reminders.EVENT_ID} = ? AND ${CalendarContract.Reminders.METHOD} = ?",
                         arrayOf(ref.eventId.toString(), CalendarContract.Reminders.METHOD_ALERT.toString()))
@@ -385,12 +385,17 @@ class CalendarWriter(
         validateMetadata(draft.availability, draft.privacy, calendar)
         if (initial && calendar[CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE] == "0" && draft.time is EventTime.Timed &&
             draft.eventZone?.id != calendar[CalendarContract.Calendars.CALENDAR_TIME_ZONE]) throw Invalid(setOf(InvalidEventField.ZONE))
-        if (draft.alertMinutes.any { it == CalendarContract.Reminders.MINUTES_DEFAULT } || draft.alertMinutes.distinct().size != draft.alertMinutes.size)
+        validateAlerts(draft.alertMinutes, calendar, preservedReminderCount)
+    }
+
+    // Alert changes do not author TIME/ZONE. Preserve imported NULL zones unless explicitly edited.
+    private fun validateAlerts(alertMinutes: List<Int>, calendar: Map<String, String?>, preservedReminderCount: Int) {
+        if (alertMinutes.any { it == CalendarContract.Reminders.MINUTES_DEFAULT } || alertMinutes.distinct().size != alertMinutes.size)
             throw Invalid(setOf(InvalidEventField.ALERTS))
-        if (draft.alertMinutes.isNotEmpty()) {
+        if (alertMinutes.isNotEmpty()) {
             val methods = calendar[CalendarContract.Calendars.ALLOWED_REMINDERS]?.split(',')?.mapNotNull { it.trim().toIntOrNull() }
             val maximum = calendar[CalendarContract.Calendars.MAX_REMINDERS]?.toIntOrNull()
-            if (methods?.contains(CalendarContract.Reminders.METHOD_ALERT) != true || maximum == null || maximum < draft.alertMinutes.size + preservedReminderCount)
+            if (methods?.contains(CalendarContract.Reminders.METHOD_ALERT) != true || maximum == null || maximum < alertMinutes.size + preservedReminderCount)
                 throw Invalid(setOf(InvalidEventField.ALERTS))
         }
     }

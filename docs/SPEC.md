@@ -503,3 +503,10 @@ choices, and distinguish invalid input from provider-semantics review. These hel
 expose repeat controls or authorize native writes. Provider expansion, actual first-instance checks
 and invitation delivery require separate implementation and verification; imported recurrence stays
 unchanged.
+
+### Ordinary reminder-only edits
+
+Changing alert minutes alone validates the calendar's alert methods, limits, duplicate minutes and
+default sentinel without authoring TIME or ZONE. Imported NULL zones, native time values, opaque
+metadata and non-alert reminder rows remain unchanged. Creating an event or explicitly changing its
+time still requires the existing temporal validation.

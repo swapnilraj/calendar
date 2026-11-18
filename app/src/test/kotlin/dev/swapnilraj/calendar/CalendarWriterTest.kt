@@ -765,4 +765,43 @@ class CalendarWriterTest {
             } finally { reopened.close() }
         }
     }
+    @Test fun alertOnlyEditPreservesImportedNullZoneTemporalOpaqueAndNonAlertValues() = runBlocking {
+        fixture { provider, writer, _, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val event = provider.events.single()
+            event["eventTimezone"] = null; event["eventEndTimezone"] = null
+            event["availability"] = "77"; event["accessLevel"] = "88"; event["opaque_imported"] = "Opaque sentinel"
+            provider.reminders += mutableMapOf("_id" to "900", "event_id" to ref.eventId.toString(), "minutes" to "-1", "method" to "2")
+            val before = event.toMap(); val preserved = provider.reminders.single { it["method"] == "2" }.toMap()
+            val editable = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            assertNull(editable.details.eventZone)
+            assertEquals(MutationResult.LocalSaved(ref), writer.update("alerts", ref, editable.token, EventPatch(alertMinutes = FieldChange.Set(listOf(15)))))
+            assertEquals(before, event)
+            assertEquals(preserved, provider.reminders.single { it["method"] == "2" })
+            assertEquals(listOf("15"), provider.reminders.filter { it["method"] == "1" }.map { it["minutes"] })
+            assertEquals(2, provider.batchCount)
+        }
+    }
+
+    @Test fun nullZoneAlertEditingStillValidatesAlertsAndExplicitTemporalAuthoring() = runBlocking {
+        fixture { provider, writer, store, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val event = provider.events.single(); event["eventTimezone"] = null; event["eventEndTimezone"] = null
+            val editable = (writer.loadForEdit(ref) as EditReadResult.Ready).event
+            for ((index, alerts) in listOf(listOf(-1), listOf(15, 15), listOf(1, 2, 3, 4, 5, 6)).withIndex()) {
+                val id = "invalid-alerts-$index"
+                assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.ALERTS)), writer.update(id, ref, editable.token, EventPatch(alertMinutes = FieldChange.Set(alerts))))
+                assertNull(store.operation(id))
+            }
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.ZONE)), writer.create("null-zone-create", draft.copy(eventZone = null)))
+            assertNull(store.operation("null-zone-create"))
+            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.ZONE)), writer.update("time-change", ref, editable.token,
+                EventPatch(time = FieldChange.Set(EventTime.Timed(ref.instanceStart, ref.instanceEnd.plusSeconds(60))), alertMinutes = FieldChange.Set(listOf(15)))))
+            assertNull(store.operation("time-change"))
+            assertEquals(1, provider.batchCount)
+            assertNull(event["eventTimezone"]); assertEquals(ref.instanceEnd.toEpochMilli().toString(), event["dtend"])
+            assertEquals(listOf("10"), provider.reminders.map { it["minutes"] })
+        }
+    }
+
 }
