@@ -40,8 +40,12 @@ For a modern raw ordinary edit with a NULL provider timezone, explicitly selecti
 rendered timezone is an authored zone choice even when the visible text stays identical. Persist
 that intent separately from raw fields: a zone-only choice emits ZONE.Set and TIME.Keep; later time
 edits emit both. Generic no-op callbacks and known-source same-zone selections stay no-ops. Frozen
-commands, legacy drafts and meeting formats are unchanged. Incoming EDIT review retains its existing
-NULL-zone authoring guard until its separate review protocol supports that explicit intent.
+commands, legacy drafts and meeting formats are unchanged. Incoming EDIT review can apply an explicitly proposed zone to an eligible NULL-zone timed source,
+including its original renderer zone. Fresh explicit Apply records this intent in the exact prepared
+ordinary candidate and requires issued ZONE rights. A zone-only proposal preserves raw times and
+offsets; proposed instants author both deltas. Missing-zone temporal changes, including fold-offset
+changes, stay under review. Opening, permission return and reopening never author or submit; existing
+prepared candidates and frozen commands resume unchanged.
 
 New ordinary UPDATE/DELETE operations store self-contained receipt4 source and native write plans
 before dispatch. Their exact commands and retirement fingerprints remain unchanged. Explicit retry
