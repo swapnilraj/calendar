@@ -4,6 +4,31 @@ Audit date: **2026-11-18**. Target requested by the user: the **current Android 
 
 Daylight already implements the principal calendar views and substantial editing safeguards. Its current presentation differs considerably from the official Android references: navigation is spread across several rows, views live outside the drawer, the Day month title does not open date navigation, and details/editing use long bottom sheets. The first alignment packet should fix the shared navigation shell before reskinning individual event forms.
 
+## Live-reference update — 18 November 2026
+
+The original audit below records the earlier marketing-image/help baseline. Its statements that no
+APK or emulator was available describe that initial checkpoint, not the current environment.
+
+Google Calendar **2026.44.0-1016863050-release**, versionCode **2018381752**, now installs normally
+in an isolated Android 15/API35 Google APIs userdebug emulator. The APK SHA256 is
+`46fcded5edececc7a35fa8bd06e3127aa0ed2ef52728a11491f1ed2e45ea41e7`;
+its production signing certificate was checked against the official Google Play system-image copy.
+APK signature and integrity verification remained enabled. Google assets and APKs stay outside the
+repository. No Google account or real meetings have been added.
+
+The first inspected live capture (`/tmp/daylight-b31-google-calendar-first.png`, session-local)
+shows Calendar's notification onboarding, including Allow notifications and Not right now, behind
+an Android “Process system isn't responding” dialog. This establishes successful app execution and
+rendering, **not** a completed onboarding or main-calendar interaction. The software-only emulator
+has no hardware virtualization and is slow; its timing cannot establish ordinary-device performance
+or animation parity. The reference display is 720×1280 pixels at 320dpi (360×640dp). Locale, font
+scale, theme, navigation insets and account configuration still need recording before matched layout
+comparisons. Main views, editor, recurrence, gestures and accessibility remain unverified live.
+
+Daylight's earlier screenshots use Robolectric/Roborazzi source-based rendering, not an installed
+Android app. Those tests cannot execute Google's APK. The running emulator can execute both apps;
+comparison evidence must distinguish those real-device captures from source-rendered baselines.
+
 ## Evidence and reproducibility
 
 Evidence tags used in every comparison row:

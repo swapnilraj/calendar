@@ -17,8 +17,9 @@ the optional weather layer separately. Reference observations and remaining diff
 Pin reference app build, device size/density, Android version, locale, theme and font scale when
 making a verified parity claim. Official screenshots/help are evidence for what they show, not proof
 of live interaction timing or exact dimensions. APK inspection, where available, is read-only
-reference analysis; implementation stays in this repository. No Google APK or connected Android
-reference device is currently available, so exact live/pixel parity remains unverified. Provider
+reference analysis; implementation stays in this repository. A current Google Calendar APK has been installed and its onboarding rendered in an isolated
+Android emulator; see the dated evidence update in GOOGLE_CALENDAR_UX_PARITY.md. Main calendar
+flows and exact live/pixel parity remain unverified. Provider
 permissions, draft preservation and uncertain-save handling remain required under the matched UI.
 
 The live native creation editor supports authored daily, weekly, monthly and yearly rules with
