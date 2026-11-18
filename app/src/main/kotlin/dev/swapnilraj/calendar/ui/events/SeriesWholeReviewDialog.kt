@@ -70,26 +70,26 @@ private fun SeriesReviewRule(spec: RecurrenceSpec, zone: java.time.ZoneId) {
     val locale = LocalLocale.current.platformLocale
     val bidi = android.text.BidiFormatter.getInstance(locale)
     fun day(value: java.time.DayOfWeek) = value.getDisplayName(TextStyle.FULL, locale)
-            Text(when (val pattern = spec.pattern) {
-                RecurrencePattern.Daily -> stringResource(R.string.recurrence_editor_daily)
-                is RecurrencePattern.Weekly -> stringResource(R.string.recurrence_editor_weekly_days, pattern.days.sortedBy { it.value }.joinToString(", ", transform = ::day))
-                is RecurrencePattern.MonthlyDate -> stringResource(R.string.recurrence_editor_monthly_day, pattern.day)
-                is RecurrencePattern.MonthlyWeekday -> stringResource(R.string.recurrence_editor_monthly_ordinal, stringResource(seriesOrdinalLabel(pattern.ordinal)), day(pattern.day))
-                is RecurrencePattern.Yearly -> stringResource(R.string.recurrence_editor_yearly_date,
-                    pattern.monthDay.format(DateTimeFormatter.ofPattern(android.text.format.DateFormat.getBestDateTimePattern(locale, "MMMMd"), locale)))
-            })
-            Text(pluralStringResource(when (spec.pattern) {
-                RecurrencePattern.Daily -> R.plurals.recurrence_editor_every_day
-                is RecurrencePattern.Weekly -> R.plurals.recurrence_editor_every_week
-                is RecurrencePattern.MonthlyDate, is RecurrencePattern.MonthlyWeekday -> R.plurals.recurrence_editor_every_month
-                is RecurrencePattern.Yearly -> R.plurals.recurrence_editor_every_year
-            }, spec.interval, spec.interval))
-            Text(when (val end = spec.end) {
-                RecurrenceEnd.Never -> stringResource(R.string.recurrence_editor_no_end)
-                is RecurrenceEnd.Count -> stringResource(R.string.recurrence_editor_end_count, end.count)
-                is RecurrenceEnd.ThroughDate -> stringResource(R.string.recurrence_editor_end_date,
-                    bidi.unicodeWrap(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(end.date)))
-                is RecurrenceEnd.ExactUntil -> stringResource(R.string.series_exact_until, bidi.unicodeWrap(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
-                    .withLocale(locale).withZone(zone).format(end.instant)))
-            })
+    Text(when (val pattern = spec.pattern) {
+        RecurrencePattern.Daily -> stringResource(R.string.recurrence_editor_daily)
+        is RecurrencePattern.Weekly -> stringResource(R.string.recurrence_editor_weekly_days, pattern.days.sortedBy { it.value }.joinToString(", ", transform = ::day))
+        is RecurrencePattern.MonthlyDate -> stringResource(R.string.recurrence_editor_monthly_day, pattern.day)
+        is RecurrencePattern.MonthlyWeekday -> stringResource(R.string.recurrence_editor_monthly_ordinal, stringResource(seriesOrdinalLabel(pattern.ordinal)), day(pattern.day))
+        is RecurrencePattern.Yearly -> stringResource(R.string.recurrence_editor_yearly_date,
+            pattern.monthDay.format(DateTimeFormatter.ofPattern(android.text.format.DateFormat.getBestDateTimePattern(locale, "MMMMd"), locale)))
+    })
+    Text(pluralStringResource(when (spec.pattern) {
+        RecurrencePattern.Daily -> R.plurals.recurrence_editor_every_day
+        is RecurrencePattern.Weekly -> R.plurals.recurrence_editor_every_week
+        is RecurrencePattern.MonthlyDate, is RecurrencePattern.MonthlyWeekday -> R.plurals.recurrence_editor_every_month
+        is RecurrencePattern.Yearly -> R.plurals.recurrence_editor_every_year
+    }, spec.interval, spec.interval))
+    Text(when (val end = spec.end) {
+        RecurrenceEnd.Never -> stringResource(R.string.recurrence_editor_no_end)
+        is RecurrenceEnd.Count -> stringResource(R.string.recurrence_editor_end_count, end.count)
+        is RecurrenceEnd.ThroughDate -> stringResource(R.string.recurrence_editor_end_date,
+            bidi.unicodeWrap(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(end.date)))
+        is RecurrenceEnd.ExactUntil -> stringResource(R.string.series_exact_until, bidi.unicodeWrap(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+            .withLocale(locale).withZone(zone).format(end.instant)))
+    })
 }
