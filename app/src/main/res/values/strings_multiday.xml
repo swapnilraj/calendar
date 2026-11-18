@@ -9,5 +9,5 @@
     <string name="multiday_confirm">Choose</string>
     <string name="multiday_zoom_in">Zoom in</string>
     <string name="multiday_zoom_out">Zoom out</string>
-    <string name="multiday_zoom_level">%1$d dp per hour</string>
+    <string name="multiday_zoom_level">Zoom: %1$d%%</string>
 </resources>
