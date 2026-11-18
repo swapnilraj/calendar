@@ -403,7 +403,10 @@ without reparsing mutable input using a newer validator. It is not yet connected
 screen, incoming guest requests or the draft browser. Source/controller tests are not delivery proof.
 New meeting editors require atomic complete-record draft comparison for creation, replacement and
 deletion. A storage/acknowledgement failure requires readback before dispatch; a mismatch retains inputs
-for review. A sequence of separate load/upsert calls is not atomic. Series/response editors use atomic
+for review. Exact normalized no-op callbacks preserve a reviewed command and its draft revision;
+actual edits invalidate review. Once a local draft compare-and-set starts, its receipt and local
+ownership adoption finish together before caller cancellation is honored. Provider operations remain
+cancellable; cancelling during local freeze retains the original request without dispatching it. A sequence of separate load/upsert calls is not atomic. Series/response editors use atomic
 records and generations; ordinary-editor migration and connected frozen-command retirement workflows
 remain pending. A malformed child acknowledgement must never trigger a replay; where only a parent
 ID was acknowledged, conservative uncertainty may outlive that partial in-memory identity until a
