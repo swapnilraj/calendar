@@ -20,7 +20,9 @@ internal sealed interface FrozenEditorSubmission {
         override fun encode(): JSONObject = header(this).put("draft", JSONObject().put("calendar", draft.calendarId.value)
             .put("time", time(draft.time)).put("zone", draft.eventZone?.id ?: JSONObject.NULL)
             .put("title", draft.title).put("location", draft.location).put("description", draft.description)
-            .put("alerts", JSONArray(draft.alertMinutes)))
+            .put("alerts", JSONArray(draft.alertMinutes)).apply {
+                draft.availability?.let { put("availability", it) }; draft.privacy?.let { put("privacy", it) }
+            })
     }
     data class Update(override val operationId: String, val ref: EventRef, val token: EditToken, val patch: EventPatch) : FrozenEditorSubmission {
         override val kind = "update"
@@ -32,6 +34,8 @@ internal sealed interface FrozenEditorSubmission {
             (patch.time as? FieldChange.Set)?.let { put("time", time(it.value)) }
             (patch.eventZone as? FieldChange.Set)?.let { put("zone", it.value?.id ?: JSONObject.NULL) }
             (patch.alertMinutes as? FieldChange.Set)?.let { put("alerts", JSONArray(it.value)) }
+            (patch.availability as? FieldChange.Set)?.let { put("availability", it.value ?: JSONObject.NULL) }
+            (patch.privacy as? FieldChange.Set)?.let { put("privacy", it.value ?: JSONObject.NULL) }
         })
     }
     data class Delete(override val operationId: String, val ref: EventRef, val token: EditToken) : FrozenEditorSubmission {
@@ -49,7 +53,7 @@ internal sealed interface FrozenEditorSubmission {
             return when (value.getString("kind")) {
                 "create" -> value.getJSONObject("draft").let { draft -> Create(id, EventDraft(CalendarId(draft.getLong("calendar")),
                     parseTime(draft.getJSONObject("time")), parseZone(draft, "zone"), draft.getString("title"),
-                    draft.getString("location"), draft.getString("description"), ints(draft.getJSONArray("alerts")))) }
+                    draft.getString("location"), draft.getString("description"), ints(draft.getJSONArray("alerts")), optionalInt(draft, "availability"), optionalInt(draft, "privacy"))) }
                 "update" -> {
                     val patch = value.getJSONObject("patch")
                     fun text(key: String): FieldChange<String> = if (patch.has(key)) FieldChange.Set(patch.getString(key)) else FieldChange.Keep
@@ -58,12 +62,15 @@ internal sealed interface FrozenEditorSubmission {
                         time = if (patch.has("time")) FieldChange.Set(parseTime(patch.getJSONObject("time"))) else FieldChange.Keep,
                         eventZone = if (patch.has("zone")) FieldChange.Set(parseZone(patch, "zone")) else FieldChange.Keep,
                         alertMinutes = if (patch.has("alerts")) FieldChange.Set(ints(patch.getJSONArray("alerts"))) else FieldChange.Keep,
+                        availability = if (patch.has("availability")) FieldChange.Set(optionalInt(patch, "availability")) else FieldChange.Keep,
+                        privacy = if (patch.has("privacy")) FieldChange.Set(optionalInt(patch, "privacy")) else FieldChange.Keep,
                     ))
                 }
                 "delete" -> Delete(id, parseRef(value.getJSONObject("ref")), EditToken(value.getString("token")))
                 else -> throw IllegalArgumentException("Unsupported editor submission")
             }
         }
+        private fun optionalInt(value: JSONObject, key: String): Int? = if (!value.has(key) || value.isNull(key)) null else value.getInt(key)
         private fun parseZone(value: JSONObject, key: String): ZoneId? {
             require(value.has(key))
             return if (value.isNull(key)) null else ZoneId.of(value.getString(key))

@@ -16,6 +16,7 @@ data class EventEditorFields(
     val startTime: String, val endTime: String, val allDay: Boolean, val zone: String,
     val location: String, val description: String, val alerts: String,
     val startOffset: String = "", val endOffset: String = "",
+    val availability: String = "", val privacy: String = "",
 )
 
 enum class EditorProblem { INVALID_INPUT, AMBIGUOUS_TIME, NONEXISTENT_TIME, PERMISSION,
@@ -311,6 +312,8 @@ class EventEditorController(
             time = changed(EditableField.TIME, timeChanged(fields), draft.time),
             eventZone = changed(EditableField.ZONE, fields.zone != original.zone || fields.allDay != original.allDay, draft.eventZone),
             alertMinutes = changed(EditableField.ALERTS, fields.alerts != original.alerts, draft.alertMinutes),
+            availability = changed(EditableField.AVAILABILITY, fields.availability != original.availability, draft.availability),
+            privacy = changed(EditableField.PRIVACY, fields.privacy != original.privacy, draft.privacy),
         )
     }
 
@@ -347,12 +350,15 @@ class EventEditorController(
             put("title", initial.title); put("location", initial.location); put("description", initial.description)
             put("zone", initial.eventZone?.id.orEmpty())
             put("alerts", org.json.JSONArray(initial.alertMinutes))
+            put("availability", initial.availability ?: JSONObject.NULL); put("privacy", initial.privacy ?: JSONObject.NULL)
             when (val time = initial.time) {
                 is EventTime.Timed -> { put("kind", "timed"); put("start", time.start.toString()); put("end", time.end.toString()) }
                 is EventTime.AllDay -> { put("kind", "allDay"); put("start", time.dates.start.toString()); put("end", time.dates.endExclusive.toString()) }
             }
             existing?.let { source ->
                 put("sourceTitle", source.details.occurrence.title)
+                put("sourceAvailability", source.details.availability ?: JSONObject.NULL)
+                put("sourcePrivacy", source.details.privacy ?: JSONObject.NULL)
                 put("sourceLocation", source.details.location); put("sourceDescription", source.details.description)
                 put("sourceZone", source.details.eventZone?.id.orEmpty())
                 when (val sourceTime = source.details.occurrence.time) {
@@ -385,7 +391,7 @@ class EventEditorController(
                 allDay?.dates?.endExclusive?.minusDays(1)?.toString() ?: end!!.toLocalDate().toString(),
                 start?.toLocalTime()?.toString() ?: "09:00", end?.toLocalTime()?.toString() ?: "10:00", allDay != null,
                 zone.id, draft.location, draft.description, draft.alertMinutes.joinToString(","),
-                start?.offset?.id.orEmpty(), end?.offset?.id.orEmpty())
+                start?.offset?.id.orEmpty(), end?.offset?.id.orEmpty(), draft.availability?.toString().orEmpty(), draft.privacy?.toString().orEmpty())
         }
         fun normalizedDraft(fields: EventEditorFields, preserveTime: EventTime? = null, preserveAlerts: List<Int>? = null): EventDraft = try {
             val startDate = LocalDate.parse(fields.startDate); val endDate = LocalDate.parse(fields.endDate)
@@ -408,10 +414,11 @@ class EventEditorController(
                 EventTime.Timed(start, end)
             }
             val alerts = preserveAlerts ?: if (fields.alerts.isBlank()) emptyList() else fields.alerts.split(',').map { it.trim().toInt().also { value ->
-                if (value < 0) throw InvalidInput(EditorProblem.INVALID_INPUT)
+                if (value == CalendarContract.Reminders.MINUTES_DEFAULT) throw InvalidInput(EditorProblem.INVALID_INPUT)
             } }.distinct()
             EventDraft(CalendarId(fields.calendarId.toLong()), time, if (fields.allDay) ZoneOffset.UTC else zone,
-                fields.title, fields.location, fields.description, alerts)
+                fields.title, fields.location, fields.description, alerts,
+                fields.availability.takeIf(String::isNotBlank)?.toInt(), fields.privacy.takeIf(String::isNotBlank)?.toInt())
         } catch (invalid: InvalidInput) { throw invalid }
         catch (_: Exception) { throw InvalidInput(EditorProblem.INVALID_INPUT) }
 
@@ -419,7 +426,8 @@ class EventEditorController(
             listOf("calendarId" to f.calendarId, "title" to f.title, "startDate" to f.startDate, "endDate" to f.endDate,
                 "startTime" to f.startTime, "endTime" to f.endTime, "allDay" to f.allDay.toString(), "zone" to f.zone,
                 "location" to f.location, "description" to f.description, "alerts" to f.alerts,
-                "startOffset" to f.startOffset, "endOffset" to f.endOffset).forEach { (key, value) -> put(key, value) }
+                "startOffset" to f.startOffset, "endOffset" to f.endOffset,
+                "availability" to f.availability, "privacy" to f.privacy).forEach { (key, value) -> put(key, value) }
         }
         internal fun readRawFields(p: JSONObject): EventEditorFields = decode(p)
 
@@ -428,7 +436,8 @@ class EventEditorController(
             p.optString("startDate", ""), p.optString("endDate", ""), p.optString("startTime", ""),
             p.optString("endTime", ""), p.optString("allDay", "false").toBooleanStrict(), p.optString("zone", ""),
             p.optString("location", ""), p.optString("description", ""), p.optString("alerts", ""),
-            p.optString("startOffset", ""), p.optString("endOffset", ""))
+            p.optString("startOffset", ""), p.optString("endOffset", ""),
+            p.optString("availability", ""), p.optString("privacy", ""))
     }
 }
 

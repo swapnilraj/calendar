@@ -1,5 +1,6 @@
 package dev.swapnilraj.calendar.ui.events
 
+import android.provider.CalendarContract
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.Alignment
@@ -162,6 +163,19 @@ fun EventEditorContent(
             label = { Text(stringResource(R.string.events_notes)) }, enabled = canEdit(EditableField.DESCRIPTION), modifier = Modifier.fillMaxWidth())
         OutlinedTextField(fields.alerts, { value -> controller.change { it.copy(alerts = value) } },
             label = { Text(stringResource(R.string.events_editor_alerts)) }, enabled = canEdit(EditableField.ALERTS), modifier = Modifier.fillMaxWidth())
+        MetadataChoice(R.string.events_availability, fields.availability, listOf(
+            "" to R.string.events_not_provided,
+            CalendarContract.Events.AVAILABILITY_BUSY.toString() to R.string.events_busy,
+            CalendarContract.Events.AVAILABILITY_FREE.toString() to R.string.events_free,
+            CalendarContract.Events.AVAILABILITY_TENTATIVE.toString() to R.string.events_event_tentative,
+        ), canEdit(EditableField.AVAILABILITY)) { value -> controller.change { it.copy(availability = value) } }
+        MetadataChoice(R.string.events_visibility, fields.privacy, listOf(
+            "" to R.string.events_not_provided,
+            CalendarContract.Events.ACCESS_DEFAULT.toString() to R.string.events_calendar_default_visibility,
+            CalendarContract.Events.ACCESS_PRIVATE.toString() to R.string.events_private,
+            CalendarContract.Events.ACCESS_PUBLIC.toString() to R.string.events_public,
+            CalendarContract.Events.ACCESS_CONFIDENTIAL.toString() to R.string.events_confidential,
+        ), canEdit(EditableField.PRIVACY)) { value -> controller.change { it.copy(privacy = value) } }
         Text(stringResource(R.string.events_editor_local_save), style = MaterialTheme.typography.bodySmall)
         Button(onClick = controller::save, enabled = !blocked && !state.reviewRequired && (existing != null || writableCalendars.any {
             it.id.value.toString() == fields.calendarId && it.capabilities.createEvents == AccessDecision.ALLOWED
@@ -268,4 +282,20 @@ private fun problemResource(problem: EditorProblem) = when (problem) {
     EditorProblem.DRAFT_VERSION -> R.string.events_editor_draft_version
     EditorProblem.SAFE_TO_RETRY -> R.string.events_editor_safe_retry
     EditorProblem.RETRY_UNAVAILABLE -> R.string.events_editor_retry_unavailable
+}
+
+@Composable
+private fun MetadataChoice(label: Int, current: String, options: List<Pair<String, Int>>, enabled: Boolean, onChange: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = options.firstOrNull { it.first == current }?.second ?: R.string.events_editor_metadata_unknown
+    Box {
+        TextButton(onClick = { expanded = true }, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text(stringResource(R.string.events_context_item, stringResource(label), stringResource(selected)))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { (value, text) -> DropdownMenuItem(text = { Text(stringResource(text)) }, onClick = {
+                expanded = false; onChange(value)
+            }) }
+        }
+    }
 }

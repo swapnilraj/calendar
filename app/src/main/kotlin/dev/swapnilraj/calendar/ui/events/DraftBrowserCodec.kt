@@ -91,7 +91,8 @@ object DraftBrowserCodec {
                 fun <T> matches(change: FieldChange<T>, actual: T): Boolean = change == FieldChange.Keep || (change as? FieldChange.Set)?.value == actual
                 matches(patch.title, normalized.title) && matches(patch.location, normalized.location) &&
                     matches(patch.description, normalized.description) && matches(patch.time, normalized.time) &&
-                    matches(patch.eventZone, normalized.eventZone) && matches(patch.alertMinutes, normalized.alertMinutes)
+                    matches(patch.eventZone, normalized.eventZone) && matches(patch.alertMinutes, normalized.alertMinutes) &&
+                    matches(patch.availability, normalized.availability) && matches(patch.privacy, normalized.privacy)
             }
             is FrozenEditorSubmission.Delete -> true // Unsaved raw fields are not part of a deletion request.
         }
@@ -118,7 +119,9 @@ object DraftBrowserCodec {
         val alerts = value.getJSONArray("alerts")
         EventDraft(CalendarId(value.getLong("calendarId")), time,
             value.optString("zone").takeIf(String::isNotBlank)?.let(ZoneId::of), value.getString("title"),
-            value.getString("location"), value.getString("description"), (0 until alerts.length()).map(alerts::getInt))
+            value.getString("location"), value.getString("description"), (0 until alerts.length()).map(alerts::getInt),
+            if (value.has("availability") && !value.isNull("availability")) value.getInt("availability") else null,
+            if (value.has("privacy") && !value.isNull("privacy")) value.getInt("privacy") else null)
     } catch (_: Exception) { null }
 }
 
