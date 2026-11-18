@@ -1,0 +1,261 @@
+package dev.swapnilraj.calendar.ui.events.meetings.create
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.ui.events.EventEditorController
+import dev.swapnilraj.calendar.ui.events.EventEditorFields
+import java.time.*
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+enum class MeetingCreationProblem { DRAFT_UNAVAILABLE, DRAFT_REVIEW, STALE_DRAFT, CALENDAR_REQUIRED,
+    SOURCE_CHANGED, PERMISSION, DENIED, LIMIT_EXCEEDED, UNAVAILABLE, INVALID_EVENT, INVALID_GUEST,
+    GUESTS_REQUIRED, POLICY_REQUIRED, RECURRENCE_UNSUPPORTED, UNCERTAIN, SAFE_TO_RETRY, RETIRED,
+    RETIRE_UNAVAILABLE, RETIRE_BLOCKED_DISPATCH, RETIRE_BLOCKED_COMMIT, RETIRE_CONFLICT, RETIRE_UNSUPPORTED }
+
+data class MeetingCreationState(val fields: MeetingCreationFields? = null, val loading: Boolean = true,
+    val busy: Boolean = false, val problem: MeetingCreationProblem? = null, val policyAccepted: Boolean = false,
+    val allowedGuestTypes: Set<MeetingGuestType> = emptySet(), val recoveryRequired: Boolean = false,
+    val retryReady: Boolean = false, val confirmDiscard: Boolean = false, val discarded: Boolean = false,
+    val localSaved: EventRef? = null)
+
+/** Dedicated meeting-create state machine. Public actions are suspending; hosts launch them explicitly.
+ * Exact CAS owns local data, not the provider transaction. Frozen authorization remains recoverable.
+ */
+class MeetingCreationController(val launch: MeetingCreationLaunch, private val meetings: CalendarMeetings,
+    private val store: AtomicDraftStore, private val requestWritePermission: suspend () -> Boolean,
+    private val retirement: OperationRetirement? = null, private val clock: Clock = Clock.systemUTC()) {
+    var state by mutableStateOf(MeetingCreationState()); private set
+    private val action = AtomicBoolean(false)
+    private val storage = Mutex()
+    private var document: MeetingCreationDocument? = null
+    private var expected: DraftRecord? = null
+    private var stopped = false
+    private var verified = false
+    private var retirementProven = false
+    val frozen: Boolean get() = document?.frozen != null
+    val canChange: Boolean get() = !state.busy && canChangeIgnoringBusy()
+    val canSave: Boolean get() = canChange && verified && document?.authority != null && state.problem !in setOf(MeetingCreationProblem.STALE_DRAFT, MeetingCreationProblem.DRAFT_UNAVAILABLE)
+    val canDiscard: Boolean get() = !stopped && !state.loading && !state.busy && document != null && state.localSaved == null && (!frozen || retirement != null)
+    /** Fixed backend policy; presentation must disclose this before asking for acceptance. */
+    val guestsCanModify = false
+    val guestsCanInviteOthers = false
+    val guestsCanSeeGuests = true
+
+    suspend fun load() = exclusive {
+        if (stopped || document != null) return@exclusive
+        val record = read() ?: run { state = MeetingCreationState(loading = false, problem = MeetingCreationProblem.DRAFT_UNAVAILABLE); return@exclusive }
+        val doc = try { MeetingCreationDraftCodec.decode(record) } catch (_: Exception) {
+            state = MeetingCreationState(loading = false, problem = MeetingCreationProblem.DRAFT_REVIEW); return@exclusive
+        }
+        if (doc.id != launch.draftId || doc.generation != launch.generation) {
+            state = MeetingCreationState(loading = false, problem = MeetingCreationProblem.STALE_DRAFT); return@exclusive
+        }
+        document = doc; expected = record
+        state = MeetingCreationState(doc.fields, loading = false, busy = true, policyAccepted = doc.policyAccepted,
+            allowedGuestTypes = doc.authority?.allowedTypes.orEmpty(), recoveryRequired = doc.frozen != null)
+        // The persisted record, never the route hint, determines whether any source read is permitted.
+        if (doc.frozen != null) return@exclusive
+        val authority = doc.authority ?: run { state = state.copy(problem = MeetingCreationProblem.CALENDAR_REQUIRED); return@exclusive }
+        val fresh = readSource(authority.identity)
+        when (fresh) {
+            is MeetingReadResult.Ready -> {
+                val source = fresh.value
+                verified = source.calendar.identity == authority.identity && source.token == authority.token && source.allowedGuestTypes == authority.allowedTypes
+                if (!verified) state = state.copy(problem = MeetingCreationProblem.SOURCE_CHANGED)
+            }
+            else -> state = state.copy(problem = readProblem(fresh))
+        }
+    }
+
+    suspend fun changeFields(fields: EventEditorFields) = exclusive {
+        if (!canChangeIgnoringBusy()) return@exclusive
+        val doc = document!!
+        // Calendar authority can only come from selectCalendar's fresh backend response.
+        val event = fields.copy(calendarId = doc.fields.event.calendarId, targetIdentity = doc.fields.event.targetIdentity)
+        replace(doc.copy(fields = doc.fields.copy(event = event)))
+    }
+    suspend fun changeGuests(guests: List<MeetingCreationGuestFields>) = exclusive {
+        if (!canChangeIgnoringBusy() || guests.map { it.rowId }.distinct().size != guests.size) return@exclusive
+        if (guests.any { runCatching { require(java.util.UUID.fromString(it.rowId).toString() == it.rowId) }.isFailure }) return@exclusive
+        replace(document!!.copy(fields = document!!.fields.copy(guests = guests.toList())))
+    }
+    suspend fun acceptFixedGuestPolicy(accepted: Boolean) = exclusive {
+        if (canChangeIgnoringBusy()) replace(document!!.copy(policyAccepted = accepted))
+    }
+    suspend fun selectCalendar(calendar: CalendarInfo) = exclusive {
+        if (!canChangeIgnoringBusy() || !validIdentity(calendar.identity)) return@exclusive
+        when (val result = readSource(calendar.identity)) {
+            is MeetingReadResult.Ready -> {
+                val source = result.value
+                if (source.calendar.identity != calendar.identity || source.token.value.isBlank() || source.allowedGuestTypes.isEmpty()) {
+                    state = state.copy(problem = MeetingCreationProblem.SOURCE_CHANGED); verified = false; return@exclusive
+                }
+                val doc = document!!
+                val authority = MeetingCreationAuthority(calendar.identity, source.token, source.allowedGuestTypes.toSet())
+                if (replace(doc.copy(authority = authority, fields = doc.fields.copy(event = doc.fields.event.copy(
+                        calendarId = calendar.id.value.toString(), targetIdentity = calendar.identity))))) verified = true
+            }
+            else -> { verified = false; state = state.copy(problem = readProblem(result)) }
+        }
+    }
+
+    suspend fun save() = exclusive {
+        if (!canChangeIgnoringBusy() || !verified) return@exclusive
+        val doc = document!!; val authority = doc.authority ?: return@exclusive
+        val event = doc.fields.event
+        val problem = when {
+            event.recurrence.frequency != "NONE" -> MeetingCreationProblem.RECURRENCE_UNSUPPORTED
+            event.targetIdentity != authority.identity || event.calendarId != authority.identity.calendarId.value.toString() -> MeetingCreationProblem.CALENDAR_REQUIRED
+            !doc.policyAccepted -> MeetingCreationProblem.POLICY_REQUIRED
+            doc.fields.guests.isEmpty() -> MeetingCreationProblem.GUESTS_REQUIRED
+            else -> null
+        }
+        if (problem != null) { state = state.copy(problem = problem); return@exclusive }
+        val draft = try { EventEditorController.normalizedDraft(event).also {
+            require(it.recurrence == null && it.privacy?.let { v -> v in 0..3 } != false && it.availability?.let { v -> v in 0..2 } != false)
+            require(it.time !is EventTime.Timed || it.eventZone?.let(ProviderTimeZoneCompatibility::isCompatible) == true)
+        } } catch (_: Exception) { state = state.copy(problem = MeetingCreationProblem.INVALID_EVENT); return@exclusive }
+        val guests = try { typedGuests(doc.fields.guests, authority.allowedTypes).also {
+            require(it.none { guest -> guest.email.equals(authority.identity.account.name, true) || guest.email.equals(authority.identity.owner, true) })
+        } } catch (_: Exception) { state = state.copy(problem = MeetingCreationProblem.INVALID_GUEST); return@exclusive }
+        if (!permission()) { state = state.copy(problem = MeetingCreationProblem.PERMISSION); return@exclusive }
+        val frozen = FrozenMeetingCreation(doc.operationId, authority.token, draft, guests)
+        if (!replace(doc.copy(frozen = frozen))) return@exclusive
+        dispatch(frozen)
+    }
+    suspend fun recover() = exclusive {
+        val frozen = document?.frozen ?: return@exclusive
+        if (stopped || state.localSaved != null || !ownsRecord()) return@exclusive
+        val result = try { meetings.recover(frozen.operationId) } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { null }
+        applyResult(result, recovery = true)
+    }
+    suspend fun retryOriginal() = exclusive {
+        val frozen = document?.frozen ?: return@exclusive
+        if (stopped || !state.retryReady || state.localSaved != null || !ownsRecord()) return@exclusive
+        if (!permission()) { state = state.copy(problem = MeetingCreationProblem.PERMISSION); return@exclusive }
+        state = state.copy(retryReady = false)
+        dispatch(frozen)
+    }
+    fun requestDiscard() { if (canDiscard && !action.get()) state = state.copy(confirmDiscard = true) }
+    fun cancelDiscard() { if (!action.get()) state = state.copy(confirmDiscard = false) }
+    suspend fun confirmDiscard() = exclusive {
+        if (!state.confirmDiscard || stopped || document == null || state.localSaved != null || (frozen && retirement == null)) return@exclusive
+        state = state.copy(confirmDiscard = false)
+        val frozen = document!!.frozen
+        if (frozen != null && !retirementProven) {
+            val port = retirement ?: return@exclusive
+            val request = frozen.retirement()
+            var result = try { port.retire(request) } catch (e: CancellationException) { throw e }
+                catch (_: Exception) { OperationRetirementResult.Unavailable }
+            if (result == OperationRetirementResult.Unavailable) result = try { port.inspect(request) }
+                catch (e: CancellationException) { throw e } catch (_: Exception) { OperationRetirementResult.Unavailable }
+            if (result !is OperationRetirementResult.Retired || result.operationId != frozen.operationId) {
+                state = state.copy(problem = when(result) {
+                    is OperationRetirementResult.Blocked -> if (result.reason == RetirementBlockReason.RECORDED_COMMIT) MeetingCreationProblem.RETIRE_BLOCKED_COMMIT else MeetingCreationProblem.RETIRE_BLOCKED_DISPATCH
+                    is OperationRetirementResult.Conflict -> MeetingCreationProblem.RETIRE_CONFLICT
+                    OperationRetirementResult.Unsupported -> MeetingCreationProblem.RETIRE_UNSUPPORTED
+                    else -> MeetingCreationProblem.RETIRE_UNAVAILABLE
+                }); return@exclusive
+            }
+            retirementProven = true; state = state.copy(retryReady = false, problem = MeetingCreationProblem.RETIRED)
+        }
+        if (deleteExact()) { stopped = true; state = state.copy(discarded = true, retryReady = false) }
+    }
+    /** Commit acknowledgment is cleanup, not retirement and never another create. */
+    suspend fun acknowledgeLocalSave() = exclusive {
+        if (state.localSaved == null || stopped) return@exclusive
+        if (deleteExact()) stopped = true
+    }
+    suspend fun prepareDismiss(): Boolean = !action.get() && !state.loading
+
+    private suspend fun dispatch(frozen: FrozenMeetingCreation) {
+        if (stopped || retirementProven || !ownsRecord()) return
+        state = state.copy(recoveryRequired = true, retryReady = false, problem = null)
+        val result = try { meetings.create(frozen.operationId, frozen.token, frozen.draft, frozen.guests) }
+            catch (e: CancellationException) { state = state.copy(problem = MeetingCreationProblem.UNCERTAIN); throw e }
+            catch (_: Exception) { null }
+        applyResult(result, recovery = false)
+    }
+    private fun applyResult(result: MeetingMutationResult?, recovery: Boolean) {
+        val frozen = document?.frozen ?: return
+        state = state.copy(recoveryRequired = true, retryReady = false)
+        when(result) {
+            is MeetingMutationResult.LocalSaved -> {
+                val bounds = when(val t = frozen.draft.time) {
+                    is EventTime.Timed -> t.start to t.end
+                    is EventTime.AllDay -> t.dates.start.atStartOfDay(ZoneOffset.UTC).toInstant() to t.dates.endExclusive.atStartOfDay(ZoneOffset.UTC).toInstant()
+                }
+                val ref = result.selected
+                if (result.scope == RecurrenceScope.THIS && ref.eventId > 0 && ref.calendarId == frozen.draft.calendarId && ref.recurrence == null && ref.instanceStart == bounds.first && ref.instanceEnd == bounds.second)
+                    state = state.copy(localSaved = ref, problem = null)
+                else state = state.copy(problem = MeetingCreationProblem.UNCERTAIN)
+            }
+            is MeetingMutationResult.Common -> when(val outcome = result.outcome) {
+                is MutationResult.SafeToRetry -> if (recovery && outcome.operationId == frozen.operationId && !retirementProven)
+                    state = state.copy(problem = MeetingCreationProblem.SAFE_TO_RETRY, retryReady = true)
+                    else state = state.copy(problem = MeetingCreationProblem.UNCERTAIN)
+                is MutationResult.Retired -> if (outcome.operationId == frozen.operationId) {
+                    retirementProven = true; state = state.copy(problem = MeetingCreationProblem.RETIRED)
+                } else state = state.copy(problem = MeetingCreationProblem.UNCERTAIN)
+                MutationResult.PermissionRequired -> state = state.copy(problem = MeetingCreationProblem.PERMISSION)
+                is MutationResult.Denied -> state = state.copy(problem = MeetingCreationProblem.DENIED)
+                is MutationResult.Conflict -> state = state.copy(problem = MeetingCreationProblem.SOURCE_CHANGED)
+                else -> state = state.copy(problem = MeetingCreationProblem.UNCERTAIN)
+            }
+            is MeetingMutationResult.NeedsReview -> state = state.copy(problem = MeetingCreationProblem.SOURCE_CHANGED)
+            is MeetingMutationResult.Invalid, is MeetingMutationResult.Unsupported -> state = state.copy(problem = MeetingCreationProblem.UNCERTAIN)
+            else -> state = state.copy(problem = MeetingCreationProblem.UNCERTAIN)
+        }
+    }
+    private suspend fun permission() = try { requestWritePermission() } catch (e: CancellationException) { throw e } catch (_: Exception) { false }
+    private suspend fun readSource(identity: CalendarIdentity): MeetingReadResult<MeetingCreation> = try { meetings.loadForCreate(identity) }
+        catch (e: CancellationException) { throw e } catch (_: Exception) { MeetingReadResult.Unavailable }
+    private fun readProblem(result: MeetingReadResult<*>) = when(result) {
+        MeetingReadResult.PermissionRequired -> MeetingCreationProblem.PERMISSION
+        is MeetingReadResult.Denied -> MeetingCreationProblem.DENIED
+        MeetingReadResult.LimitExceeded -> MeetingCreationProblem.LIMIT_EXCEEDED
+        is MeetingReadResult.NeedsReview -> MeetingCreationProblem.SOURCE_CHANGED
+        else -> MeetingCreationProblem.UNAVAILABLE
+    }
+    private fun canChangeIgnoringBusy() = !stopped && !state.loading && document != null && !frozen && expected != null && state.problem !in setOf(MeetingCreationProblem.STALE_DRAFT, MeetingCreationProblem.DRAFT_UNAVAILABLE, MeetingCreationProblem.DRAFT_REVIEW)
+    private suspend fun read(): DraftRecord? = try { store.load(launch.draftId) } catch (e: CancellationException) { throw e }
+        catch (_: Exception) { null }
+    private suspend fun ownsRecord(): Boolean {
+        val current = try { store.load(launch.draftId) } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { state = state.copy(problem = MeetingCreationProblem.DRAFT_UNAVAILABLE, retryReady = false); return false }
+        if (expected != null && current == expected) return true
+        state = state.copy(problem = MeetingCreationProblem.STALE_DRAFT, retryReady = false); return false
+    }
+    private suspend fun replace(candidate: MeetingCreationDocument): Boolean = storage.withLock {
+        withContext(NonCancellable) {
+            val old = expected ?: return@withContext false
+            val next = candidate.copy(revision = uuid())
+            val record = MeetingCreationDraftCodec.record(next, clock.instant())
+            val result = try { store.compareAndSet(launch.draftId, old, record) } catch (_: Exception) { DraftChangeResult.Unavailable }
+            if (result != DraftChangeResult.Changed && read() == record) {
+                expected = record; document = next
+                state = state.copy(fields = next.fields, policyAccepted = next.policyAccepted,
+                    allowedGuestTypes = next.authority?.allowedTypes.orEmpty(), problem = null, recoveryRequired = next.frozen != null)
+                true
+            } else { state = state.copy(problem = if(result == DraftChangeResult.Changed) MeetingCreationProblem.STALE_DRAFT else MeetingCreationProblem.DRAFT_UNAVAILABLE); false }
+        }
+    }
+    private suspend fun deleteExact(): Boolean = storage.withLock { withContext(NonCancellable) {
+        val old = expected ?: return@withContext false
+        val result = try { store.compareAndSet(launch.draftId, old, null) } catch (_: Exception) { DraftChangeResult.Unavailable }
+        val absent = try { store.load(launch.draftId) == null } catch (_: Exception) { false }
+        if (result != DraftChangeResult.Changed && absent) { expected = null; true }
+        else { state = state.copy(problem = if(result == DraftChangeResult.Changed) MeetingCreationProblem.STALE_DRAFT else MeetingCreationProblem.DRAFT_UNAVAILABLE); false }
+    } }
+    private suspend fun exclusive(block: suspend () -> Unit) {
+        if (!action.compareAndSet(false,true)) return
+        state = state.copy(busy = true)
+        try { block() } finally { state = state.copy(busy = false); action.set(false) }
+    }
+}
