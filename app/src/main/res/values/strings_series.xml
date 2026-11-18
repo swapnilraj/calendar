@@ -33,4 +33,8 @@
     <string name="series_draft_host_unavailable">This recurring draft is retained. Opening it is not available in this host yet.</string>
     <string name="series_delete_confirm">Delete</string>
     <string name="series_discard_button">Discard draft</string>
+    <string name="series_delete_original_boundary">Original recurrence cutoff: %1$s</string>
+    <string name="series_boundary_timed_value">%1$s (%2$s)</string>
+    <string name="series_delete_following_warning">Delete the occurrence originally scheduled for %1$s and all following occurrences, including their exceptions? The original recurrence schedule determines the cutoff, even when an occurrence has moved. Earlier occurrences are not deleted. This cannot be undone here.</string>
+    <string name="series_delete_read_only">The event information is read-only context for this deletion.</string>
 </resources>

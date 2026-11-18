@@ -32,6 +32,8 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
     val operationId: String? get() = document?.operationId
     val hasDefaultAlerts: Boolean get() = document?.hasDefaultAlerts == true
     val masterStart: RecurrenceStart? get() = document?.masterStart
+    val deletionBoundary: RecurrenceKey? get() = document?.takeIf { it.scope == RecurrenceScope.FOLLOWING && it.action == SeriesEditorAction.DELETE }
+        ?.let { seriesOriginalBoundary(it.selected, it.masterStart) }
     val fieldsAllowed: Set<EditableField> get() = document?.let { it.rights.fields.intersect(it.allowedFields).intersect(seriesUiFields) }.orEmpty()
     val canReviewDraft: Boolean get() = !completed && !state.reviewing && !state.saving && state.reviewRequired &&
         !state.recoveryRequired && !retryLocked && !recoveryOnly && !state.draftReadFailed
@@ -130,7 +132,8 @@ class SeriesEventEditorController(val launch: SeriesEditorLaunch, val source: Ed
     }
     private fun submit(command: SeriesCommand) {
         val doc = document ?: return
-        var frozen = FrozenSeriesSubmission(doc.operationId, doc.selected, doc.identity, doc.token, doc.scope, doc.action, command)
+        var frozen = FrozenSeriesSubmission(doc.operationId, doc.selected, doc.identity, doc.token, doc.scope, doc.action, command,
+            if (doc.scope == RecurrenceScope.FOLLOWING && doc.action == SeriesEditorAction.DELETE) doc.masterStart else null)
         if (doc.frozen != null && doc.frozen != frozen) frozen = frozen.copy(operationId = UUID.randomUUID().toString())
         document = doc.copy(fields = state.fields, operationId = frozen.operationId, frozen = frozen, submitted = true)
         state = state.copy(saving = true, confirmDelete = false, problem = null, result = null)

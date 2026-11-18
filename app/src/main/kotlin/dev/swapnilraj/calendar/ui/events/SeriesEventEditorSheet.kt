@@ -31,7 +31,7 @@ fun SeriesScopeContent(source: EditableSeries, action: SeriesEditorAction, onDis
         RecurrenceScope.entries.forEach { scope ->
             val enabled = canPrepareSeriesScope(source, scope, action)
             TextButton(onClick = { onSelect(scope) }, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(scopeLabel(scope))) }
-            if (!enabled) Text(stringResource(if (scope == RecurrenceScope.FOLLOWING) R.string.series_scope_unsupported else scopeLimitation(source.scopes[scope]?.limitation)), style = MaterialTheme.typography.bodySmall)
+            if (!enabled) Text(stringResource(if (scope == RecurrenceScope.FOLLOWING && action == SeriesEditorAction.EDIT) R.string.series_scope_unsupported else scopeLimitation(source.scopes[scope]?.limitation)), style = MaterialTheme.typography.bodySmall)
         }
         TextButton(onClick = onDismiss) { Text(stringResource(R.string.events_close)) }
     }
@@ -61,6 +61,7 @@ fun SeriesEventEditorSheet(controller: SeriesEventEditorController, onDismiss: (
 @Composable
 fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: () -> Unit, onReview: (SeriesReadResult) -> Unit) {
     val state = controller.state; val fields = state.fields; val launch = controller.launch
+    val boundaryText = seriesDeletionBoundaryText(controller)
     val coroutine = rememberCoroutineScope(); var discard by remember { mutableStateOf(false) }; var retryDelete by remember { mutableStateOf(false) }
     fun editable(field: EditableField) = controller.canChange && field in controller.fieldsAllowed
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -78,6 +79,7 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
             }
         }
         if (state.reviewRequired) TextButton(onClick = { discard = true }, enabled = controller.canReviewDraft) { Text(stringResource(R.string.series_discard_review)) }
+        if (boundaryText != null) Text(stringResource(R.string.series_delete_original_boundary, boundaryText))
         val locale = LocalLocale.current.platformLocale
         controller.masterStart?.takeIf { launch.scope == RecurrenceScope.ALL }?.let { start ->
             val label = when (start) {
@@ -91,7 +93,7 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
                 Text(stringResource(R.string.series_master_start_timed, bidi.unicodeWrap(label), bidi.unicodeWrap(zone)))
             } else Text(stringResource(R.string.series_master_start, bidi.unicodeWrap(label)))
         }
-        Text(stringResource(R.string.series_time_unchanged), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(if (launch.action == SeriesEditorAction.EDIT) R.string.series_time_unchanged else R.string.series_delete_read_only), style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(fields.title, { value -> controller.change { it.copy(title = value) } }, enabled = editable(EditableField.TITLE), label = { Text(stringResource(R.string.events_editor_title)) }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(fields.location, { value -> controller.change { it.copy(location = value) } }, enabled = editable(EditableField.LOCATION), label = { Text(stringResource(R.string.events_location)) }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(fields.description, { value -> controller.change { it.copy(description = value) } }, enabled = editable(EditableField.DESCRIPTION), label = { Text(stringResource(R.string.events_notes)) }, modifier = Modifier.fillMaxWidth())
@@ -119,7 +121,12 @@ fun SeriesEventEditorContent(controller: SeriesEventEditorController, onClose: (
     }
     if (state.confirmDelete || retryDelete) AlertDialog(onDismissRequest = { controller.cancelDelete(); retryDelete = false },
         title = { Text(stringResource(R.string.series_confirm_delete)) },
-        text = { Text(stringResource(if (launch.scope == RecurrenceScope.ALL) R.string.series_delete_all_warning else R.string.series_delete_this_warning)) },
+        text = { Text(when (launch.scope) {
+            RecurrenceScope.ALL -> stringResource(R.string.series_delete_all_warning)
+            RecurrenceScope.THIS -> stringResource(R.string.series_delete_this_warning)
+            RecurrenceScope.FOLLOWING -> stringResource(R.string.series_delete_following_warning,
+                boundaryText ?: stringResource(R.string.series_scope_unknown))
+        }) },
         confirmButton = { TextButton(onClick = { if (retryDelete) { retryDelete = false; controller.retryOriginal() } else controller.confirmDelete() }) { Text(stringResource(R.string.series_delete_confirm)) } },
         dismissButton = { TextButton(onClick = { controller.cancelDelete(); retryDelete = false }) { Text(stringResource(R.string.events_editor_cancel)) } })
     if (discard) AlertDialog(onDismissRequest = { discard = false }, title = { Text(stringResource(R.string.series_discard_review)) },
@@ -162,4 +169,21 @@ private fun seriesProblem(problem: SeriesEditorProblem) = when (problem) {
     SeriesEditorProblem.UNCERTAIN -> R.string.events_editor_uncertain
     SeriesEditorProblem.SAFE_TO_RETRY -> R.string.events_editor_safe_retry
     SeriesEditorProblem.RETRY_UNAVAILABLE -> R.string.events_editor_retry_unavailable
+}
+
+@Composable
+internal fun seriesDeletionBoundaryText(controller: SeriesEventEditorController): String? {
+    val boundary = controller.deletionBoundary ?: return null
+    val locale = LocalLocale.current.platformLocale
+    val bidi = android.text.BidiFormatter.getInstance(locale)
+    return when (boundary) {
+        is RecurrenceKey.Date -> bidi.unicodeWrap(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale).format(boundary.date))
+        is RecurrenceKey.Timed -> {
+            val zone = (controller.masterStart as? RecurrenceStart.Timed)?.zone ?: return null
+            val local = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.MEDIUM).withLocale(locale).withZone(zone).format(boundary.instant)
+            val name = if (zone.normalized() == java.time.ZoneOffset.UTC) stringResource(R.string.recurrence_utc)
+                else DateTimeFormatter.ofPattern("zzzz", locale).withZone(zone).format(boundary.instant)
+            stringResource(R.string.series_boundary_timed_value, bidi.unicodeWrap(local), bidi.unicodeWrap(name))
+        }
+    }
 }

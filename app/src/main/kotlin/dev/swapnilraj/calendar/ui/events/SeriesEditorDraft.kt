@@ -28,7 +28,7 @@ internal val seriesUiFields = setOf(EditableField.TITLE, EditableField.LOCATION,
 
 /** UI support is narrower than future backend capabilities; missing/unknown scope rights never enable actions. */
 fun canPrepareSeriesScope(source: EditableSeries, scope: RecurrenceScope, action: SeriesEditorAction): Boolean {
-    if (scope == RecurrenceScope.FOLLOWING) return false
+    if (scope == RecurrenceScope.FOLLOWING && (action != SeriesEditorAction.DELETE || seriesOriginalBoundary(source.selectedDetails.occurrence.ref, source.snapshot.start) == null)) return false
     val rights = source.scopes[scope] ?: return false
     return when (action) {
         SeriesEditorAction.EDIT -> rights.edit == AccessDecision.ALLOWED &&
@@ -73,7 +73,12 @@ internal data class SeriesDraftDocument(val id: String, val selected: EventRef, 
             val local = reminders.filter { it.method == CalendarContract.Reminders.METHOD_ALERT }
             val raw = fields.copy(alerts = local.filter { it.minutesBefore != CalendarContract.Reminders.MINUTES_DEFAULT }
                 .joinToString(",") { it.minutesBefore.toString() })
-            val date = if (scope == RecurrenceScope.ALL) source.snapshot.start.date.toString() else when (val time = details.occurrence.time) {
+            val date = if (scope == RecurrenceScope.ALL) source.snapshot.start.date.toString()
+            else if (scope == RecurrenceScope.FOLLOWING) when (val boundary = seriesOriginalBoundary(details.occurrence.ref, source.snapshot.start)) {
+                is RecurrenceKey.Date -> boundary.date.toString()
+                is RecurrenceKey.Timed -> boundary.instant.atZone((source.snapshot.start as RecurrenceStart.Timed).zone).toLocalDate().toString()
+                null -> throw IllegalArgumentException()
+            } else when (val time = details.occurrence.time) {
                 is EventTime.AllDay -> time.dates.start.toString()
                 is EventTime.Timed -> details.eventZone?.let { time.start.atZone(it).toLocalDate().toString() }.orEmpty()
             }
@@ -102,37 +107,48 @@ object SeriesDraftCodec {
         require(record.version == VERSION && record.id.isNotBlank())
         val json = JSONObject(record.payload)
         require(json.getString("feature") == "series-editor" && json.getInt("schema") == 1)
+        require(json.keys().asSequence().all { it in setOf("feature", "schema", "selected", "calendar", "master", "scope", "action", "token", "masterStart", "rights", "allowedFields", "baseline", "fields", "rawDate", "hasDefaultAlerts", "operationId", "submitted", "frozen", "reviewRequired") })
         val selected = SeriesJson.ref(json.getJSONObject("selected"))
         val identity = SeriesIdentity(CalendarId(json.getLong("calendar")), json.getLong("master"))
         require(selected.calendarId == identity.calendarId && (selected.recurrence?.masterEventId ?: selected.eventId) == identity.masterEventId)
-        val scope = RecurrenceScope.valueOf(json.getString("scope")); require(scope != RecurrenceScope.FOLLOWING)
+        val scope = RecurrenceScope.valueOf(json.getString("scope"))
         val action = SeriesEditorAction.valueOf(json.getString("action"))
+        require(scope != RecurrenceScope.FOLLOWING || action == SeriesEditorAction.DELETE)
         val id = json.getString("operationId").also { require(it.isNotBlank()) }
         val frozen = if (json.has("frozen")) FrozenSeriesSubmission.decode(json.getJSONObject("frozen")) else null
         val token = EditToken(json.getString("token").also { require(it.isNotBlank()) })
         val submitted = json.getBoolean("submitted"); require(!submitted || frozen != null)
         val masterStart = SeriesJson.start(json.getJSONObject("masterStart"))
+        require(scope != RecurrenceScope.FOLLOWING || seriesOriginalBoundary(selected, masterStart) != null)
         val fields = fields(json.getJSONObject("fields"))
         frozen?.let {
             require(it.operationId == id && it.selected == selected && it.identity == identity && it.token == token)
             require(it.scope == scope && it.action == action)
+            require(scope != RecurrenceScope.FOLLOWING || it.deleteMasterStart == masterStart)
             require(it.command !is SeriesCommand.WholeEdit || it.command.intent.expectedMasterStart == masterStart)
         }
         val document = SeriesDraftDocument(record.id, selected, identity, scope, action, token, masterStart,
             rights(json.getJSONObject("rights")), enums(json.getJSONArray("allowedFields")),
             fields(json.getJSONObject("baseline")), fields, json.getString("rawDate"), json.getBoolean("hasDefaultAlerts"), id, submitted, frozen, json.getBoolean("reviewRequired"))
+        require(scope != RecurrenceScope.FOLLOWING || document.rights.delete == AccessDecision.ALLOWED)
         if (submitted && action == SeriesEditorAction.EDIT) require(frozen?.command == seriesCommand(document))
         return document
     }
     private fun fields(value: SeriesEditorFields) = JSONObject().put("title", value.title).put("location", value.location)
         .put("description", value.description).put("alerts", value.alerts).put("replaceAlerts", value.replaceAlerts)
         .put("availability", value.availability).put("privacy", value.privacy)
-    private fun fields(value: JSONObject) = SeriesEditorFields(value.getString("title"), value.getString("location"),
-        value.getString("description"), value.getString("alerts"), value.getBoolean("replaceAlerts"), value.getString("availability"), value.getString("privacy"))
+    private fun fields(value: JSONObject): SeriesEditorFields {
+        require(value.keys().asSequence().toSet() == setOf("title", "location", "description", "alerts", "replaceAlerts", "availability", "privacy"))
+        return SeriesEditorFields(value.getString("title"), value.getString("location"), value.getString("description"),
+            value.getString("alerts"), value.getBoolean("replaceAlerts"), value.getString("availability"), value.getString("privacy"))
+    }
     private fun rights(value: SeriesScopeCapabilities) = JSONObject().put("edit", value.edit.name).put("delete", value.delete.name)
         .put("fields", JSONArray(value.fields.map { it.name }.sorted())).put("limitation", value.limitation.name)
-    private fun rights(value: JSONObject) = SeriesScopeCapabilities(AccessDecision.valueOf(value.getString("edit")),
-        enums(value.getJSONArray("fields")), AccessDecision.valueOf(value.getString("delete")), SeriesActionLimitation.valueOf(value.getString("limitation")))
+    private fun rights(value: JSONObject): SeriesScopeCapabilities {
+        require(value.keys().asSequence().toSet() == setOf("edit", "delete", "fields", "limitation"))
+        return SeriesScopeCapabilities(AccessDecision.valueOf(value.getString("edit")), enums(value.getJSONArray("fields")),
+            AccessDecision.valueOf(value.getString("delete")), SeriesActionLimitation.valueOf(value.getString("limitation")))
+    }
     private fun enums(value: JSONArray): Set<EditableField> = (0 until value.length()).map { EditableField.valueOf(value.getString(it)) }.toSet()
 }
 
@@ -164,14 +180,20 @@ internal fun seriesCommand(document: SeriesDraftDocument): SeriesCommand {
 }
 
 internal data class FrozenSeriesSubmission(val operationId: String, val selected: EventRef, val identity: SeriesIdentity,
-    val token: EditToken, val scope: RecurrenceScope, val action: SeriesEditorAction, val command: SeriesCommand) {
+    val token: EditToken, val scope: RecurrenceScope, val action: SeriesEditorAction, val command: SeriesCommand,
+    val deleteMasterStart: RecurrenceStart? = null) {
     suspend fun execute(port: CalendarSeriesMutations) = port.mutate(operationId, selected, token, command)
     fun encode(): JSONObject = JSONObject().apply {
         put("schema", 1); put("operationId", operationId); put("selected", SeriesJson.ref(selected))
         put("calendar", identity.calendarId.value); put("master", identity.masterEventId); put("token", token.value)
         put("scope", scope.name); put("action", action.name)
         when (val command = command) {
-            is SeriesCommand.Delete -> { require(command.scope == scope); put("kind", "delete") }
+            is SeriesCommand.Delete -> {
+                require(action == SeriesEditorAction.DELETE && command.scope == scope)
+                put("kind", "delete")
+                if (scope == RecurrenceScope.FOLLOWING) put("masterStart", SeriesJson.start(requireNotNull(deleteMasterStart)))
+                else require(deleteMasterStart == null)
+            }
             is SeriesCommand.OccurrenceEdit -> { require(scope == RecurrenceScope.THIS); put("kind", "occurrence"); put("patch", SeriesJson.patch(command.patch, selected, token)) }
             is SeriesCommand.WholeEdit -> {
                 require(scope == RecurrenceScope.ALL && command.intent.newMasterStart == FieldChange.Keep &&
@@ -188,7 +210,7 @@ internal data class FrozenSeriesSubmission(val operationId: String, val selected
             val scope = RecurrenceScope.valueOf(value.getString("scope")); val action = SeriesEditorAction.valueOf(value.getString("action"))
             val kind = value.getString("kind")
             val allowedKeys = setOf("schema", "operationId", "selected", "calendar", "master", "token", "scope", "action", "kind") +
-                when (kind) { "whole" -> setOf("patch", "masterStart"); "occurrence" -> setOf("patch"); else -> emptySet() }
+                when (kind) { "whole" -> setOf("patch", "masterStart"); "occurrence" -> setOf("patch"); "delete" -> if (scope == RecurrenceScope.FOLLOWING) setOf("masterStart") else emptySet(); else -> emptySet() }
             require(value.keys().asSequence().all { it in allowedKeys })
             val command = when (kind) {
                 "delete" -> { require(action == SeriesEditorAction.DELETE); SeriesCommand.Delete(scope) }
@@ -198,8 +220,9 @@ internal data class FrozenSeriesSubmission(val operationId: String, val selected
                         fields = SeriesJson.patch(value.getJSONObject("patch"), selected, token))) }
                 else -> throw IllegalArgumentException()
             }
-            require(scope != RecurrenceScope.FOLLOWING)
-            return FrozenSeriesSubmission(value.getString("operationId"), selected, SeriesIdentity(CalendarId(value.getLong("calendar")), value.getLong("master")), token, scope, action, command)
+            require(scope != RecurrenceScope.FOLLOWING || action == SeriesEditorAction.DELETE)
+            return FrozenSeriesSubmission(value.getString("operationId"), selected, SeriesIdentity(CalendarId(value.getLong("calendar")), value.getLong("master")), token, scope, action, command,
+                if (scope == RecurrenceScope.FOLLOWING) SeriesJson.start(value.getJSONObject("masterStart")) else null)
         }
     }
 }
@@ -230,3 +253,13 @@ internal object SeriesJson {
         else -> throw IllegalArgumentException()
     }
 }
+
+/** Original recurrence identity is the cutoff, never a moved occurrence's actual appointment time. */
+internal fun seriesOriginalBoundary(selected: EventRef, masterStart: RecurrenceStart): RecurrenceKey? = try {
+    val original = selected.recurrence?.originalStart
+    if (original == null || original.nano != 0) null else when (masterStart) {
+        is RecurrenceStart.AllDay -> original.atOffset(ZoneOffset.UTC).takeIf { it.toLocalTime() == LocalTime.MIDNIGHT && it.year in 1..9999 }
+            ?.let { RecurrenceKey.Date(it.toLocalDate()) }
+        is RecurrenceStart.Timed -> original.atZone(masterStart.zone).takeIf { it.year in 1..9999 }?.let { RecurrenceKey.Timed(original) }
+    }
+} catch (_: Exception) { null }
