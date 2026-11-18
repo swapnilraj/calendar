@@ -12,8 +12,10 @@ junit = "4.13.2"
 androidx-test-junit = "1.3.0"
 robolectric = "4.18"
 roborazzi = "1.79.0"
+lib-recur = "0.17.1"
 
 [libraries]
+lib-recur = { module = "org.dmfs:lib-recur", version.ref = "lib-recur" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-material3 = { module = "androidx.compose.material3:material3" }

@@ -15,5 +15,6 @@ java {
 }
 
 dependencies {
+    implementation(libs.lib.recur)
     testImplementation(libs.junit)
 }

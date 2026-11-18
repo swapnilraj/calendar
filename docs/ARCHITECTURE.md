@@ -54,9 +54,9 @@ Target boundaries:
 
 - Android provider adapters share range invalidation and expose calendar metadata, details and typed
   mutation outcomes. Display segmentation is separate from occurrence/master/original-instance identity.
-- Pure recurrence plans are interpreted by one Android batch writer. `org.dmfs:lib-recur:0.17.1` is the
-  approved future recurrence dependency, **not yet added**. Its adoption needs the actual dependency
-  change and decisions-log entry; provider-expanded Instances remain the display source.
+- Pure recurrence plans are interpreted by one Android batch writer. `org.dmfs:lib-recur:0.17.1` is
+  pinned in `:calendar-core` for recurrence parsing/transformation; provider-expanded Instances remain
+  the display source. Recurrence implementation and provider verification remain in progress.
 - One DataStore instance holds preferences. Versioned private SQLite holds drafts, operation recovery,
   delivery state and snoozes; it is not a competing calendar event database.
 - Mutation outcomes include local success, conflict, permission/provider failure and uncertain outcome.
@@ -198,6 +198,7 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 
 | Date | Decision | Why |
 |---|---|---|
+| 2026-11-18 | Pin `org.dmfs:lib-recur:0.17.1` in pure `:calendar-core` | Use a tested RFC recurrence parser/iterator for editing rather than hand-writing recurrence semantics; displayed instances still come from Android's provider |
 | 2026-11-17 | Fresh Compose app; no fork of Etar or Fossify | Fossify's day view is a list. Etar's grid is a dated 5k-line canvas view, and the owner rejected it. |
 | 2026-11-17 | Calendar store instead of the Google Calendar API | No OAuth or Google Cloud project; works with any account synced to the phone |
 | 2026-11-17 | Weather rules in a pure JVM module | Testable anywhere; must match the desktop prototype exactly |
