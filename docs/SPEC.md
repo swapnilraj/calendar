@@ -73,6 +73,16 @@ creation starts an all-day draft with its separate reminder default. Existing un
 are never reinterpreted through these new-event defaults. Reminder setup remains separate pending
 runtime wiring.
 
+Owned guest-free recurring details now use a separate native scoped route. Supported actions are
+issued by the provider adapter per scope; the picker never defaults a destructive scope or enables
+unknown rights. Entire-series non-temporal edits use the master template and retain exception
+payloads; selected existing-exception edits use that occurrence. New exceptions, following scopes and
+temporal/pattern changes remain unavailable until their executors are integrated. Opening an editor
+requires its exact durable series draft; submitted operations recover without a live source, and a
+missing completed draft never becomes a fresh request. Write grants never automatically resubmit.
+Explicit discard retires the old controller so it cannot delete a newly prepared replacement draft.
+A failed swipe flush restores the sheet and keeps edits visible.
+
 1. **Events always win.** Weather is painted under the hour lines and events. Nothing covers an event
    or its text, and event colours are never tinted.
 2. **Glanceable, not readable.** "Rainy evening, dark by five" should land in under a second without

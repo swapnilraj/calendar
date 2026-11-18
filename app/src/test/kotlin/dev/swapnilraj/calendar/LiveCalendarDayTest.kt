@@ -563,8 +563,71 @@ class LiveCalendarDayTest {
         } finally { scope.cancel() }
     }
 
+    @Test fun recurringDetailsOpenScopeThenMasterEditorWithoutUsingOrdinaryWriter() {
+        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, FixtureProvider().apply { recurring = true })
+        val context = RuntimeEnvironment.getApplication()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val store = dev.swapnilraj.calendar.events.EventEditorControllerTest.Store()
+        val start = Instant.parse("2026-11-17T09:00:00Z")
+        val ref = EventRef(CalendarId(3), 7, start, start.plusSeconds(3600), RecurrenceRef(7, start))
+        val fields = setOf(EditableField.TITLE, EditableField.LOCATION, EditableField.DESCRIPTION, EditableField.ALERTS, EditableField.AVAILABILITY, EditableField.PRIVACY)
+        val source = EditableSeries(EventDetails(EventOccurrence(ref, EventTime.Timed(ref.instanceStart, ref.instanceEnd), "Fixture meeting", 1), null,
+            eventZone = java.time.ZoneId.of("Europe/London")), SeriesMasterFields("Weekly template", privacy = 2),
+            RecurrenceSeriesSnapshot(SeriesIdentity(ref.calendarId, 7), RecurrenceStart.Timed(java.time.LocalDateTime.parse("2026-11-17T09:00:00"), java.time.ZoneId.of("Europe/London"), java.time.ZoneOffset.UTC),
+                "FREQ=WEEKLY", durationRaw = "PT1H", coverage = SeriesCoverage.COMPLETE, validatedSelection = ref), EditToken("series-source-token"), fields,
+            mapOf(RecurrenceScope.ALL to SeriesScopeCapabilities(AccessDecision.ALLOWED, fields, AccessDecision.ALLOWED)))
+        var reads = 0
+        val submitted = mutableListOf<SeriesCommand>()
+        val series = object : CalendarSeriesMutations {
+            override suspend fun loadForEdit(selected: EventRef): SeriesReadResult { assertEquals(ref, selected); reads++; return SeriesReadResult.Ready(source) }
+            override suspend fun mutate(operationId: String, selected: EventRef, token: EditToken, command: SeriesCommand): SeriesMutationResult {
+                assertEquals(ref, selected); assertEquals(source.token, token); submitted += command
+                return SeriesMutationResult.LocalSaved(source.snapshot.identity, ref)
+            }
+            override suspend fun recover(operationId: String): SeriesMutationResult = error("No recovery requested")
+        }
+        val ordinary = object : CalendarMutations {
+            override suspend fun loadForEdit(ref: EventRef): EditReadResult = error("Recurring events must use scoped eligibility")
+            override suspend fun create(operationId: String, draft: EventDraft): MutationResult = error("No create requested")
+            override suspend fun update(operationId: String, ref: EventRef, token: EditToken, patch: EventPatch): MutationResult = error("No ordinary update requested")
+            override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult = error("No ordinary delete requested")
+            override suspend fun recover(operationId: String): MutationResult = error("No ordinary recovery requested")
+        }
+        try {
+            val reader = CalendarReader(context.contentResolver, scope, stopTimeoutMillis = 0)
+            compose.setContent { DaylightTheme {
+                LiveCalendarDay(reader, CalendarSelection.ProviderVisible, ZonedDateTime.parse("2026-11-17T09:20:00Z[Europe/London]"), true, 64f, {}, {},
+                    mutations = ordinary, seriesMutations = series, drafts = store)
+            } }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Fixture meeting").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Edit event").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Edit event").performScrollTo().performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Entire series").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("This occurrence").assertIsNotEnabled()
+            compose.onNodeWithText("This and following occurrences").assertIsNotEnabled()
+            compose.onNodeWithText("Entire series").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Weekly template").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(1, store.records.size)
+            assertTrue(submitted.isEmpty())
+            compose.onNodeWithText("Weekly template").performTextReplacement("Updated weekly template")
+            compose.waitForIdle()
+            compose.onNodeWithText("Updated weekly template").assertExists()
+            compose.onNode(isRoot() and hasAnyDescendant(hasText("Edit recurring event")))
+                .captureRoboImage("src/test/screenshots/integration_series_editor.png")
+            compose.onNodeWithText("Save").performScrollTo().performClick()
+            compose.waitUntil(10_000) { submitted.size == 1 && store.records.isEmpty() }
+            val command = submitted.single() as SeriesCommand.WholeEdit
+            assertEquals(FieldChange.Set("Updated weekly template"), command.intent.fields.title)
+            assertEquals(FieldChange.Keep, command.intent.fields.time)
+            assertEquals(FieldChange.Keep, command.intent.fields.eventZone)
+            assertTrue(reads >= 3)
+        } finally { scope.cancel() }
+    }
+
     private class FixtureProvider : ContentProvider() {
         @Volatile var failCalendars = false
+        var recurring = false
         var declined = false
         var eventPrivacy: Int? = null
         var eventAvailability: Int? = null
@@ -599,6 +662,7 @@ class LiveCalendarDayTest {
                         "visible", "sync_events" -> 1
                         "begin", "dtstart" -> start
                         "end", "dtend" -> end
+                        "rrule" -> if (recurring) "FREQ=WEEKLY" else null
                         "title" -> "Fixture meeting"
                         "description" -> "https://meet.google.com/aaa-bbbb-ccc"
                         "accessLevel" -> eventPrivacy

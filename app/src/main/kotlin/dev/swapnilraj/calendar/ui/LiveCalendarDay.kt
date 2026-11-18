@@ -28,6 +28,8 @@ import dev.swapnilraj.calendar.ui.multiday.multiDayWindow
 import dev.swapnilraj.calendar.ui.multiday.MultiDayMinDate
 import dev.swapnilraj.calendar.ui.multiday.MultiDayMaxDate
 import dev.swapnilraj.calendar.ui.events.EventDetailsStateSheet
+import dev.swapnilraj.calendar.ui.events.SeriesEditorAction
+import dev.swapnilraj.calendar.ui.events.canPrepareSeriesScope
 import dev.swapnilraj.calendar.ui.events.DraftBrowserSheet
 import dev.swapnilraj.calendar.ui.events.DraftPreparationResult
 import dev.swapnilraj.calendar.ui.events.prepareNewDraft
@@ -48,6 +50,8 @@ private data class OpenedEvent(
     val ref: EventRef, val dateText: String, val view: CalendarViewOption,
     val selection: CalendarSelection, val zone: ZoneId,
 )
+
+private data class NativeDetails(val details: EventDetails, val series: EditableSeries? = null)
 
 /** A shared date window drives the active view and selected details; filters belong to this app. */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, ExperimentalMaterial3Api::class)
@@ -73,10 +77,13 @@ internal fun LiveCalendarDay(
     onDraftFailure: () -> Unit = {},
     draftClock: Clock = Clock.systemUTC(),
     preferenceOverride: CalendarPreferenceState? = null,
+    seriesMutations: CalendarSeriesMutations? = null,
 ) {
     val scope = rememberCoroutineScope()
     val selectedDateState = rememberSaveable { mutableStateOf<String?>(null) }
     var writeRequestText by rememberSaveable { mutableStateOf<String?>(null) }
+    var seriesScopeText by rememberSaveable { mutableStateOf<String?>(null) }
+    var seriesWriteText by rememberSaveable { mutableStateOf<String?>(null) }
     var showDrafts by rememberSaveable { mutableStateOf(false) }
     var preparingWrite by remember { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
@@ -148,6 +155,7 @@ internal fun LiveCalendarDay(
     val metadata by metadataFlow.collectAsStateWithLifecycle(initialValue = CalendarReadState.Loading)
     val calendars = (metadata as? CalendarReadState.Ready)?.value.orEmpty()
     val writable = mutations != null && drafts != null
+    val seriesWritable = seriesMutations != null && drafts != null
     fun beginCreate(date: LocalDate, allDay: Boolean) {
         if (writable && !preparingWrite) {
             preparingWrite = true
@@ -167,7 +175,13 @@ internal fun LiveCalendarDay(
     }
     val createDateAction: ((LocalDate) -> Unit)? = onCreateDate ?: if (writable) ({ date -> beginCreate(date, true) }) else null
     fun beginEdit(ref: EventRef, delete: Boolean) {
-        if (!writable || preparingWrite) return
+        if (preparingWrite) return
+        if (ref.recurrence != null && seriesWritable) {
+            openedEvent = null
+            seriesScopeText = SeriesScopeRequest(ref, if (delete) SeriesEditorAction.DELETE else SeriesEditorAction.EDIT).encode()
+            return
+        }
+        if (!writable) return
         openedEvent = null
         preparingWrite = true
         scope.launch {
@@ -208,7 +222,7 @@ internal fun LiveCalendarDay(
         if (settings != null) TextButton(onClick = { scope.launch { drawer.close(); showSettings = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Text(stringResource(R.string.settings_title))
         }
-        if (writable) {
+        if (writable || seriesWritable) {
             HorizontalDivider()
             TextButton(onClick = { scope.launch { drawer.close(); showDrafts = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
                 Text(stringResource(R.string.events_drafts_title))
@@ -323,7 +337,7 @@ internal fun LiveCalendarDay(
         }
     }
     selected?.let { ref ->
-        val details: Flow<CalendarReadState<EventDetails>> = remember(ref, snapshots, mutations) {
+        val details: Flow<CalendarReadState<NativeDetails>> = remember(ref, snapshots, mutations, seriesMutations) {
             snapshots.transformLatest { state ->
                 emit(CalendarReadState.Loading)
                 emit(when (state) {
@@ -331,22 +345,51 @@ internal fun LiveCalendarDay(
                     CalendarReadState.PermissionRequired -> CalendarReadState.PermissionRequired
                     CalendarReadState.Unavailable -> CalendarReadState.Unavailable
                     is CalendarReadState.Ready -> if (state.value.occurrences.any { it.ref == ref }) {
-                        val result = reader.readDetails(ref)
-                        if (result is CalendarReadState.Ready && mutations != null) {
-                            val eligible = mutations.loadForEdit(ref)
-                            if (eligible is EditReadResult.Ready && eligible.event.details.occurrence.ref == ref)
-                                CalendarReadState.Ready(eligible.event.details.copy(canEdit = AccessDecision.ALLOWED))
-                            else CalendarReadState.Ready(result.value.copy(canEdit = AccessDecision.DENIED))
-                        } else result
+                        when (val result = reader.readDetails(ref)) {
+                            is CalendarReadState.Ready -> {
+                                if (ref.recurrence != null && seriesMutations != null) {
+                                    when (val eligible = readSeries(seriesMutations, ref)) {
+                                        is SeriesReadResult.Ready -> {
+                                            val source = eligible.series
+                                            val anyAction = SeriesEditorAction.entries.any { action ->
+                                                RecurrenceScope.entries.any { canPrepareSeriesScope(source, it, action) }
+                                            }
+                                            CalendarReadState.Ready(NativeDetails(source.selectedDetails.copy(
+                                                canEdit = if (anyAction) AccessDecision.ALLOWED else AccessDecision.DENIED), source))
+                                        }
+                                        SeriesReadResult.PermissionRequired -> CalendarReadState.PermissionRequired
+                                        else -> CalendarReadState.Ready(NativeDetails(result.value.copy(canEdit = AccessDecision.DENIED)))
+                                    }
+                                } else if (mutations != null && ref.recurrence == null) {
+                                    val eligible = mutations.loadForEdit(ref)
+                                    val value = if (eligible is EditReadResult.Ready && eligible.event.details.occurrence.ref == ref)
+                                        eligible.event.details.copy(canEdit = AccessDecision.ALLOWED)
+                                    else result.value.copy(canEdit = AccessDecision.DENIED)
+                                    CalendarReadState.Ready(NativeDetails(value))
+                                } else CalendarReadState.Ready(NativeDetails(result.value.copy(canEdit = AccessDecision.DENIED)))
+                            }
+                            CalendarReadState.Loading -> CalendarReadState.Loading
+                            CalendarReadState.PermissionRequired -> CalendarReadState.PermissionRequired
+                            CalendarReadState.Unavailable -> CalendarReadState.Unavailable
+                        }
                     } else CalendarReadState.Unavailable
                 })
             }
         }
         val state by key(details) { details.collectAsStateWithLifecycle(initialValue = CalendarReadState.Loading) }
-        EventDetailsStateSheet(state, onDismiss = { openedEvent = null }, onRetry = reader::refresh,
+        val source = (state as? CalendarReadState.Ready)?.value?.series
+        fun allowed(action: SeriesEditorAction): Boolean = if (ref.recurrence == null) writable else
+            seriesWritable && source != null && RecurrenceScope.entries.any { canPrepareSeriesScope(source, it, action) }
+        val shown = when (val value = state) {
+            is CalendarReadState.Ready -> CalendarReadState.Ready(value.value.details)
+            CalendarReadState.Loading -> CalendarReadState.Loading
+            CalendarReadState.PermissionRequired -> CalendarReadState.PermissionRequired
+            CalendarReadState.Unavailable -> CalendarReadState.Unavailable
+        }
+        EventDetailsStateSheet(shown, onDismiss = { openedEvent = null }, onRetry = reader::refresh,
             onOpenLink = onOpenLink, displayZone = displayNow.zone, use24Hour = use24Hour,
-            onEdit = if (writable) ({ value -> beginEdit(value, false) }) else null,
-            onDelete = if (writable) ({ value -> beginEdit(value, true) }) else null,
+            onEdit = if (allowed(SeriesEditorAction.EDIT)) ({ value -> beginEdit(value, false) }) else null,
+            onDelete = if (allowed(SeriesEditorAction.DELETE)) ({ value -> beginEdit(value, true) }) else null,
             onDuplicate = if (writable) ::duplicate else null)
     }
     if (mutations != null && drafts != null) writeRequestText?.let { raw ->
@@ -355,6 +398,19 @@ internal fun LiveCalendarDay(
             onDismiss = { writeRequestText = null },
             onSaved = { writeRequestText = null; reader.refresh(); onLocalSaved() },
             onDeleted = { writeRequestText = null; reader.refresh(); onLocalDeleted() })
+    }
+    if (seriesMutations != null && drafts != null) {
+        seriesScopeText?.let { raw ->
+            val request = remember(raw) { SeriesScopeRequest.decode(raw) }
+            SeriesScopeWorkflow(request, seriesMutations, drafts, onDismiss = { seriesScopeText = null },
+                onPrepared = { launch -> seriesScopeText = null; seriesWriteText = SeriesWriteRequest.from(launch).encode() }, clock = draftClock)
+        }
+        seriesWriteText?.let { raw ->
+            val request = remember(raw) { SeriesWriteRequest.decode(raw) }
+            SeriesWriteWorkflow(request, seriesMutations, drafts, onDismiss = { seriesWriteText = null },
+                onSaved = { seriesWriteText = null; reader.refresh(); onLocalSaved() },
+                onDeleted = { seriesWriteText = null; reader.refresh(); onLocalDeleted() }, clock = draftClock)
+        }
     }
     if (showSettings && settings != null) SettingsSheet(options, availableViews,
         onSave = { updated ->
@@ -384,11 +440,14 @@ internal fun LiveCalendarDay(
             } else item { CalendarReadNotice(metadata, reader::refresh) }
         } },
         confirmButton = { TextButton(onClick = { showDefaultCalendar = false }) { Text(stringResource(R.string.calendars_close)) } })
-    if (showDrafts && drafts != null && writable) DraftBrowserSheet(drafts, onDismiss = { showDrafts = false },
+    if (showDrafts && drafts != null && (writable || seriesWritable)) DraftBrowserSheet(drafts, onDismiss = { showDrafts = false },
         onOpen = { launch ->
             showDrafts = false
             writeRequestText = EventWriteRequest.fromLaunch(launch, visibleDate, displayNow.zone).encode()
-        }, displayZone = displayNow.zone)
+        }, displayZone = displayNow.zone, onOpenSeries = if (seriesWritable) ({ launch ->
+            showDrafts = false
+            seriesWriteText = SeriesWriteRequest.from(launch).encode()
+        }) else null)
 }
 
 /** Locale week alignment is a navigation policy, independent of event/recurrence expansion. */

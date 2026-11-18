@@ -9,6 +9,8 @@ import dev.swapnilraj.calendar.weather.OpenMeteo
 import dev.swapnilraj.calendar.data.calendar.CalendarReader
 import dev.swapnilraj.calendar.data.calendar.CalendarLocalStore
 import dev.swapnilraj.calendar.data.calendar.CalendarWriter
+import dev.swapnilraj.calendar.data.calendar.CalendarSeriesReader
+import dev.swapnilraj.calendar.data.calendar.CalendarSeriesWriter
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +22,10 @@ class CalendarApp : Application() {
     val calendarReader by lazy { CalendarReader(contentResolver, calendarScope) }
     val calendarLocalStore by lazy { CalendarLocalStore(this) }
     val calendarWriter by lazy { CalendarWriter(contentResolver, calendarReader, calendarLocalStore,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
+    val calendarSeriesReader by lazy { CalendarSeriesReader(contentResolver, calendarReader, calendarLocalStore,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
+    val calendarSeriesWriter by lazy { CalendarSeriesWriter(contentResolver, calendarSeriesReader, calendarLocalStore,
         { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
     val settings by lazy { Settings(this) }
     val weather by lazy {

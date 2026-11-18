@@ -85,6 +85,9 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState)
     val mutations = remember(app, context, writeRequest) { PermissionAwareMutations(app.calendarWriter,
         { ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED },
         { writeRequest.launch(Manifest.permission.WRITE_CALENDAR) }) }
+    val seriesMutations = remember(app, context, writeRequest) { PermissionAwareSeriesMutations(app.calendarSeriesWriter,
+        { ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED },
+        { writeRequest.launch(Manifest.permission.WRITE_CALENDAR) }) }
     val latestWeather by app.weather.state.collectAsStateWithLifecycle()
     val weather = latestWeather.takeIf { it.zone == deviceNow.zone } ?: WeatherState()
     var locationAllowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) }
@@ -143,6 +146,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState)
                         settings = app.settings,
                         preferenceOverride = preferences,
                         mutations = mutations,
+                        seriesMutations = seriesMutations,
                         drafts = app.calendarLocalStore,
                         onLocalSaved = { scope.launch { snackbar.showSnackbar(localSaved) } },
                         onLocalDeleted = { scope.launch { snackbar.showSnackbar(localDeleted) } },
