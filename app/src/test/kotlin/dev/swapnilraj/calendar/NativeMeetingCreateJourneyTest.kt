@@ -14,6 +14,7 @@ import dev.swapnilraj.calendar.data.calendar.CalendarRecurringCreateTest
 import dev.swapnilraj.calendar.data.reminders.SavedReminderSettings
 import dev.swapnilraj.calendar.ui.EventWriteRequest
 import dev.swapnilraj.calendar.ui.EventWriteWorkflow
+import dev.swapnilraj.calendar.ui.MeetingCreationWorkflow
 import dev.swapnilraj.calendar.ui.events.*
 import dev.swapnilraj.calendar.ui.events.meetings.create.*
 import dev.swapnilraj.calendar.ui.settings.*
@@ -178,6 +179,30 @@ class NativeMeetingCreateJourneyTest {
         val promotedDoc=MeetingCreationDraftCodec.decode(records(f).single())
         assertNotEquals(prepared.launch.generation,promotedDoc.generation); assertNull(promotedDoc.authority); assertNull(promotedDoc.frozen)
         compose.onNodeWithText("Save").assertIsNotEnabled(); assertNoWrite(f)
+        stop(host); main(f); openDrafts(); shown(title)
+        compose.onNodeWithText(f.app.getString(R.string.events_drafts_open)).performClick()
+        shown(f.app.getString(R.string.phone_meeting_create_title))
+        assertEquals(promotedDoc.generation, document(f).generation); assertNoWrite(f)
+    }
+
+    @Test fun staleMeetingRouteGenerationCannotMountCurrentDraftOrExposeSave() = fixture { f ->
+        val main = main(f); create(f); addPeople(f)
+        val current = records(f).single(); val doc = MeetingCreationDraftCodec.decode(current)
+        compose.onNodeWithContentDescription(f.app.getString(R.string.phone_meeting_create_close)).performClick()
+        awaitNoEditor(f); stop(main)
+        val host=Robolectric.buildActivity(ComponentActivity::class.java); f.activities+=host
+        val oldRoute=doc.launch().copy(generation=java.util.UUID.randomUUID().toString())
+        var saves=0
+        compose.runOnUiThread {
+            host.setup().visible(); host.get().setContent {
+                MeetingCreationWorkflow(oldRoute,f.app.calendarMeetings,f.app.calendarLocalStore,emptyList(),f.app.operationRetirement,
+                    {true},true,{}, {saves++})
+            }
+        }
+        shown(f.app.getString(R.string.events_drafts_unreadable))
+        compose.onNodeWithContentDescription(f.app.getString(R.string.phone_event_title)).assertDoesNotExist()
+        compose.onAllNodesWithText("Save").assertCountEquals(0)
+        assertEquals(current,records(f).single()); assertEquals(0,saves); assertNoWrite(f)
     }
 
     @Test fun actualAddPeopleHostRendersMeetingPeopleAndExplicitPolicy() = fixture { f ->
