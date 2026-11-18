@@ -1,0 +1,143 @@
+package dev.swapnilraj.calendar.ui.grid
+
+import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.data.CalendarPreferences
+import dev.swapnilraj.calendar.ui.editorSeed
+import dev.swapnilraj.calendar.ui.verifiedCreationCalendar
+import dev.swapnilraj.calendar.ui.eventCreationDraft
+import dev.swapnilraj.calendar.ui.events.DraftBrowserCodec
+import dev.swapnilraj.calendar.ui.events.EditorDraftLaunch
+import dev.swapnilraj.calendar.ui.events.EventEditorController
+import dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions
+import kotlinx.coroutines.CancellationException
+import org.json.JSONObject
+import java.time.*
+import java.util.UUID
+
+/** Observed UI context only; never a provider token or namespace claim inferred from an ID. */
+internal data class GridEditorContext(
+    val owners: List<Any?>,
+    val request: CalendarRequest,
+    val snapshot: CalendarSnapshot?,
+    val calendars: List<CalendarInfo>?,
+    val preferences: CalendarPreferences,
+    val view: String,
+    val date: LocalDate,
+    val blocked: Boolean,
+) {
+    fun occurrence(ref: EventRef): EventOccurrence? = snapshot?.takeIf { it.request == request }?.occurrences?.singleOrNull { it.ref == ref }
+    fun calendar(ref: EventRef): CalendarInfo? {
+        val observed = snapshot?.calendars?.singleOrNull { it.id == ref.calendarId } ?: return null
+        return calendars?.singleOrNull { it.identity == observed.identity && it.account.name.isNotBlank() && it.account.type.isNotBlank() }
+    }
+    val available: Boolean get() = !blocked && view == "DAY" && snapshot?.request == request && calendars != null
+}
+internal sealed interface GridEditorIntent {
+    data class Create(val proposal: TimedGridCreateProposal) : GridEditorIntent
+    data class Edit(val proposal: TimedGridEditProposal) : GridEditorIntent
+}
+internal sealed interface GridEditorPreparation {
+    data class Ready(val launch: EditorDraftLaunch) : GridEditorPreparation
+    data class Review(val intent: GridEditorIntent, val preview: GridPreviewResult.NeedsReview) : GridEditorPreparation
+    data object Stale : GridEditorPreparation
+    data object Unavailable : GridEditorPreparation
+}
+
+/** Rechecks the current snapshot AND the repository-issued source after suspension. */
+internal fun gridSourceMatches(context: GridEditorContext, ref: EventRef, source: EditableEvent, requireKnownZone: Boolean = true): Boolean {
+    val occurrence = context.occurrence(ref) ?: return false
+    val calendar = context.calendar(ref) ?: return false
+    return context.available && ref.recurrence == null && occurrence.time is EventTime.Timed &&
+        calendar.capabilities.modifyEvents == AccessDecision.ALLOWED &&
+        source.details.occurrence.ref == ref && source.details.occurrence.time == occurrence.time &&
+        source.details.calendar?.identity == calendar.identity && (!requireKnownZone || source.details.eventZone != null) && EditableField.TIME in source.allowedFields
+}
+internal suspend fun gridEditPreflight(context: GridEditorContext, ref: EventRef, mutations: CalendarMutations,
+    current: () -> GridEditorContext): Boolean {
+    if (current() != context || !context.available || context.occurrence(ref) == null || ref.recurrence != null) return false
+    val read = mutations.loadForEdit(ref)
+    return current() == context && read is EditReadResult.Ready && gridSourceMatches(current(), ref, read.event)
+}
+
+/** No writes or permission prompts; the target is recomputed from the core's snapped wall position. */
+internal suspend fun prepareGridEditor(
+    context: GridEditorContext, intent: GridEditorIntent, mutations: CalendarMutations, store: DraftStore,
+    now: ZonedDateTime, current: () -> GridEditorContext, clock: Clock,
+    offset: ZoneOffset? = null, editorAlternative: Boolean = false,
+): GridEditorPreparation {
+    fun valid() = current() == context && context.available
+    if (!valid()) return GridEditorPreparation.Stale
+    val zone = context.request.displayZone
+    val source: EditableEvent?
+    val target: GridTarget
+    val plan: GridPreviewResult
+    val options: CalendarSettingsOptions = context.preferences.options
+    when (intent) {
+        is GridEditorIntent.Create -> {
+            if (intent.proposal.contextKey != context) return GridEditorPreparation.Stale
+            source = null
+            target = intent.proposal.target.copy(offsetChoice = offset?.let(GridOffsetChoice::Explicit) ?: GridOffsetChoice.Unspecified, boundary = null)
+            plan = TimedGridPlanning.create(target, Duration.ofMinutes(options.defaultDurationMinutes.toLong()))
+        }
+        is GridEditorIntent.Edit -> {
+            val proposal = intent.proposal
+            if (proposal.contextKey != context || proposal.source.ref.recurrence != null || context.occurrence(proposal.source.ref)?.time != proposal.source.time)
+                return GridEditorPreparation.Stale
+            val read = mutations.loadForEdit(proposal.source.ref)
+            if (!valid()) return GridEditorPreparation.Stale
+            if (read !is EditReadResult.Ready || !gridSourceMatches(current(), proposal.source.ref, read.event, requireKnownZone = !editorAlternative)) return GridEditorPreparation.Unavailable
+            source = read.event
+            target = proposal.target.copy(offsetChoice = offset?.let(GridOffsetChoice::Explicit) ?: GridOffsetChoice.Unspecified)
+            plan = planGridEdit(proposal.source, proposal.selectedSegment, proposal.kind, target)
+        }
+    }
+    if (target.zone != zone || target.date.year !in 1..9999) return GridEditorPreparation.Unavailable
+    if (!editorAlternative && plan is GridPreviewResult.NeedsReview) return GridEditorPreparation.Review(intent, plan)
+    if (!editorAlternative && plan !is GridPreviewResult.Ready) return GridEditorPreparation.Unavailable
+    val calendar = verifiedCreationCalendar(context.preferences, context.calendars.orEmpty())
+    if (source == null && context.calendars.orEmpty().none { it.capabilities.createEvents == AccessDecision.ALLOWED }) return GridEditorPreparation.Unavailable
+    val original = source?.details?.editorSeed() ?: eventCreationDraft(target.date, false, now.withZoneSameInstant(zone), options, calendar?.id, calendar?.identity)
+        ?: return GridEditorPreparation.Unavailable
+    val proposedTime = if (editorAlternative) original.time else (plan as GridPreviewResult.Ready).time
+    if (proposedTime !is EventTime.Timed || proposedTime.start.atZone(zone).year !in 1..9999 || proposedTime.end.atZone(zone).year !in 1..9999)
+        return GridEditorPreparation.Unavailable
+    // For edits the source baseline must describe the ORIGINAL canonical event. Only raw form fields
+    // carry the proposed time; restoration then compares fresh source values with the real baseline.
+    val initial = if (source == null) original.copy(time = proposedTime) else original
+    val id = "grid:${UUID.randomUUID()}"
+    val record = EventEditorController.initialRecord(initial, source, id, source != null || calendar != null, clock)
+    val raw = JSONObject(record.payload)
+    if (source != null && !editorAlternative) {
+        val fields = EventEditorController.fieldsFor(original.copy(time = proposedTime))
+        listOf("startDate" to fields.startDate, "endDate" to fields.endDate, "startTime" to fields.startTime,
+            "endTime" to fields.endTime, "startOffset" to fields.startOffset, "endOffset" to fields.endOffset).forEach { (key, value) -> raw.put(key, value) }
+    }
+    val pending = record.copy(payload = raw.toString())
+    return try {
+        val old = store.load(id)
+        if (!valid()) return GridEditorPreparation.Stale
+        if (old != null) return GridEditorPreparation.Unavailable // Never replace a retained raw/frozen draft.
+        if (store is AtomicDraftStore) {
+            val saved = store.compareAndSet(id, null, pending)
+            if (!valid()) return GridEditorPreparation.Stale
+            if (saved != DraftChangeResult.Applied) return GridEditorPreparation.Unavailable
+        } else {
+            store.upsert(pending)
+            if (!valid()) return GridEditorPreparation.Stale
+        }
+        val durable = store.load(id)
+        if (!valid()) return GridEditorPreparation.Stale
+        val launch = durable?.takeIf { it == pending }?.let { DraftBrowserCodec.read(it).launch }
+        if (launch != null && launch.ref == source?.details?.occurrence?.ref) GridEditorPreparation.Ready(launch) else GridEditorPreparation.Unavailable
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { GridEditorPreparation.Unavailable }
+}
+
+/** Subminute durations remain positive even at nanosecond precision; no zero-minute claim. */
+internal data class GridElapsedAmount(val value: String, val seconds: Boolean)
+internal fun gridElapsedAmount(duration: Duration, locale: java.util.Locale): GridElapsedAmount {
+    val seconds = duration < Duration.ofMinutes(1)
+    val format = java.text.NumberFormat.getNumberInstance(locale).apply { if (seconds) maximumFractionDigits = 9 }
+    val value = duration.seconds.toDouble() + duration.nano / 1_000_000_000.0
+    return GridElapsedAmount(format.format(if (seconds) value else value / 60), seconds)
+}

@@ -1,0 +1,10 @@
+<resources>
+    <string name="grid_editor_overlap_title">Choose the clock occurrence</string>
+    <string name="grid_editor_overlap_message">%1$s in %2$s occurs twice. Choose its UTC offset, review the elapsed duration below, then open the editor. Nothing has been saved.</string>
+    <string name="grid_editor_gap_title">This clock time does not exist</string>
+    <string name="grid_editor_gap_message">%1$s in %2$s falls in a clock gap. Choose another time in the editor. Existing events keep their original time; new events start with the usual date defaults. Nothing has been saved.</string>
+    <string name="grid_editor_choose_another">Choose another time in editor</string>
+    <string name="grid_editor_elapsed_choice">%1$s · %2$s elapsed minutes</string>
+    <string name="grid_editor_invalid_choice">This choice cannot produce a valid event interval.</string>
+    <string name="grid_editor_elapsed_seconds">%1$s · %2$s elapsed seconds</string>
+</resources>
