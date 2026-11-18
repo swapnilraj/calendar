@@ -207,6 +207,17 @@ class NativeMeetingCreateJourneyTest {
 
     @Test fun actualAddPeopleHostRendersMeetingPeopleAndExplicitPolicy() = fixture { f ->
         main(f); create(f); addPeople(f); chooseCalendar(f); person(f)
+        compose.onNodeWithContentDescription(f.app.getString(R.string.phone_meeting_create_close)).performClick()
+        awaitNoEditor(f)
+        // The app clock is intentionally live. Stabilize only this synthetic stored form before
+        // reopening it through the real browser; capture must not depend on today's hour/date.
+        val record=records(f).single(); val doc=MeetingCreationDraftCodec.decode(record)
+        val stable=doc.copy(fields=doc.fields.copy(event=doc.fields.event.copy(startDate="2028-01-03",endDate="2028-01-03",
+            startTime="09:00",endTime="10:00",zone="UTC",startOffset="Z",endOffset="Z")))
+        assertEquals(DraftChangeResult.Applied,runBlocking {f.app.calendarLocalStore.compareAndSet(record.id,record,
+            MeetingCreationDraftCodec.record(stable,Instant.parse("2026-11-18T09:00:00Z")))})
+        openDrafts();compose.onNodeWithText(f.app.getString(R.string.events_drafts_open)).performClick()
+        shown(f.app.getString(R.string.phone_meeting_create_title))
         compose.onNodeWithText(f.app.getString(R.string.phone_meeting_create_policy_title)).performScrollTo()
         compose.waitForIdle()
         compose.onNode(isDialog()).captureRoboImage("src/test/screenshots/integration_live_meeting_create.png")
