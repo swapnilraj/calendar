@@ -11,11 +11,36 @@ and five actual app whole-series temporal/rule journeys through the SQLite/nativ
 Guest-creation UI and public incoming-link activation remain pending; local writes do not prove
 invitation delivery. Log: `/tmp/daylight-meeting-integrated-full.log` (3m26s).
 
-Later focused packets: the following-series rule helper passed all232 core tests, and the incoming
-link resolver/session/Activity shell passed73 focused checks plus lint. The shell is not registered
-or connected to native seed review yet. Ordinary-editor generation/retirement composition compiles
-in the isolated `codex/dd-ordinary-host` branch; behavior/fixture migration is still in progress and
-that branch is not part of the green app checkpoint above.
+Later integrated packets have focused evidence; **the complete gate has not yet been rerun on
+current HEAD**:
+
+- Ordinary editor generation/CAS, retirement, frozen restoration and cancelled-grid cleanup are
+  connected to the actual app. Independent native/SQLite journeys cover replacement after a failed
+  batch, Activity recreation and a fresh explicit Save without replaying the retired operation.
+- Shared phone navigation is connected across all five views. Independent verification passed31
+  actual app/provider/preferences checks and inspected12 affected images, including full live
+  light/dark and large-text RTL fixtures.
+- Following edits have a bounded native writer and durable UI. Three actual-app SQLite journeys
+  cover COUNT/UNTIL splits and committed recovery. Controller result guards additionally passed90
+  focused series/meeting checks: new tail and generated RSVP IDs must match the frozen occurrence
+  context. Imported-row clone preservation has a newly identified public-projection limitation;
+  the required default-review provider-profile gate is being implemented.
+- Portable authored-timezone and alert-only validation are integrated. Six actual writer/SQLite
+  regressions verify that a draft for a null-zone imported source preserves its original baseline
+  after travel. Explicitly authoring a source zone for such an import remains a separate edge case.
+
+Incoming public VIEW/date/INSERT activation and durable completion receipts are staged in
+`codex/dd-calendar-entry-integration` for actual-app verification. Full-height phone editor/details
+activation is staged in `codex/dd-phone-editor-integration`; large-text picker and private-open
+journeys are under verification. Neither staged host is included in the green checkpoint above.
+Generated-occurrence THIS RSVP backend activation awaits native-journey and provider-profile gates.
+Guest-creation UI, organizer changes and recurring meeting creation remain unfinished.
+
+The current Google Calendar2026.44 APK has installed and rendered notification/calendar-access
+onboarding in an isolated API35 software emulator. This is initial runtime evidence, not main-flow
+or pixel parity; see GOOGLE_CALENDAR_UX_PARITY.md. No Google account is configured. Real account,
+reminder/Doze/reboot/timezone/TalkBack/upgrade checks, seven-day beta and stable signed release remain
+pending. PR50 reminder activation passed full CI, is merged into integration and is attached.
 
 Earlier, at `5bd64d4`, the complete required gate passed: **1,340 tests** (core189, app1,134,
 weather17), debug APK assembly and lint; no failures, errors or skipped tests. This includes real
@@ -36,8 +61,8 @@ that test synchronization was fixed in `58070dd`. Both fixes are included in the
 Guest/organizer workflows,
 remaining recurrence scopes, incoming public intents, device/account/beta and signed-release gates
 remain. PRs #48 (provider/authority foundation) and #49 (durable reminder settings/private opens)
-passed full CI and are merged into integration. Ordinary authored-timezone validation still needs
-the portable provider-zone guard already used for recurrence and new meeting creation.
+passed full CI and are merged into integration. The ordinary authored-timezone provider guard is now integrated and focused-tested; it remains
+outside the older complete checkpoint above.
 
 Earlier local checkpoints:
 
