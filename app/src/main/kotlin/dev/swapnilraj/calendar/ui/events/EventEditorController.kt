@@ -46,7 +46,7 @@ class EventEditorController(
     private val expectedGeneration: String? = null, private val retirement: OperationRetirement? = null,
     private val requestWritePermission: (suspend () -> Boolean)? = null,
 ) {
-    private val original = fieldsFor(initial).let { if (existing == null && !initialCalendarSelected) it.copy(calendarId = "", targetIdentity = null) else it }
+    private var original = fieldsFor(initial).let { if (existing == null && !initialCalendarSelected) it.copy(calendarId = "", targetIdentity = null) else it }
     var state by mutableStateOf(EventEditorState(EventEditorFields("", "", "", "", "", "", false, "", "", "", "")))
         private set
     private val atomic = drafts as? AtomicDraftStore
@@ -64,6 +64,11 @@ class EventEditorController(
     val generation: String? get() = document?.generation
     val isEditing: Boolean get() = document?.launch?.kind?.let { it == EditorDraftKind.EDIT } ?: (existing != null || recoveryRef != null)
     val hasFrozenSubmission: Boolean get() = document?.frozen != null
+    /** Exact authored patch intent, based on the immutable original display proof when needed. */
+    val hasAuthoredTemporalChanges: Boolean get() = existing?.let {
+        EditableField.TIME in it.allowedFields && timeChanged(state.fields) ||
+            EditableField.ZONE in it.allowedFields && zoneChanged(state.fields)
+    } ?: false
     val boundCalendarIdentity: CalendarIdentity? get() = document?.let { doc ->
         (doc.frozen as? FrozenEditorSubmission.Create)?.draft?.targetIdentity ?: if (doc.launch.kind == EditorDraftKind.EDIT) doc.sourceIdentity else doc.fields.targetIdentity
     }
@@ -98,13 +103,19 @@ class EventEditorController(
             require(!recoveryOnly || doc.hasRequest)
             document = doc; expectedRecord = record
             val sourceIdentity = doc.sourceIdentity
+            val sameCanonicalSource = existing != null && OrdinaryEditDisplayProof.sameSource(doc.sourceBaseline,
+                sourceBaseline(initial, existing), initial.eventZone == null)
+            val originalFields = if (doc.launch.kind == EditorDraftKind.EDIT && !doc.hasRequest && sameCanonicalSource)
+                OrdinaryEditDisplayProof.originalFields(initial, doc.sourceBaseline) else null
+            val originalProofValid = initial.eventZone != null || originalFields != null
+            if (originalFields != null) original = originalFields
             if (!doc.legacy && !doc.hasRequest && existing != null && sourceIdentity != null && sameSourceNamespace(sourceIdentity, existing) &&
-                doc.sourceToken != existing.token.value && doc.sourceBaseline == sourceBaseline(initial, existing)) {
+                originalProofValid && doc.sourceToken != existing.token.value && sameCanonicalSource) {
                 if (!replace(doc.copy(sourceToken = existing.token.value, operationId = UUID.randomUUID().toString()))) error("Draft changed during refresh")
                 doc = requireNotNull(document)
             }
             val changed = doc.launch.kind == EditorDraftKind.EDIT && !doc.hasRequest && (existing == null || sourceIdentity == null ||
-                !sameSourceNamespace(sourceIdentity, existing) || doc.sourceToken != existing.token.value || doc.sourceBaseline != sourceBaseline(initial, existing))
+                !sameSourceNamespace(sourceIdentity, existing) || doc.sourceToken != existing.token.value || !sameCanonicalSource || !originalProofValid)
             document = doc
             var restoredFields = doc.fields
             var restoredNotices = doc.notices
@@ -469,12 +480,14 @@ class EventEditorController(
             location = changed(EditableField.LOCATION, fields.location != original.location, draft.location),
             description = changed(EditableField.DESCRIPTION, fields.description != original.description, draft.description),
             time = changed(EditableField.TIME, timeChanged(fields), draft.time),
-            eventZone = changed(EditableField.ZONE, fields.zone != original.zone || fields.allDay != original.allDay, draft.eventZone),
+            eventZone = changed(EditableField.ZONE, zoneChanged(fields), draft.eventZone),
             alertMinutes = changed(EditableField.ALERTS, fields.alerts != original.alerts, draft.alertMinutes),
             availability = changed(EditableField.AVAILABILITY, fields.availability != original.availability, draft.availability),
             privacy = changed(EditableField.PRIVACY, fields.privacy != original.privacy, draft.privacy),
         )
     }
+
+    private fun zoneChanged(fields: EventEditorFields): Boolean = fields.zone != original.zone || fields.allDay != original.allDay
 
     private fun timeChanged(fields: EventEditorFields): Boolean =
         listOf(fields.startDate, fields.endDate, fields.startTime, fields.endTime, fields.allDay, fields.zone,
@@ -504,13 +517,13 @@ class EventEditorController(
                 put("operationPayload", ""); put("submitted", false)
                 put("target", editorDraftTarget(existing?.details?.occurrence?.ref))
                 put("sourceToken", existing?.token?.value.orEmpty())
-                put("sourceBaseline", sourceBaseline(initial, existing))
+                put("sourceBaseline", sourceBaseline(initial, existing, fields.zone))
             }
             return DraftRecord(id, VERSION, payload.toString(), clock.instant())
         }
 
-        /** Canonical source values, never localized labels or the edited raw form. */
-        internal fun sourceBaseline(initial: EventDraft, existing: EditableEvent?): String = JSONObject().apply {
+        /** Canonical source plus separate renderer provenance; neither is an authored provider zone. */
+        internal fun sourceBaseline(initial: EventDraft, existing: EditableEvent?, originalDisplayZone: String = fieldsFor(initial).zone): String = JSONObject().apply {
             put("calendarId", initial.calendarId.value)
             put("title", initial.title); put("location", initial.location); put("description", initial.description)
             put("zone", initial.eventZone?.id.orEmpty())
@@ -523,6 +536,7 @@ class EventEditorController(
                 is EventTime.AllDay -> { put("kind", "allDay"); put("start", time.dates.start.toString()); put("end", time.dates.endExclusive.toString()) }
             }
             existing?.let { source ->
+                if (initial.eventZone == null) put(OrdinaryEditDisplayProof.KEY, originalDisplayZone)
                 source.details.calendar?.identity?.let { put("sourceCalendarIdentity", CalendarIdentityJson.encode(it)) }
                 put("sourceTitle", source.details.occurrence.title)
                 put("sourceAvailability", source.details.availability ?: JSONObject.NULL)

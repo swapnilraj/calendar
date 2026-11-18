@@ -108,3 +108,15 @@ immutable frozen recovery, blocked retirement, cleanup failure, namespace contin
 confirmation and replacement callbacks, plus separate real SQLite connections for retirement and
 exact draft deletion. Global route generation and host composition have their own integration
 checks; the broader series and meeting retirement user flows remain separate packets.
+
+## Nullable event time zones
+
+Ordinary edit preparation records `originalDisplayZone` inside its immutable source baseline when
+rendering a draft whose event zone is absent. This is private rendering provenance captured from
+the already-built initial fields; it never fills the provider's event zone. After exact reference,
+namespace and canonical source verification, comparisons use that original display frame even
+when the device zone changes. An unchanged time and zone therefore remain `Keep` for title or
+alert edits. Fresh canonical comparisons exclude only this presentation key; older version 5
+builds see a baseline mismatch and retain the draft for review. Missing or malformed proof on an
+unsubmitted null-zone edit is review-only until explicit fresh preparation. Existing frozen
+requests bypass this comparison and retain their exact prior bytes and recovery behavior.
