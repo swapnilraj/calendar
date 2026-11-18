@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import dev.swapnilraj.calendar.R
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -20,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.swapnilraj.calendar.data.CalEvent
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 fun eventTextColor(color: Color): Color {
     // Choose the larger contrast ratio; the best of black/white is always >= 4.5:1.
@@ -34,20 +35,25 @@ fun EventBlock(event: CalEvent, heightDp: Float, zone: ZoneId, use24Hour: Boolea
     val color = Color(event.color or 0xff000000.toInt())
     val foreground = if (event.declined) MaterialTheme.colorScheme.onSurface else eventTextColor(color)
     val locale = LocalLocale.current.platformLocale
-    val formatter = remember(use24Hour, locale) { DateTimeFormatter.ofPattern(if (use24Hour) "HH:mm" else "h:mm a", locale) }
-    val title = event.title.ifBlank { "(No title)" }
-    val time = "${event.start.atZone(zone).format(formatter)} – ${event.end.atZone(zone).format(formatter)}"
-    Surface(modifier.semantics { contentDescription = "$title, $time${if (event.declined) ", declined" else ""}" }
-        .clickable(onClickLabel = "Open event") { onClick(event) },
+    val untitled = stringResource(R.string.calendar_no_title)
+    val title = event.title.ifBlank { untitled }
+    val range = eventTimeLabel(event, zone, use24Hour, locale)
+    val time = if (event.allDay) "${stringResource(R.string.calendar_all_day)}, $range" else range
+    val declined = stringResource(R.string.calendar_declined)
+    val open = stringResource(R.string.calendar_open_event)
+    val titleHeight = minimumEventHeight().value
+    val fontScale = LocalDensity.current.fontScale
+    Surface(modifier.semantics { contentDescription = "$title, $time${if (event.declined) ", $declined" else ""}" }
+        .clickable(onClickLabel = open) { onClick(event) },
         shape = RoundedCornerShape(6.dp),
         color = if (event.declined) Color.Transparent else color,
         border = if (event.declined) BorderStroke(1.dp, color) else null,
         contentColor = foreground) {
-        Column(Modifier.padding(horizontal = 6.dp, vertical = if (heightDp >= 32) 4.dp else 1.dp)) {
+        Column(Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
             Text(title, fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.Medium,
-                maxLines = if (heightDp >= 64) 2 else 1, overflow = TextOverflow.Ellipsis,
+                maxLines = if (heightDp >= titleHeight * 2 - 8f) 2 else 1, overflow = TextOverflow.Ellipsis,
                 textDecoration = if (event.declined) TextDecoration.LineThrough else null)
-            if (heightDp >= 46 && !event.allDay) {
+            if (heightDp >= titleHeight + 29f * fontScale && !event.allDay) {
                 Text(time, fontSize = 10.sp, lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }

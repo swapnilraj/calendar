@@ -12,10 +12,11 @@ import dev.swapnilraj.calendar.weather.*
 
 @Composable
 fun BoxScope.WeatherBackground(hours: List<DayHour>) {
+    val gutterWidth = LocalCalendarGutter.current
     val theme = if (isSystemInDarkTheme()) WeatherTheme.DARK else WeatherTheme.LIGHT
     val stops = remember(hours, theme) { gradientStops(hours, theme) }
     val texture = remember(hours) { textureFor(hours) }
-    Box(Modifier.matchParentSize().padding(start = HourGutter).drawWithCache {
+    Box(Modifier.matchParentSize().padding(start = gutterWidth).drawWithCache {
         val gradient = Brush.verticalGradient(*stops.mapIndexed { i, color ->
             i / 96f to Color((color.r / 255).toFloat(), (color.g / 255).toFloat(), (color.b / 255).toFloat(), color.a.toFloat())
         }.toTypedArray(), startY = 0f, endY = size.height)

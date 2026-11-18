@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reminders_channel_name">Event reminders</string>
+    <string name="reminders_channel_description">Reminders for your calendar events</string>
+    <string name="reminders_no_title">No title</string>
+    <string name="reminders_all_day_date">All day · %1$s</string>
+    <string name="reminders_timed_date_time">%1$s · %2$s</string>
+    <string name="reminders_private_title">Calendar reminder</string>
+    <string name="reminders_snooze_minutes">Snooze %1$d min</string>
+    <string name="reminders_setup_title">Event reminders</string>
+    <string name="reminders_permissions_ready">Reminder permissions are ready</string>
+    <string name="reminders_setup_needed">Reminder setup needs attention</string>
+    <string name="reminders_setup_explanation">Allow calendar access, notifications, and precise alarms so Daylight can deliver reminders while the app is closed. Android controls notification sounds and Do Not Disturb.</string>
+    <string name="reminders_calendar_explanation">Calendar access is needed to read events and their reminder times.</string>
+    <string name="reminders_permission_explanation">Allow notifications to see event reminders.</string>
+    <string name="reminders_disabled_explanation">Notifications are turned off for Daylight in system settings.</string>
+    <string name="reminders_channel_explanation">The event reminder notification channel is turned off.</string>
+    <string name="reminders_exact_explanation">Precise alarm access is unavailable. Reminder delivery may be delayed until it is enabled.</string>
+    <string name="reminders_allow_calendar">Allow calendar access</string>
+    <string name="reminders_allow_notifications">Allow notifications</string>
+    <string name="reminders_open_notification_settings">Open notification settings</string>
+    <string name="reminders_allow_exact">Allow precise alarms</string>
+    <string name="reminders_duplicate_guidance">After confirming Daylight reminders work, turn off duplicate event notifications in other calendar apps. Keep account synchronization enabled so your events still update.</string>
+    <string name="reminders_test">Send test notification</string>
+    <string name="reminders_manage_notifications">Manage notification settings</string>
+</resources>
