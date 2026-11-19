@@ -1,5 +1,10 @@
 package dev.swapnilraj.calendar
 
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.*
+import dev.swapnilraj.calendar.data.Settings
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.*
 import android.Manifest
 import android.content.ComponentName
 import android.content.ContentUris
@@ -277,6 +282,73 @@ class PublicCalendarEntryJourneyTest {
         shownTag("calendar_phone_month"); compose.onNodeWithContentDescription("Open navigation menu").performClick()
         compose.onNodeWithText("Drafts").performClick(); shown("Drafts")
     }
+    @Test fun successfulPublicFixtureRestoresExactRawPreferences() = assertFixtureRestoresRawPreferences(false)
+
+    @Test fun failingPublicFixtureRestoresExactRawPreferencesAndPreservesBodyFailure() = assertFixtureRestoresRawPreferences(true)
+
+    private fun assertFixtureRestoresRawPreferences(failBody: Boolean) {
+        val app = RuntimeEnvironment.getApplication() as CalendarApp
+        val store = rawStore(app.settings)
+        val original = io { store.data.first().toMutablePreferences().toPreferences() }
+        val before = original.toMutablePreferences().apply {
+            this[stringPreferencesKey("display_default_duration_minutes")] = "future-duration"
+            this[stringPreferencesKey("display_zone_mode")] = "FIXED"
+            this[stringPreferencesKey("display_zone_id")] = "Asia/Tokyo"
+            this[stringPreferencesKey("calendar_view")] = "WEEK"
+            this[stringSetPreferencesKey("selected_calendar_ids")] = setOf("999")
+            this[stringSetPreferencesKey("known_calendar_accounts")] = setOf("synthetic-before")
+            this[stringPreferencesKey("synthetic_public_cleanup_future")] = "opaque future value"
+        }.toPreferences()
+        val bodyFailure = IllegalStateException("Synthetic public journey body failure")
+        try {
+            io { store.updateData { before } }
+            var caught: Throwable? = null
+            try {
+                fixture { f ->
+                    io {
+                        assertTrue(f.app.settings.setDisplaySettings(CalendarSettingsOptions(theme = SettingsTheme.DARK)))
+                        assertTrue(f.app.settings.setCalendarView("MONTH"))
+                    }
+                    if (failBody) throw bodyFailure
+                }
+            } catch (error: Throwable) { caught = error }
+            if (failBody) assertSame(bodyFailure, caught) else caught?.let { throw it }
+            val restored = io { rawStore(Settings(app)).data.first() }
+            assertEquals(before.asMap(), restored.asMap())
+        } finally {
+            io {
+                store.updateData { original }
+                assertEquals(original.asMap(), store.data.first().asMap())
+            }
+        }
+    }
+
+    /** Test-only exact raw preservation, including settings unknown to the current codec. */
+    @Suppress("UNCHECKED_CAST")
+    private fun rawStore(settings: Settings): DataStore<Preferences> =
+        Settings::class.java.getDeclaredField("store").apply { isAccessible = true }.get(settings) as DataStore<Preferences>
+
+    private fun <T> io(block: suspend () -> T): T {
+        val result = AtomicReference<Result<T>?>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val worker = scope.launch { result.set(runCatching { block() }) }
+        var failure: Throwable? = null
+        try {
+            compose.waitUntil(15_000) { result.get() != null }
+            return requireNotNull(result.get()).getOrThrow()
+        } catch (error: Throwable) {
+            failure = error
+            throw error
+        } finally {
+            scope.cancel()
+            try { compose.waitUntil(5_000) { worker.isCompleted } }
+            catch (error: Throwable) {
+                val original = failure
+                if (original == null) throw error else if (original !== error) original.addSuppressed(error)
+            }
+        }
+    }
+
     private fun closeBrowser() {
         val root = isRoot() and hasAnyDescendant(hasText("Refresh drafts"))
         // A real upward sheet gesture exposes its footer; the underlying closed drawer still has
@@ -318,13 +390,16 @@ class PublicCalendarEntryJourneyTest {
         return requireNotNull(next)
     }
     private fun launch(f: Fixture, intent: Intent) = Robolectric.buildActivity(CalendarEntryActivity::class.java, intent).also { controller ->
-        compose.runOnUiThread { controller.setup().visible() }; f.activities += controller
+        f.activities += controller
+        compose.runOnUiThread { controller.setup().visible() }
     }
     private fun launchSeed(f: Fixture, intent: Intent) = Robolectric.buildActivity(CalendarSeedReviewActivity::class.java, intent).also { controller ->
-        compose.runOnUiThread { controller.setup().visible() }; f.activities += controller
+        f.activities += controller
+        compose.runOnUiThread { controller.setup().visible() }
     }
     private fun launchMain(f: Fixture, intent: Intent = Intent(f.app, MainActivity::class.java)) = Robolectric.buildActivity(MainActivity::class.java, intent).also { controller ->
-        compose.runOnUiThread { controller.setup().visible() }; f.activities += controller
+        f.activities += controller
+        compose.runOnUiThread { controller.setup().visible() }
     }
     private fun stop(activity: ActivityController<out ComponentActivity>) { compose.runOnUiThread { activity.pause().stop().destroy() } }
     private class Fixture(val app: CalendarApp, val provider: NativeRecurringCreateJourneyProvider) {
@@ -332,22 +407,62 @@ class PublicCalendarEntryJourneyTest {
     }
     private fun fixture(seed: Boolean = false, write: Boolean = true, zone: ZoneId = ZoneId.of("UTC"), block: (Fixture) -> Unit) {
         val app = RuntimeEnvironment.getApplication() as CalendarApp
-        shadowOf(app).grantPermissions(Manifest.permission.READ_CALENDAR)
-        if (write) shadowOf(app).grantPermissions(Manifest.permission.WRITE_CALENDAR) else shadowOf(app).denyPermissions(Manifest.permission.WRITE_CALENDAR)
-        val provider = NativeRecurringCreateJourneyProvider()
-        if (seed) provider.seedOneOff(start, start.plusSeconds(3600), sourceTitle)
-        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
-        runBlocking {
-            app.settings.saveReminderSettings(app.settings.readReminderSettings(), SavedReminderSettings()); app.reminderRuntime.onResume().join()
-            app.settings.setDisplaySettings(CalendarSettingsOptions(weatherVisible = false, displayZone = DisplayZoneOption.Fixed(zone)))
-            val metadata = app.calendarReader.readCalendars() as CalendarReadState.Ready
-            assertTrue(app.settings.setDefaultCalendar(null, metadata.value))
-            assertTrue(app.settings.setCalendarSelection(none, metadata.value))
+        val store = rawStore(app.settings)
+        // Freeze every raw key before permission/provider/preference setup can mutate or fail.
+        val original = io { store.data.first().toMutablePreferences().toPreferences() }
+        var provider: NativeRecurringCreateJourneyProvider? = null
+        var fixture: Fixture? = null
+        var runtimeStarted = false
+        var failure: Throwable? = null
+        fun cleanup(action: () -> Unit) {
+            try { action() } catch (error: Throwable) {
+                val primary = failure
+                if (primary == null) failure = error else if (primary !== error) primary.addSuppressed(error)
+            }
         }
-        val f = Fixture(app, provider)
-        try { block(f) } finally {
-            f.activities.asReversed().forEach { controller -> if (!controller.get().isDestroyed) stop(controller) }
-            provider.db.close()
+        try {
+            shadowOf(app).grantPermissions(Manifest.permission.READ_CALENDAR)
+            if (write) shadowOf(app).grantPermissions(Manifest.permission.WRITE_CALENDAR) else shadowOf(app).denyPermissions(Manifest.permission.WRITE_CALENDAR)
+            val ownedProvider = NativeRecurringCreateJourneyProvider().also { provider = it }
+            if (seed) ownedProvider.seedOneOff(start, start.plusSeconds(3600), sourceTitle)
+            ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, ownedProvider)
+            io {
+                app.settings.saveReminderSettings(app.settings.readReminderSettings(), SavedReminderSettings())
+                runtimeStarted = true
+                val resume = app.reminderRuntime.onResume()
+                try { resume.join() } finally { if (!currentCoroutineContext().isActive) resume.cancel() }
+                app.settings.setDisplaySettings(CalendarSettingsOptions(weatherVisible = false, displayZone = DisplayZoneOption.Fixed(zone)))
+                val metadata = app.calendarReader.readCalendars() as CalendarReadState.Ready
+                assertTrue(app.settings.setDefaultCalendar(null, metadata.value))
+                assertTrue(app.settings.setCalendarSelection(none, metadata.value))
+            }
+            val ownedFixture = Fixture(app, ownedProvider).also { fixture = it }
+            block(ownedFixture)
+        } catch (error: Throwable) { failure = error }
+        finally {
+            fixture?.activities?.asReversed()?.forEach { controller ->
+                if (!controller.get().isDestroyed) {
+                    cleanup { compose.runOnUiThread { controller.pause() } }
+                    cleanup { compose.runOnUiThread { controller.stop() } }
+                    cleanup { compose.runOnUiThread { controller.destroy() } }
+                }
+            }
+            cleanup {
+                io {
+                    store.updateData { original }
+                    assertEquals(original.asMap(), store.data.first().asMap())
+                }
+            }
+            // This fixture explicitly resumed this runtime during setup; restore its policy too.
+            // Never cancel Application-owned scopes or unrelated process-start work.
+            if (runtimeStarted) cleanup {
+                io {
+                    val resume = app.reminderRuntime.onResume()
+                    try { resume.join() } finally { if (!currentCoroutineContext().isActive) resume.cancel() }
+                }
+            }
+            cleanup { provider?.db?.close() }
         }
+        failure?.let { throw it }
     }
 }
