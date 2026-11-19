@@ -5,6 +5,10 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+Legacy ordinary draft versions1/4 accept an absent feature tag or the exact `ordinary-editor` tag.
+After known family dispatch, foreign or malformed tags remain retained and unreadable without an
+ordinary launch. Version5 keeps its strict envelope validation; no draft bytes are rewritten by listing.
+
 ### Schedule range endpoints
 
 Schedule always shows its loaded date range and explicit Earlier/Later controls, including when

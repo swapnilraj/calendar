@@ -85,6 +85,9 @@ object DraftBrowserCodec {
             val launch = SeriesDraftCodec.describe(record)
             return DraftBrowserItem(record.id, record.updatedAt, null, if (launch == null) DraftReadIssue.UNREADABLE else null, launch)
         }
+        if (record.version in setOf(EventEditorController.LEGACY_VERSION, EventEditorController.PREVIOUS_VERSION) &&
+            feature != "ordinary-editor" && try { JSONObject(record.payload).has("feature") } catch (_: Exception) { false })
+            return DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNREADABLE)
         if (record.version !in setOf(EventEditorController.LEGACY_VERSION, EventEditorController.PREVIOUS_VERSION, EventEditorController.VERSION))
             return DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNSUPPORTED_VERSION)
         return try {
