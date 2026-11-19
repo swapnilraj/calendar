@@ -4,6 +4,12 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+Google Android reference remains only partially observed: Settings/General are accessible, but account
+setup stops in GMS's ErrorActivity. A fresh observed Back press returned to the launcher rather than
+the calendar. The same SDK screenshot/input method works for both apps; main/event UX parity is
+still unverified. [Observed evidence](audit/evidence/google-reference-back-check-2026-11-19.json).
+
+
 The complete default gate at **`563dea70ed360f766162712c674f9b92dfd2e363` passes 2,407 tests**
 (app 2,133/core 257/weather 17), debug APK assembly, lint and release-manifest processing with zero
 failures/errors/skips in 7m9s. Normal debug/release retain `CalendarApp`, 18/16 enabled components

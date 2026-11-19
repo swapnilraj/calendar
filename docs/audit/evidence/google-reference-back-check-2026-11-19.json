@@ -1,0 +1,23 @@
+{
+  "scope": "Observed emulator UI only; not Google UX parity acceptance",
+  "reference": "Current Android phone Google Calendar",
+  "evidenceDirectory": "/tmp/daylight-google-ui-back-check-a537c969-95d5-4bd3-b074-30e8635679e2",
+  "before": {
+    "avd": "daylight_google_reference_userdebug_api35",
+    "serial": "emulator-5554",
+    "foreground": [
+      "topResumedActivity=ActivityRecord{fc7b338 u0 com.google.android.gms/.auth.uiflows.addaccount.ErrorActivity t23}"
+    ],
+    "actions": "NONE"
+  },
+  "after": {
+    "action": "Single KEYCODE_BACK from observed GMS ErrorActivity",
+    "foreground": [
+      "topResumedActivity=ActivityRecord{fbbb275 u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity t19}"
+    ],
+    "permissionsAccountsProviderDataOrNetworkConfiguration": "UNCHANGED"
+  },
+  "observedError": "Something went wrong; problem communicating with Google servers",
+  "conclusion": "One Back press returns to launcher, not Calendar. Main/calendar/event UX remains unverified. SDK screenshot/input technique itself works for both applications.",
+  "cause": "Unproven; no credentials, account changes or network/trust/clock tuning attempted"
+}
