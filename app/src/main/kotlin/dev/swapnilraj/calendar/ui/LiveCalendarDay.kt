@@ -2,6 +2,9 @@ package dev.swapnilraj.calendar.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import dev.swapnilraj.calendar.ui.grid.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -383,7 +386,23 @@ internal fun LiveCalendarDay(
             modifier = Modifier.semantics { contentDescription = calendarsLabel }) { Text("☰") }
     }
     val controls: @Composable RowScope.() -> Unit = { actions() }
+    // A context is an observation fence, never edit authority. Refreshing either data stream,
+    // changing a namespace/filter/range, or opening another flow cancels the held gesture/review.
+    val observedGridContext = GridEditorContext(listOf(reader, mutations, drafts, widgetNavigation?.id, dayNavigationRevision), request,
+        (snapshot as? CalendarReadState.Ready)?.value, (metadata as? CalendarReadState.Ready)?.value,
+        preferences, view.name, visibleDate,
+        openedEvent != null || writeRequestText != null || seriesScopeText != null || seriesWriteText != null ||
+            meetingWriteText != null || meetingCreationText != null || ownedMeetingText != null || showDrafts || showSearch || showSettings || showDefaultCalendar || drawer.isOpen || monthDayText != null ||
+            phoneMonthExpanded || phoneDatePicker || phoneZoomOpen)
+    val gridRevision = remember(observedGridContext) { Any() }
+    val gridContext = observedGridContext.copy(owners = observedGridContext.owners + gridRevision)
+    val latestGridContext by rememberUpdatedState(gridContext)
+    var gridOperationEpoch by remember { mutableLongStateOf(0) }
+    var gridReview by remember { mutableStateOf<Pair<GridEditorContext, GridEditorPreparation.Review>?>(null) }
+    LaunchedEffect(gridContext) { if (gridReview?.first != gridContext) gridReview = null }
+    fun cancelPhoneNavigation() { gridOperationEpoch++; gridReview = null }
     fun navigatePhoneDate(date: LocalDate) {
+        cancelPhoneNavigation()
         val selectedDate = date.coerceIn(MultiDayMinDate, MultiDayMaxDate)
         selectedDateState.value = selectedDate.toString()
         phoneMonthExpanded = false
@@ -405,16 +424,16 @@ internal fun LiveCalendarDay(
         onDateNavigationConsumed(navigation.id)
     }
     BackHandler(enabled = phoneMonthExpanded || phoneDatePicker || phoneZoomOpen) {
-        phoneMonthExpanded = false; phoneDatePicker = false; phoneZoomOpen = false
+        cancelPhoneNavigation(); phoneMonthExpanded = false; phoneDatePicker = false; phoneZoomOpen = false
     }
     if (phoneDatePicker) {
         val picker = rememberDatePickerState(initialSelectedDateMillis = visibleDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(), yearRange = 1..9999)
-        DatePickerDialog(onDismissRequest = { phoneDatePicker = false }, confirmButton = {
+        DatePickerDialog(onDismissRequest = { cancelPhoneNavigation(); phoneDatePicker = false }, confirmButton = {
             TextButton(enabled = picker.selectedDateMillis != null, onClick = {
                 picker.selectedDateMillis?.let { navigatePhoneDate(Instant.ofEpochMilli(it).atOffset(ZoneOffset.UTC).toLocalDate()) }
                 phoneDatePicker = false
             }) { Text(stringResource(R.string.phone_host_choose)) }
-        }, dismissButton = { TextButton(onClick = { phoneDatePicker = false }) { Text(stringResource(R.string.phone_host_cancel)) } }) {
+        }, dismissButton = { TextButton(onClick = { cancelPhoneNavigation(); phoneDatePicker = false }) { Text(stringResource(R.string.phone_host_cancel)) } }) {
             DatePicker(picker, showModeToggle = true)
         }
     }
@@ -429,9 +448,92 @@ internal fun LiveCalendarDay(
                     modifier = Modifier.semantics { contentDescription = scaleLabel })
             } },
             confirmButton = { TextButton(onClick = {
-                onSaveHourHeight(scale); dayNavigationRevision++; phoneZoomOpen = false
+                cancelPhoneNavigation(); onSaveHourHeight(scale); dayNavigationRevision++; phoneZoomOpen = false
             }) { Text(stringResource(R.string.phone_host_choose)) } },
             dismissButton = { TextButton(onClick = { phoneZoomOpen = false }) { Text(stringResource(R.string.phone_host_cancel)) } })
+    }
+    fun launchGridEditor(context: GridEditorContext, intent: GridEditorIntent, offset: ZoneOffset? = null, alternative: Boolean = false) {
+        if (!writable || preparingWrite || context != latestGridContext || !context.available) return
+        val epoch = gridOperationEpoch
+        preparingWrite = true
+        scope.launch {
+            try {
+                when (val prepared = prepareGridEditor(context, intent, requireNotNull(mutations), requireNotNull(drafts),
+                    displayNow, { if (epoch == gridOperationEpoch) latestGridContext else context.copy(blocked = true) }, draftClock, offset, alternative)) {
+                    is GridEditorPreparation.Ready -> if (latestGridContext == context && epoch == gridOperationEpoch) {
+                        gridReview = null
+                        writeRequestText = EventWriteRequest.fromLaunch(prepared.launch, context.date, context.request.displayZone).encode()
+                    }
+                    is GridEditorPreparation.Review -> if (latestGridContext == context && epoch == gridOperationEpoch) gridReview = context to prepared
+                    GridEditorPreparation.Stale -> Unit
+                    GridEditorPreparation.Unavailable -> onDraftFailure()
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { if (latestGridContext == context && epoch == gridOperationEpoch) onDraftFailure() }
+            finally { preparingWrite = false }
+        }
+    }
+    fun gridEditorAlternative(ref: EventRef) {
+        val occurrence = gridContext.occurrence(ref) ?: return
+        val time = occurrence.time as? EventTime.Timed ?: return
+        val segmentDate = maxOf(request.range.start, time.start.atZone(displayNow.zone).toLocalDate())
+        val segment = DayGeometry(segmentDate, displayNow.zone).segments(ref).firstOrNull()?.key ?: return
+        val target = time.start.atZone(displayNow.zone).let { GridTarget(it.toLocalDate(), gridMinute(it.toLocalTime()), displayNow.zone) }
+        val source = TimedGridSource(ref, time)
+        launchGridEditor(gridContext, GridEditorIntent.Edit(TimedGridEditProposal(gridContext, TimedGridEditKind.MOVE,
+            source, segment, target, TimedGridPlanning.move(source, target, segment))), alternative = true)
+    }
+    val gridCanCreate = writable && onCreateDate == null && calendars.any { it.capabilities.createEvents == AccessDecision.ALLOWED }
+    val gridInteractions = if (writable && gridContext.available && !preparingWrite && gridReview == null) TimedGridInteractions(
+        gridContext, Duration.ofMinutes(options.defaultDurationMinutes.toLong()),
+        onCreate = if (gridCanCreate) ({ proposal -> launchGridEditor(gridContext, GridEditorIntent.Create(proposal)) }) else null,
+        onEdit = { proposal -> launchGridEditor(gridContext, GridEditorIntent.Edit(proposal)) },
+        canEdit = { ref -> ref.recurrence == null && gridContext.calendar(ref)?.capabilities?.modifyEvents == AccessDecision.ALLOWED },
+        onBeginEdit = { ref -> gridEditPreflight(gridContext, ref, requireNotNull(mutations)) { latestGridContext } },
+        onCreateInEditor = if (gridCanCreate) ({ date ->
+            val target = GridTarget(date, 540.0, displayNow.zone)
+            launchGridEditor(gridContext, GridEditorIntent.Create(TimedGridCreateProposal(gridContext, target,
+                TimedGridPlanning.create(target, Duration.ofMinutes(options.defaultDurationMinutes.toLong())))), alternative = true)
+        }) else null,
+        onOpenEditor = ::gridEditorAlternative,
+    ) else null
+    gridReview?.takeIf { it.first == gridContext }?.let { (context, review) ->
+        val overlap = review.preview.reason == GridReviewReason.CLOCK_OVERLAP
+        val target = review.preview.snappedTarget
+        val local = target.date.atStartOfDay().plusSeconds((target.minute * 60).toLong())
+        val locale = LocalLocale.current.platformLocale
+        val clock = java.time.format.DateTimeFormatter.ofPattern(if (use24Hour) "HH:mm" else "h:mm a", locale)
+        val dates = java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.SHORT).withLocale(locale)
+        val targetLabel = "\u202a${target.date.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM).withLocale(locale))} ${local.toLocalTime().format(clock)}\u202c"
+        AlertDialog(onDismissRequest = { gridOperationEpoch++; gridReview = null },
+            title = { Text(stringResource(if (overlap) R.string.grid_editor_overlap_title else R.string.grid_editor_gap_title)) },
+            text = { Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Text(stringResource(if (overlap) R.string.grid_editor_overlap_message else R.string.grid_editor_gap_message,
+                    targetLabel, "\u202a${target.zone.id}\u202c"), style = MaterialTheme.typography.bodyMedium.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Content))
+                if (overlap) review.preview.candidateOffsets.forEachIndexed { index, offset ->
+                    val explicitTarget = target.copy(offsetChoice = GridOffsetChoice.Explicit(offset))
+                    val result = when (val intent = review.intent) {
+                        is GridEditorIntent.Create -> TimedGridPlanning.create(explicitTarget, Duration.ofMinutes(options.defaultDurationMinutes.toLong()))
+                        is GridEditorIntent.Edit -> planGridEdit(intent.proposal.source, intent.proposal.selectedSegment, intent.proposal.kind, explicitTarget)
+                    } as? GridPreviewResult.Ready
+                    TextButton(enabled = !preparingWrite && result != null, onClick = { launchGridEditor(context, review.intent, offset) }) {
+                        Column {
+                            Text(stringResource(if (index == 0) R.string.events_editor_first_offset else R.string.events_editor_second_offset, offset.id))
+                            if (result != null) {
+                                val start = result.time.start.atZone(target.zone)
+                                val end = result.time.end.atZone(target.zone)
+                                val range = "\u202a${start.toLocalDate().format(dates)} ${start.toLocalTime().format(clock)} UTC${if (start.offset == ZoneOffset.UTC) "+00:00" else start.offset.id} – ${end.toLocalDate().format(dates)} ${end.toLocalTime().format(clock)} UTC${if (end.offset == ZoneOffset.UTC) "+00:00" else end.offset.id}\u202c"
+                                val elapsed = gridElapsedAmount(result.time.duration, locale)
+                                Text(stringResource(if (elapsed.seconds) R.string.grid_editor_elapsed_seconds else R.string.grid_editor_elapsed_choice, range, elapsed.value))
+                            } else Text(stringResource(R.string.grid_editor_invalid_choice))
+                        }
+                    }
+                }
+            } },
+            confirmButton = { TextButton(enabled = !preparingWrite, onClick = { launchGridEditor(context, review.intent, alternative = true) }) {
+                Text(stringResource(R.string.grid_editor_choose_another))
+            } },
+            dismissButton = { TextButton(onClick = { gridOperationEpoch++; gridReview = null }) { Text(stringResource(R.string.timed_grid_cancel)) } })
     }
     val forDay: (LocalDate, ZoneId) -> Flow<CalendarState> = remember(snapshots) {
         { date, zone -> snapshots.map { it.forDay(date, zone) } }
@@ -447,7 +549,7 @@ internal fun LiveCalendarDay(
                 } }, onDismiss = { scope.launch { drawer.close() } }, footer = drawerActions,
                 currentView = view, availableViews = availableViews,
                 onViewSelected = if (settings != null) ({ option ->
-                    phoneMonthExpanded = false
+                    cancelPhoneNavigation(); phoneMonthExpanded = false
                     scope.launch {
                         if (!settings.setCalendarView(option.name)) onPreferenceFailure()
                         drawer.close()
@@ -463,18 +565,19 @@ internal fun LiveCalendarDay(
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             if (settings != null) {
                 CalendarPhoneToolbar(visibleDate, displayNow.toLocalDate(), phoneMonthExpanded,
-                    onOpenDrawer = { phoneMonthExpanded = false; scope.launch { drawer.open() } },
+                    onOpenDrawer = { cancelPhoneNavigation(); phoneMonthExpanded = false; scope.launch { drawer.open() } },
                     onToggleMonth = {
+                        cancelPhoneNavigation()
                         if (!phoneMonthExpanded) phoneMonthText = YearMonth.from(visibleDate).toString()
                         phoneMonthExpanded = !phoneMonthExpanded
                     }, onToday = { navigatePhoneDate(displayNow.toLocalDate()) },
-                    onSearch = if (search != null) ({ phoneMonthExpanded = false; showSearch = true }) else null)
+                    onSearch = if (search != null) ({ cancelPhoneNavigation(); phoneMonthExpanded = false; showSearch = true }) else null)
                 if (phoneMonthExpanded) CalendarMonthNavigator(
                     displayedMonth = phoneMonthText?.let(YearMonth::parse) ?: YearMonth.from(visibleDate),
                     selectedDate = visibleDate, today = displayNow.toLocalDate(), firstDayOfWeek = firstWeekday,
-                    onNavigateMonth = { phoneMonthText = it.toString() },
+                    onNavigateMonth = { cancelPhoneNavigation(); phoneMonthText = it.toString() },
                     onSelectDate = ::navigatePhoneDate,
-                    onChooseDate = { phoneDatePicker = true })
+                    onChooseDate = { cancelPhoneNavigation(); phoneDatePicker = true })
             }
             (snapshot as? CalendarReadState.Ready)?.value?.let { ready ->
                 val chosenCalendars = ready.request.selection
@@ -499,6 +602,7 @@ internal fun LiveCalendarDay(
                         onVisibleDateChanged = { selectedDateState.value = it.toString() }, onRetry = reader::refresh,
                         onScrollMinuteChanged = { scrollMinute = it },
                         onChooseCalendars = if (settings != null) ({ scope.launch { drawer.open() }; Unit }) else null,
+                        interactions = gridInteractions, onCancelPendingEdit = { gridOperationEpoch++; gridReview = null },
                         showNavigationChrome = settings == null) }
                 } else Column(Modifier.fillMaxSize()) {
                     if (settings == null) Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -520,7 +624,8 @@ internal fun LiveCalendarDay(
                                         planningMultiDayRange(currentDate(), 7, firstWeekday) else next
                                     multiDayRangeText = "${aligned.start}/${aligned.endExclusive}"
                                 }, initialScrollMinute = scrollMinute.takeIf { it >= 0 }, onScrollMinuteChanged = { scrollMinute = it },
-                                summary = summary, background = background, modifier = Modifier.weight(1f), showWeekends = options.showWeekends, showNavigationChrome = settings == null) }
+                                summary = summary, background = background, modifier = Modifier.weight(1f), showWeekends = options.showWeekends,
+                                interactions = gridInteractions, onCancelPendingEdit = { gridOperationEpoch++; gridReview = null }, showNavigationChrome = settings == null) }
                         } else MonthView(month, visibleDate, firstWeekday, state.value.occurrences, displayNow.zone,
                             onSelectDate = { selectedDateState.value = it.toString() }, onOpenEvent = ::openEvent,
                             onCreateDate = { createDateAction?.invoke(it) },

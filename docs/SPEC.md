@@ -412,6 +412,14 @@ Day, three-day and week grids may expose optional timed gesture ports. Long pres
 
 The injectable grid-editor preparer creates a distinct durable ordinary draft only after the exact occurrence/calendar namespace, issued TIME rights and current observed context agree before and after suspended work. It retains the original source baseline and stored event zone while raw fields carry the proposed time. It performs no provider mutation or permission prompt and returns clock gaps/overlaps for explicit review instead of choosing an offset. An explicit editor alternative keeps an existing event's original time. Multi-day targets are recomputed from the observed column path, rejecting forged or hidden-date claims. A stale unpublished preparation may delete only its acknowledged exact candidate; revised or unknown records stay retained. Application gesture routing, review dialogs and native Save remain separate integration work; recurring refs remain outside the ordinary gesture path.
 
+The live day, three-day and week grids now supply those ports through durable editor preparation.
+Read-only preflight and fresh source/namespace checks precede a retained draft; provider writes still
+require explicit Save. Gap/overlap reviews never choose an offset automatically. Changed navigation,
+filters, source or an opened ordinary/series/meeting flow cancels pending interaction and late draft
+navigation. Private incoming date navigation uses the same cancellation fence. These gesture routes
+currently admit guest-free one-off timed events; recurring references retain scoped editor actions
+and are not silently moved through the ordinary writer.
+
 ### M6 — Recurrence
 
 A pure semantic graph proof recomputes existing planners and conserves every known exception and
