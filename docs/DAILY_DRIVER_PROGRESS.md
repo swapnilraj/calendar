@@ -17,6 +17,10 @@ commit, and explicitly verify Activity replacement. All8 navigation tests passed
 (`/tmp/daylight-phone-navigation-visible-transitions.log`). This is test-only; no screenshots or
 production UI changed.
 
+The next bounded [EXDATE adapter packet](FOLLOWING_EXDATE_ADAPTER.md) now records the
+independent acceptance matrix and conservative native decoder boundary. It is planned source work,
+not implemented exclusion transfer or a production clone admission.
+
 Independent [Following metadata regression evidence](audit/evidence/following-null-end-zone-before-2026-11-19.json)
 subsequently exposed a title-only split changing an admitted SQL NULL end timezone to the start zone.
 The synthetic adapter returned LocalSaved with one batch while preserving the prefix except RRULE.
