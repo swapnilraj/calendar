@@ -1,0 +1,319 @@
+{
+  "scope": "Ordinary receipt4 pre-dispatch journal reservation only; synthetic real-store/provider fixture.",
+  "evidence": {
+    "initialNonReproduction": {
+      "source": "3975353b6c05771407dc0e7a97fc0f6c5774fa80",
+      "status": "PASS_BUT_COUNTEREXAMPLE_NOT_REPRODUCED",
+      "seconds": 161,
+      "classes": [
+        {
+          "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryEditReceiptBudgetTest",
+          "tests": "2",
+          "failures": "0",
+          "errors": "0",
+          "skipped": "0"
+        }
+      ],
+      "productionChanged": false,
+      "files": [
+        {
+          "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarWriter.kt",
+          "sha256": "5fcf8e5b12c7ce932df97d3c95374b6d15283be1770910243176485366dbea23"
+        },
+        {
+          "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/OrdinaryEditReceipt.kt",
+          "sha256": "d8521ae775b8c6a22d0f13fbf72b2e045f076fa63eb8faae9980d51b5d4c4a18"
+        },
+        {
+          "path": "app/src/test/kotlin/dev/swapnilraj/calendar/OrdinaryEditReceiptBudgetTest.kt",
+          "sha256": "cd74dabaa9d6caac931e903178fdb40b90ed09bd2f3c2193d2e9625078338462"
+        }
+      ],
+      "interpretation": "Both executions stopped before provider dispatch and returned Unavailable; this does not reproduce missing committed-proof reservation. Existing conservative source canonical-budget guard is the leading static explanation, requiring fixture precondition diagnosis."
+    },
+    "correctedBefore": {
+      "source": "8b1bcf7eefbd58a8b67f7f3124bb500fb491203a",
+      "status": "EXPECTED_FAILURE_REPRODUCED",
+      "seconds": 10,
+      "classes": [
+        {
+          "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryEditReceiptBudgetTest",
+          "tests": "2",
+          "failures": "2",
+          "errors": "0",
+          "skipped": "0",
+          "failureMessages": [
+            "java.lang.AssertionError: Predictably unrecordable commit dispatched: adopted=false cap=59390 minimal=59503 worst=59578 result=Uncertain phase=ATTEMPTED phaseAtBatch=ATTEMPTED expected:<0> but was:<1>",
+            "java.lang.AssertionError: Predictably unrecordable commit dispatched: adopted=true cap=59390 minimal=59503 worst=59578 result=Uncertain phase=ATTEMPTED phaseAtBatch=ATTEMPTED expected:<0> but was:<1>"
+          ],
+          "diagnosticOutput": "Receipt4 budget boundary: adopted=false cap=59390 minimal=59503 worst=59578 result=Uncertain phase=ATTEMPTED phaseAtBatch=ATTEMPTED source=54025 batches=1\nReceipt4 budget boundary: adopted=true cap=59390 minimal=59503 worst=59578 result=Uncertain phase=ATTEMPTED phaseAtBatch=ATTEMPTED source=54025 batches=1\n"
+        }
+      ],
+      "productionChanged": false,
+      "files": [
+        {
+          "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarWriter.kt",
+          "sha256": "5fcf8e5b12c7ce932df97d3c95374b6d15283be1770910243176485366dbea23"
+        },
+        {
+          "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/OrdinaryEditReceipt.kt",
+          "sha256": "d8521ae775b8c6a22d0f13fbf72b2e045f076fa63eb8faae9980d51b5d4c4a18"
+        },
+        {
+          "path": "app/src/test/kotlin/dev/swapnilraj/calendar/OrdinaryEditReceiptBudgetTest.kt",
+          "sha256": "0bfc64523486ce9b4bba9ee35d92ad34406e60efc9ded466b3b47b1d895877fa"
+        }
+      ]
+    },
+    "after": {
+      "source": "7564e7f2dc16fe3767e885419fb55aff2173b8ef",
+      "status": "PASS",
+      "seconds": 22,
+      "counts": {
+        "tests": 66,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "classes": [
+        {
+          "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryEditReceiptBudgetTest",
+          "tests": 12,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "dev.swapnilraj.calendar.data.calendar.CalendarWriterTest",
+          "tests": 54,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ],
+      "boundaryCases": [
+        {
+          "adopted": "false",
+          "kind": "UPDATE",
+          "case": "BELOW_MINIMAL",
+          "cap": "59390",
+          "minimal": "59503",
+          "worst": "59578",
+          "result": "Unavailable",
+          "phase": "null",
+          "phaseAtBatch": "null",
+          "source": "54025",
+          "batches": "0"
+        },
+        {
+          "adopted": "false",
+          "kind": "UPDATE",
+          "case": "BETWEEN_MINIMAL_AND_FULL",
+          "cap": "59540",
+          "minimal": "59503",
+          "worst": "59578",
+          "result": "Unavailable",
+          "phase": "null",
+          "phaseAtBatch": "null",
+          "source": "54025",
+          "batches": "0"
+        },
+        {
+          "adopted": "false",
+          "kind": "UPDATE",
+          "case": "EXACT_FULL",
+          "cap": "59578",
+          "minimal": "59503",
+          "worst": "59578",
+          "result": "LocalSaved",
+          "phase": "VERIFIED",
+          "phaseAtBatch": "ATTEMPTED",
+          "source": "54025",
+          "batches": "1"
+        },
+        {
+          "adopted": "false",
+          "kind": "DELETE",
+          "case": "BELOW_MINIMAL",
+          "cap": "59288",
+          "minimal": "59401",
+          "worst": "59417",
+          "result": "Unavailable",
+          "phase": "null",
+          "phaseAtBatch": "null",
+          "source": "54025",
+          "batches": "0"
+        },
+        {
+          "adopted": "false",
+          "kind": "DELETE",
+          "case": "BETWEEN_MINIMAL_AND_FULL",
+          "cap": "59409",
+          "minimal": "59401",
+          "worst": "59417",
+          "result": "Unavailable",
+          "phase": "null",
+          "phaseAtBatch": "null",
+          "source": "54025",
+          "batches": "0"
+        },
+        {
+          "adopted": "false",
+          "kind": "DELETE",
+          "case": "EXACT_FULL",
+          "cap": "59417",
+          "minimal": "59401",
+          "worst": "59417",
+          "result": "LocalDeleted",
+          "phase": "VERIFIED",
+          "phaseAtBatch": "ATTEMPTED",
+          "source": "54025",
+          "batches": "1"
+        },
+        {
+          "adopted": "true",
+          "kind": "UPDATE",
+          "case": "BELOW_MINIMAL",
+          "cap": "59390",
+          "minimal": "59503",
+          "worst": "59578",
+          "result": "Unavailable",
+          "phase": "PREPARED",
+          "phaseAtBatch": "null",
+          "source": "54025",
+          "batches": "0"
+        },
+        {
+          "adopted": "true",
+          "kind": "UPDATE",
+          "case": "BETWEEN_MINIMAL_AND_FULL",
+          "cap": "59540",
+          "minimal": "59503",
+          "worst": "59578",
+          "result": "Unavailable",
+          "phase": "PREPARED",
+          "phaseAtBatch": "null",
+          "source": "54025",
+          "batches": "0"
+        },
+        {
+          "adopted": "true",
+          "kind": "UPDATE",
+          "case": "EXACT_FULL",
+          "cap": "59578",
+          "minimal": "59503",
+          "worst": "59578",
+          "result": "LocalSaved",
+          "phase": "VERIFIED",
+          "phaseAtBatch": "ATTEMPTED",
+          "source": "54025",
+          "batches": "1"
+        },
+        {
+          "adopted": "true",
+          "kind": "DELETE",
+          "case": "BELOW_MINIMAL",
+          "cap": "59288",
+          "minimal": "59401",
+          "worst": "59417",
+          "result": "Unavailable",
+          "phase": "PREPARED",
+          "phaseAtBatch": "null",
+          "source": "54025",
+          "batches": "0"
+        },
+        {
+          "adopted": "true",
+          "kind": "DELETE",
+          "case": "BETWEEN_MINIMAL_AND_FULL",
+          "cap": "59409",
+          "minimal": "59401",
+          "worst": "59417",
+          "result": "Unavailable",
+          "phase": "PREPARED",
+          "phaseAtBatch": "null",
+          "source": "54025",
+          "batches": "0"
+        },
+        {
+          "adopted": "true",
+          "kind": "DELETE",
+          "case": "EXACT_FULL",
+          "cap": "59417",
+          "minimal": "59401",
+          "worst": "59417",
+          "result": "LocalDeleted",
+          "phase": "VERIFIED",
+          "phaseAtBatch": "ATTEMPTED",
+          "source": "54025",
+          "batches": "1"
+        }
+      ],
+      "blockedCases": 8,
+      "exactFitPositiveCases": 4,
+      "files": [
+        {
+          "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarWriter.kt",
+          "sha256": "f23070121350bac7119be3efbc9e0e7c7318de4830be8ae80093ac5691a29786"
+        },
+        {
+          "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/OrdinaryEditReceipt.kt",
+          "sha256": "d8521ae775b8c6a22d0f13fbf72b2e045f076fa63eb8faae9980d51b5d4c4a18"
+        },
+        {
+          "path": "app/src/test/kotlin/dev/swapnilraj/calendar/OrdinaryEditReceiptBudgetTest.kt",
+          "sha256": "486cc2c4a7bf8c35063c06fad2b89da15dd3b6ab3d2a1a181129a772e3612193"
+        }
+      ],
+      "storeAndSchemaUnchanged": true,
+      "productionDiff": "13 added V4-only reservation lines; real ACK mapping/codec/legacy bytes unchanged",
+      "firstNonReproduction": "/tmp/daylight-edit4-budget-before1-evidence/result.json",
+      "confirmedBeforeFailure": "/tmp/daylight-edit4-budget-before2-evidence/result.json",
+      "limitations": [
+        "Synthetic provider/real private SQLite; no native/account/device execution.",
+        "No full gate/assemble/lint run after this focused grant."
+      ]
+    }
+  },
+  "rootIntegration": "ee2a89dd924f67e79e47661568daafc830bcacc0",
+  "independentReview": "No blocking findings at7564e7f; both actual ACK shapes bounded, local-only sizing IDs, legacy/store/codec unchanged.",
+  "rootFullGate": {
+    "source": "ee2a89dd924f67e79e47661568daafc830bcacc0",
+    "startedAt": "2026-11-19T09:51:49.723142+00:00",
+    "finishedAt": "2026-11-19T09:56:52.160751+00:00",
+    "seconds": 302.438,
+    "command": "./gradlew test :app:assembleDebug :app:lintDebug",
+    "exitCode": 1,
+    "counts": {
+      "tests": 2383,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "modules": {
+      "app": {
+        "tests": 2109,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0
+      },
+      "calendar-core": {
+        "tests": 257,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "weather": {
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "log": "/tmp/daylight-rsvp-budget-full-gate1.log",
+    "xml": "/tmp/daylight-rsvp-budget-full-gate1-xml",
+    "headAfter": "ee2a89dd924f67e79e47661568daafc830bcacc0",
+    "statusAfter": "",
+    "scope": "One failure: recurring-meeting guest row not found immediately after Add person. Not a passing complete gate."
+  }
+}

@@ -185,11 +185,16 @@
   },
   "pullRequest": "https://github.com/swapnilraj/calendar/pull/80",
   "publicationHead": "f0c3d057317da1d048f945a8b6eaa93242eb1e58",
-  "ci": "PENDING_RUN_44499665164",
+  "ci": {
+    "run": 44499665164,
+    "status": "SUCCESS",
+    "seconds": 392
+  },
   "attachment": "CONFIRMED",
   "rootIntegration": "6658805",
   "rootBaseline": "7e9f1fa",
   "independentSourceReview": "NO_BLOCKING_FINDINGS",
   "leadImageInspection": "PASS",
-  "acceptance": "Synthetic only. Production-route publication and device/account acceptance pending. No newer root full gate yet."
+  "acceptance": "Synthetic only. Production-route publication and device/account acceptance pending. No newer root full gate yet.",
+  "merge": "b618cf9080b0f0d2ffbebb10f834546d3141b5a4"
 }

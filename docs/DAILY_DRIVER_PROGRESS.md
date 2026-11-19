@@ -4,11 +4,21 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+The newest full attempt at `ee2a89d` ran2,383 tests with one failure (zero errors/skips) in5m2s:
+the recurring-meeting creation journey could not find its guest row immediately after Add person.
+That result is preserved; it does not replace the last passing full checkpoint. A deterministic
+readiness check is under investigation. The integrated receipt4 budget correction passed66 focused
+checks, including eight rejected overflow cases and four exact-fit positive controls. Its corrected
+before-fix fixture reproduced a provider write followed by ATTEMPTED/Uncertain in both new/adopted
+cases; the earlier ASCII fixture did not reproduce and remains recorded separately. See
+[bounded before/after evidence](audit/evidence/ordinary-edit-budget-2026-11-19.json).
+
 At aggregate source `6658805`, RSVP summaries now receive the selected clock convention and display
 zone from the main route. The separate bounded publication passed60 focused tests; the root passed65,
 including both browser cases and three native-provider synthetic journeys. One component baseline
 was recorded and inspected in each worktree (identical bytes); both native heading images remained
-unchanged. [PR80](https://github.com/swapnilraj/calendar/pull/80) is open with CI pending at `f0c3d05`.
+unchanged. [PR80](https://github.com/swapnilraj/calendar/pull/80) passed CI in6m32s at `f0c3d05` and merged
+as `b618cf9`.
 [Evidence](audit/evidence/rsvp-publication-2026-11-19.json) distinguishes publication from aggregate
 routing; a new complete root gate and device/account response acceptance remain pending.
 
