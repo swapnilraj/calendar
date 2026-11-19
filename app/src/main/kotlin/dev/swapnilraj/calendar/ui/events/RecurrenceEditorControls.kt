@@ -14,7 +14,7 @@ import java.time.format.TextStyle
 /** Creation-only controls; the host must first enable the verified recurring-create writer. */
 @Composable
 internal fun RecurrenceEditorControls(fields: RecurrenceEditorFields, startDate: String, enabled: Boolean,
-    allowNone: Boolean = true, onChange: (RecurrenceEditorFields) -> Unit) {
+    allowNone: Boolean = true, allowKeepEnd: Boolean = false, onChange: (RecurrenceEditorFields) -> Unit) {
     val locale = LocalLocale.current.platformLocale
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.recurrence_editor_repeat), style = MaterialTheme.typography.titleSmall)
@@ -54,6 +54,8 @@ internal fun RecurrenceEditorControls(fields: RecurrenceEditorFields, startDate:
                     onClick = { onChange(fields.copy(weekStart = day.name)) }, label = { Text(day.getDisplayName(TextStyle.FULL, locale)) }) }
             }
             Text(stringResource(R.string.recurrence_editor_end), style = MaterialTheme.typography.titleSmall)
+            if (allowKeepEnd) FilterChip(selected = fields.endMode == "KEEP", enabled = enabled,
+                onClick = { onChange(fields.copy(endMode = "KEEP")) }, label = { Text(stringResource(R.string.series_keep_limit)) })
             listOf("NEVER" to R.string.recurrence_editor_no_end, "COUNT" to R.string.recurrence_editor_count,
                 "DATE" to R.string.recurrence_editor_through).forEach { (key, label) ->
                 FilterChip(selected = fields.endMode == key, enabled = enabled,

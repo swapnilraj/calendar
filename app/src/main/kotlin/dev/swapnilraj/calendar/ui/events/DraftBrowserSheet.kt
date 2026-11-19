@@ -36,7 +36,8 @@ sealed interface DraftBrowserState {
 fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorDraftLaunch) -> Unit,
     displayZone: ZoneId = ZoneId.systemDefault(), onOpenMeeting: ((MeetingResponseLaunch) -> Unit)? = null,
     onOpenMeetingCreation: ((MeetingCreationLaunch) -> Unit)? = null,
-    onOpenOwnedMeeting: ((OwnedMeetingLaunch) -> Unit)? = null) {
+    onOpenOwnedMeeting: ((OwnedMeetingLaunch) -> Unit)? = null,
+    onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null) {
     var revision by remember { mutableIntStateOf(0) }
     val state by produceState<DraftBrowserState>(DraftBrowserState.Loading, store, revision) {
         value = DraftBrowserState.Loading
@@ -51,7 +52,7 @@ fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorD
         catch (_: Exception) { value = DraftBrowserState.Unavailable }
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone, onOpenMeeting, onOpenMeetingCreation, onOpenOwnedMeeting)
+        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone, onOpenMeeting, onOpenMeetingCreation, onOpenOwnedMeeting, onOpenSeries = onOpenSeries)
     }
 }
 
@@ -59,7 +60,8 @@ fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorD
 fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen: (EditorDraftLaunch) -> Unit,
     onRefresh: () -> Unit, displayZone: ZoneId = ZoneId.systemDefault(), onOpenMeeting: ((MeetingResponseLaunch) -> Unit)? = null,
     onOpenMeetingCreation: ((MeetingCreationLaunch) -> Unit)? = null,
-    onOpenOwnedMeeting: ((OwnedMeetingLaunch) -> Unit)? = null) {
+    onOpenOwnedMeeting: ((OwnedMeetingLaunch) -> Unit)? = null,
+    onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null) {
     val locale = LocalLocale.current.platformLocale
     val formatter = remember(locale, displayZone) { DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
         .withLocale(locale).withZone(displayZone) }
@@ -82,6 +84,7 @@ fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen:
                             val owned = item.ownedMeeting
                             val creation = item.meetingCreation
                             val meeting = item.meetingPreview
+                            val series = item.seriesLaunch
                             if (owned != null) {
                                 Text(owned.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
                                 Text(stringResource(R.string.owned_meeting_edit))
@@ -107,6 +110,15 @@ fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen:
                                 if (onOpenMeeting != null) TextButton(onClick = { onOpenMeeting(meeting.launch) }, modifier = Modifier.heightIn(min = 48.dp)) {
                                     Text(stringResource(if (meeting.launch.needsRecovery) R.string.events_drafts_recover else R.string.events_drafts_open))
                                 } else Text(stringResource(R.string.meeting_response_draft_host_unavailable))
+                            } else if (series != null) {
+                                Text(series.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.series_draft))
+                                Text(stringResource(scopeLabel(series.scope)))
+                                if (series.rawDate.isNotBlank()) Text(stringResource(R.string.events_drafts_raw_date, series.rawDate))
+                                if (series.needsRecovery) Text(stringResource(R.string.events_drafts_needs_recovery))
+                                if (onOpenSeries != null) TextButton(onClick = { onOpenSeries(series) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                                    Text(stringResource(if (series.needsRecovery) R.string.events_drafts_recover else R.string.events_drafts_open))
+                                } else Text(stringResource(R.string.series_draft_host_unavailable))
                             } else if (launch != null) {
                                 Text(launch.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
                                 Text(stringResource(if (launch.kind == EditorDraftKind.CREATE) R.string.events_drafts_create else R.string.events_drafts_edit))
