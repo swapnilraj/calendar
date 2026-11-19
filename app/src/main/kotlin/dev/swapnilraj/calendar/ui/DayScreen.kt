@@ -49,7 +49,8 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
     leadingActions: @Composable RowScope.() -> Unit = {},
     compactTitle: Boolean = false,
     onScrollMinuteChanged: (Double) -> Unit = {},
-    onChooseCalendars: (() -> Unit)? = null) {
+    onChooseCalendars: (() -> Unit)? = null,
+    showNavigationChrome: Boolean = true) {
     val zone = now.zone
     val anchorText = rememberSaveable { initialDate.toString() }
     val anchor = LocalDate.parse(anchorText)
@@ -65,8 +66,8 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
     val locale = LocalLocale.current.platformLocale
     val fontScale = LocalDensity.current.fontScale
     Surface(Modifier.fillMaxSize()) {
-      Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-        Column {
+      Column(Modifier.fillMaxSize().then(if (showNavigationChrome) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)) {
+        if (showNavigationChrome) Column {
           if (fontScale > 1.3f) Text(visibleDate.format(DateTimeFormatter.ofPattern("MMMM yyyy", locale)),
               style = MaterialTheme.typography.titleLarge, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
           Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
