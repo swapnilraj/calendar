@@ -667,3 +667,15 @@ for nonempty exclusions. Its195-check focus passed20s after a retained194/1 fixt
 Following journeys; all three subsequently passed31s in their own exact-class run. There are108
 distinct focused checks across the two runs, not a single108-test run. The complete gate and
 native/account acceptance remain pending; see audit/evidence/following-exdate4-2026-11-19.json. Moved/cancelled exception graph transfer remains separate.
+
+
+### Adaptive Month overview integrated — combined gate pending
+
+Source `8ed8a8e` fits all six weeks/seven columns into normal360×640 and393×851 phone viewports using
+measured line/space budgets and at least48dp date targets. Crowded dates keep fixed row height;
+plain summaries/counts belong to a single date action that opens every exact event in the existing
+list. Detailed/wide/large-font scrolling remains. Source date/provider/weather/DST algorithms are
+unchanged. [Evidence](audit/evidence/month-overview-2026-11-19.json):39 functional checks pass35s;
+first37/2 title-semantics failure is retained and corrected without dropping assertions. Four recording
+checks pass25s; all four images inspected. Full combined test/debug/lint and unchanged RTL baseline
+verification are queued. The last complete passing/frozen APK remains the2,320 checkpoint until then.

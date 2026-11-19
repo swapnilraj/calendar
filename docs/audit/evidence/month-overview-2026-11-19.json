@@ -1,0 +1,63 @@
+{
+  "date": "2026-11-19",
+  "source": "8ed8a8e",
+  "functional": {
+    "tests": 39,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsedSeconds": 35,
+    "log": "/tmp/daylight-month-functional2.log",
+    "evidence": "/tmp/daylight-month-functional2-evidence",
+    "screenshotVerification": false,
+    "recording": false
+  },
+  "firstFunctionalAttempt": {
+    "tests": 39,
+    "passed": 37,
+    "failures": 2,
+    "log": "/tmp/daylight-month-functional1.log",
+    "evidence": "/tmp/daylight-month-functional1-evidence",
+    "cause": "clearAndSetSemantics removed compact event-title text, causing original Live waits to time out",
+    "correction": "Plain summary Text semantics merge into one date action without independent child clicks; original assertions retained"
+  },
+  "recording": {
+    "tests": 4,
+    "counts": {
+      "dev.swapnilraj.calendar.LiveCalendarDayTest": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "dev.swapnilraj.calendar.MonthViewTest": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "elapsedSeconds": 25,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "log": "/tmp/daylight-month-overview-record1.log",
+    "xml": "/tmp/daylight-month-overview-record1-xml",
+    "inspected": {
+      "month_compact_phone.png": "457281c5cdaed00e1091a44cede16266ab1609b1ef6a4bc2282427752ca17778",
+      "month_light.png": "a1439f093b046576ed88c616cced1da2ab058ea9fc31a2abc3fef52f2b8ffdcb",
+      "month_dark.png": "7fca1502794bc538c448c5721ace1973ec96ab8839048576dc5afd04d1e14c43",
+      "integration_live_month.png": "4c2de9b668cec078d00bda31e65925cd872c1a834ef5bbf75e18dc35edb30c68"
+    }
+  },
+  "verifiedBehavior": [
+    "Existing six weeks/seven columns fully inside normal360x640 and393x851 viewports",
+    "At least48dp date targets; no crowded-cell row growth",
+    "Space-budgeted non-actionable summaries/count; date opens complete exact-identity list",
+    "Detailed/wide/large-font mode preserves scrolling and event shortcuts",
+    "Date algorithms/provider filters/selected weekends/continuation/DST unchanged"
+  ],
+  "completeGate": "PENDING",
+  "unchangedRtlBaselineVerification": "PENDING_COMPLETE_GATE",
+  "googleMainGesturePixelParity": "UNVERIFIED"
+}

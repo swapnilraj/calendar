@@ -269,3 +269,15 @@ remain available. Ten synthetic screenshots were recorded/inspected, including d
 large-font RTL, invalid input and a failed save. Logical heading and wrapped-paragraph alignment was
 corrected after inspection. This verifies Daylight's local flow; Google selector appearance, save
 behavior, exact dimensions and main/editor/account UX still require live reference evidence.
+
+
+### Adaptive Month overview — local implementation
+
+The shared host already removed duplicate Month/Schedule chrome and Schedule already omitted most
+empty dates; those historical table gaps were not current source findings. The remaining Month
+width/height issue is now corrected locally: measured normal-phone layout fits the same six weeks
+and seven columns, with plain space-budgeted summaries/counts and a complete day-list action. Larger
+text/constrained/wide layouts preserve the detailed scrolling mode. Four synthetic captures were
+inspected at360×640 and393×851, including dark theme and crowded dates. The39 functional checks pass;
+full baseline verification is queued. This matches documented overview intent without claiming live
+Google event-tap gestures, variable row-count behavior or exact pixel/accessibility parity.

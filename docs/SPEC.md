@@ -817,3 +817,19 @@ exact lexical partitions and native EXDATE writes, preserves nominal COUNT/end l
 unsupported syntax/excluded selection. Legacy2/3 operations retain their issued bytes and recovery;
 no clone/profile or account compatibility is inferred. Focused source/provider checks pass; the
 complete aggregate gate, native/account acceptance and exception-graph transfer remain pending.
+
+
+## Adaptive phone Month overview
+
+At normal text size and an adequate phone viewport, the existing six-week Month grid fits all seven
+columns and six rows at360×640 and393×851. Available space and measured font line sizes set row and
+summary budgets; date targets remain at least48dp and crowded dates cannot grow fitted rows. Text
+is not shrunk. Dates, first weekday, adjacent dates, hidden/selected-weekend access, app-local filters
+and exact occurrence identity retain their existing algorithms.
+
+A compact date is one accessible action opening the complete existing day-event list. Plain event
+summaries and a truthful hidden count use the available slots; no tiny independent event button is
+introduced. Summary text remains merged/discoverable under that date action. The full list opens each
+exact event. Detailed/wide/large-text or constrained layouts retain reachable scrolling and existing
+shortcuts. Four affected/new captures were recorded/inspected; functional checks pass and the combined
+gate is pending. Exact current Google main-screen gesture/row-count/pixel parity remains unverified.
