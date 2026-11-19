@@ -26,6 +26,7 @@ import androidx.compose.ui.window.DialogProperties
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
 import kotlinx.coroutines.launch
+import dev.swapnilraj.calendar.ui.events.meetings.create.MeetingCreationLaunch
 
 /** Phone presentation adapter. It never prepares, writes, retries or replaces a draft on its own. */
 @Composable
@@ -40,6 +41,7 @@ fun PhoneEventEditor(
     onReplacedLaunch: ((EditorDraftLaunch) -> Unit)? = null,
     onDiscarded: (() -> Unit)? = onDismiss,
     contentVisible: Boolean = true,
+    onPromotedMeeting: ((MeetingCreationLaunch) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val result = controller.state.result
@@ -69,7 +71,10 @@ fun PhoneEventEditor(
             onReplace = if (onReplacedLaunch != null) ({ scope.launch { controller.replaceDraft()?.let(onReplacedLaunch) } }) else null,
             onDiscard = if (onDiscarded != null) ({ scope.launch { if (controller.discardDraft()) onDiscarded() } }) else null,
             onInspectRetirement = { scope.launch { controller.inspectRetirement() } },
-            onAcknowledgeOutcome = { scope.launch { controller.acknowledgeLocalOutcome() } })
+            onAcknowledgeOutcome = { scope.launch { controller.acknowledgeLocalOutcome() } },
+            onAddPeople = if (onPromotedMeeting != null) ({ scope.launch {
+                (controller.promoteToMeeting() as? MeetingDraftPromotion.Ready)?.let { onPromotedMeeting(it.launch) }
+            } }) else null)
     }
 }
 
@@ -80,6 +85,7 @@ internal fun PhoneEventEditorContent(
     use24Hour: Boolean = true, onReview: (() -> Unit)? = null, onUpgrade: (() -> Unit)? = null,
     onReplace: (() -> Unit)? = null, onDiscard: (() -> Unit)? = null,
     onInspectRetirement: (() -> Unit)? = null, onAcknowledgeOutcome: (() -> Unit)? = null,
+    onAddPeople: (() -> Unit)? = null,
 ) {
     val view = PhoneEventEditorPresentation(controller, calendars)
     val state = view.state; val fields = view.fields
@@ -134,6 +140,8 @@ internal fun PhoneEventEditorContent(
                 }
                 if (!controller.isEditing && controller.recurringCreationSupported) PhoneEditorRow(PhoneEventGlyph.REPEAT, phoneRepeatSummary(fields.recurrence), enabled = !view.blocked, onClick = { panel = PhoneEditorPanel.REPEAT })
                 HorizontalDivider(Modifier.padding(start = 64.dp))
+                if (onAddPeople != null && controller.canPromoteToMeeting) PhoneEditorRow(PhoneEventGlyph.PEOPLE,
+                    stringResource(R.string.phone_event_add_people), enabled = true, onClick = onAddPeople)
                 PhoneEditorRow(PhoneEventGlyph.PLACE, fields.location.ifBlank { stringResource(R.string.phone_event_add_location) }, enabled = view.canEdit(EditableField.LOCATION), onClick = { panel = PhoneEditorPanel.LOCATION })
                 PhoneEditorRow(PhoneEventGlyph.ALERT, phoneAlertsSummary(fields.alerts), enabled = view.canEdit(EditableField.ALERTS), onClick = { panel = PhoneEditorPanel.ALERTS })
                 PhoneEditorRow(PhoneEventGlyph.NOTES, fields.description.ifBlank { stringResource(R.string.phone_event_add_notes) }, enabled = view.canEdit(EditableField.DESCRIPTION), onClick = { panel = PhoneEditorPanel.DESCRIPTION })

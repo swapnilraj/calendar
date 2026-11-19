@@ -5,6 +5,23 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+An explicit Add people action may convert an eligible, current ordinary new-event draft into a
+dedicated meeting-creation draft using one exact-record compare-and-set. Raw fields and authored
+recurrence remain intact; conversion never reads meeting authority, requests calendar permission or
+writes a provider event. Existing edits, legacy/recovery/frozen drafts, incoming-review namespaces
+and drafts with unresolved notices stay ineligible. Once conversion begins, the ordinary controller
+remains closed even if readback is unavailable; retained browser recovery decides which exact record
+survived. The action is exposed only by a host supplying the meeting callback; application routing
+remains separate.
+
+### Retained meeting-family drafts
+
+The draft browser identifies response, creation and organizer-owned meeting records before ordinary
+draft decoding. Unknown or corrupt family/version records remain retained with no ordinary launch.
+Each family exposes Open only when the host supplies its matching callback; refreshing or listing
+never submits, normalizes or rewrites a draft. Discard keeps exact-record concurrency checks.
+Existing ordinary sorting, display and error behavior remain unchanged. Application routing is separate.
+
 ### Fenced agenda widget engine
 
 Widget application integration supplies durable binding/bootstrap/quarantine ownership before opening

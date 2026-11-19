@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.*
+import dev.swapnilraj.calendar.ui.events.meetings.create.MeetingCreationLaunch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -105,6 +106,7 @@ internal fun EventWriteWorkflow(
     retirement: OperationRetirement? = null,
     requestWritePermission: (suspend () -> Boolean)? = null,
     onReplacedLaunch: ((EditorDraftLaunch) -> Unit)? = null,
+    onPromotedMeeting: ((MeetingCreationLaunch) -> Unit)? = null,
 ) {
     var retry by remember(request) { mutableIntStateOf(0) }
     val latestPermission by rememberUpdatedState(requestWritePermission)
@@ -169,7 +171,8 @@ internal fun EventWriteWorkflow(
             initialCalendarSelected = launch.calendarSelected, recoveryOnly = recoveryOnly,
             recoveryRef = launch.ref, requireStoredDraft = true,
             recurringCreationSupported = recurringCreationSupported, expectedGeneration = request.generation,
-            retirement = retirement, requestWritePermission = if (requestWritePermission != null) ({ latestPermission?.invoke() == true }) else null)
+            retirement = retirement, requestWritePermission = if (requestWritePermission != null) ({ latestPermission?.invoke() == true }) else null,
+            allowMeetingPromotion = onPromotedMeeting != null)
     }
     LaunchedEffect(controller.state.loading) {
         val state = controller.state
@@ -179,5 +182,5 @@ internal fun EventWriteWorkflow(
     PhoneEventEditor(controller, calendars, onDismiss, onSaved, onDeleted,
         use24Hour = use24Hour,
         onReplacedLaunch = if (onReplacedLaunch != null) ({ value -> latestReplacement?.invoke(value) }) else null,
-        onDiscarded = onDismiss)
+        onDiscarded = onDismiss, onPromotedMeeting = onPromotedMeeting)
 }
