@@ -614,6 +614,15 @@ complete selected local window with no known or possible conflict may report tha
 This pure contract activates no UI/native read adapter and grants no save authority or coworker
 availability claim; later adapters must mask invalidated or permission-lost contexts immediately.
 
+The native selected-calendar advisory reader pins full calendar identities and requests ALL
+invitations with declined rows included, independently of display, widget and reminder filters.
+It shares provider invalidation and emits Loading before guarded IO for each invalidation. Canonical
+raw calendar authority and batched occupancy metadata are checked through two range/metadata passes
+under one bounded attempt budget. Unknown observations remain possible; partial, unsupported or
+unavailable reads never certify clear time. Complete coverage describes the selected local provider
+window only. This read port activates no UI, save authority, coworker availability or cloud guarantee;
+permission loss without a provider notification still requires lifecycle masking and refresh.
+
 ### M8 — Search, preferences and Android entry points
 
 Search title/location/description with cancellation/debounce and calendar filters. Default range is
