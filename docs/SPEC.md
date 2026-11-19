@@ -652,3 +652,17 @@ upgrades them. Namespace/ACK/child-binding/CAS/retirement and clone-profile chec
 Default Unverified admits no new clone-dependent operation. The local195 checks and separate105
 provider/3 synthetic UI aggregate checks pass; fullCI, native Google/Workspace propagation, moved or
 cancelled exception graph transfer and external daily-driver acceptance remain separate gates.
+
+## Adaptive phone Month overview
+
+At normal text size with adequate phone space, the existing six-week Month grid fits all seven
+columns and six rows at360×640 and393×851. Available dimensions and measured font line sizes set row
+and summary budgets; date targets remain at least48dp and crowded cells cannot grow fitted rows.
+Text is not shrunk. Date algorithms, first weekday, adjacent dates, selected/hidden-weekend access,
+app-local filters, continuation and exact occurrence identity stay unchanged.
+
+Compact summaries/counts are plain text merged into one date action, which opens the complete existing
+day list and each exact event. No tiny independent event target is introduced. Detailed/wide/large-font
+or constrained layouts keep reachable scrolling and existing shortcuts. Four captures were inspected;
+39 functional aggregate checks and the complete2,359-test/debug/lint gate pass. Google main-screen
+interaction/row-count/pixel parity remains unverified; this publication makes no cloud/provider claim.
