@@ -279,7 +279,8 @@ width/height issue is now corrected locally: measured normal-phone layout fits t
 and seven columns, with plain space-budgeted summaries/counts and a complete day-list action. Larger
 text/constrained/wide layouts preserve the detailed scrolling mode. Four synthetic captures were
 inspected at360×640 and393×851, including dark theme and crowded dates. The39 functional checks pass;
-full baseline verification is queued. This matches documented overview intent without claiming live
+the complete2,359-test/debug/lint gate verified the baselines and PR73 passed full CI before merging.
+This matches documented overview intent without claiming live
 Google event-tap gestures, variable row-count behavior or exact pixel/accessibility parity.
 
 
@@ -293,3 +294,8 @@ permission, setting or calendar was changed. This observes a communication wall,
 account-mandatory rule. Main/editor parity remains unverified. Reports/images remain outside Git:
 `/tmp/daylight-google-main-once-20261119-klc9iek1/` and
 `/tmp/daylight-google-main-postload-20261119-0j9gjpd0/`.
+
+A subsequent TLS-verified host curl to `https://accounts.google.com` returned HTTP302 through the
+inherited runtime network configuration. This checks the host's network path only; it does not
+diagnose the Android Play-services failure or demonstrate successful guest connectivity. No guest
+network or trust configuration was changed.

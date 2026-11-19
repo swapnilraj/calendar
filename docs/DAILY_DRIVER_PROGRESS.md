@@ -14,6 +14,12 @@ ZIP14,540,174 bytes, SHA-256 `6f80a06d4268a487779413190d98ad14473c8ba2d5bb58a29c
 Files `/tmp/daylight-verified-2359-31c0039/`; Android debug signer verified. This remains a debug preview,
 not stable owner signing or completed Google/Workspace/physical/beta acceptance.
 
+The bounded Month publication [PR73](https://github.com/swapnilraj/calendar/pull/73) passed35 focused
+checks without re-recording its baselines, then full CI run44473153061 passed in5m24s. It merged as
+`c669ce56d6de7e7a81d75ca7fbe09d0f73cee1fd`. The root aggregate above and the publication branch
+remain separate histories. Authored recurring-create phone publication and Schedule endpoint/presentation
+work are now isolated source packets; neither has new acceptance evidence yet.
+
 
 At source `f0018fbe47379944c6c041145fd2dfba9eaa59f8`, the complete gate **passed all 2,320 tests**
 (app 2,046 + core 257 + weather 17), debug APK assembly and lint, zero failures/errors/skips, in6m47s.
