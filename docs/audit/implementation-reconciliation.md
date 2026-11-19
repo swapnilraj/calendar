@@ -36,8 +36,9 @@ synchronization hardening and the complete passing rerun. The historical timeout
 
 The native receipt6 app-writer harness is source-integrated with19 passing host guards and successful
 AndroidTest pair compilation. Its [source/pair review](evidence/native-app-writer-source-review-2026-11-19.json)
-records exact hashes and lifecycle/cleanup fences; no new native execution is claimed. Immutable
-Following execution remains a separate unintegrated packet. Production clone admission, EXDATE/
+records exact hashes and lifecycle/cleanup fences; no new native execution is claimed. Following
+receipt3 source was integrated afterward at `408857b` with69 isolated checks passing; independent
+review found a pre-dispatch child-read race, so its correction and complete gate remain pending. Production clone admission, EXDATE/
 exception transfer, Google/Workspace propagation, physical-device acceptance, beta and stable owner
 signing/release remain pending. The historical151-row CSV cutoff is unchanged.
 
