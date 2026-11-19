@@ -5,6 +5,22 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+### Self-contained ordinary edit recovery
+
+New one-off UPDATE/DELETE operations freeze receipt4 source and native write plans before dispatch.
+Retry adopts the durable winner and rechecks its original namespace and source; attempted uncertain
+operations never replay. READ-only recovery requires exact native results and complete child proof.
+Reserve journal space for both minimal and complete acknowledgement records before new or adopted
+writes, including maximum-width child IDs. Predictable overflow returns unavailable without writing.
+Retain historical receipt2/3 recovery, recurring retirement restrictions and existing command signatures.
+Unattempted legacy CREATE and explicit temporal UPDATE retries also apply current native-zone
+compatibility admission; Java-only zones unsupported by Android return ZONE without dispatch.
+Attempted/committed recovery and frozen legacy receipt bytes are not migrated or replayed.
+Authored timed bounds must align to whole milliseconds; nonrepresentable precision returns TIME
+before dispatch. Exact milliseconds and negative epochs remain supported. Frozen receipt4 original
+or result bounds with non-native precision stay uncertain and cannot authorize retry or acknowledgement;
+their bytes are never rounded or migrated. Untouched imported fields retain their original values.
+
 ### Explicit organizer edit and cancellation
 
 The injectable organizer-owned meeting workflow retains the original calendar/account, event and

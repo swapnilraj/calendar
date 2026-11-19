@@ -13,7 +13,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowContentResolver
 
-/** Checks the narrow publication seams; no native/account or changed ordinary protocol claim. */
+/** Shared authoring/retirement boundaries; no native/account acceptance claim. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class MeetingPublicationSeamTest {
@@ -58,9 +58,9 @@ class MeetingPublicationSeamTest {
         assertTrue(f.provider.queryCounts.isEmpty()); assertEquals(0, f.provider.batchCount)
     } }
 
-    @Test fun meetingZoneValidationDoesNotChangePublishedOrdinaryErrorPrecedence() = runBlocking { fixture(granted = true) { f ->
+    @Test fun ordinaryAndMeetingAuthoringValidateNativeZoneBeforeMetadata() = runBlocking { fixture(granted = true) { f ->
         val bad = draft.copy(eventZone = ZoneId.of("+05:30"), availability = 99)
-        assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.AVAILABILITY)), f.author.create("ordinary-invalid", bad))
+        assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.ZONE)), f.author.create("ordinary-invalid", bad))
         assertEquals(setOf(InvalidEventField.ZONE), invalid { f.author.meetingOneOffValues(bad, f.provider.calendar) })
         assertNull(f.store.operationHeader("ordinary-invalid")); assertEquals(0, f.provider.batchCount)
     } }

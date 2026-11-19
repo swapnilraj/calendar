@@ -50,10 +50,6 @@ class CalendarWriter(
             if (calendarIdentity(calendar) != target) throw Invalid(setOf(InvalidEventField.CALENDAR))
             writable(calendar)
             validate(draft, calendar, 0, initial = true)
-            // New receipt6 preparation authors a native zone once. Preserve historical
-            // recovery/retry and unrelated edit validation on their existing protocols.
-            if (draft.time is EventTime.Timed && !ProviderTimeZoneCompatibility.isCompatible(requireNotNull(draft.eventZone)))
-                throw Invalid(setOf(InvalidEventField.ZONE))
             val recurring = compileRecurrence(draft)
             val native = values(draft).apply { recurring?.let { plan ->
                 putNull(CalendarContract.Events.DTEND)
@@ -168,7 +164,7 @@ class CalendarWriter(
             authoredAvailability?.let { changes.put(CalendarContract.Events.AVAILABILITY, it) }
             authoredPrivacy?.let { changes.put(CalendarContract.Events.ACCESS_LEVEL, it) }
             if (patch.time is FieldChange.Set || patch.eventZone is FieldChange.Set) {
-                validateTime(draft)
+                validateTime(draft, authored = true)
                 if (source.calendar[CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE] == "0" &&
                     draft.eventZone?.id != source.event[CalendarContract.Events.EVENT_TIMEZONE]) throw Invalid(setOf(InvalidEventField.ZONE))
                 changes.putAll(timeValues(draft))
@@ -191,7 +187,9 @@ class CalendarWriter(
                     .withValue(CalendarContract.Reminders.EVENT_ID, ref.eventId).withValue(CalendarContract.Reminders.MINUTES, minutes)
                     .withValue(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT).withYieldAllowed(false).build() }
             }
-            Prepared(operations, draft.time, ref.calendarId, ref.eventId, calendarIdentity(source.calendar), ref, source)
+            Prepared(operations, draft.time, ref.calendarId, ref.eventId, calendarIdentity(source.calendar), ref, source,
+                nativeChanges = changes.keySet().associateWith { changes.get(it)?.toString() },
+                replacementAlerts = if (patch.alertMinutes is FieldChange.Set) draft.alertMinutes else null)
         }
 
     override suspend fun delete(operationId: String, ref: EventRef, token: EditToken): MutationResult =
@@ -205,7 +203,9 @@ class CalendarWriter(
 
     private data class Prepared(val operations: ArrayList<ContentProviderOperation>, val time: EventTime,
         val calendarId: CalendarId, val eventId: Long?, val namespace: CalendarIdentity,
-        val originalRef: EventRef? = null, val expectedSource: Source? = null, val recurrence: RecurrenceCreationPlan? = null)
+        val originalRef: EventRef? = null, val expectedSource: Source? = null, val recurrence: RecurrenceCreationPlan? = null,
+        val nativeChanges: Map<String, String?> = emptyMap(), val replacementAlerts: List<Int>? = null,
+        val editReceipt: OrdinaryEditReceipt? = null, val reminderInserts: List<Int> = emptyList(), val acknowledgedCounts: Map<Int, Int> = emptyMap())
 
     private suspend fun mutate(id: String, payloadFactory: () -> JSONObject, kind: String, prepare: suspend () -> Prepared): MutationResult =
         withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
@@ -228,14 +228,22 @@ class CalendarWriter(
                     // An old unbound create is not made dispatchable by a newer UI/calendar choice.
                     if (proof(existing) == null) return@withLock MutationResult.Uncertain(id, null)
                 }
-                val prepared = prepare()
+                val editV4 = kind in setOf("UPDATE", "DELETE") && (existing == null || OrdinaryEditReceipt.handles(existing))
+                val initial = if (editV4 && existing != null) preparedEdit(OrdinaryEditReceipt.parse(existing).second) else prepare()
+                var prepared = if (editV4 && initial.editReceipt == null) {
+                    val receipt = OrdinaryEditReceipt(kind, payload, requireNotNull(initial.expectedSource).encode(),
+                        initial.nativeChanges, initial.replacementAlerts, reference(initial.calendarId, requireNotNull(initial.eventId), initial.time))
+                    receipt.validate()
+                    preparedEdit(receipt)
+                } else initial
                 // These checks are repeated immediately before crossing the provider boundary.
                 if (!permissions()) return@withLock MutationResult.PermissionRequired
                 currentCoroutineContext().ensureActive()
                 // A never-dispatched legacy3 request keeps its exact prepared bytes. Only an
                 // explicit successful new dispatch earns receipt5; attempted/committed never upgrade.
                 val legacyPrepared = prepared.recurrence != null && existing?.let { proof(it)?.getInt("version") } == 3
-                val preparedProof = JSONObject().put("version", if (prepared.recurrence == null) 2 else if (legacyPrepared) 3 else 5)
+                var preparedProof = prepared.editReceipt?.prepared(signature, identityJson(prepared.namespace)) ?:
+                    JSONObject().put("version", if (prepared.recurrence == null) 2 else if (legacyPrepared) 3 else 5)
                     .put("stage", "prepared").put("kind", kind).put("signature", signature)
                     .put("command", payload).put("identity", identityJson(prepared.namespace))
                 prepared.recurrence?.let {
@@ -247,11 +255,23 @@ class CalendarWriter(
                         .put("master", Long.MAX_VALUE).put("ackComplete", false).toString()
                     if (minimal.toByteArray(Charsets.UTF_8).size > readBudgets.maxCanonicalBytes) throw Invalid(setOf(InvalidEventField.RECURRENCE))
                 }
+                prepared.editReceipt?.let { preflightEditCommit(it, preparedProof) }
                 store.prepare(id, signature, kind, preparedProof.toString())
                 val persisted = store.operation(id) ?: error("Operation journal unavailable")
                 if (persisted.signature != signature || persisted.kind != kind) return@withLock MutationResult.Conflict(null)
                 if (persisted.phase == "ABANDONED") return@withLock MutationResult.Retired(id)
+                if (editV4 && OrdinaryEditReceipt.handles(persisted)) {
+                    // Another writer may have won preparation. Its immutable native plan wins.
+                    val winner = OrdinaryEditReceipt.parse(persisted).second
+                    prepared = preparedEdit(winner)
+                    preparedProof = winner.prepared(signature, identityJson(prepared.namespace))
+                    preflightEditCommit(winner, preparedProof)
+                    val expected = requireNotNull(prepared.expectedSource)
+                    if (source(requireNotNull(prepared.originalRef), expected.event.containsKey("uid2445")).encode() != expected.encode()) throw Stale()
+                    policy(expected)
+                }
                 if (proof(persisted)?.toString() != preparedProof.toString()) return@withLock MutationResult.Uncertain(id, null)
+                if (editV4) currentCoroutineContext().ensureActive()
                 if (!store.attempt(persisted)) return@withLock recover(store.operation(id)!!, allowSafeRetry = false)
                 dispatch = persisted.copy(phase = "ATTEMPTED")
                 attempted = true
@@ -262,6 +282,15 @@ class CalendarWriter(
                 }
                 val results = resolver.applyBatch(CalendarContract.AUTHORITY, prepared.operations)
                 knownId = prepared.eventId ?: CalendarCreateAcknowledgments.insertId(results.getOrNull(1)?.uri, "events")
+                prepared.editReceipt?.let {
+                    val ids = try {
+                        require(results.size == prepared.operations.size)
+                        prepared.acknowledgedCounts.forEach { (index, count) -> require(results[index].count == count) }
+                        prepared.reminderInserts.map { index -> ordinaryInsertedId(results[index].uri, "reminders") }.also { inserted -> require(inserted.distinct().size == inserted.size) }
+                    } catch (_: Exception) { null }
+                    preparedProof.put("ackComplete", ids != null)
+                    ids?.let { preparedProof.put("reminderIds", JSONArray(it)) }
+                }
                 preparedProof.put("stage", "committed")
                 if (prepared.recurrence == null) preparedProof.put("ref", refJson(reference(prepared.calendarId, knownId, prepared.time)))
                 else {
@@ -294,7 +323,7 @@ class CalendarWriter(
                     check(store.mark(requireNotNull(dispatch), "FAILED"))
                     val ref = submitted?.originalRef
                     val changed = if (ref == null) false else try {
-                        source(ref).encode() != submitted?.expectedSource?.encode()
+                        source(ref, submitted?.expectedSource?.event?.containsKey("uid2445") == true).encode() != submitted?.expectedSource?.encode()
                     } catch (_: Stale) { true }
                     if (changed) MutationResult.Conflict(null) else MutationResult.Unavailable
                 } catch (_: Exception) { MutationResult.Uncertain(id, knownId) }
@@ -320,7 +349,12 @@ class CalendarWriter(
     } }
 
     /** Null means legacy, contradictory or unbound journal data; never dispatch or infer a target. */
-    private fun proof(operation: CalendarLocalStore.Operation): JSONObject? = try {
+    private fun proof(operation: CalendarLocalStore.Operation): JSONObject? { return try {
+        if (OrdinaryEditReceipt.handles(operation)) {
+            val (j, receipt) = OrdinaryEditReceipt.parse(operation)
+            require(parseIdentity(j.getJSONObject("identity")) == calendarIdentity(receipt.calendar))
+            return j
+        }
         val json = JSONObject(operation.resultRef ?: error("Missing proof"))
         val version = json.getInt("version")
         require(version in setOf(2, 3, 5) && json.getString("kind") == operation.kind)
@@ -391,7 +425,7 @@ class CalendarWriter(
         }
         }
         json
-    } catch (_: Exception) { null }
+    } catch (_: Exception) { null } }
 
     private suspend fun recover(operation: CalendarLocalStore.Operation, allowSafeRetry: Boolean = true): MutationResult {
         if (operation.phase == "ABANDONED") return MutationResult.Retired(operation.id)
@@ -402,6 +436,7 @@ class CalendarWriter(
         }
         if (operation.phase !in setOf("COMMITTED", "VERIFIED") || proof.getString("stage") != "committed")
             return MutationResult.Uncertain(operation.id, null)
+        if (proof.getInt("version") == 4) return recoverEdit(operation, OrdinaryEditReceipt.parse(operation))
         if (proof.getInt("version") in setOf(3, 5)) {
             val master = proof.getLong("master")
             // Legacy3 never recorded child ACK identity. Matching rows cannot invent it later.
@@ -432,6 +467,139 @@ class CalendarWriter(
         check(store.mark(operation, "VERIFIED"))
         reader.refresh()
         return MutationResult.LocalSaved(result.value.occurrence.ref)
+    }
+
+    /** Build only from the immutable v4 native plan, including on explicit retry. */
+    private fun preparedEdit(receipt: OrdinaryEditReceipt): Prepared {
+        receipt.validate()
+        val source = Source(receipt.event, receipt.calendar, receipt.reminders, receipt.attendees, readBudgets.maxCanonicalBytes)
+        require(source.encode() == receipt.sourceRaw)
+        val operations = assertions(source)
+        val counts = linkedMapOf<Int, Int>()
+        val inserts = arrayListOf<Int>()
+        if (receipt.kind == "DELETE") {
+            counts[operations.size] = 1
+            operations += ContentProviderOperation.newDelete(eventUri(receipt.original.eventId)).withExpectedCount(1).withYieldAllowed(false).build()
+        } else {
+            if (receipt.changes.isNotEmpty()) {
+                counts[operations.size] = 1
+                operations += ContentProviderOperation.newUpdate(eventUri(receipt.original.eventId)).withValues(receipt.values()).withExpectedCount(1).withYieldAllowed(false).build()
+            }
+            receipt.alerts?.let { alerts ->
+                val expected = source.alerts.count { it["method"] == "1" }
+                counts[operations.size] = expected
+                operations += ContentProviderOperation.newDelete(CalendarContract.Reminders.CONTENT_URI)
+                    .withSelection("event_id = ? AND method = ?", arrayOf(receipt.original.eventId.toString(), "1"))
+                    .withExpectedCount(expected).withYieldAllowed(false).build()
+                alerts.forEach { minutes ->
+                    inserts += operations.size
+                    operations += ContentProviderOperation.newInsert(CalendarContract.Reminders.CONTENT_URI)
+                        .withValue("event_id", receipt.original.eventId).withValue("minutes", minutes).withValue("method", 1).withYieldAllowed(false).build()
+                }
+            }
+        }
+        checkParcel(operations)
+        val time = EventTime.Timed(receipt.result.instanceStart, receipt.result.instanceEnd)
+        return Prepared(operations, time, receipt.result.calendarId, receipt.result.eventId, calendarIdentity(source.calendar), receipt.original,
+            source, editReceipt = receipt, reminderInserts = inserts, acknowledgedCounts = counts)
+    }
+
+    /** Reserve both possible v4 committed wire shapes before any provider attempt. The distinct
+     * maximum-width IDs are a size bound only; they are never persisted as native identities. */
+    private fun preflightEditCommit(receipt: OrdinaryEditReceipt, prepared: JSONObject) {
+        fun committed(ids: List<Long>?): String = JSONObject(prepared.toString())
+            .put("ackComplete", ids != null).apply { ids?.let { put("reminderIds", JSONArray(it)) } }
+            .put("stage", "committed").put("ref", refJson(receipt.result)).toString()
+        checkStoredJson(committed(null), readBudgets.maxCanonicalBytes)
+        val maximumIds = List(receipt.alerts?.size ?: 0) { Long.MAX_VALUE - it }
+        checkStoredJson(committed(maximumIds), readBudgets.maxCanonicalBytes)
+    }
+
+    private suspend fun recoverEdit(operation: CalendarLocalStore.Operation, parsed: Pair<JSONObject, OrdinaryEditReceipt>): MutationResult {
+        val (proof, receipt) = parsed
+        val ref = receipt.result
+        var namespaceVerified = false
+        fun uncertain() = MutationResult.Uncertain(operation.id, if (namespaceVerified) ref.eventId else null)
+        return try {
+            val target = calendarIdentity(receipt.calendar)
+            fun namespace(): Boolean {
+                namespaceVerified = false
+                if (!hasPermission(Manifest.permission.READ_CALENDAR)) throw SecurityException()
+                val actual = calendar(target.calendarId)
+                namespaceVerified = calendarIdentity(actual) == target && (actual["calendar_access_level"]?.toIntOrNull() ?: -1) >= CalendarContract.Calendars.CAL_ACCESS_READ
+                return namespaceVerified
+            }
+            if (!namespace()) return uncertain()
+            if (!proof.getBoolean("ackComplete")) return uncertain()
+            val expected = receipt.event + receipt.changes + if (receipt.kind == "DELETE") mapOf("deleted" to "1") else emptyMap()
+            var foreignParent = false
+            suspend fun parent(): Boolean {
+                val binding = recurrenceRows(eventUri(ref.eventId), arrayOf("calendar_id"), maxRows = 1).singleOrNull()
+                if (binding == null) return receipt.kind == "DELETE"
+                if (binding["calendar_id"] != target.calendarId.value.toString()) { foreignParent = true; return false }
+                // Event item URIs forbid a selection. The guarded collection query prevents
+                // private payload reads if an ID moves to another calendar between these reads.
+                val selection = "_id = ? AND calendar_id = ?" + if (receipt.event.containsKey("uid2445")) {
+                    if (receipt.event["uid2445"] == null) " AND uid2445 IS NULL" else " AND uid2445 = ?"
+                } else ""
+                val args = arrayListOf(ref.eventId.toString(), target.calendarId.value.toString())
+                receipt.event["uid2445"]?.let { args += it }
+                val actual = recurrenceRows(CalendarContract.Events.CONTENT_URI, expected.keys.toTypedArray(), selection, args.toTypedArray(), 1).singleOrNull()
+                return actual == expected
+            }
+            if (!parent()) return if (foreignParent) MutationResult.Uncertain(operation.id, null) else uncertain()
+            if (receipt.kind == "DELETE") {
+                if (!namespace() || !hasPermission(Manifest.permission.READ_CALENDAR)) return MutationResult.Uncertain(operation.id, null)
+                check(store.mark(operation, "VERIFIED")); reader.refresh()
+                return MutationResult.LocalDeleted(ref)
+            }
+            val guard = "event_id = ? AND calendar_id = ? AND organizer = ?" +
+                if (receipt.event.containsKey("uid2445")) { if (receipt.event["uid2445"] == null) " AND uid2445 IS NULL" else " AND uid2445 = ?" } else ""
+            val args = arrayListOf(ref.eventId.toString(), ref.calendarId.value.toString(), requireNotNull(receipt.event["organizer"]))
+            if (receipt.event["uid2445"] != null) args += requireNotNull(receipt.event["uid2445"])
+            // Collection reminders are raw in native CalendarProvider: scan IDs/membership only.
+            val expectedReminders = if (receipt.alerts == null) receipt.reminders else {
+                val ids = proof.getJSONArray("reminderIds")
+                receipt.reminders.filter { it["method"] != "1" } + receipt.alerts.mapIndexed { index, minutes ->
+                    mapOf("_id" to ids.getLong(index).toString(), "event_id" to ref.eventId.toString(), "minutes" to minutes.toString(), "method" to "1")
+                }
+            }
+            suspend fun reminderMembership(): Boolean {
+                val actual = recurrenceRows(CalendarContract.Reminders.CONTENT_URI, arrayOf("_id", "event_id"), "event_id = ?", arrayOf(ref.eventId.toString()), readBudgets.maxSeriesChildren)
+                return actual.size == expectedReminders.size && actual.toSet().size == actual.size &&
+                    actual.toSet() == expectedReminders.map { it.filterKeys { key -> key in setOf("_id", "event_id") } }.toSet()
+            }
+            if (!reminderMembership()) return uncertain()
+            expectedReminders.forEach { expectedRow ->
+                val id = requireNotNull(expectedRow["_id"]).toLong()
+                val actual = recurrenceRows(ContentUris.withAppendedId(CalendarContract.Reminders.CONTENT_URI, id), reminderFields, guard, args.toTypedArray(), 1).singleOrNull()
+                if (actual != expectedRow) return uncertain()
+            }
+            val guests = recurrenceRows(CalendarContract.Attendees.CONTENT_URI, attendeeFields, guard, args.toTypedArray(), readBudgets.maxSeriesChildren)
+            if (guests.size != receipt.attendees.size || guests.toSet().size != guests.size || guests.toSet() != receipt.attendees.toSet()) return uncertain()
+            val instanceUri = CalendarContract.Instances.CONTENT_URI.buildUpon().apply {
+                ContentUris.appendId(this, ref.instanceStart.toEpochMilli()); ContentUris.appendId(this, Math.addExact(ref.instanceStart.toEpochMilli(), 1))
+            }.build()
+            val instance = recurrenceRows(instanceUri, arrayOf("event_id", "calendar_id", "begin", "end", "allDay", "original_id", "original_sync_id", "originalInstanceTime"),
+                "event_id = ? AND calendar_id = ? AND begin = ?", arrayOf(ref.eventId.toString(), ref.calendarId.value.toString(), ref.instanceStart.toEpochMilli().toString()), 1).singleOrNull() ?: return uncertain()
+            if (instance["event_id"] != ref.eventId.toString() || instance["calendar_id"] != ref.calendarId.value.toString() ||
+                instance["begin"] != ref.instanceStart.toEpochMilli().toString() || instance["end"] != ref.instanceEnd.toEpochMilli().toString() || instance["allDay"] != expected["allDay"] ||
+                listOf("original_id", "original_sync_id", "originalInstanceTime").any { !instance[it].isNullOrBlank() }) return uncertain()
+            if (!reminderMembership() || !parent() || !namespace() || !hasPermission(Manifest.permission.READ_CALENDAR)) return uncertain()
+            check(store.mark(operation, "VERIFIED")); reader.refresh()
+            MutationResult.LocalSaved(ref)
+        } catch (security: SecurityException) { throw security }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { uncertain() }
+    }
+
+    private fun ordinaryInsertedId(uri: Uri?, table: String): Long {
+        require(uri != null && uri.scheme == "content" && uri.authority == CalendarContract.AUTHORITY && uri.encodedQuery == null && uri.encodedFragment == null)
+        val parts = uri.pathSegments
+        require(parts.size == 2 && parts[0] == table)
+        val id = parts[1].toLong()
+        require(id > 0 && uri.encodedPath == "/$table/$id")
+        return id
     }
 
     /** Receipt5 requires acknowledged identities plus exact local row/child/instance proof. */
@@ -510,12 +678,12 @@ class CalendarWriter(
     // Runtime WRITE is required only for provider mutation, not editor eligibility or recovery.
     private fun permissions() = hasPermission(Manifest.permission.READ_CALENDAR) && hasPermission(Manifest.permission.WRITE_CALENDAR)
 
-    private fun source(ref: EventRef): Source {
+    private fun source(ref: EventRef, includeIdentity: Boolean = true): Source {
         // Eligibility discovery is READ-only, but it must not inspect private event/child fields
         // on calendars that cannot support this mutation path (including free/busy access).
         val calendar = calendar(ref.calendarId)
         writable(calendar)
-        val event = rows(eventUri(ref.eventId), eventFields).singleOrNull() ?: throw Stale()
+        val event = rows(eventUri(ref.eventId), if (includeIdentity) eventFields + arrayOf("uid2445", "_sync_id") else eventFields).singleOrNull() ?: throw Stale()
         if (event[CalendarContract.Events.CALENDAR_ID]?.toLongOrNull() != ref.calendarId.value) throw Stale()
         val recurring = listOf(CalendarContract.Events.RRULE, CalendarContract.Events.RDATE, CalendarContract.Events.EXRULE,
             CalendarContract.Events.EXDATE, CalendarContract.Events.ORIGINAL_ID, CalendarContract.Events.ORIGINAL_INSTANCE_TIME,
@@ -534,7 +702,7 @@ class CalendarWriter(
 
     private fun checkedSource(ref: EventRef, token: EditToken): Source {
         val expected = store.edit(token.value) ?: throw Stale()
-        val current = source(ref)
+        val current = source(ref, JSONObject(expected).getJSONObject("event").has("uid2445"))
         if (current.encode() != expected) throw Stale()
         return current
     }
@@ -573,16 +741,20 @@ class CalendarWriter(
     private fun validateTime(draft: EventDraft) {
         if (draft.time is EventTime.Timed && draft.eventZone == null) throw Invalid(setOf(InvalidEventField.ZONE))
     }
-    // Meeting authoring alone adds the native string-dialect check. Existing ordinary callers
-    // retain their published one-argument validation and exact error precedence.
+    // Explicit temporal authoring uses the native string-dialect check. Unrelated imported
+    // fields retain the one-argument path and their original raw values.
     private fun validateTime(draft: EventDraft, authored: Boolean) {
         validateTime(draft)
+        val time = draft.time
+        if (authored && time is EventTime.Timed &&
+            (time.start.nano % 1_000_000 != 0 || time.end.nano % 1_000_000 != 0))
+            throw Invalid(setOf(InvalidEventField.TIME))
         if (authored && draft.time is EventTime.Timed &&
             !ProviderTimeZoneCompatibility.isCompatible(requireNotNull(draft.eventZone)))
             throw Invalid(setOf(InvalidEventField.ZONE))
     }
     private fun validate(draft: EventDraft, calendar: Map<String, String?>, preservedReminderCount: Int, initial: Boolean = false) {
-        validateTime(draft)
+        validateTime(draft, authored = initial)
         validateMetadata(draft.availability, draft.privacy, calendar)
         if (initial && calendar[CalendarContract.Calendars.CAN_MODIFY_TIME_ZONE] == "0" && draft.time is EventTime.Timed &&
             draft.eventZone?.id != calendar[CalendarContract.Calendars.CALENDAR_TIME_ZONE]) throw Invalid(setOf(InvalidEventField.ZONE))
