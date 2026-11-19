@@ -210,10 +210,22 @@ class CalendarWriter(
                 // These checks are repeated immediately before crossing the provider boundary.
                 if (!permissions()) return@withLock MutationResult.PermissionRequired
                 currentCoroutineContext().ensureActive()
+                // A never-dispatched legacy3 request keeps its exact prepared bytes. Only an
+                // explicit successful new dispatch earns receipt5; attempted/committed never upgrade.
+                val legacyPrepared = prepared.recurrence != null && existing?.let { proof(it)?.getInt("version") } == 3
                 var preparedProof = prepared.editReceipt?.prepared(signature, identityJson(prepared.namespace)) ?:
-                    JSONObject().put("version", if (prepared.recurrence == null) 2 else 3).put("stage", "prepared").put("kind", kind).put("signature", signature)
+                    JSONObject().put("version", if (prepared.recurrence == null) 2 else if (legacyPrepared) 3 else 5)
+                    .put("stage", "prepared").put("kind", kind).put("signature", signature)
                     .put("command", payload).put("identity", identityJson(prepared.namespace))
-                prepared.recurrence?.let { preparedProof.put("provider", providerJson(it)) }
+                prepared.recurrence?.let {
+                    preparedProof.put("provider", providerJson(it))
+                    if (!legacyPrepared) preparedProof.put("layout", CalendarCreateAcknowledgments.layout(draftFromJson(payload).alertMinutes.size))
+                    // Reserve space for a minimal known-master commit before native dispatch.
+                    val minimal = JSONObject(preparedProof.toString()).put("version", 5).put("stage", "committed")
+                        .put("layout", CalendarCreateAcknowledgments.layout(draftFromJson(payload).alertMinutes.size))
+                        .put("master", Long.MAX_VALUE).put("ackComplete", false).toString()
+                    if (minimal.toByteArray(Charsets.UTF_8).size > readBudgets.maxCanonicalBytes) throw Invalid(setOf(InvalidEventField.RECURRENCE))
+                }
                 store.prepare(id, signature, kind, preparedProof.toString())
                 val persisted = store.operation(id) ?: error("Operation journal unavailable")
                 if (persisted.signature != signature || persisted.kind != kind) return@withLock MutationResult.Conflict(null)
@@ -238,12 +250,7 @@ class CalendarWriter(
                     return@withLock MutationResult.PermissionRequired
                 }
                 val results = resolver.applyBatch(CalendarContract.AUTHORITY, prepared.operations)
-                knownId = if (prepared.recurrence == null) prepared.eventId ?: results.getOrNull(1)?.uri?.let(ContentUris::parseId)
-                    ?: error("Provider did not identify created event")
-                else results.getOrNull(1)?.uri?.let { uri ->
-                    require(uri.authority == CalendarContract.AUTHORITY && uri.pathSegments.size == 2 && uri.pathSegments.first() == "events")
-                    ContentUris.parseId(uri).also { require(it >= 0) }
-                } ?: error("Provider did not identify created series")
+                knownId = prepared.eventId ?: CalendarCreateAcknowledgments.insertId(results.getOrNull(1)?.uri, "events")
                 prepared.editReceipt?.let {
                     val ids = try {
                         require(results.size == prepared.operations.size)
@@ -255,8 +262,20 @@ class CalendarWriter(
                 }
                 preparedProof.put("stage", "committed")
                 if (prepared.recurrence == null) preparedProof.put("ref", refJson(reference(prepared.calendarId, knownId, prepared.time)))
-                else preparedProof.put("master", knownId)
-                check(store.mark(requireNotNull(dispatch), "COMMITTED", preparedProof.toString()))
+                else {
+                    preparedProof.put("version", 5).put("master", knownId).put("ackComplete", false)
+                        .put("layout", CalendarCreateAcknowledgments.layout(draftFromJson(payload).alertMinutes.size))
+                }
+                val minimalCommit = preparedProof.toString()
+                val committed = if (prepared.recurrence == null) minimalCommit else try {
+                    val facts = CalendarCreateAcknowledgments.capture(results, prepared.operations.size)
+                    if (facts == null) minimalCommit else JSONObject(minimalCommit).put("ackFacts", facts).toString().let {
+                        if (it.toByteArray(Charsets.UTF_8).size <= readBudgets.maxCanonicalBytes) it else minimalCommit
+                    }
+                } catch (_: Exception) { minimalCommit }
+                // Persist the canonical known master and raw bounded facts before interpreting
+                // child identities or reading any provider payload. Capture failure stays known.
+                check(store.mark(requireNotNull(dispatch), "COMMITTED", committed))
                 recover(store.operation(id)!!, allowSafeRetry = false)
             } catch (_: ProviderReadLimitExceeded) { if (attempted) MutationResult.Uncertain(id, knownId) else MutationResult.Unavailable }
             catch (denied: Denial) { MutationResult.Denied(denied.reason) }
@@ -302,7 +321,7 @@ class CalendarWriter(
         }
         val json = JSONObject(operation.resultRef ?: error("Missing proof"))
         val version = json.getInt("version")
-        require(version in setOf(2, 3) && json.getString("kind") == operation.kind)
+        require(version in setOf(2, 3, 5) && json.getString("kind") == operation.kind)
         val command = json.getJSONObject("command")
         require(json.getString("signature") == operation.signature && signature(operation.kind, command) == operation.signature)
         val target = parseIdentity(json.getJSONObject("identity"))
@@ -325,14 +344,32 @@ class CalendarWriter(
             }
             else -> error("Unknown kind")
         }
-        if (version == 3) {
+        if (version in setOf(3, 5)) {
             require(operation.kind == "CREATE" && command.has("recurrence"))
             val plan = requireNotNull(compileRecurrence(draftFromJson(command)))
             require(json.getJSONObject("provider").toString() == providerJson(plan).toString())
+            val draft = draftFromJson(command)
+            if (version == 5) require(json.getJSONObject("layout").toString() == CalendarCreateAcknowledgments.layout(draft.alertMinutes.size).toString())
             when (json.getString("stage")) {
-                "prepared" -> require(!json.has("ref") && !json.has("master") && !json.has("firstRef"))
+                "prepared" -> {
+                    require(!json.has("ref") && !json.has("master") && !json.has("firstRef"))
+                    if (version == 5) {
+                        require(operation.phase in setOf("PREPARED", "FAILED", "ATTEMPTED"))
+                        require(!json.has("ackFacts") && !json.has("ackComplete") && !json.has("reminderIds"))
+                    }
+                }
                 "committed" -> {
                     require(!json.has("ref") && json.getLong("master") >= 0)
+                    if (version == 5) {
+                        require(operation.phase in setOf("COMMITTED", "VERIFIED"))
+                        val master = CalendarCreateAcknowledgments.integer(json.get("master")); require(master > 0)
+                        require(json.get("ackComplete") is Boolean)
+                        if (operation.phase == "VERIFIED") {
+                            require(json.getBoolean("ackComplete") && json.has("firstRef"))
+                            val ids = requireNotNull(CalendarCreateAcknowledgments.reminderIds(json.optJSONObject("ackFacts"), draft.alertMinutes.size, master))
+                            require(CalendarCreateAcknowledgments.positiveIds(json.getJSONArray("reminderIds")) == ids)
+                        } else require(!json.getBoolean("ackComplete") && !json.has("firstRef") && !json.has("reminderIds"))
+                    }
                     if (json.has("firstRef")) require(parseRecurringRef(json.getJSONObject("firstRef")) == expectedFirstRef(target.calendarId, json.getLong("master"), plan))
                 }
                 else -> error("Unknown stage")
@@ -364,8 +401,10 @@ class CalendarWriter(
         if (operation.phase !in setOf("COMMITTED", "VERIFIED") || proof.getString("stage") != "committed")
             return MutationResult.Uncertain(operation.id, null)
         if (proof.getInt("version") == 4) return recoverEdit(operation, OrdinaryEditReceipt.parse(operation))
-        if (proof.getInt("version") == 3) {
+        if (proof.getInt("version") in setOf(3, 5)) {
             val master = proof.getLong("master")
+            // Legacy3 never recorded child ACK identity. Matching rows cannot invent it later.
+            if (proof.getInt("version") == 3) return MutationResult.Uncertain(operation.id, master.takeIf { it > 0 })
             return try { recoverRecurring(operation, proof) }
             catch (denied: SecurityException) { throw denied }
             catch (cancelled: CancellationException) { throw cancelled }
@@ -516,7 +555,7 @@ class CalendarWriter(
         return id
     }
 
-    /** v3 acknowledges a known master only after exact local row/alert/first-instance proof. */
+    /** Receipt5 requires acknowledged identities plus exact local row/child/instance proof. */
     private suspend fun recoverRecurring(operation: CalendarLocalStore.Operation, proof: JSONObject): MutationResult {
         val master = proof.getLong("master")
         fun uncertain() = MutationResult.Uncertain(operation.id, master)
@@ -526,18 +565,27 @@ class CalendarWriter(
         val target = parseIdentity(proof.getJSONObject("identity"))
         val calendar = try { calendar(target.calendarId) } catch (_: Stale) { return uncertain() }
         if (calendarIdentity(calendar) != target || (calendar[CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL]?.toIntOrNull() ?: -1) < CalendarContract.Calendars.CAL_ACCESS_READ) return uncertain()
+        val acknowledged = CalendarCreateAcknowledgments.reminderIds(proof.optJSONObject("ackFacts"), draft.alertMinutes.size, master) ?: return uncertain()
         val expected = values(draft).apply {
             putNull(CalendarContract.Events.DTEND)
             put(CalendarContract.Events.DURATION, plan.durationRaw); put(CalendarContract.Events.RRULE, plan.ruleRaw)
             put(CalendarContract.Events.EVENT_TIMEZONE, providerZone(plan)); put(CalendarContract.Events.EVENT_END_TIMEZONE, providerZone(plan))
         }
         val fields = (expected.keySet() + listOf("_id", "calendar_id", "deleted", "rdate", "exrule", "exdate")).toTypedArray()
-        val actual = recurrenceRows(eventUri(master), fields, maxRows = 1).singleOrNull() ?: return uncertain()
+        val actual = recurrenceRows(CalendarContract.Events.CONTENT_URI, fields, "_id = ? AND calendar_id = ?", arrayOf(master.toString(), target.calendarId.value.toString()), 1).singleOrNull() ?: return uncertain()
         if (actual["_id"]?.toLongOrNull() != master || actual["calendar_id"]?.toLongOrNull() != target.calendarId.value || actual["deleted"] != "0" ||
             listOf("rdate", "exrule", "exdate").any { !actual[it].isNullOrBlank() } || expected.keySet().any { actual[it] != expected.get(it)?.toString() }) return uncertain()
-        val reminders = recurrenceRows(CalendarContract.Reminders.CONTENT_URI, reminderFields, "event_id = ?", arrayOf(master.toString()), readBudgets.maxSeriesChildren)
-        if (reminders.any { it["event_id"]?.toLongOrNull() != master || it["method"] != "1" || it["minutes"]?.toIntOrNull() == null } ||
-            reminders.map { it["minutes"]!!.toInt() }.sorted() != draft.alertMinutes.sorted()) return uncertain()
+        suspend fun membership(): Boolean {
+            val rows = recurrenceRows(CalendarContract.Reminders.CONTENT_URI, arrayOf("_id", "event_id"), "event_id = ?", arrayOf(master.toString()), readBudgets.maxSeriesChildren)
+            val ids = rows.map { it["_id"]?.toLongOrNull() ?: return false }
+            return rows.all { it["event_id"] == master.toString() } && ids.size == acknowledged.size && ids.distinct().size == ids.size && ids.toSet() == acknowledged.toSet()
+        }
+        if (!membership()) return uncertain()
+        acknowledged.forEachIndexed { index, child ->
+            val row = recurrenceRows(ContentUris.withAppendedId(CalendarContract.Reminders.CONTENT_URI, child), reminderFields,
+                "event_id = ? AND calendar_id = ?", arrayOf(master.toString(), target.calendarId.value.toString()), 1).singleOrNull() ?: return uncertain()
+            if (row["_id"] != child.toString() || row["event_id"] != master.toString() || row["method"] != "1" || row["minutes"] != draft.alertMinutes[index].toString()) return uncertain()
+        }
         val expectedFirst = expectedFirstRef(target.calendarId, master, plan)
         val bounds = CalendarContract.Instances.CONTENT_URI.buildUpon().apply {
             ContentUris.appendId(this, minOf(plan.dtstart, expectedFirst.instanceStart).toEpochMilli())
@@ -551,8 +599,9 @@ class CalendarWriter(
             first["begin"]?.toLongOrNull() != expectedFirst.instanceStart.toEpochMilli() || first["end"]?.toLongOrNull() != expectedFirst.instanceEnd.toEpochMilli() ||
             first["allDay"] != (if (plan.allDay) "1" else "0")) return uncertain()
         if (listOf("original_id", "original_sync_id", "originalInstanceTime").any { !first[it].isNullOrBlank() }) return uncertain()
-        if (calendarIdentity(calendar(target.calendarId)) != target || !hasPermission(Manifest.permission.READ_CALENDAR)) return uncertain()
-        check(store.mark(operation, "VERIFIED", JSONObject(proof.toString()).put("firstRef", recurringRefJson(expectedFirst)).toString()))
+        if (!membership() || calendarIdentity(calendar(target.calendarId)) != target || !hasPermission(Manifest.permission.READ_CALENDAR)) return uncertain()
+        check(store.mark(operation, "VERIFIED", JSONObject(proof.toString()).put("ackComplete", true)
+            .put("reminderIds", JSONArray(acknowledged)).put("firstRef", recurringRefJson(expectedFirst)).toString()))
         reader.refresh()
         return MutationResult.LocalSaved(expectedFirst)
     }

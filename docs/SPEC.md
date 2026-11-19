@@ -60,6 +60,22 @@ uncertain. Legacy receipt2/3 recovery stays on its existing protocol; receipt2 e
 retained snapshots. Providers that assign or change a formerly NULL event UID/sync identity after
 commit cannot be inferred to match; their recovery stays conservative pending account verification.
 
+New ordinary recurring CREATE operations use receipt5 with a frozen result layout. A canonical
+positive master acknowledgement and bounded raw result facts are persisted as COMMITTED before
+child acknowledgements are interpreted or payloads are read. Missing, contradictory or oversized
+child evidence keeps the known master uncertain. Success requires exact unique acknowledged
+reminder IDs mapped to their authored alert indices, complete membership/payload, the authored master,
+actual first-instance bounds and the unchanged calendar namespace. Invalid master acknowledgements
+remain ATTEMPTED with no guessed ID. Ordinary one-off CREATE also requires a canonical positive
+master acknowledgement; its receipt2 wire format remains unchanged.
+
+Legacy receipt3 commits lack child acknowledgement bindings and remain uncertain without invented
+proof or replay. Explicit exact retry of a proven undispatched/rolled-back receipt3 operation keeps
+its prepared bytes and can earn receipt5 only after the new dispatch. Frozen commands and retirement
+fingerprints do not change. Recurring-create proof still recompiles the stored recurrence under the
+current rules and does not generate a stable UID; immutable source-free native plans and UID-bound
+recovery remain separate work. No Google/Workspace delivery or provider-clone admission follows.
+
 Owned one-off meeting details open a dedicated full-height organizer editor after exact occurrence,
 calendar namespace and issued-rights checks. Existing guest identity and response metadata are
 read-only; supported guest additions, removals and role changes produce sparse native commands.
