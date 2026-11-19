@@ -265,7 +265,8 @@ class NativeCalendarProviderProbe : Instrumentation() {
             val app = NativeCalendarWriterProbeCases(context, state, calendar(), identity,
                 beforeQuery = { consumeAppQuery() }, beforeBatch = { count ->
                     deadline(); requireCondition(batchAssertions + count <= 128, "BATCH_ASSERTION_BUDGET"); batchAssertions += count; saveAppState()
-                }, guard = ::guardCalendar, persist = ::saveAppState, watchdog = watchdog, progress = ::step)
+                }, guard = ::guardCalendar, persist = ::saveAppState, watchdog = watchdog, progress = ::step,
+                diagnostic = { fields -> report.put("appDiagnostic", JSONObject(fields)) })
             try {
                 if (appPhase == "CREATE_STAGE") {
                     app.create(); state.phase = "STAGED"; successStatus = "STAGED"

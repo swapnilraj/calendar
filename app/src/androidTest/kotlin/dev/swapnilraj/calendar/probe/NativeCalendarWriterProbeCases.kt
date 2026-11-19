@@ -26,6 +26,7 @@ internal class NativeCalendarWriterProbeCases(
     private val beforeQuery: () -> Unit, private val beforeBatch: (Int) -> Unit,
     private val guard: () -> Unit, private val persist: () -> Unit,
     private val watchdog: ScheduledExecutorService, private val progress: (String) -> Unit,
+    private val diagnostic: (Map<String, Any>) -> Unit,
 ) {
     private val native = context.contentResolver
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -41,6 +42,16 @@ internal class NativeCalendarWriterProbeCases(
     private var minimalBindings = 0
     private var readOnly = false
     private var forbiddenWrites = 0
+    private var lastMutation: NativeProbeMutationFacts? = null
+    private var lastQueryFailure: NativeProbeQueryFacts? = null
+    private fun publishDiagnostic() = diagnostic(buildMap {
+        lastMutation?.let { put("mutation", it.safeFields()) }
+        lastQueryFailure?.let { put("queryFailure", it.safeFields()) }
+    })
+    private fun mutationObserved(facts: NativeProbeMutationFacts) { lastMutation = facts; publishDiagnostic() }
+    private fun queryFailed(kind: NativeProbeQueryFailureKind, stage: NativeProbeQueryStage, scope: NativeProbeQueryScope? = null) {
+        lastQueryFailure = NativeProbeQueryFacts(kind, stage, scope); publishDiagnostic()
+    }
     private val forwarding = object : ContentProvider() {
         override fun onCreate() = true
         override fun getType(uri: Uri): String? = null
@@ -51,15 +62,40 @@ internal class NativeCalendarWriterProbeCases(
             query(uri, fields, selection, args, sort, null)
         override fun query(uri: Uri, fields: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?, cancellation: CancellationSignal?): Cursor? {
             beforeQuery()
-            check(!blockPostAck || !acknowledged) { "INJECTED_POST_ACK_QUERY_FAILURE" }
-            val projection = requireNotNull(fields).toList(); check(projection.isNotEmpty() && projection.size <= 128 && sort == null)
-            validateQuery(uri, projection, selection, args?.toList())
+            if (blockPostAck && acknowledged) {
+                queryFailed(NativeProbeQueryFailureKind.INJECTED_POST_ACK_READ, NativeProbeQueryStage.REQUEST_GUARD)
+                error("INJECTED_POST_ACK_QUERY_FAILURE")
+            }
+            val projection = fields?.toList()
+            if (projection.isNullOrEmpty() || projection.size > 128) {
+                queryFailed(NativeProbeQueryFailureKind.HARNESS_PROJECTION_REJECTED, NativeProbeQueryStage.REQUEST_GUARD)
+                error("PROBE_PROJECTION_GUARD")
+            }
+            val scope = try { validateQuery(uri, projection, selection, args?.toList()) }
+                catch (failure: Exception) {
+                    queryFailed(NativeProbeQueryFailureKind.HARNESS_SCOPE_REJECTED, NativeProbeQueryStage.REQUEST_GUARD)
+                    throw failure
+                }
+            if (!nativeProbeSortAllowed(scope, sort)) {
+                queryFailed(NativeProbeQueryFailureKind.HARNESS_SORT_REJECTED, NativeProbeQueryStage.REQUEST_GUARD, scope)
+                error("PROBE_SORT_GUARD")
+            }
+            if (scope == NativeProbeQueryScope.REMINDER_MEMBERSHIP) membershipQueries++
+            if (scope == NativeProbeQueryScope.GUARDED_REMINDER_ITEM) guardedChildQueries++
             val signal = cancellation ?: CancellationSignal()
             val deadline = watchdog.schedule({ signal.cancel() }, 30, TimeUnit.SECONDS)
             var opened: Cursor? = null
+            var diagnosed = false
             try {
-                val cursor = requireNotNull(native.query(uri, fields, selection, args, sort, signal)).also { opened = it }
-                check(cursor.columnCount <= 128 && cursor.count <= 32)
+                // Preserve the exact admitted sort; never erase/rewrite the real app's query.
+                val cursor = native.query(uri, fields, selection, args, sort, signal)?.also { opened = it } ?: run {
+                    diagnosed = true; queryFailed(NativeProbeQueryFailureKind.NATIVE_NULL_CURSOR, NativeProbeQueryStage.DELEGATE_QUERY, scope)
+                    error("PROBE_NULL_CURSOR")
+                }
+                if (cursor.columnCount > 128 || cursor.count > 32) {
+                    diagnosed = true; queryFailed(NativeProbeQueryFailureKind.NATIVE_CURSOR_LIMIT, NativeProbeQueryStage.DELEGATE_QUERY, scope)
+                    error("PROBE_CURSOR_LIMIT")
+                }
                 if (uri.pathSegments == listOf("events") && projection.toSet() == setOf("_id", "calendar_id", "uid2445")) {
                     minimalBindings++
                     val c = requireNotNull(activeRecord)
@@ -68,7 +104,11 @@ internal class NativeCalendarWriterProbeCases(
                     cursor.moveToPosition(-1)
                 }
                 return object : CursorWrapper(cursor) { override fun close() { try { super.close() } finally { deadline.cancel(false) } } }
-            } catch (failure: Throwable) { try { opened?.close() } finally { deadline.cancel(false) }; throw failure }
+            } catch (failure: Throwable) {
+                if (!diagnosed) queryFailed(if (failure is android.os.OperationCanceledException) NativeProbeQueryFailureKind.SDK_CANCELLATION
+                    else nativeProbeQueryFailure(failure), NativeProbeQueryStage.DELEGATE_QUERY, scope)
+                try { opened?.close() } finally { deadline.cancel(false) }; throw failure
+            }
         }
         override fun applyBatch(operations: ArrayList<ContentProviderOperation>): Array<ContentProviderResult> {
             if (readOnly) return forbidden()
@@ -134,15 +174,18 @@ internal class NativeCalendarWriterProbeCases(
         for (recipe in recipes()) {
             progress("app-create:${recipe.label}"); guard()
             active = recipe; activeRecord = null; acknowledged = false; bound = false; blockPostAck = recipe.fault
+            lastMutation = null; lastQueryFailure = null
             val result = writer.create(recipe.operation, recipe.draft()) // Exactly one call, including uncertain outcomes.
-            val op = requireNotNull(store.operation(recipe.operation)); val (proof, receipt) = OrdinaryCreateReceipt.parse(op, 1024 * 1024)
-            val row = requireNotNull(activeRecord)
-            check(receipt.plan.uid == row.getString("uid") && receipt.prepared().getString("planDigest") == row.getString("digest"))
-            if (recipe.fault) check(result == MutationResult.Uncertain(recipe.operation, row.getLong("id")) && op.phase == "COMMITTED" && proof.has("ackFacts") && !proof.getBoolean("ackComplete"))
-            else check(result == MutationResult.LocalSaved(receipt.plan.ref(identity.calendarId, row.getLong("id"))) && op.phase == "VERIFIED")
-            check(CalendarCreateAcknowledgments.reminderIds(proof.optJSONObject("ackFacts"), recipe.alerts.size, row.getLong("id")) ==
-                (0 until row.getJSONArray("reminders").length()).map { row.getJSONArray("reminders").getLong(it) })
-            row.put("phase", op.phase); persist()
+            withNativeProbeMutationFacts(result, ::mutationObserved) {
+                val op = requireNotNull(store.operation(recipe.operation)); val (proof, receipt) = OrdinaryCreateReceipt.parse(op, 1024 * 1024)
+                val row = requireNotNull(activeRecord)
+                check(receipt.plan.uid == row.getString("uid") && receipt.prepared().getString("planDigest") == row.getString("digest"))
+                if (recipe.fault) check(result == MutationResult.Uncertain(recipe.operation, row.getLong("id")) && op.phase == "COMMITTED" && proof.has("ackFacts") && !proof.getBoolean("ackComplete"))
+                else check(result == MutationResult.LocalSaved(receipt.plan.ref(identity.calendarId, row.getLong("id"))) && op.phase == "VERIFIED")
+                check(CalendarCreateAcknowledgments.reminderIds(proof.optJSONObject("ackFacts"), recipe.alerts.size, row.getLong("id")) ==
+                    (0 until row.getJSONArray("reminders").length()).map { row.getJSONArray("reminders").getLong(it) })
+                row.put("phase", op.phase); persist()
+            }
         }
         check(nativeBatches == 6 && state.cases.length() == 6 && forbiddenWrites == 0)
     }
@@ -161,11 +204,13 @@ internal class NativeCalendarWriterProbeCases(
             repeat(2) { index ->
                 bound = false
                 val result = writer.recover(recipe.operation)
-                val op = requireNotNull(store.operation(recipe.operation)); val (_, receipt) = OrdinaryCreateReceipt.parse(op, 1024 * 1024)
-                check(result == MutationResult.LocalSaved(receipt.plan.ref(identity.calendarId, row.getLong("id"))) && op.phase == "VERIFIED")
-                check(receipt.plan.uid == row.getString("uid") && receipt.prepared().getString("planDigest") == row.getString("digest"))
-                check(receipt.plan.firstStart.toEpochMilli() == row.getLong("start") && receipt.plan.firstEnd.toEpochMilli() == row.getLong("end"))
-                row.put("phase", "VERIFIED").put("recoveries", index + 1); persist()
+                withNativeProbeMutationFacts(result, ::mutationObserved) {
+                    val op = requireNotNull(store.operation(recipe.operation)); val (_, receipt) = OrdinaryCreateReceipt.parse(op, 1024 * 1024)
+                    check(result == MutationResult.LocalSaved(receipt.plan.ref(identity.calendarId, row.getLong("id"))) && op.phase == "VERIFIED")
+                    check(receipt.plan.uid == row.getString("uid") && receipt.prepared().getString("planDigest") == row.getString("digest"))
+                    check(receipt.plan.firstStart.toEpochMilli() == row.getLong("start") && receipt.plan.firstEnd.toEpochMilli() == row.getLong("end"))
+                    row.put("phase", "VERIFIED").put("recoveries", index + 1); persist()
+                }
             }
         }
         check(nativeBatches == 0 && forbiddenWrites == 0 && minimalBindings == 24 && membershipQueries == 24 && guardedChildQueries == 16)
@@ -174,28 +219,32 @@ internal class NativeCalendarWriterProbeCases(
             .put("minimalBindingQueries", minimalBindings).put("membershipQueries", membershipQueries).put("guardedChildQueries", guardedChildQueries)
     }
     fun close() { scope.cancel(); store.close() }
-    private fun validateQuery(uri: Uri, fields: List<String>, selection: String?, args: List<String>?) {
+    private fun validateQuery(uri: Uri, fields: List<String>, selection: String?, args: List<String>?): NativeProbeQueryScope {
         check(uri.scheme == "content" && uri.authority == CalendarContract.AUTHORITY && uri.encodedQuery == null && uri.fragment == null)
         val path = uri.pathSegments
-        if (path == listOf("calendars", calendar.toString())) return
+        if (path == listOf("calendars", calendar.toString())) return NativeProbeQueryScope.OWNED_CALENDAR_ITEM
         val row = requireNotNull(activeRecord); val id = row.getLong("id"); val uid = row.getString("uid")
         when (path.firstOrNull()) {
             "events" -> {
                 check(path.size == 1 && selection == "_id = ? AND calendar_id = ? AND uid2445 = ?" && args == listOf(id.toString(), calendar.toString(), uid))
                 if (fields.toSet() != setOf("_id", "calendar_id", "uid2445")) check(bound)
+                return NativeProbeQueryScope.GUARDED_EVENTS
             }
             "reminders" -> {
                 check(bound)
                 if (path.size == 1) {
-                    check(fields.toSet() == setOf("_id", "event_id") && selection == "event_id = ?" && args == listOf(id.toString())); membershipQueries++
+                    check(fields.toSet() == setOf("_id", "event_id") && selection == "event_id = ?" && args == listOf(id.toString()))
+                    return NativeProbeQueryScope.REMINDER_MEMBERSHIP
                 } else {
                     check(path.size == 2 && path[1].toLong() in (0 until row.getJSONArray("reminders").length()).map { row.getJSONArray("reminders").getLong(it) })
-                    check(fields.toSet() == setOf("_id", "event_id", "minutes", "method") && selection == "event_id = ? AND calendar_id = ? AND uid2445 = ?" && args == listOf(id.toString(), calendar.toString(), uid)); guardedChildQueries++
+                    check(fields.toSet() == setOf("_id", "event_id", "minutes", "method") && selection == "event_id = ? AND calendar_id = ? AND uid2445 = ?" && args == listOf(id.toString(), calendar.toString(), uid))
+                    return NativeProbeQueryScope.GUARDED_REMINDER_ITEM
                 }
             }
             "instances" -> {
                 check(bound && path == listOf("instances", "when", (row.getLong("start") - 1).toString(), (row.getLong("start") + 1).toString()))
                 check(selection == "event_id = ? AND calendar_id = ? AND begin = ?" && args == listOf(id.toString(), calendar.toString(), row.getLong("start").toString()))
+                return NativeProbeQueryScope.BOUNDED_INSTANCE
             }
             else -> error("UNOWNED_QUERY")
         }
