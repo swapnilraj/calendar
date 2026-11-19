@@ -15,6 +15,15 @@ never retired or reissued through ordinary event retirement. The draft browser o
 only through its matching host callback and retains corrupt or unknown records. Application routing
 remains separate.
 
+For a modern, unsubmitted ordinary edit of an imported event with a genuinely NULL source zone,
+an explicit permitted zone-picker/manual selection records authored zone intent even when the
+selected zone equals the renderer's displayed fallback. The next explicit Save freezes ZONE.Set
+while unchanged times remain Keep; generic repeated callbacks, opening, travel, restoration and
+permission return do not author a zone. Optional strict zoneAuthored evidence stays outside raw-field
+and frozen-command fingerprints, is omitted when false, survives exact CAS restoration, and cannot
+reauthor legacy/frozen requests or adopt foreign generations. Existing writer admission, receipt4/6
+bytes, source authority and recovery rules remain unchanged.
+
 An explicit Add people action may convert an eligible, current ordinary new-event draft into a
 dedicated meeting-creation draft using one exact-record compare-and-set. Raw fields and authored
 recurrence remain intact; conversion never reads meeting authority, requests calendar permission or
@@ -23,6 +32,8 @@ and drafts with unresolved notices stay ineligible. Once conversion begins, the 
 remains closed even if readback is unavailable; retained browser recovery decides which exact record
 survived. The action is exposed only by a host supplying the meeting callback; application routing
 remains separate.
+
+Incoming CREATE suggestions remain a durable private review before native editing. Raw missing dates, recurrence and guests are retained for explicit correction rather than silently defaulted or discarded. A native editor opens only after the matching completion revision and handoff receipt are persisted and read back. Permission or lifecycle changes hide unauthorized presentation while preserving any accepted write and its cleanup owner; returning from permission never submits automatically. This private review foundation does not activate public intent filters, application routing or meeting promotion.
 
 Private incoming CREATE completion (draft version7) and EDIT review (version8) retain raw caller
 suggestions separately from provider source authority. Unknown fields, duplicate fields, future versions,

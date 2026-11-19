@@ -36,6 +36,7 @@ data class EventEditorState(
     val notices: List<EditorNotice> = emptyList(),
     val recurrenceReview: RecurrenceCreationPlan? = null,
     val legacy: Boolean = false, val retirementConfirmed: Boolean = false, val localOutcome: MutationResult? = null,
+    val zoneAuthored: Boolean = false,
 )
 
 /** A durable generation and exact-record CAS authorize local draft changes; ports authorize writes. */
@@ -184,6 +185,7 @@ class EventEditorController(
                 }
             }
             state = state.copy(fields = restoredFields, notices = restoredNotices, loading = false, legacy = doc.legacy,
+                zoneAuthored = doc.zoneAuthored,
                 recoveryRequired = doc.hasRequest, reviewRequired = changed,
                 reviewLatest = if (changed && existing != null && doc.sourceIdentity?.let { sameSourceNamespace(it, existing) } == true) existing.details else null,
                 problem = when { doc.hasRequest -> EditorProblem.UNCERTAIN; changed -> EditorProblem.CONFLICT; doc.legacy -> EditorProblem.DRAFT_UPGRADE_REQUIRED; unsupported -> EditorProblem.UNSUPPORTED; else -> null })
@@ -193,6 +195,12 @@ class EventEditorController(
     private fun writesBlocked(): Boolean = closed || dispatchStopped || recoveryOnly || state.legacy || state.loading || state.saving || state.draftReadFailed ||
         state.reviewRequired || document?.hasRequest != false || unsupported
     fun change(transform: (EventEditorFields) -> EventEditorFields) = changeFields(transform)
+
+    /** Explicit picker/manual action; selecting the displayed renderer zone can author a NULL source. */
+    fun authorZone(raw: String) {
+        if(existing != null && EditableField.ZONE !in existing.allowedFields) return
+        changeFields({it.copy(zone=raw)}, explicitZone=true)
+    }
 
     /** Explicit calendar choice issues a new proof even when a reused provider ID is unchanged. */
     fun selectCalendar(calendar: CalendarInfo) {
@@ -210,7 +218,8 @@ class EventEditorController(
     }
 
     private fun changeFields(transform: (EventEditorFields) -> EventEditorFields,
-        selected: CalendarIdentity? = null, invalidateTarget: Boolean = false, persist: Boolean = true) {
+        selected: CalendarIdentity? = null, invalidateTarget: Boolean = false, persist: Boolean = true,
+        explicitZone: Boolean = false) {
         if (writesBlocked()) return
         val old = state.fields
         var next = transform(old).copy(targetIdentity = old.targetIdentity, defaultVisibilityIdentity = old.defaultVisibilityIdentity)
@@ -240,9 +249,11 @@ class EventEditorController(
         if (next.endDate != old.endDate || next.endTime != old.endTime || next.zone != old.zone || next.allDay != old.allDay)
             next = next.copy(endOffset = "")
         // Widget callbacks can repeat a value; unchanged raw state keeps the exact reviewed command.
-        if (next == old && notices == state.notices) return
+        val zoneAuthored = state.zoneAuthored || explicitZone && initial.eventZone == null && existing?.details?.eventZone == null &&
+            existing?.allowedFields?.contains(EditableField.ZONE) == true && document?.let {!it.legacy && !it.hasRequest && it.hasNullSourceZone} == true
+        if (next == old && notices == state.notices && zoneAuthored == state.zoneAuthored) return
         recurrenceReviewPayload = ""
-        state = state.copy(fields = next, notices = notices, recurrenceReview = null, problem = if (state.reviewRequired) EditorProblem.CONFLICT else null, result = null)
+        state = state.copy(fields = next, notices = notices, zoneAuthored = zoneAuthored, recurrenceReview = null, problem = if (state.reviewRequired) EditorProblem.CONFLICT else null, result = null)
         if (persist) {
             persistence?.cancel()
             persistence = scope.launch { delay(300); persistFields() }
@@ -286,7 +297,7 @@ class EventEditorController(
     private suspend fun persistFields(): Boolean {
         val doc = document ?: return false
         if (doc.legacy || doc.hasRequest || state.reviewRequired) return false
-        return replace(doc.copy(fields = state.fields, notices = state.notices))
+        return replace(doc.copy(fields = state.fields, notices = state.notices, zoneAuthored = state.zoneAuthored))
     }
     fun save() = saveReviewed(false)
     fun dismissRecurrenceReview() { recurrenceReviewPayload = ""; state = state.copy(recurrenceReview = null) }
@@ -545,7 +556,8 @@ class EventEditorController(
         )
     }
 
-    private fun zoneChanged(fields: EventEditorFields): Boolean = fields.zone != original.zone || fields.allDay != original.allDay
+    private fun zoneChanged(fields: EventEditorFields): Boolean = fields.zone != original.zone || fields.allDay != original.allDay ||
+        state.zoneAuthored && initial.eventZone == null && existing?.details?.eventZone == null && document?.hasNullSourceZone == true
 
     private fun timeChanged(fields: EventEditorFields): Boolean =
         listOf(fields.startDate, fields.endDate, fields.startTime, fields.endTime, fields.allDay, fields.zone,
