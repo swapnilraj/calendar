@@ -33,11 +33,11 @@ fun PhoneEventDetails(
     state: CalendarReadState<EventDetails>, onDismiss: () -> Unit, onRetry: () -> Unit,
     onOpenLink: (String) -> Unit, displayZone: ZoneId = ZoneId.systemDefault(), use24Hour: Boolean = true,
     onEdit: ((EventRef) -> Unit)? = null, onDelete: ((EventRef) -> Unit)? = null,
-    onDuplicate: ((EventDetails) -> Unit)? = null,
+    onDuplicate: ((EventDetails) -> Unit)? = null, onRespond: ((EventRef) -> Unit)? = null,
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
         Surface(Modifier.fillMaxSize()) {
-            if (state is CalendarReadState.Ready) PhoneEventDetailsReady(state.value, onDismiss, onOpenLink, displayZone, use24Hour, onEdit, onDelete, onDuplicate)
+            if (state is CalendarReadState.Ready) PhoneEventDetailsReady(state.value, onDismiss, onOpenLink, displayZone, use24Hour, onEdit, onDelete, onDuplicate, onRespond)
             else Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 PhoneDetailsToolbar(onDismiss)
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -61,7 +61,7 @@ fun PhoneEventDetails(
 @Composable
 private fun PhoneEventDetailsReady(details: EventDetails, onDismiss: () -> Unit, onOpenLink: (String) -> Unit,
     displayZone: ZoneId, use24Hour: Boolean, onEdit: ((EventRef) -> Unit)?, onDelete: ((EventRef) -> Unit)?,
-    onDuplicate: ((EventDetails) -> Unit)?) {
+    onDuplicate: ((EventDetails) -> Unit)?, onRespond: ((EventRef) -> Unit)?) {
     val locale = LocalLocale.current.platformLocale
     val ref = details.occurrence.ref
     val cancelled = details.status == CalendarContract.Events.STATUS_CANCELED
@@ -102,6 +102,9 @@ private fun PhoneEventDetailsReady(details: EventDetails, onDismiss: () -> Unit,
             if (details.description.isNotBlank()) PhoneEditorRow(PhoneEventGlyph.NOTES, details.description)
             links.filter { it != join }.forEach { url -> PhoneEditorRow(PhoneEventGlyph.LINK, url, stringResource(R.string.phone_details_open_link), true, { onOpenLink(url) }) }
             PhoneDetailsPeople(details)
+            if (details.canRespond == AccessDecision.ALLOWED && !cancelled && onRespond != null) Row(Modifier.fillMaxWidth().padding(start = 64.dp, end = 24.dp, top = 8.dp)) {
+                Button(onClick = { onRespond(ref) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.meeting_response_title)) }
+            }
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.padding(start = 52.dp).heightIn(min = 48.dp)) { Text(stringResource(if (expanded) R.string.phone_details_less else R.string.phone_details_more)) }
             if (expanded) PhoneDetailsSecondary(details, displayZone)
         }

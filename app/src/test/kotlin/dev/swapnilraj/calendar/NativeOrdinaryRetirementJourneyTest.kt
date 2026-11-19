@@ -7,6 +7,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.data.CalendarPreferenceState
 import dev.swapnilraj.calendar.data.calendar.CalendarWriterTest
 import dev.swapnilraj.calendar.data.reminders.SavedReminderSettings
 import dev.swapnilraj.calendar.ui.calendars.CalendarViewOption
@@ -14,6 +15,7 @@ import dev.swapnilraj.calendar.ui.events.FrozenEditorSubmission
 import dev.swapnilraj.calendar.ui.events.OrdinaryDraftDocument
 import dev.swapnilraj.calendar.ui.settings.*
 import java.time.ZoneId
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
@@ -46,6 +48,12 @@ class NativeOrdinaryRetirementJourneyTest {
             app.settings.setDisplaySettings(CalendarSettingsOptions(weatherVisible = false, timedReminderMinutes = 10, displayZone = DisplayZoneOption.Fixed(ZoneId.of("UTC"))))
             assertTrue(app.settings.setCalendarView(CalendarViewOption.DAY.name))
             val metadata = app.calendarReader.readCalendars() as CalendarReadState.Ready
+            val before = app.settings.calendarPreferences.first { it is CalendarPreferenceState.Ready } as CalendarPreferenceState.Ready
+            println("retirement_fixture_preconfigured_default_present=${before.value.defaultCalendar != null}")
+            // This journey exercises an explicit calendar choice, independent of earlier fixtures.
+            assertTrue(app.settings.setDefaultCalendar(null, metadata.value))
+            val ready = app.settings.calendarPreferences.first { it is CalendarPreferenceState.Ready } as CalendarPreferenceState.Ready
+            assertNull(ready.value.defaultCalendar)
             assertTrue(app.settings.setCalendarSelection(CalendarSelection.Explicit(setOf(CalendarId(2))), metadata.value))
         }
         val activity = Robolectric.buildActivity(MainActivity::class.java)
@@ -106,9 +114,21 @@ class NativeOrdinaryRetirementJourneyTest {
         } finally { compose.runOnUiThread { activity.pause().stop().destroy() } }
     }
     private fun chooseCalendar(app: CalendarApp) {
-        compose.onNodeWithText(app.getString(R.string.phone_event_choose_calendar)).performScrollTo().performClick()
-        compose.onNode(hasText("Synthetic") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton) and hasAnyAncestor(isDialog())).performClick()
-        compose.waitForIdle()
+        val label = app.getString(R.string.phone_event_choose_calendar)
+        val chooser = hasText(label) and hasClickAction() and isEnabled()
+        compose.waitUntil(15_000) {
+            compose.waitForIdle()
+            compose.onAllNodes(chooser).fetchSemanticsNodes().size == 1
+        }
+        compose.onNode(chooser).performScrollTo().performClick()
+        val option = hasText("Synthetic") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton) and
+            hasAnyAncestor(isDialog()) and hasClickAction() and isEnabled()
+        compose.waitUntil(15_000) {
+            compose.waitForIdle()
+            compose.onAllNodes(option).fetchSemanticsNodes().size == 1
+        }
+        compose.onNode(option).performClick()
+        compose.waitUntil(15_000) { compose.onAllNodesWithText(label).fetchSemanticsNodes().isEmpty() }
     }
     private fun shown(text: String) = compose.waitUntil(15_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
 }

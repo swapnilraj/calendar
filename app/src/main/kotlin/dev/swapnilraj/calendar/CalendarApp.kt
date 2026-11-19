@@ -22,6 +22,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
 class CalendarApp : Application(), ReminderRuntimeOwner, dev.swapnilraj.calendar.android.widgets.AgendaWidgetApplicationOwner {
+    val guestSuggestions: dev.swapnilraj.calendar.contacts.DeviceContactSuggestionSource by lazy {
+        dev.swapnilraj.calendar.data.contacts.AndroidDeviceContactSuggestionSource(contentResolver,
+            { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED })
+    }
+    val calendarMeetings by lazy { dev.swapnilraj.calendar.data.calendar.CalendarMeetingWriter(contentResolver, calendarReader, calendarLocalStore,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED },
+        providerClonePolicy = dev.swapnilraj.calendar.data.calendar.ProviderClonePolicy.Unverified) }
     private val widgetScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
     override val agendaWidgetServices by lazy { createWidgetServices(widgetScope) }
     override val agendaWidgetRuntime get() = agendaWidgetServices.runtime
