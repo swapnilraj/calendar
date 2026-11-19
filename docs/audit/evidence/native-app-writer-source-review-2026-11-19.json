@@ -1,0 +1,55 @@
+{
+  "date": "2026-11-19",
+  "scope": "source, host guards, AndroidTest compilation and frozen APK review only",
+  "productionBase": "1a0fd3d",
+  "featureSource": "e609b4fd40633015806f571aa1bf8fbf6d863a0e",
+  "integratedSource": "1ae9053",
+  "hostChecks": {
+    "count": 19,
+    "status": "PASS",
+    "integratedLog": "/tmp/daylight-native-writer-integrated-host-tests.log"
+  },
+  "build": {
+    "status": "PASS",
+    "command": "./gradlew :app:compileDebugAndroidTestKotlin :app:assembleDebug :app:assembleDebugAndroidTest -Pdaylight.providerProbe=true"
+  },
+  "pairMetadata": "/tmp/daylight-native-writer-pair-e609b4f/pair.json",
+  "apks": [
+    {
+      "package": "dev.swapnilraj.calendar",
+      "bytes": 44214692,
+      "sha256": "74487effb57b35be0ed4250acfff5cb982319c301b42c9dfbead82db8ce3c17c"
+    },
+    {
+      "package": "dev.swapnilraj.calendar.providerprobe",
+      "bytes": 365864,
+      "sha256": "b4c3220bd277508b28785b00adee0c543bbfc8cf14b302157023fcee5ee41850"
+    }
+  ],
+  "pairVerification": [
+    "Exact sizes and SHA-256 recomputed",
+    "APK/log files verified read-only",
+    "Both APK signatures verified",
+    "Same V2 debug signer on target and test APKs"
+  ],
+  "debugSignerSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278",
+  "reviewedGuards": [
+    "Original applyBatch and ACKs forwarded unmodified once",
+    "Six fixed cases; cumulative bounds and exact run database",
+    "Fresh target-process lineage; independent exact-PID exit before permission continuation",
+    "Unsupported/nonzero/ambiguous PID absence preflight refuses before fixture or grants",
+    "READ-only recovery with authoring trap and mutation refusal",
+    "Cleanup admission independent of finally; exact tracked IDs checked globally"
+  ],
+  "nativeExecution": "NOT_RUN",
+  "currentBootAndProviderPins": "PENDING",
+  "psAbsenceBehavior": "NOT_RUN_PREFLIGHT_REQUIRED",
+  "productionProfileActivation": "NONE",
+  "googleWorkspaceRoundTrip": "NOT_RUN",
+  "limitations": [
+    "Does not pass native CalendarProvider acceptance",
+    "Older frozen pairs remain unapproved",
+    "Source production base has a recorded aggregate initial-render timeout under investigation",
+    "Current pinned boot/provider identity and nonmutating process preflight must pass before fixtures"
+  ]
+}

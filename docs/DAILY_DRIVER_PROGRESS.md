@@ -18,6 +18,12 @@ waiting for its initial event title before any edit/write. No Following regressi
 are retained; investigation and a complete passing rerun are pending. This does not supersede the
 older passing checkpoint as a successful full gate.
 
+The [native app-writer harness](audit/evidence/native-app-writer-source-review-2026-11-19.json)
+is now integrated with19 passing host checks, successful AndroidTest compilation/pair assembly,
+and independently verified frozen APK hashes/signatures. The pair binds production base `1a0fd3d`.
+Current boot/provider pins, exact-PID absence behavior and all actual native phases remain NOT_RUN.
+Old pairs remain unapproved; this source checkpoint does not establish native acceptance.
+
 Navigation fixture transition hardening from the already published PR62 is now selectively
 integrated as `f895cfb`: journeys wait for displayed controls and a closed drawer after preference
 commit, and explicitly verify Activity replacement. All8 navigation tests passed in17s
