@@ -233,6 +233,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
                     put(C.CALENDAR_DISPLAY_NAME, "Daylight native app writer probe"); put(C.CALENDAR_COLOR, 0xff567087.toInt())
                     put(C.CALENDAR_ACCESS_LEVEL, C.CAL_ACCESS_OWNER); put(C.CALENDAR_TIME_ZONE, "UTC"); put(C.SYNC_EVENTS, 1); put(C.VISIBLE, 0)
                     put(C.ALLOWED_REMINDERS, "1"); put(C.MAX_REMINDERS, 2); put(C.ALLOWED_AVAILABILITY, "0,1,2"); put(C.ALLOWED_ATTENDEE_TYPES, "0,1,2")
+                    put(C.CAN_MODIFY_TIME_ZONE, 1)
                 }) ?: throw Failure("CALENDAR_INSERT_ACK_MISSING")
                 calendarId = idFrom(inserted, "calendars", requested.encodedQuery); saveAppState()
             } else {
