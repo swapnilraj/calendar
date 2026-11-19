@@ -154,13 +154,46 @@ class MonthViewTest {
         var selected: LocalDate? = null
         var opened: EventRef? = null
         show(onSelect = { selected = it }, onOpen = { opened = it })
-        compose.onNode(hasContentDescription("Show 4 more events") and hasAnyAncestor(hasTestTag("month_date_$date")))
-            .performScrollTo().performClick()
+        compose.onNodeWithTag("month_date_$date").assert(hasContentDescription("6 events", substring = true)).performClick()
         assertEquals(date, selected)
         compose.onNode(hasText("Recurring standup") and hasAnyAncestor(hasTestTag("month_day_events")))
             .performScrollTo().assertIsDisplayed().performClick()
         assertEquals(recurring, opened)
         assertEquals(Instant.parse("2026-11-17T17:00:00Z"), opened?.recurrence?.originalStart)
+    }
+    private fun assertCompleteOverview() {
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        monthDates(month, DayOfWeek.MONDAY).forEach { day ->
+            val node = compose.onNodeWithTag("month_date_$day").assertIsDisplayed().fetchSemanticsNode()
+            val bounds = node.boundsInRoot
+            assertTrue("$day must be fully inside viewport: $bounds / $root", bounds.left >= root.left && bounds.right <= root.right + 0.5f && bounds.top >= root.top && bounds.bottom <= root.bottom + 0.5f)
+            assertTrue("$day retains a 48dp date target", bounds.width >= 48f && bounds.height >= 48f)
+        }
+    }
+    @Test @Config(qualifiers = "w360dp-h640dp-mdpi") fun compactPhoneFitsEveryDateAndOpensTheCompleteCrowdedDay() {
+        var opened: EventRef? = null
+        show(onOpen = { opened = it })
+        assertCompleteOverview()
+        val cell = compose.onNodeWithTag("month_date_$date")
+        cell.assert(hasContentDescription("6 events", substring = true))
+        // Summaries and count belong to the date action, never a tiny independent event target.
+        assertEquals(0, compose.onAllNodes(hasClickAction() and hasAnyAncestor(hasTestTag("month_date_$date")), useUnmergedTree = true).fetchSemanticsNodes().size)
+        compose.onRoot().captureRoboImage("src/test/screenshots/month_compact_phone.png")
+        cell.performClick()
+        compose.onNode(hasText("Recurring standup") and hasAnyAncestor(hasTestTag("month_day_events"))).performScrollTo().performClick()
+        assertEquals(recurring, opened)
+    }
+    @Test fun ordinaryPhoneFitsAllRowsDespiteCrowdedCells() {
+        show()
+        assertCompleteOverview()
+        val crowded = compose.onNodeWithTag("month_date_$date").fetchSemanticsNode().boundsInRoot
+        val empty = compose.onNodeWithTag("month_date_${date.plusDays(3)}").fetchSemanticsNode().boundsInRoot
+        assertEquals(empty.height, crowded.height, 0.5f)
+    }
+    @Test @Config(qualifiers = "w840dp-h900dp-mdpi") fun detailedMonthKeepsItsIndependentOverflowShortcut() {
+        show()
+        compose.onNode(hasContentDescription("Show 4 more events") and hasAnyAncestor(hasTestTag("month_date_$date"))).performScrollTo().performClick()
+        compose.onNodeWithTag("month_day_events").assertIsDisplayed()
     }
     @Test fun dateSheetOffersExplicitCreationForTheSelectedDate() {
         var selected: LocalDate? = null

@@ -31,3 +31,26 @@ internal fun continuation(event: EventOccurrence, date: LocalDate, zone: ZoneId)
     is EventTime.Timed -> MonthContinuation(time.start.isBefore(date.atStartOfDay(zone).toInstant()),
         time.end.isAfter(date.plusDays(1).atStartOfDay(zone).toInstant()))
 }
+
+/** Presentation only: the date matrix and provider range remain six complete weeks. */
+internal data class MonthOverviewBudget(
+    val rowHeight: Float,
+    val weekdayHeight: Float,
+    val dateHeight: Float,
+    val summaryHeight: Float,
+    val slots: Int,
+) {
+    fun visibleEvents(count: Int): Int = if (count <= slots) count else (slots - 1).coerceAtLeast(0)
+}
+
+internal fun monthOverviewBudget(width: Float, height: Float, columns: Int, fontScale: Float,
+    dateLine: Float, summaryLine: Float, weekdayLine: Float): MonthOverviewBudget? {
+    if (fontScale > 1.3f || width >= 600f || width / columns < 48f) return null
+    val weekdayHeight = maxOf(32f, weekdayLine + 16f)
+    val dateHeight = maxOf(32f * fontScale, dateLine + 8f)
+    val summaryHeight = maxOf(20f, summaryLine + 4f)
+    val rowHeight = kotlin.math.floor((height - weekdayHeight) / 6f)
+    val slots = kotlin.math.floor((rowHeight - dateHeight - 4f) / summaryHeight).toInt()
+    if (rowHeight < 48f || slots < 1) return null
+    return MonthOverviewBudget(rowHeight, weekdayHeight, dateHeight, summaryHeight, slots)
+}
