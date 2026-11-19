@@ -9,6 +9,7 @@ import android.os.CancellationSignal
 import android.provider.CalendarContract
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import com.github.takahirom.roborazzi.captureRoboImage
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.LiveCalendarDay
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
@@ -41,6 +42,8 @@ class RecurringProviderJourneyTest {
 
     @Test fun nativeAllEditCommitsThroughRealSeriesWriterAndReopenedSqlDeduplicates() = fixture(selected) { f ->
         open(f, "Synthetic template", "Edit event", "Entire series")
+        compose.onAllNodes(isRoot()).filterToOne(hasAnyDescendant(hasText("Edit recurring event")))
+            .captureRoboImage("src/test/screenshots/integration_series_native_editor.png")
         compose.onNode(hasText("Synthetic template") and hasSetTextAction()).performTextReplacement("Updated synthetic template")
         compose.onNodeWithText("Save").performScrollTo().performClick()
         compose.waitUntil(15_000) { f.saved == 1 }
@@ -86,6 +89,29 @@ class RecurringProviderJourneyTest {
         assertTrue(runBlocking { f.store.list() }.isEmpty())
     }
 
+    @Test fun namespaceReplacementBetweenDetailsAndSeriesEligibilityCannotExposeActionsOrDraft() = fixture(selected) { f ->
+        f.beforeSeriesLoad = { f.provider.rows.calendar["_sync_id"] = "replacement-calendar-B" }
+        compose.waitUntil(15_000) { compose.onAllNodesWithText("Synthetic template").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Synthetic template").performClick()
+        val unavailable = f.context.getString(dev.swapnilraj.calendar.R.string.events_unavailable)
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithText(unavailable).fetchSemanticsNodes().isNotEmpty() ||
+                compose.onAllNodesWithText("Synthetic room").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertTrue(f.seriesLoads.get() > 0)
+        compose.onNodeWithText(unavailable).assertExists()
+        compose.onAllNodesWithText("Synthetic room").assertCountEquals(0)
+        compose.onAllNodesWithText("Synthetic notes").assertCountEquals(0)
+        compose.onAllNodes(hasContentDescription("Edit event") and isEnabled()).assertCountEquals(0)
+        compose.onAllNodes(isRoot()).filterToOne(hasAnyDescendant(hasText(unavailable)))
+            .captureRoboImage("src/test/screenshots/integration_series_namespace_refusal.png")
+        assertTrue(runBlocking { f.store.list() }.isEmpty())
+        assertEquals(0, f.permissionChecks)
+        assertEquals(0, f.provider.rows.batchCount)
+        assertEquals(0, f.saved)
+        assertEquals(0, f.deleted)
+    }
+
     private fun open(f: Fixture, title: String, action: String, scope: String) {
         try {
             compose.waitUntil(15_000) {
@@ -119,6 +145,8 @@ class RecurringProviderJourneyTest {
         @Volatile var permissionChecks = 0
         @Volatile var saved = 0
         @Volatile var deleted = 0
+        @Volatile var beforeSeriesLoad: (() -> Unit)? = null
+        val seriesLoads = AtomicInteger()
     }
 
     private fun fixture(initial: EventRef, block: (Fixture) -> Unit) {
@@ -141,10 +169,16 @@ class RecurringProviderJourneyTest {
         val source = CalendarSeriesReader(context.contentResolver, reader, store, grants)
         val writer = CalendarSeriesWriter(context.contentResolver, source, store, grants)
         val f = Fixture(context, provider, reader, store, database, provider.rows.events[1].toMap())
+        val mutations = object : CalendarSeriesMutations by writer {
+            override suspend fun loadForEdit(selected: EventRef): SeriesReadResult {
+                f.beforeSeriesLoad?.invoke()
+                return writer.loadForEdit(selected).also { f.seriesLoads.incrementAndGet() }
+            }
+        }
         try {
             compose.setContent { DaylightTheme {
                 LiveCalendarDay(reader, CalendarSelection.ProviderVisible, initial.instanceStart.atZone(ZoneId.of("Europe/London")).plusMinutes(20),
-                    true, 64f, {}, {}, drafts = store, seriesMutations = writer,
+                    true, 64f, {}, {}, drafts = store, seriesMutations = mutations,
                     onLocalSaved = { f.saved++ }, onLocalDeleted = { f.deleted++ },
                     requestMeetingWritePermission = { f.permissionChecks++; true })
             } }

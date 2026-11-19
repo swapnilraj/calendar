@@ -468,6 +468,9 @@ choosing an offset. The UI must carry that target into explicit review instead o
 
 ### M6 — Recurrence
 
+Recurring action eligibility must match the first fresh details read's full calendar namespace.
+A namespace change between those reads scrubs details and exposes no series action or draft.
+
 Offer daily/weekly/weekday/monthly/yearly presets, custom intervals/weekdays/monthly date or ordinal,
 and count/date/no-end limits. Preserve master/original occurrence identity and timezone/duration,
 RRULE/RDATE/EXDATE and explicit exceptions.
