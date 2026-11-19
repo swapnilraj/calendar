@@ -168,6 +168,10 @@ class LiveCalendarDayTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
             compose.mainClock.advanceTimeBy(1_000)
             compose.waitForIdle()
+            // All six queried weeks are visible without scrolling; filters remain owned by Settings.
+            dev.swapnilraj.calendar.ui.month.monthDates(java.time.YearMonth.of(2026, 11), java.time.DayOfWeek.SUNDAY).forEach {
+                compose.onNodeWithTag("month_date_$it").assertIsDisplayed()
+            }
             compose.onRoot().captureRoboImage("src/test/screenshots/integration_live_month.png")
             assertEquals(2, provider.rangeQueries) // One day window, then one whole-month window.
             compose.onNodeWithTag("month_date_2026-11-18").performSemanticsAction(SemanticsActions.OnClick) { it() }

@@ -27,6 +27,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,7 +81,20 @@ fun MonthView(
     var pickingDate by remember { mutableStateOf(false) }
     val horizontalScroll = rememberScrollState()
     val verticalScroll = rememberScrollState()
-    val fontScale = LocalDensity.current.fontScale
+    val density = LocalDensity.current
+    val fontScale = density.fontScale
+    val textMeasurer = rememberTextMeasurer()
+    val dateLine = with(density) {
+        textMeasurer.measure(AnnotatedString("28"), style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 18.sp)).size.height.toDp().value
+    }
+    val summaryLine = with(density) {
+        textMeasurer.measure(AnnotatedString("Ag"), style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 14.sp)).size.height.toDp().value
+    }
+    val weekdayLine = with(density) {
+        DayOfWeek.entries.maxOf {
+            textMeasurer.measure(AnnotatedString(it.getDisplayName(TextStyle.SHORT, locale)), style = MaterialTheme.typography.labelMedium).size.height.toDp().value
+        }
+    }
     LaunchedEffect(month, firstDayOfWeek) { verticalScroll.scrollTo(0) }
     Surface(modifier.fillMaxSize()) {
         Column {
@@ -113,16 +128,17 @@ fun MonthView(
                 }
             }
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                val cellWidth = maxOf(maxWidth / columns, (56f * fontScale).dp)
+                val overview = monthOverviewBudget(maxWidth.value, maxHeight.value, columns, fontScale, dateLine, summaryLine, weekdayLine)
+                val cellWidth = if (overview != null) maxWidth / columns else maxOf(maxWidth / columns, (56f * fontScale).dp)
                 val tableWidth = cellWidth * columns
-                val cellHeight = maxOf((112f * fontScale).dp, (maxHeight - (16f * fontScale + 16f).dp) / 6)
+                val cellHeight = overview?.rowHeight?.dp ?: maxOf((112f * fontScale).dp, (maxHeight - (16f * fontScale + 16f).dp) / 6)
                 Box(Modifier.fillMaxSize().horizontalScroll(horizontalScroll).testTag("month_horizontal_scroll")) {
                     Column(Modifier.width(tableWidth).fillMaxHeight()) {
                         Row(Modifier.width(tableWidth)) {
                             visibleWeeks.first().forEach { date ->
                                 val weekday = date.dayOfWeek
                                 Text(weekday.getDisplayName(TextStyle.SHORT, locale), style = MaterialTheme.typography.labelMedium,
-                                    modifier = Modifier.width(cellWidth).padding(vertical = 8.dp).semantics {
+                                    modifier = Modifier.width(cellWidth).then(if (overview != null) Modifier.height(overview.weekdayHeight.dp).wrapContentHeight() else Modifier).padding(vertical = 8.dp).semantics {
                                         contentDescription = weekday.getDisplayName(TextStyle.FULL, locale)
                                         heading()
                                     }, textAlign = TextAlign.Center, maxLines = 1)
@@ -131,7 +147,7 @@ fun MonthView(
                         Column(Modifier.weight(1f).verticalScroll(verticalScroll).testTag("month_grid")
                             .semantics { collectionInfo = CollectionInfo(6, columns) }) {
                             visibleWeeks.forEachIndexed { row, week ->
-                                Row(Modifier.width(tableWidth).height(IntrinsicSize.Min)) {
+                                Row(Modifier.width(tableWidth).then(if (overview != null) Modifier.height(cellHeight) else Modifier.height(IntrinsicSize.Min))) {
                                     week.forEachIndexed { column, date ->
                                         key(date) {
                                             MonthCell(date, month, selectedDate, today, byDate[date].orEmpty(), displayZone,
@@ -139,7 +155,7 @@ fun MonthView(
                                                 onShowDate = {
                                                     onSelectDate(date)
                                                     if (onShowDateEvents != null) onShowDateEvents(date) else sheetDate = date
-                                                }, onOpenEvent)
+                                                }, onOpenEvent, overview)
                                         }
                                     }
                                 }
@@ -177,7 +193,7 @@ fun MonthView(
 @Composable
 private fun MonthCell(date: LocalDate, month: YearMonth, selectedDate: LocalDate, today: LocalDate,
     events: List<EventOccurrence>, zone: ZoneId, row: Int, column: Int, modifier: Modifier,
-    onShowDate: () -> Unit, onOpenEvent: (EventRef) -> Unit) {
+    onShowDate: () -> Unit, onOpenEvent: (EventRef) -> Unit, overview: MonthOverviewBudget?) {
     val locale = LocalLocale.current.platformLocale
     val fullDate = date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale))
     val count = pluralStringResource(R.plurals.month_event_count, events.size, events.size)
@@ -185,11 +201,11 @@ private fun MonthCell(date: LocalDate, month: YearMonth, selectedDate: LocalDate
     val selected = date == selectedDate
     val todayLabel = stringResource(R.string.month_today)
     val normal = MaterialTheme.colorScheme.surface
-    Column(modifier.border(0.5.dp, MaterialTheme.colorScheme.outlineVariant).background(if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else normal)
-        .semantics { contentDescription = "$fullDate, $count${if (date == today) ", $todayLabel" else ""}"; this.selected = selected
+    Column(modifier.border(if (overview != null) 0.25.dp else 0.5.dp, MaterialTheme.colorScheme.outlineVariant).background(if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f) else normal)
+        .semantics(mergeDescendants = overview != null) { contentDescription = "$fullDate, $count${if (date == today) ", $todayLabel" else ""}"; this.selected = selected
             collectionItemInfo = CollectionItemInfo(row, 1, column, 1) }
         .clickable(enabled = date.year in 1..9999, onClickLabel = openLabel, onClick = onShowDate).padding(2.dp).testTag("month_date_$date")) {
-        Box(Modifier.fillMaxWidth().heightIn(min = (32f * LocalDensity.current.fontScale).dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().heightIn(min = overview?.dateHeight?.dp ?: (32f * LocalDensity.current.fontScale).dp), contentAlignment = Alignment.Center) {
             Box(Modifier.size((28f * LocalDensity.current.fontScale).dp)
                 .then(if (date == today) Modifier.background(MaterialTheme.colorScheme.primary, CircleShape) else Modifier),
                 contentAlignment = Alignment.Center) {
@@ -200,8 +216,13 @@ private fun MonthCell(date: LocalDate, month: YearMonth, selectedDate: LocalDate
                     modifier = Modifier.fillMaxWidth(), maxLines = 1)
             }
         }
-        events.take(2).forEach { event -> MonthEventChip(event, date, zone, onOpenEvent) }
-        if (events.size > 2) {
+        val shown = overview?.visibleEvents(events.size) ?: minOf(2, events.size)
+        events.take(shown).forEach { event -> MonthEventChip(event, date, zone, onOpenEvent, overview) }
+        if (overview != null && events.size > shown) {
+            Text(stringResource(R.string.month_overflow, events.size - shown), fontSize = 11.sp, lineHeight = 14.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().height(overview.summaryHeight.dp).clearAndSetSemantics {})
+        } else if (events.size > 2 && overview == null) {
             val more = events.size - 2
             val moreLabel = pluralStringResource(R.plurals.month_show_more, more, more)
             TextButton(onClick = onShowDate, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
@@ -213,7 +234,7 @@ private fun MonthCell(date: LocalDate, month: YearMonth, selectedDate: LocalDate
 }
 
 @Composable
-private fun MonthEventChip(event: EventOccurrence, date: LocalDate, zone: ZoneId, onOpenEvent: (EventRef) -> Unit) {
+private fun MonthEventChip(event: EventOccurrence, date: LocalDate, zone: ZoneId, onOpenEvent: (EventRef) -> Unit, overview: MonthOverviewBudget? = null) {
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val title = event.title.ifBlank { stringResource(R.string.month_no_title) }
     val flags = continuation(event, date, zone)
@@ -221,9 +242,9 @@ private fun MonthEventChip(event: EventOccurrence, date: LocalDate, zone: ZoneId
     val after = if (flags.after) stringResource(R.string.month_continues_after) else ""
     val description = listOf(title, before, after).filter { it.isNotEmpty() }.joinToString(", ")
     val color = Color(event.color or 0xff000000.toInt())
-    Surface(Modifier.fillMaxWidth().padding(bottom = 2.dp).heightIn(min = (20f * LocalDensity.current.fontScale).dp)
-        .semantics { contentDescription = description }
-        .clickable(onClickLabel = stringResource(R.string.month_open_event)) { onOpenEvent(event.ref) },
+    Surface(Modifier.fillMaxWidth().then(if (overview != null) Modifier.height(overview.summaryHeight.dp) else Modifier.padding(bottom = 2.dp).heightIn(min = (20f * LocalDensity.current.fontScale).dp))
+        .then(if (overview != null) Modifier else Modifier.semantics { contentDescription = description }
+            .clickable(onClickLabel = stringResource(R.string.month_open_event)) { onOpenEvent(event.ref) }),
         color = if (event.declined) Color.Transparent else color,
         contentColor = if (event.declined) MaterialTheme.colorScheme.onSurface else eventTextColor(color),
         border = if (event.declined) BorderStroke(1.dp, color) else null,
