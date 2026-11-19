@@ -81,7 +81,8 @@ class InvitationFilterJourneyTest {
             f.app.settings.saveCalendarSetting(CalendarSettingChange.InvitationFilter(InvitationFilter.PENDING_ONLY))) }
         compose.onNodeWithTag("search_results").performScrollToIndex(0)
         shown(f.app.resources.getQuantityString(R.plurals.search_result_count, 1, 1))
-        compose.onNodeWithText(f.app.getString(R.string.invitation_filter_pending)).assertExists()
+        compose.onNode(hasText(f.app.getString(R.string.invitation_filter_pending)) and
+            hasAnyAncestor(hasTestTag("search_sheet"))).assertExists()
         compose.onNode(hasText("could not be classified as awaiting a response", substring = true)).assertExists()
         compose.onNodeWithTag("search_results").performScrollToNode(hasTestTag("search_hit_2_7"))
         compose.onNodeWithTag("search_hit_2_7").assertExists()
