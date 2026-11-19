@@ -1,0 +1,51 @@
+{
+  "source": "9221e273276086468df985654525c7da1cb6e43e",
+  "status": "15_PASSED_INCLUDING_UNCHANGED_ACTUAL_PACKAGE_REGRESSION",
+  "rows": [
+    {
+      "name": "dev.swapnilraj.calendar.ProbeReminderActualPackageStartupTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "dev.swapnilraj.calendar.ProbeReminderBindingsTest",
+      "tests": "6",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    },
+    {
+      "name": "dev.swapnilraj.calendar.ProbeReminderIdentityPolicyTest",
+      "tests": "8",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0"
+    }
+  ],
+  "compiledActualClassPaths": [
+    "app/build/intermediates/built_in_kotlinc/debugUnitTest/compileDebugUnitTestKotlin/classes/dev/swapnilraj/calendar/ProbeReminderActualPackageStartupTest.class"
+  ],
+  "actualTestSha256": "ecf9ade40969715327949d539436ff17ec469674096831ef0b46797331a42e99",
+  "before": "/tmp/daylight-reminder-prebind-counterfactual1-evidence/report.json",
+  "after": "Same actual-package/Application/manifestreceiver+real pending-result/scope settlement now proves0frameworkjobs; oldbindingproved1exactRETRY_ID. Robolectric only.",
+  "host26ExistingPass": "/tmp/daylight-reminder-schema2-host2.log",
+  "native": "NOT_RUN",
+  "scope": "Separate isolated probe branch. Synthetic actual-package startup regression; no new emulator execution or delivery acceptance.",
+  "priorAttempts": [
+    {
+      "attempt": 1,
+      "status": "ONLY_14_TESTS_ACTUAL_PACKAGE_SOURCE_OMITTED"
+    },
+    {
+      "attempt": 2,
+      "status": "CONFIGURATION_FAILED_EAGER_SOURCE_SET_LOOKUP"
+    },
+    {
+      "attempt": 3,
+      "status": "ONLY_14_TESTS_KOTLIN_EXTENSION_MAPPING_UNUSED"
+    }
+  ],
+  "remaining": "Independent review identified transient snapshot false refusal; bounded settlement correction in progress. New pair build, manifest/hash review and native run pending."
+}

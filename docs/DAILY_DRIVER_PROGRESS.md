@@ -4,6 +4,17 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+At aggregate source `6658805`, RSVP summaries now receive the selected clock convention and display
+zone from the main route. The separate bounded publication at `667b49b` passed60 focused tests;
+root integration, affected screenshot verification and a new complete gate remain in progress.
+
+The separate isolated reminder probe at `9221e27` passed15 focused checks, including the unchanged
+actual-package/Application/recovery-receiver regression: zero framework jobs versus one retry job
+in its preserved before-fix run. Earlier14-test omissions and a configuration failure remain recorded.
+This is Robolectric evidence, not a new emulator run. Independent review also found a possible
+transient snapshot false refusal; its bounded settlement correction remains in progress. See
+[regression evidence](audit/evidence/reminder-prebind-regression-2026-11-19.json).
+
 Subsequent bounded publication PR77–79 passed full CI and merged: injectable meeting creation/local
 guest picker (`b4a9cf6`), native meeting adapters preserving ordinary protocol boundaries (`b37308c`),
 and connected filtered search (`73444f5`). Focused checks passed92/200/74 respectively; ten meeting/
