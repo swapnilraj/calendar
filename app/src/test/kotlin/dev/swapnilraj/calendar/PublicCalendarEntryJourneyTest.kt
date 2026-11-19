@@ -15,6 +15,7 @@ import android.net.Uri
 import android.provider.CalendarContract
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
+import com.github.takahirom.roborazzi.captureRoboImage
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -72,6 +73,7 @@ class PublicCalendarEntryJourneyTest {
     @Test fun publicViewUsesExactNativeDetailsIndependentlyOfFiltersAndRefusesReusedNamespaceAfterReadRecovery() = fixture(seed = true) { f ->
         val entry = launch(f, Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, 7)))
         shown(sourceTitle); shown("Synthetic room")
+        compose.onRoot().captureRoboImage("src/test/screenshots/incoming_public_view_review.png")
         assertNone(f); assertNoWrite(f)
         shadowOf(f.app).denyPermissions(Manifest.permission.READ_CALENDAR)
         compose.runOnUiThread { entry.pause().stop() }
@@ -117,6 +119,7 @@ class PublicCalendarEntryJourneyTest {
     @Test fun mimeInsertArrivalCancelAndWriteGrantNeverSubmitButFreshSaveCommitsAndOldContinuationCannotReseed() = fixture(write = false) { f ->
         val public = launch(f, insert())
         shown("Review new event"); assertNoWrite(f)
+        compose.onRoot().captureRoboImage("src/test/screenshots/incoming_public_insert_review.png")
         compose.onNodeWithText("Review details").performClick()
         val privateIntent = nextIntent(public); stop(public)
         var editor = launchSeed(f, privateIntent)
