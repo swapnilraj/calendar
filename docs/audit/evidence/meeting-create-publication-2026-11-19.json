@@ -1,0 +1,216 @@
+{
+  "source": "f7c0b06",
+  "imageSource": "252f66e",
+  "base": "c9dc7637d979fe5fe750e3882f9b54ca65bc70e5",
+  "focus": {
+    "source": "f7c0b06",
+    "log": "/tmp/daylight-meeting-create-publication-focused1.log",
+    "xml": "/tmp/daylight-meeting-create-publication-focused1-xml",
+    "seconds": 79,
+    "counts": {
+      "tests": 92,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": [
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.create.MeetingCreationControllerTest",
+        "tests": 30,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.create.PhoneMeetingCreateEditorTest",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.create.RecurringMeetingCreationControllerTest",
+        "tests": 18,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.create.RecurringMeetingCreationPhoneTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.create.RecurringMeetingCreationScreenshotsTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.people.GuestPickerSearchSessionTest",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.people.PhoneGuestPickerScreenshotsTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.people.PhoneGuestPickerTest",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "record": false,
+    "verify": false,
+    "device": "NOT_RUN",
+    "scope": "Injected presentation/controllers and synthetic contact source, not native adapter or production navigation."
+  },
+  "recording": {
+    "source": "f7c0b06",
+    "log": "/tmp/daylight-meeting-create-publication-record1.log",
+    "xml": "/tmp/daylight-meeting-create-publication-record1-xml",
+    "seconds": 17,
+    "counts": {
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": [
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.create.PhoneMeetingCreateEditorTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.create.RecurringMeetingCreationScreenshotsTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.people.PhoneGuestPickerScreenshotsTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "images": [
+      {
+        "path": "app/src/test/screenshots/phone_meeting_create_light.png",
+        "sha256": "e947fa463b663082333da54c207acb6e436d20ef53928147c225d6e51ae364e0",
+        "bytes": 31903,
+        "visuallyInspected": true,
+        "matchesRoot": true
+      },
+      {
+        "path": "app/src/test/screenshots/phone_meeting_create_dark.png",
+        "sha256": "bbeb35c7d141698ae6ef22cd58f0f5654ae6186dc82bcdb465da9774cdcae1d6",
+        "bytes": 32096,
+        "visuallyInspected": true,
+        "matchesRoot": true
+      },
+      {
+        "path": "app/src/test/screenshots/phone_meeting_create_rtl_large.png",
+        "sha256": "a773df65068f2a8acd14de04abd3587bb2521bd5eb820d2b7c7b80bf24c05d21",
+        "bytes": 35914,
+        "visuallyInspected": true,
+        "matchesRoot": true
+      },
+      {
+        "path": "app/src/test/screenshots/phone_recurring_meeting_form_light.png",
+        "sha256": "8666ffe4ecfe0b0dad85e8591499f7120cb916aab03fd1e5ba1ed450f539aeb3",
+        "bytes": 31332,
+        "visuallyInspected": true,
+        "matchesRoot": true
+      },
+      {
+        "path": "app/src/test/screenshots/phone_recurring_meeting_review_light.png",
+        "sha256": "aceaf116b9a32b8bfdc4fa60fb447a38e68957c18e1e15c2a5471fa1ffbd7c10",
+        "bytes": 34953,
+        "visuallyInspected": true,
+        "matchesRoot": true
+      },
+      {
+        "path": "app/src/test/screenshots/phone_recurring_meeting_review_rtl_large.png",
+        "sha256": "dac46919803ac22c7904a40e7ec5c00b00ad607669f0a693533cfb361b8925f6",
+        "bytes": 40900,
+        "visuallyInspected": true,
+        "matchesRoot": true
+      },
+      {
+        "path": "app/src/test/screenshots/phone_guest_picker_manual_light.png",
+        "sha256": "49c29058e5a32ec147419cef5c2f5866f0db378a00829063a68816f9f3857e33",
+        "bytes": 20624,
+        "visuallyInspected": true,
+        "matchesRoot": true
+      },
+      {
+        "path": "app/src/test/screenshots/phone_guest_picker_results_light.png",
+        "sha256": "6b8451a101fe918ce10f42a0310c76baf721d373d71788bbd12e2fa377bc52ba",
+        "bytes": 26691,
+        "visuallyInspected": true,
+        "matchesRoot": true
+      },
+      {
+        "path": "app/src/test/screenshots/phone_guest_picker_denied_dark.png",
+        "sha256": "72a7dccf736233365a30b778d1012bb26a3e35912579b6ea5953e6c4f73e6389",
+        "bytes": 23209,
+        "visuallyInspected": true,
+        "matchesRoot": true
+      },
+      {
+        "path": "app/src/test/screenshots/phone_guest_picker_rtl_large.png",
+        "sha256": "5d98e0d6f7d4245c4bb6e07b11d15d57a64e196bd5b09d03308433d132d96668",
+        "bytes": 47591,
+        "visuallyInspected": true,
+        "matchesRoot": true
+      }
+    ],
+    "observations": [
+      "Normal/dark creation forms retain fixed toolbar, exact date/time, raw people fields, explicit roles and picker action.",
+      "Large RTL creation form wraps date rows; lower people rows remain in the scrollable form.",
+      "Recurring review first bounds and expected previews consistently use selected24-hour format; light dialog actions fit, large RTL body is scrollable and both actions remain visible.",
+      "Manual picker preserves invalid/partial and long raw entries; optional results show raw tuples and already-added feedback.",
+      "Denied dark picker retains manual entry and truthful permission help with explicit retry.",
+      "Large RTL picker wraps full raw long address; toolbar Done/Back remain visible."
+    ],
+    "scope": "Synthetic component/controller renders only; production routes/backend/permission wiring and physical/Google parity remain unverified."
+  },
+  "independentReview": {
+    "agent": "meeting_presentation_review",
+    "source": "252f66ec205338056ba2a8b5c5e9fc378f11444f",
+    "blockingFindings": 0,
+    "scope": "Source-only19files byte equality, core/helper boundaries, raw guest/CAS/opt-in/privacy/recovery;five representativeimages inspected"
+  },
+  "leadInspected": [
+    "phone_meeting_create_dark",
+    "phone_guest_picker_results_light",
+    "phone_recurring_meeting_review_rtl_large"
+  ],
+  "publicationCI": {
+    "status": "PASSED",
+    "runId": 44484242750,
+    "mergeCommit": "b4a9cf64b7134d4c2641cf5f80cb5d04f7a68129",
+    "pullRequest": "https://github.com/swapnilraj/calendar/pull/77"
+  },
+  "limitations": [
+    "Injectable presentation; production meeting routes and backend are separate packets.",
+    "No native provider/account/contacts/keyboard/TalkBack or Google parity acceptance."
+  ]
+}

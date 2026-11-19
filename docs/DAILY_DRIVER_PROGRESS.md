@@ -4,6 +4,26 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+Subsequent bounded publication PR77–79 passed full CI and merged: injectable meeting creation/local
+guest picker (`b4a9cf6`), native meeting adapters preserving ordinary protocol boundaries (`b37308c`),
+and connected filtered search (`73444f5`). Focused checks passed92/200/74 respectively; ten meeting/
+picker and nine search/toolbar captures were inspected. Independent review found no blocking UI or
+adapter publication regression. The combined integration push CI44487581843 passed at `73444f5`.
+PR3's first CI attempt failed resolving the unchanged lib-recur0.17.1 dependency before compilation;
+the exact retry passed. Its cause remains unproven; no dependency version or source was changed.
+Production meeting routing/contact permission composition remains a separate publication packet.
+
+The isolated reminder branch's **default** application at `25712a0` passed2,375 tests
+(app2,101/core257/weather17), APK/lint and release-manifest processing. Its opt-in18-component pair
+compiled and passed lint at `da755d6`. The first native metadata capture correctly refused startup
+after an unsolicited runtime entry produced unavailable configuration and one own retry job. It did
+not prove quiet startup or alarm delivery. The
+[preserved attempt](audit/evidence/native-reminder-isolation-first-attempt-2026-11-19.json) records
+UID10211/PID9847, later read-only ownership/PID-absence proof and canonical removal of only the two
+new fixture packages. No calendar data, production package or older bf8 fixture was targeted.
+A stricter pre-bind no-scheduling guard and attributed-callback schema2 are in progress. This does
+not supersede the exact root checkpoint below or complete native/account/device/beta/signing gates.
+
 At source `6d3148fb64d2e48d3b59934c54a95f16e9aa636c`, the complete required gate passed **2,369 tests**
 (app2,095/core257/weather17), debug assembly and lint with zero failures/errors/skips in5m55s.
 Schedule retains loaded-range navigation under the phone header and presents accessible date/card

@@ -27,6 +27,14 @@ Earlier attempts retain their original meaning:
 
 ## Latest integrated correction — 19 November 2026
 
+Publication at `73444f5` combines PR77–79: meeting creation/picker presentation, native meeting
+adapters, and connected filtered search. Focused92/200/74 checks and full publication/combined push
+CI passed. These source closures do not complete production meeting routing or native Google sync.
+The isolated reminder harness's default2375-test gate passed, but its first metadata capture failed
+STARTUP_NOT_QUIET and is retained as failed; a separate later inspection proved the reported PID
+absent and owned fixture packages were removed. Actual alarm/snooze delivery remains NOT_RUN.
+See [the bounded native attempt](evidence/native-reminder-isolation-first-attempt-2026-11-19.json).
+
 The later complete checkpoint `6d3148f` passed2,369 tests (app2,095/core257/weather17), APK assembly
 and lint with zero failures/errors/skips in5m55s. Explicit Schedule endpoints/cards and selected
 clock formatting across recurring creation hosts are integrated. The

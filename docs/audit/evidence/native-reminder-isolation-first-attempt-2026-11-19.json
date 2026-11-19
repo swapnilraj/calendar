@@ -1,0 +1,180 @@
+{
+  "scope": "Isolated reminder harness source/build/metadata; actual alarm/snooze delivery NOT_RUN",
+  "defaultGate": {
+    "source": "25712a005e7589a0bf58d7f298822eee6803fbf8",
+    "command": "./gradlew test :app:assembleDebug :app:lintDebug :app:processReleaseMainManifest",
+    "startedAt": "2026-11-19T08:02:24.315752+00:00",
+    "finishedAt": "2026-11-19T08:10:29.087415+00:00",
+    "seconds": 484.772,
+    "exitCode": 0,
+    "counts": {
+      "tests": 2375,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "modules": {
+      "app": {
+        "tests": 2101,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "calendar-core": {
+        "tests": 257,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "weather": {
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "log": "/tmp/daylight-reminder-default-full-gate1.log",
+    "xml": "/tmp/daylight-reminder-default-full-gate1-xml",
+    "headAfter": "25712a005e7589a0bf58d7f298822eee6803fbf8",
+    "statusAfter": ""
+  },
+  "defaultSource": "25712a005e7589a0bf58d7f298822eee6803fbf8",
+  "pairGate": {
+    "source": "da755d6e9787ac15cfc593d113f87a68b91dc198",
+    "command": "./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug -Pdaylight.reminderProbe=true",
+    "startedAt": "2026-11-19T08:40:25.358107+00:00",
+    "finishedAt": "2026-11-19T08:43:14.256941+00:00",
+    "seconds": 168.899,
+    "exitCode": 0,
+    "headAfter": "da755d6e9787ac15cfc593d113f87a68b91dc198",
+    "statusAfter": "",
+    "log": "/tmp/daylight-reminder-optin-pair-gate4.log"
+  },
+  "pairLeadReview": {
+    "pairSha256": "96e3678abf08098fd6288aef9c168438da7997818bd1764aff5d2547b7ca6a32",
+    "sourceHashesMatched": 10,
+    "checks": [
+      {
+        "kind": "app",
+        "sha256": "1a4ac7eb78fa34664fc02fa49af610c3e86b8f1ba3a7683b06ae61bc6ebfdf2c",
+        "signatureAndManifest": "PASS"
+      },
+      {
+        "kind": "test",
+        "sha256": "c439ff8780149d8af378d7f93374c947cffa8408fc41dcc32176039d340c6479",
+        "signatureAndManifest": "PASS"
+      }
+    ],
+    "componentCount": 18,
+    "enabledReminder": 4,
+    "disabledOthers": 14,
+    "installOrNativeExecution": "NOT_RUN"
+  },
+  "firstNativeRun": {
+    "runId": "c1172e14-122e-47ae-9447-c80ef9af5e54",
+    "status": "FAILED_NOT_RECOVERED",
+    "failureCode": "STARTUP_NOT_QUIET",
+    "targetUid": 10211,
+    "targetProcess": {
+      "name": "dev.swapnilraj.calendar.reminderprobe",
+      "pid": 9847,
+      "startElapsedRealtime": 21859736
+    },
+    "startup": {
+      "cancellationAttempts": 0,
+      "configurationAttempts": 1,
+      "health": "UNAVAILABLE",
+      "operationAttempts": 1,
+      "registrationAttempts": 0,
+      "retryAttempts": 1,
+      "runtimeGetterCalls": 3,
+      "state": "UNBOUND"
+    },
+    "capabilities": {
+      "channelEnabled": null,
+      "channelPresent": false,
+      "exactAlarmAccess": false,
+      "notificationsEnabled": false,
+      "ownJobCount": 1,
+      "ownNotificationCount": 0,
+      "postNotifications": false,
+      "readCalendar": false,
+      "writeCalendar": false
+    },
+    "componentsCaptured": 18,
+    "origin": "NOT_ATTRIBUTED",
+    "hostTargetExit": "UNPROVEN_AT_FAILURE"
+  },
+  "freshInstall": {
+    "schema": 1,
+    "runId": "67b2ef51-aa44-4bec-8ed6-1f8332962f35",
+    "startedAt": "2026-11-19T08:48:31.422920+00:00",
+    "pairSha256": "96e3678abf08098fd6288aef9c168438da7997818bd1764aff5d2547b7ca6a32",
+    "status": "PASS",
+    "installs": [
+      {
+        "package": "dev.swapnilraj.calendar.reminderprobe",
+        "sha256": "1a4ac7eb78fa34664fc02fa49af610c3e86b8f1ba3a7683b06ae61bc6ebfdf2c",
+        "phase": "PACKAGE_PRESENT_AFTER_SUCCESS",
+        "clientExit": 0,
+        "successLine": true
+      },
+      {
+        "package": "dev.swapnilraj.calendar.reminderprobe.tests",
+        "sha256": "c439ff8780149d8af378d7f93374c947cffa8408fc41dcc32176039d340c6479",
+        "phase": "PACKAGE_PRESENT_AFTER_SUCCESS",
+        "clientExit": 0,
+        "successLine": true
+      }
+    ],
+    "permissionCommands": 0,
+    "calendarDataCalls": 0,
+    "finishedAt": "2026-11-19T08:49:22.179551+00:00"
+  },
+  "laterReadOnlyOwnershipAndPidAbsence": {
+    "schema": 1,
+    "bootId": "f14d0429-80d1-4b93-9eeb-da5f4f2046ac",
+    "androidUser": 0,
+    "ownedFreshInstallReceipt": "/tmp/daylight-reminder-probe-install-67b2ef51-aa44-4bec-8ed6-1f8332962f35/install.json",
+    "packages": {
+      "dev.swapnilraj.calendar.reminderprobe.tests": 10212,
+      "dev.swapnilraj.calendar.reminderprobe": 10211
+    },
+    "installedBaseApkHashesMatched": {
+      "dev.swapnilraj.calendar.reminderprobe": "1a4ac7eb78fa34664fc02fa49af610c3e86b8f1ba3a7683b06ae61bc6ebfdf2c",
+      "dev.swapnilraj.calendar.reminderprobe.tests": "c439ff8780149d8af378d7f93374c947cffa8408fc41dcc32176039d340c6479"
+    },
+    "originalReportedPid": 9847,
+    "reportedPidAbsent": true,
+    "reportedPidRows": [],
+    "mutations": 0
+  },
+  "fixtureRemoval": {
+    "schema": 1,
+    "ownershipReport": "/tmp/daylight-reminder-probe-postfailure-ownership.json",
+    "sourceIdentityRun": "c1172e14-122e-47ae-9447-c80ef9af5e54",
+    "originalIdentityStatus": "FAILED_NOT_RECOVERED",
+    "status": "PASS",
+    "removals": [
+      {
+        "package": "dev.swapnilraj.calendar.reminderprobe.tests",
+        "uid": 10212,
+        "phase": "USER0_PACKAGE_ABSENCE_VERIFIED",
+        "clientExit": 0,
+        "successLine": true
+      },
+      {
+        "package": "dev.swapnilraj.calendar.reminderprobe",
+        "uid": 10211,
+        "phase": "USER0_PACKAGE_ABSENCE_VERIFIED",
+        "clientExit": 0,
+        "successLine": true
+      }
+    ],
+    "calendarDataCalls": 0,
+    "permissionCommands": 0,
+    "scope": "Only the two newly created isolated fixture packages; no production package/provider/private calendar data targeted",
+    "finishedAt": "2026-11-19T09:04:51.246967+00:00"
+  },
+  "pending": "Schema2 prebind scheduling refusal and attributed callback safety proof; native identity has not passed. Default main application and older bf8 fixture were not targeted."
+}
