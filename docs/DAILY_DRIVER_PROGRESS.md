@@ -4,7 +4,16 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
-At source checkpoint `97c3f3f`, the required full gate **passed: 2,243 tests**
+At source checkpoint `57fe2ad`, the required complete gate **passed: 2,246 tests**
+(app1,972 + core257 + weather17), debug APK assembly and lint, with zero failures/errors/skips.
+Command: `./gradlew test :app:assembleDebug :app:lintDebug`; elapsed3m50s, log
+`/tmp/daylight-following-end-zone-readiness-full-gate.log`. Debug APK45,206,668 bytes, SHA-256
+`ce03a929c068c37388f92aa98ba3259c91d72f65354fae46fec7e8b2d1165e5f`.
+The timezone correction, test-only journey synchronization and native harness source are included.
+Existing screenshots verified unchanged. Native execution, Google delivery and stable release
+acceptance remain pending.
+
+Previous source checkpoint `97c3f3f`, the required full gate **passed: 2,243 tests**
 (core 257, app 1,969, weather 17), debug APK assembly and lint, with zero failures, errors or skipped
 tests. Command: `./gradlew test :app:assembleDebug :app:lintDebug`; log
 `/tmp/daylight-receipt6-full-gate.log`. Completed in 6m3s. Debug APK 45,203,980 bytes, SHA-256:
@@ -15,8 +24,9 @@ The subsequent integrated end-zone correction at `1a0fd3d` passed29 focused chec
 complete aggregate attempt **failed1 of2,246 tests** in4m31s: an existing ALL-edit journey timed out
 waiting for its initial event title before any edit/write. No Following regression failed. The
 [failing attempt and focused correction evidence](audit/evidence/following-null-end-zone-fixed-2026-11-19.json)
-are retained; investigation and a complete passing rerun are pending. This does not supersede the
-older passing checkpoint as a successful full gate.
+are retained. Test-only idle checkpoints and bounded non-private readiness counters were added
+without changing assertions or timeouts; the two focused journeys passed and the complete `57fe2ad`
+rerun above passed. The historical timeout cause remains unproven.
 
 The [native app-writer harness](audit/evidence/native-app-writer-source-review-2026-11-19.json)
 is now integrated with19 passing host checks, successful AndroidTest compilation/pair assembly,
@@ -37,8 +47,7 @@ not implemented exclusion transfer or a production clone admission.
 Independent [Following metadata regression evidence](audit/evidence/following-null-end-zone-before-2026-11-19.json)
 subsequently exposed a title-only split changing an admitted SQL NULL end timezone to the start zone.
 The synthetic adapter returned LocalSaved with one batch while preserving the prefix except RRULE.
-Distinct nonblank end zones remain rejected before mutation. The corrective source is integrated with29 focused checks passing; its complete aggregate rerun
-is pending as described above. Production clone admission remains disabled. The passing checkpoint above predates this new test.
+Distinct nonblank end zones remain rejected before mutation. The corrective source is integrated with29 focused checks and the complete2,246-test rerun passing. Production clone admission remains disabled. The passing checkpoint above predates this new test.
 
 The shared Add people picker is connected to meeting creation and owned one-off editing. Optional
 local DEFAULT-directory contact search requires an explicit opt-in on each opening; typing, opening

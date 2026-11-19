@@ -32,10 +32,9 @@
   ],
   "limitations": [
     "Synthetic clone policy only; production admission remains disabled",
-    "No Google/Workspace, physical device or live UX acceptance",
-    "Latest aggregate attempt failed the initial event-loading journey; investigation and a complete passing rerun are required"
+    "No Google/Workspace, physical device or live UX acceptance"
   ],
-  "aggregateAttempt": {
+  "priorAggregateAttempt": {
     "source": "1a0fd3d",
     "status": "FAIL",
     "tests": 2246,
@@ -47,5 +46,23 @@
     "failure": "15s timeout waiting for initial event title before details or mutation",
     "preservedFailureXml": "/tmp/daylight-following-end-zone-full-gate-recurring-failure.xml",
     "log": "/tmp/daylight-following-end-zone-full-gate.log"
+  },
+  "passingAggregateRerun": {
+    "source": "57fe2ad",
+    "status": "PASS",
+    "command": "./gradlew test :app:assembleDebug :app:lintDebug",
+    "tests": 2246,
+    "app": 1972,
+    "core": 257,
+    "weather": 17,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsed": "3m50s",
+    "log": "/tmp/daylight-following-end-zone-readiness-full-gate.log",
+    "result": "/tmp/daylight-following-end-zone-readiness-full-gate-result.json",
+    "apkBytes": 45206668,
+    "apkSha256": "ce03a929c068c37388f92aa98ba3259c91d72f65354fae46fec7e8b2d1165e5f",
+    "fixtureHardening": "57fe2ad adds idle checkpoints and bounded readiness counters; historical timeout cause remains unproven"
   }
 }
