@@ -85,10 +85,9 @@ class CalendarOperationRetirementTest {
         assertNull(one.operationHeader("future"))
     } }
 
-    @Test fun unshippedFamiliesAndRecurrenceCannotAliasTheOrdinaryEncoderOrTouchTheJournal() = runBlocking { stores {one,_,a,b ->
+    @Test fun unshippedFamiliesAndRecurringEditsCannotAliasTheOrdinaryEncoderOrTouchTheJournal() = runBlocking { stores {one,_,a,b ->
         val recurring=ref.copy(recurrence=RecurrenceRef(ref.eventId,start))
         val requests=listOf<RetirableOperation>(
-            RetirableOperation.Create("recurring-create",draft.copy(recurrence=RecurrenceSpec(RecurrencePattern.Daily))),
             RetirableOperation.Update("recurring-update",recurring,token,EventPatch(title=FieldChange.Set("Changed"))),
             RetirableOperation.Delete("recurring-delete",recurring,token),
             RetirableOperation.Series("series",recurring,token,SeriesCommand.Delete(RecurrenceScope.ALL)),
@@ -101,7 +100,7 @@ class CalendarOperationRetirementTest {
         }
         val plain=RetirableOperation.Create("plain",draft)
         assertEquals(OperationRetirementResult.Retired("plain"),a.retire(plain));val before=one.operationHeader("plain")
-        assertEquals(OperationRetirementResult.Unsupported,b.retire(plain.copy(draft=draft.copy(recurrence=RecurrenceSpec(RecurrencePattern.Daily)))))
+        assertEquals(OperationRetirementResult.Conflict("plain"),b.retire(plain.copy(draft=draft.copy(recurrence=RecurrenceSpec(RecurrencePattern.Daily)))))
         assertEquals(before,one.operationHeader("plain"))
     } }
 
@@ -253,5 +252,25 @@ class CalendarOperationRetirementTest {
             } finally {scope.cancel();scope.coroutineContext[Job]!!.join()}
         }
     }
+
+    @Test fun authoredRecurringCreateRetirementBindsExactRuleAndFencesBeforePermissionsOrProviderReads() = runBlocking { stores {store,_,a,b ->
+        val recurring=draft.copy(recurrence=RecurrenceSpec(RecurrencePattern.Daily,end=RecurrenceEnd.Count(3)))
+        val request=RetirableOperation.Create("recurring",recurring)
+        assertNotEquals(CalendarWriter.createFingerprint(draft,1024*1024),CalendarWriter.createFingerprint(recurring,1024*1024))
+        assertEquals(OperationRetirementResult.Retired(request.operationId),a.retire(request))
+        assertEquals(OperationRetirementResult.Retired(request.operationId),b.inspect(request))
+        val changed=request.copy(draft=recurring.copy(recurrence=RecurrenceSpec(RecurrencePattern.Daily,end=RecurrenceEnd.Count(4))))
+        assertEquals(OperationRetirementResult.Conflict(request.operationId),b.inspect(changed))
+        assertEquals(OperationRetirementResult.Conflict(request.operationId),b.retire(request.copy(draft=draft)))
+        val context=RuntimeEnvironment.getApplication();val provider=CalendarWriterTest.Provider()
+        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY,provider)
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
+        val writer=CalendarWriter(context.contentResolver,CalendarReader(context.contentResolver,scope,stopTimeoutMillis=0),store,{false})
+        try {
+            assertEquals(MutationResult.Retired(request.operationId),writer.create(request.operationId,request.draft))
+            assertEquals(MutationResult.Conflict(null),writer.create(request.operationId,changed.draft))
+            assertEquals(0,provider.batchCount);assertTrue(provider.queryCounts.isEmpty())
+        } finally {scope.cancel();scope.coroutineContext[Job]!!.join()}
+    } }
 
 }

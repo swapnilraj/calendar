@@ -543,3 +543,20 @@ occurrence and non-empty full calendar namespace as the fresh details read. Dayl
 glyphs and branding remain in use. Existing sheet fixtures are retained. This presentation does not
 activate repeat authoring, invitation responses or meeting creation. Exact Google Calendar Android
 visual and interaction parity remains **UNVERIFIED**, including the editor title bar.
+
+### Authored recurring CREATE backend
+
+The ordinary writer accepts supported authored daily, weekly, monthly and yearly CREATE rules. It
+stores a native recurring master with NULL DTEND, bounded RRULE/DURATION, UTC-date all-day semantics
+and linked alerts in one asserted non-yielding batch. A receipt3 local success requires the known
+master, exact authored row/alerts, actual first-instance bounds and unchanged calendar namespace.
+Lost or malformed master acknowledgement never permits a matching-field search or blind replay.
+Authored recurrence participates in exact CREATE fingerprints and permanent retirement fences;
+recurring UPDATE/DELETE, series and meeting retirement remain unsupported by this publication.
+
+Existing one-off JSON/signatures and receipt2 behavior remain unchanged. Receipt3 compares its
+stored plan with compilation under the current rules during proof/recovery; a later timezone-rule
+or validator change may conservatively leave an operation uncertain. This ordinary recurring-create
+protocol does not generate a stable event UID. These are local provider guarantees, not
+Google/Workspace sync evidence, scoped-edit admission or production clone-profile certification.
+Live recurring-create UI activation is a separate packet and remains disabled by default here.
