@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.swapnilraj.calendar.ui.settings.*
+import dev.swapnilraj.calendar.core.InvitationFilter
 import dev.swapnilraj.calendar.ui.calendars.CalendarViewOption
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
 import java.time.*
@@ -196,5 +197,18 @@ class SettingsSheetTest {
         compose.onNodeWithTag("settings_sheet").captureRoboImage("src/test/screenshots/settings_large_rtl.png")
         switch("Show weather").assertIsDisplayed().performClick()
         compose.onNodeWithTag("settings_save").assertIsDisplayed()
+    }
+
+    @Test fun pendingFilterSurvivesRecreationAndUnrelatedLegacySave() {
+        val restoration = StateRestorationTester(compose)
+        var saved: CalendarSettingsOptions? = null
+        val original = CalendarSettingsOptions(invitationFilter = InvitationFilter.PENDING_ONLY)
+        restoration.setContent { DaylightTheme { SettingsSheet(original, views, { saved = it }, {}, {}, {}) } }
+        field("settings_duration").performTextReplacement("135")
+        restoration.emulateSavedInstanceStateRestore()
+        assertNull(saved)
+        field("settings_duration").assertTextContains("135")
+        compose.onNodeWithTag("settings_save").performClick()
+        assertEquals(original.copy(defaultDurationMinutes = 135), saved)
     }
 }

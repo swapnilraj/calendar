@@ -441,6 +441,16 @@ restrictions. Provide pending-invitation filtering and conflicts against the use
 these are not coworker availability. Do not offer unverified suppression of attendee updates. Verify
 invitation/RSVP/reschedule/recurrence-change/cancellation effects in the second account.
 
+Pure selected-local-calendar overlap assessment requires exact draft session/revision, source
+namespace/generation, proposed time, planning zone, full calendar identities and excluded occurrence
+context equality. Timed overlap is half-open; DATE/DATE overlap uses dates, while mixed DATE/timed
+occupancy uses deterministic day bounds in the explicit planning zone. Known free, cancelled or
+declined observations do not occupy time. Unknown overlapping metadata remains possible, partial
+coverage cannot certify no conflict, and empty selection/unavailable reads stay distinct. Only a
+complete selected local window with no known or possible conflict may report that advisory result.
+This pure contract activates no UI/native read adapter and grants no save authority or coworker
+availability claim; later adapters must mask invalidated or permission-lost contexts immediately.
+
 ### M8 — Search, preferences and Android entry points
 
 Search title/location/description with cancellation/debounce and calendar filters. Default range is
@@ -817,6 +827,22 @@ or synchronization setting is changed. Opening a result navigates to its date an
 reference without a write, while preserving calendar filters. Production enables the search port;
 embedded callers default to absent. This does not search cloud-only calendars or establish Google
 main-screen gesture/pixel parity.
+
+Explicit read/search requests may select `PENDING_ONLY`; omitted filters remain `ALL` with existing
+results and provider projections unchanged. Pending requires exact provider evidence that the user is
+not the organizer and their raw attendee status is INVITED. Missing, invalid or contradictory evidence
+is UNKNOWN: omit those rows from pending results and retain incomplete-classification coverage before
+filtering or result limits. Conflicting classifications for the same occurrence coalesce to UNKNOWN
+before deduplication; identical proven pending rows may deduplicate. Search candidate pages remain
+unfiltered and use fresh Events authority for classification. This is read-only metadata, grants no
+RSVP/edit authority, and changes no provider visibility, reminder policy or account data. This packet
+does not activate a settings control or apply the filter in application views.
+
+The app-local invitation display choice persists independently under a named preference key. Missing,
+malformed or future values fall back to ALL without repair. A typed invitation choice changes only
+that field; unrelated legacy bulk saves preserve opaque future values. Existing settings drafts
+retain the filter through restoration, with older saved drafts defaulting to ALL. This storage
+contract adds no visible control or live-view filtering until the separate presentation integration.
 
 ## Phone Settings and General
 
