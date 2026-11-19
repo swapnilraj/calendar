@@ -154,7 +154,7 @@ class NativeRecurringCreateJourneyTest {
         assertEquals(1, journalCount(f))
         return f.app.calendarLocalStore.readableDatabase.rawQuery("SELECT id,result_ref FROM mutation_journal", null).use {
             it.moveToFirst()
-            val proof = JSONObject(it.getString(1)); assertEquals(5, proof.getInt("version"))
+            val proof = JSONObject(it.getString(1)); assertEquals(6, proof.getInt("version"))
             assertTrue(proof.getBoolean("ackComplete"))
             val reminders = proof.getJSONArray("reminderIds")
             assertEquals(proof.getJSONObject("command").getJSONArray("alerts").length(), reminders.length())

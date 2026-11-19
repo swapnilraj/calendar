@@ -1,8 +1,8 @@
 # Immutable ordinary CREATE recovery
 
-Status: approved implementation packet, not yet activated in the aggregate app. Current ordinary
-one-off creation uses receipt2; new recurring creation uses receipt5. Receipt6 is being implemented
-in an isolated branch. It does not admit provider clone profiles or establish Google/Workspace sync.
+Status: implemented for new ordinary one-off and recurring creates in the aggregate app; integration
+verification is in progress. Existing receipt2/3/5 operations retain their original protocols. This
+does not admit provider clone profiles or establish Google/Workspace sync or physical acceptance.
 
 ## Contract
 
