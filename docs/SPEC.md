@@ -457,6 +457,10 @@ or canceled/deleted rows, ambiguous identity, and insufficient read authority do
 
 Incoming EDIT suggestions remain separate from the freshly verified original event and calendar namespace. Explicit Apply prepares an exact private native draft bound to its original source token, baseline and review revision; reopening, permission return or changed metadata never rebases or applies suggestions automatically. A matching permanent handoff receipt is required before editor exposure, and generic draft opens cannot bypass the private review host. Missing source-zone authorship requires explicit review while untouched native NULL values remain unchanged. This private destination foundation does not activate public intent filters, application owners or browser routes.
 
+Incoming calendar entry points use application-owned services and current preference themes. External VIEW/EDIT/INSERT inputs remain bounded, runtime-validated suggestions; platform MIME-only resolution never authorizes another URI authority. Only an explicit review gesture opens a real private date, create or edit destination. Date hints use one canonical private transport, reject duplicate session values and URI aliases, and are consumed once in the current display zone without changing app filters or replacing retained editors.
+
+The draft browser routes incoming completion/review families and their exact native companion records before ordinary fallback. Matching permanent handoff receipts gate native opens; corrupt, missing, future or changed proof remains retained without a fallback editor or automatic mutation. Existing meeting families and explicit discard concurrency remain intact. The exported calendar-entry Activity is enabled only with the real application owner and both private continuation Activities. These synthetic flows do not establish Android task-stack behavior or Google/Workspace propagation.
+
 ### M9 — App-owned reminders
 
 - Own notification presentation, dismissals, snoozes and delivery tracking. Guide setup for notification

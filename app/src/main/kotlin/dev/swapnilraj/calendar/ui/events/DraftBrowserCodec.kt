@@ -1,6 +1,10 @@
 package dev.swapnilraj.calendar.ui.events
 
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.android.navigation.CalendarEditReviewPreview
+import dev.swapnilraj.calendar.android.navigation.calendarEditReviewPreview
+import dev.swapnilraj.calendar.android.navigation.CalendarSeedReviewPreview
+import dev.swapnilraj.calendar.android.navigation.calendarSeedReviewPreview
 import dev.swapnilraj.calendar.ui.events.meetings.MeetingResponseDraftCodec
 import dev.swapnilraj.calendar.ui.events.meetings.MeetingResponseDraftPreview
 import dev.swapnilraj.calendar.ui.events.meetings.meetingResponseDraftPreview
@@ -42,7 +46,10 @@ data class DraftBrowserItem(val recordId: String, val updatedAt: Instant,
     val launch: EditorDraftLaunch?, val issue: DraftReadIssue?,
     val meetingPreview: MeetingResponseDraftPreview? = null,
     val meetingCreation: MeetingCreationLaunch? = null, val meetingCreationTitle: String = "",
-    val ownedMeeting: OwnedMeetingDraftPreview? = null, val seriesLaunch: SeriesEditorLaunch? = null)
+    val ownedMeeting: OwnedMeetingDraftPreview? = null, val seriesLaunch: SeriesEditorLaunch? = null,
+    val seedReview: CalendarSeedReviewPreview? = null, val seedRecord: DraftRecord? = null,
+    val editReview: CalendarEditReviewPreview? = null, val editRecord: DraftRecord? = null,
+    val editCompanion: DraftRecord? = null, val editLaunch: EditorDraftLaunch? = null)
 
 /** Reads the feature's versioned opaque payload without normalizing or saving incomplete fields. */
 object DraftBrowserCodec {
@@ -69,6 +76,18 @@ object DraftBrowserCodec {
             val launch = SeriesDraftCodec.describe(record)
             return DraftBrowserItem(record.id, record.updatedAt, null,
                 if (launch == null) DraftReadIssue.UNREADABLE else null, seriesLaunch = launch)
+        }
+        if (record.version == 8 || feature == "calendar-edit-review") {
+            val preview = calendarEditReviewPreview(record)
+            return DraftBrowserItem(record.id, record.updatedAt, null,
+                if (preview == null) DraftReadIssue.UNREADABLE else null, editReview = preview,
+                editRecord = record.takeIf { preview != null })
+        }
+        if (record.version == 7 || feature == "calendar-seed-review") {
+            val preview = calendarSeedReviewPreview(record)
+            return DraftBrowserItem(record.id, record.updatedAt, null,
+                if (preview == null) DraftReadIssue.UNREADABLE else null, seedReview = preview,
+                seedRecord = record.takeIf { preview != null })
         }
         if (record.version in setOf(EventEditorController.LEGACY_VERSION, EventEditorController.PREVIOUS_VERSION) &&
             feature != "ordinary-editor" && try { JSONObject(record.payload).has("feature") } catch (_: Exception) { false })
