@@ -470,7 +470,7 @@ class OrdinaryEditReceiptTest {
                     value.ref.instanceEnd == Instant.ofEpochMilli(requireNotNull(event["dtend"]).toLong())
             }
             val phase = store.operationHeader("precision")?.phase
-            println("Receipt4 precision authoring: case=$label exact=$exact result=${result.javaClass.simpleName} batches=$delta phase=$phase nativeExact=$nativeExact")
+            println("Receipt4 precision authoring: kind=UPDATE case=$label exact=$exact result=${result.javaClass.simpleName} batches=$delta phase=$phase nativeExact=$nativeExact")
             if (exact) {
                 val expected = MutationResult.LocalSaved(ref.copy(instanceStart = candidate.start, instanceEnd = candidate.end))
                 if (result != expected || delta != 1 || nativeExact != true || phase != "VERIFIED")
@@ -478,6 +478,25 @@ class OrdinaryEditReceiptTest {
             } else if (result != MutationResult.ValidationFailed(setOf(InvalidEventField.TIME)) || delta != 0 ||
                 phase != null || before != provider.events.map { it.toMap() }) {
                 failures += "$label: result=${result.javaClass.simpleName} batches=$delta phase=$phase nativeExact=$nativeExact"
+            }
+        }
+        for ((label, candidate, exact) in cases) fixture { provider, writer, store, _ ->
+            val result = writer.create("precision-create", draft.copy(time = candidate))
+            val saved = result as? MutationResult.LocalSaved
+            val nativeExact = saved?.let { value ->
+                val event = provider.events.single()
+                value.ref.instanceStart == Instant.ofEpochMilli(requireNotNull(event["dtstart"]).toLong()) &&
+                    value.ref.instanceEnd == Instant.ofEpochMilli(requireNotNull(event["dtend"]).toLong())
+            }
+            val phase = store.operationHeader("precision-create")?.phase
+            println("Receipt4 precision authoring: kind=CREATE case=$label exact=$exact result=${result.javaClass.simpleName} batches=${provider.batchCount} phase=$phase nativeExact=$nativeExact")
+            if (exact) {
+                if (saved?.ref?.instanceStart != candidate.start || saved.ref.instanceEnd != candidate.end ||
+                    provider.batchCount != 1 || nativeExact != true || phase != "VERIFIED")
+                    failures += "CREATE/$label: exact millisecond create was not verified exactly"
+            } else if (result != MutationResult.ValidationFailed(setOf(InvalidEventField.TIME)) || provider.batchCount != 0 ||
+                phase != null || provider.events.isNotEmpty()) {
+                failures += "CREATE/$label: result=${result.javaClass.simpleName} batches=${provider.batchCount} phase=$phase"
             }
         }
         assertTrue("Non-native precision crossed ordinary authoring: ${failures.joinToString("; ")}", failures.isEmpty())

@@ -746,6 +746,9 @@ class CalendarWriter(
     private fun validateTime(draft: EventDraft, authored: Boolean) {
         validateTime(draft)
         if (authored && draft.time is EventTime.Timed &&
+            (draft.time.start.nano % 1_000_000 != 0 || draft.time.end.nano % 1_000_000 != 0))
+            throw Invalid(setOf(InvalidEventField.TIME))
+        if (authored && draft.time is EventTime.Timed &&
             !ProviderTimeZoneCompatibility.isCompatible(requireNotNull(draft.eventZone)))
             throw Invalid(setOf(InvalidEventField.ZONE))
     }
