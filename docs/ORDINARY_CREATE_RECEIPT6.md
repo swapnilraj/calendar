@@ -23,7 +23,7 @@ Prepared receipt fields:
 | `plan.firstStart`, `plan.firstEnd`, `plan.allDay` | Frozen UTC bounds and event kind |
 | `plan.recurrenceFacts` | Null or frozen local/offset witnesses for recurring arithmetic |
 | `layout` | Deterministic calendar assertion, event insert and reminder result positions |
-| `planDigestVersion`, `planDigest` | Versioned SHA-256 binding command/signature, namespace, calendar snapshot, plan and layout |
+| `planDigestVersion`, `planDigest` | Versioned SHA-256 binding the journal operation key, command/signature, namespace, calendar snapshot, plan and layout |
 
 The plan digest is separate from the command fingerprint. Its version must define deterministic
 field ordering and scalar encoding. Strict decoding rejects unknown fields, coercions, non-exact

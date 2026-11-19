@@ -43,6 +43,9 @@ Subsequent independent [one-off ACK probes](audit/evidence/oneoff-create-ack-bef
 reproduced three false local-save results in the still-active receipt2 creation path (malformed,
 missing and reordered reminder ACKs). These new cases are not covered by the 2,211-test checkpoint.
 The approved receipt6 packet covers both new creation modes; correction/after evidence is pending.
+The isolated codec at `e5cc005` passed 10 focused protocol checks, including historical-zone decoding
+without current timezone lookup. Its provider handler and app activation are still in progress;
+those component results do not close the one-off ACK defect or replace the aggregate checkpoint.
 
 Incoming public EDIT review now supports an explicit proposed zone for eligible NULL-zone timed
 sources, including the displayed zone. Exact Apply/CAS and issued ZONE rights are required; absent-zone
@@ -76,6 +79,10 @@ publishes shared phone navigation; its first full CI had one navigation-test tim
 visible/closed-drawer synchronization fix passed 43 focused checks on the current integration base
 and fresh full CI at `7dfefc8`. Assertions/timeouts were retained. PR62 merged as `af6b3b9`;
 the aggregate worktree was not overwritten with this older publication tree.
+
+[PR63](https://github.com/swapnilraj/calendar/pull/63) preserves JUnit, HTML, Roborazzi and lint
+diagnostics after CI failure, with attempt-specific artifact names. YAML/path validation passed;
+full CI is pending at `d71b4b6`. It changes no application code and is not yet merged.
 
 The aggregate source remains ahead of bounded publication. PR55–62 artifact attachments are now
 confirmed in the task; earlier hanging calls were reconciled against the attachment inventory before
