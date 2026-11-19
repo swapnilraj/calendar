@@ -93,4 +93,14 @@ class MeetingResponseWorkflowScreenTest {
         assertFalse(f.store.rows.containsKey(launch.draftId)); assertTrue(f.store.rows.containsKey(replacement!!.draftId))
         assertTrue(f.calls.isEmpty()); assertEquals(0, f.permissionCalls)
     }
+    @Test fun browserOpensExactResponseDescriptorAndUnwiredHostHasNoOpenAction() = runBlocking<Unit> {
+        val launch = f.prepare(); val row = DraftBrowserCodec.read(f.record()); var opened: MeetingResponseLaunch? = null
+        compose.setContent { DaylightTheme { DraftBrowserContent(DraftBrowserState.Ready(listOf(row)), {}, { error("ordinary") }, {},
+            ZoneOffset.UTC, onOpenMeeting = { opened = it }) } }
+        compose.onNodeWithText("Invitation response draft").assertIsDisplayed()
+        compose.onNodeWithText("Open draft").performClick()
+        assertEquals(launch, opened); assertEquals(0, f.reads); assertTrue(f.calls.isEmpty())
+    }
+
+
 }

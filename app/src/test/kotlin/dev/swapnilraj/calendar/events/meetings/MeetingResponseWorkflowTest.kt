@@ -79,4 +79,14 @@ class MeetingResponseWorkflowTest {
         assertNull(controller.discardAndReload()); controller.save()
         assertEquals(replacement, f.store.rows.getValue(prepared.launch.draftId)); assertTrue(f.calls.isEmpty())
     }
+    @Test fun browserRecognizesResponsesBeforeLegacyVersionsAndRetainsCorruption() = runBlocking {
+        val f = MeetingResponseFixture(); f.prepare(); val record = f.record()
+        assertEquals(f.launch(), DraftBrowserCodec.read(record).meetingPreview?.launch)
+        for (version in listOf(1, 2, 99)) {
+            val row = DraftBrowserCodec.read(record.copy(version = version))
+            assertNull(row.launch); assertNull(row.meetingPreview); assertNotNull(row.issue)
+        }
+    }
+
+
 }
