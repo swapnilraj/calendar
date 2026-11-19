@@ -1,0 +1,146 @@
+{
+  "gate": {
+    "source": "970ab0a9ae9bae781089af93b1d0b552b1c64ab4",
+    "command": [
+      "./gradlew",
+      "test",
+      ":app:assembleDebug",
+      ":app:lintDebug",
+      ":app:processReleaseMainManifest"
+    ],
+    "startedAt": "2026-11-19T16:44:13.326154+00:00",
+    "expectedTotalOnlyIfSuccessful": 2446,
+    "scope": "Default aggregate after bounded reminder fixture cleanup; prior gate interrupted, not passed",
+    "exitCode": 0,
+    "elapsedSeconds": 288.701,
+    "finishedAt": "2026-11-19T16:49:02.027526+00:00",
+    "headAfter": "970ab0a9ae9bae781089af93b1d0b552b1c64ab4",
+    "treeAfter": "",
+    "modules": [
+      {
+        "module": "app",
+        "tests": 2139,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "module": "calendar-core",
+        "tests": 290,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "module": "weather",
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "totals": {
+      "tests": 2446,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "status": "PASS"
+  },
+  "artifact": {
+    "source": "970ab0a9ae9bae781089af93b1d0b552b1c64ab4",
+    "scope": "Developer-signed source checkpoint; not owner-signed release or daily-driver acceptance",
+    "tests": {
+      "tests": 2446,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "modules": [
+      {
+        "module": "app",
+        "tests": 2139,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "module": "calendar-core",
+        "tests": 290,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "module": "weather",
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "gate": "/tmp/daylight-graph-namespace-full-gate2-evidence/result.json",
+    "apkBytes": 42835846,
+    "apkSha256": "7ccd079e62c06086be65762522921be2b32c5438045da81921fd318d868fa178",
+    "developerSignerSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278",
+    "packageBadging": "package: name='dev.swapnilraj.calendar' versionCode='1' versionName='0.1.0' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'",
+    "actualDexDefinitionsVerified": [
+      "Ldev/swapnilraj/calendar/CalendarApp;",
+      "Ldev/swapnilraj/calendar/ui/LiveCalendarDayKt;",
+      "Ldev/swapnilraj/calendar/ui/SeriesWriteWorkflowKt;",
+      "Ldev/swapnilraj/calendar/ui/grid/TimedGridGestureInputKt;",
+      "Ldev/swapnilraj/calendar/android/navigation/CalendarEntryActivity;",
+      "Ldev/swapnilraj/calendar/android/navigation/CalendarSeedReviewActivity;",
+      "Ldev/swapnilraj/calendar/android/navigation/CalendarEditReviewActivity;",
+      "Ldev/swapnilraj/calendar/data/calendar/CalendarOperationRetirement;",
+      "Ldev/swapnilraj/calendar/core/RecurrenceGraphProof;",
+      "Ldev/swapnilraj/calendar/core/RecurrenceGraphProofValue;"
+    ],
+    "dexFilesInspected": [
+      "classes.dex",
+      "classes10.dex",
+      "classes11.dex",
+      "classes12.dex",
+      "classes13.dex",
+      "classes14.dex",
+      "classes15.dex",
+      "classes16.dex",
+      "classes17.dex",
+      "classes18.dex",
+      "classes19.dex",
+      "classes2.dex",
+      "classes20.dex",
+      "classes21.dex",
+      "classes22.dex",
+      "classes3.dex",
+      "classes4.dex",
+      "classes5.dex",
+      "classes6.dex",
+      "classes7.dex",
+      "classes8.dex",
+      "classes9.dex"
+    ],
+    "verifierCorrection": "Initial DEX filename filter omitted two-digit DEX files. Corrected all22 inspection passed; no build rerun or APK changes.",
+    "pending": [
+      "Seven remaining implementation families; invitation integration currently staged separately",
+      "Controlled Google/Workspace organizer and attendee checks",
+      "Actual reminder/snooze/Doze/reboot/timezone/device acceptance",
+      "Physical accessibility and upgrade checks",
+      "Seven-day beta",
+      "Owner stable signing and durable accepted release"
+    ],
+    "folder": "/tmp/daylight-verified-2446-970ab0a",
+    "zipBytes": 14577503,
+    "zipSha256": "b208fd5435cd66868865ace54e0368fad646e1f01e7d32977ce73ae5495010ca"
+  },
+  "actualApkManifest": {
+    "package": "dev.swapnilraj.calendar",
+    "application": "dev.swapnilraj.calendar.CalendarApp",
+    "debugComponents": 18,
+    "incomingExportBoundariesVerified": true,
+    "probeOnlyQueries": false
+  },
+  "sourceBackupBranch": "codex/verified-2446-20261119",
+  "previousInterruptedGate": "reminder-fixture-cleanup-interruption-2026-11-19.json",
+  "acceptance": "Local aggregate PASS only. External acceptance and seven remaining feature families are not passed by this checkpoint."
+}

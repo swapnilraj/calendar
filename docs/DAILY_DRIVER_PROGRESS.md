@@ -910,3 +910,23 @@ original failure while independently closing resources. All four cases passed wi
 verification. A fresh full gate is still required. Separately, PR100 failed one reminder-opening
 capture in CI; the exact unchanged method passed locally with verification, so its historical cause
 remains unestablished. No screenshots were rebaselined to hide that failure.
+
+### Fresh combined gate passed — 19 November
+
+The fresh default aggregate at `970ab0a` passed `./gradlew test :app:assembleDebug
+:app:lintDebug :app:processReleaseMainManifest` in 4m49s: 2,446 tests (app2,139,
+core290, weather17), zero failures, errors or skips. Screenshot verification was enabled.
+The earlier interrupted attempt remains a failed execution with stale XML, not another PASS.
+[Checkpoint evidence](audit/evidence/aggregate-2446-checkpoint-2026-11-19.json).
+
+The exact source is backed up at `codex/verified-2446-20261119`. The frozen developer APK is
+42,835,846 bytes, SHA256 `7ccd079e62c06086be65762522921be2b32c5438045da81921fd318d868fa178`.
+Inspection of all22 DEX files and the actual manifest confirmed the intended application,
+18 debug components and three incoming export boundaries; no probe-only queries were present.
+This is a developer checkpoint, not an owner-signed or upgrade-accepted release.
+
+The invitation filter is a separate integration candidate: provider/core/storage checks, 13 UI
+checks and five inspected captures passed; its two SQL-backed app journeys plus the search-context
+case passed with verification. Broader regression review and a new combined gate remain required
+before it becomes part of an accepted aggregate. Selected-calendar conflicts are under pure-layer
+implementation; the other remaining source families and external device/account/beta gates stay open.
