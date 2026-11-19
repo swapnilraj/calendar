@@ -43,13 +43,19 @@ fun SearchSheet(
     modifier: Modifier = Modifier,
     onRequestPermission: (() -> Unit)? = null,
 ) {
+    val shown = if (state.snapshot != null && state.matchingSnapshot == null &&
+        state.status in setOf(SearchStatus.RESULTS, SearchStatus.NO_MATCHES, SearchStatus.NO_CALENDARS, SearchStatus.NO_SELECTION))
+        state.copy(status = SearchStatus.WAITING, snapshot = null)
+        else if (state.status == SearchStatus.RESULTS && state.matchingSnapshot?.hits?.isEmpty() == true)
+            state.copy(status = SearchStatus.NO_MATCHES, snapshot = state.matchingSnapshot) else state
+    val latestShown by rememberUpdatedState(shown)
     val density = LocalDensity.current
     val locale = LocalLocale.current.platformLocale
     val formatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
-    val range = state.calendar.range
+    val range = shown.calendar.range
     val rangeLabel = stringResource(R.string.search_range, range.start.format(formatter), range.endExclusive.minusDays(1).format(formatter))
     val changeRangeLabel = stringResource(R.string.search_change_range)
-    val readySnapshot = state.snapshot.takeIf { state.status in setOf(SearchStatus.RESULTS, SearchStatus.NO_MATCHES, SearchStatus.NO_CALENDARS, SearchStatus.NO_SELECTION) }
+    val readySnapshot = shown.matchingSnapshot.takeIf { shown.status in setOf(SearchStatus.RESULTS, SearchStatus.NO_MATCHES, SearchStatus.NO_CALENDARS, SearchStatus.NO_SELECTION) }
     val calendarsById = remember(readySnapshot?.calendars) { readySnapshot?.calendars.orEmpty().associateBy { it.id } }
     var pickingRange by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -62,11 +68,11 @@ fun SearchSheet(
                         modifier = Modifier.weight(1f).semantics { heading() })
                     TextButton(onClick = onDismiss) { Text(stringResource(R.string.search_close)) }
                 }
-                OutlinedTextField(state.query, onQueryChange, label = { Text(stringResource(R.string.search_query)) },
-                    singleLine = true, isError = state.status == SearchStatus.INVALID_QUERY,
+                OutlinedTextField(shown.query, onQueryChange, label = { Text(stringResource(R.string.search_query)) },
+                    singleLine = true, isError = shown.status == SearchStatus.INVALID_QUERY,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("search_query"),
-                    supportingText = { Text(stringResource(if (state.status == SearchStatus.INVALID_QUERY) R.string.search_query_error else R.string.search_query_help)) })
+                    supportingText = { Text(stringResource(if (shown.status == SearchStatus.INVALID_QUERY) R.string.search_query_error else R.string.search_query_help)) })
                 LazyColumn(Modifier.fillMaxWidth().weight(1f).testTag("search_results"), contentPadding = PaddingValues(bottom = 24.dp)) {
                     item(key = "range") {
                         TextButton(onClick = { pickingRange = true }, modifier = Modifier.fillMaxWidth().testTag("search_date_range")
@@ -76,8 +82,12 @@ fun SearchSheet(
                                 Text(stringResource(R.string.search_change_range), style = MaterialTheme.typography.labelMedium)
                             }
                         }
+                        if (shown.calendar.invitationFilter == InvitationFilter.PENDING_ONLY) {
+                            Text(stringResource(R.string.invitation_filter_pending), style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                        }
                         Text(stringResource(R.string.search_range_limit), style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content), modifier = Modifier.padding(horizontal = 16.dp))
-                        Text(stringResource(R.string.search_zone, state.calendar.displayZone.id), style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                        Text(stringResource(R.string.search_zone, shown.calendar.displayZone.id), style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                         Row(Modifier.fillMaxWidth()) {
                             val earlier = expandedSearchRange(range, true)
                             val later = expandedSearchRange(range, false)
@@ -91,7 +101,9 @@ fun SearchSheet(
                         item(key = "coverage:${issue.calendarId.value}:${issue.reason}") {
                             val calendar = calendarsById[issue.calendarId]
                             val name = calendar?.let { stringResource(R.string.search_calendar, it.displayName, it.account.name) }
-                            val label = if (name == null) stringResource(R.string.search_coverage_missing) else when (issue.reason) {
+                            val label = if (name == null) stringResource(
+                                if (issue.reason == CoverageReason.INVITATION_CLASSIFICATION_UNKNOWN) R.string.invitation_filter_unknown_generic
+                                else R.string.search_coverage_missing) else when (issue.reason) {
                                 CoverageReason.PROVIDER_HIDDEN -> stringResource(R.string.search_coverage_hidden, name)
                                 CoverageReason.SYNC_DISABLED -> stringResource(R.string.search_coverage_sync, name)
                                 CoverageReason.MISSING_CALENDAR -> stringResource(R.string.search_coverage_missing)
@@ -102,7 +114,7 @@ fun SearchSheet(
                         }
                     }
                     item(key = "status") {
-                        val message = when (state.status) {
+                        val message = when (shown.status) {
                             SearchStatus.EMPTY_QUERY -> R.string.search_empty_query
                             SearchStatus.INVALID_QUERY -> R.string.search_query_error
                             SearchStatus.INVALID_RANGE -> R.string.search_range_error
@@ -113,22 +125,24 @@ fun SearchSheet(
                             SearchStatus.UNAVAILABLE -> R.string.search_unavailable
                             SearchStatus.NO_CALENDARS -> R.string.search_no_calendars
                             SearchStatus.NO_SELECTION -> R.string.search_no_selection
-                            SearchStatus.NO_MATCHES -> if (state.snapshot?.truncated == true) R.string.search_partial_no_matches else R.string.search_no_matches
+                            SearchStatus.NO_MATCHES -> if (shown.calendar.invitationFilter == InvitationFilter.PENDING_ONLY &&
+                                (snapshot?.truncated == true || !snapshot?.coverage.isNullOrEmpty())) R.string.invitation_filter_partial_empty
+                                else if (snapshot?.truncated == true) R.string.search_partial_no_matches else R.string.search_no_matches
                             SearchStatus.RESULTS -> null
                         }
                         if (message != null) Text(stringResource(message), style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
                             modifier = Modifier.padding(16.dp).semantics { liveRegion = LiveRegionMode.Polite })
-                        if (state.status == SearchStatus.WAITING || state.status == SearchStatus.LOADING) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
-                        if (state.status == SearchStatus.PERMISSION_REQUIRED && onRequestPermission != null) TextButton(onClick = onRequestPermission) { Text(stringResource(R.string.search_allow_calendar)) }
-                        if (state.status in setOf(SearchStatus.UNAVAILABLE, SearchStatus.PERMISSION_REQUIRED, SearchStatus.LIMIT_EXCEEDED)) TextButton(onClick = onRetry) { Text(stringResource(R.string.search_retry)) }
-                        if (state.status == SearchStatus.RESULTS) Text(pluralStringResource(R.plurals.search_result_count, state.hits.size, state.hits.size),
+                        if (shown.status == SearchStatus.WAITING || shown.status == SearchStatus.LOADING) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+                        if (shown.status == SearchStatus.PERMISSION_REQUIRED && onRequestPermission != null) TextButton(onClick = onRequestPermission) { Text(stringResource(R.string.search_allow_calendar)) }
+                        if (shown.status in setOf(SearchStatus.UNAVAILABLE, SearchStatus.PERMISSION_REQUIRED, SearchStatus.LIMIT_EXCEEDED)) TextButton(onClick = onRetry) { Text(stringResource(R.string.search_retry)) }
+                        if (shown.status == SearchStatus.RESULTS) Text(pluralStringResource(R.plurals.search_result_count, shown.hits.size, shown.hits.size),
                             style = MaterialTheme.typography.titleSmall.copy(textDirection = TextDirection.Content), modifier = Modifier.padding(16.dp).semantics { liveRegion = LiveRegionMode.Polite })
                     }
-                    if (state.status == SearchStatus.RESULTS) {
-                        items(state.hits, key = { "hit:${it.occurrence.ref}" }) { hit ->
+                    if (shown.status == SearchStatus.RESULTS) {
+                        items(shown.hits, key = { "hit:${it.occurrence.ref}" }) { hit ->
                             val event = hit.occurrence
                             val calendar = calendarsById[event.ref.calendarId]
-                            val time = searchTimeLabel(event, state.calendar.displayZone, use24Hour, locale)
+                            val time = searchTimeLabel(event, shown.calendar.displayZone, use24Hour, locale)
                             val details = buildList {
                                 add(if (event.time is EventTime.AllDay) "${stringResource(R.string.search_all_day)} · $time" else time)
                                 calendar?.let { add(stringResource(R.string.search_calendar, it.displayName, it.account.name)) }
@@ -144,12 +158,17 @@ fun SearchSheet(
                                 } },
                                 leadingContent = { Box(Modifier.size(12.dp).background(Color(event.color or 0xff000000.toInt()), CircleShape)) },
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("search_hit_${event.ref.calendarId.value}_${event.ref.eventId}")
-                                    .clickable(onClickLabel = action) { onOpenEvent(event.ref) })
+                                    .clickable(onClickLabel = action) {
+                                        val current = latestShown
+                                        if (current.calendar == shown.calendar && current.query == shown.query &&
+                                            current.limit == shown.limit && current.includeDeclined == shown.includeDeclined &&
+                                            current.hits.any { it == hit }) onOpenEvent(event.ref)
+                                    })
                         }
                     }
-                    if (state.status in setOf(SearchStatus.RESULTS, SearchStatus.NO_MATCHES) && snapshot?.truncated == true) item(key = "truncated") {
-                            if (state.hits.isNotEmpty()) Text(stringResource(R.string.search_truncated, state.hits.size), style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content), modifier = Modifier.padding(16.dp))
-                            if (state.limit < 1000) TextButton(onClick = onLoadMore, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.search_more)) }
+                    if (shown.status in setOf(SearchStatus.RESULTS, SearchStatus.NO_MATCHES) && snapshot?.truncated == true) item(key = "truncated") {
+                            if (shown.hits.isNotEmpty()) Text(stringResource(R.string.search_truncated, shown.hits.size), style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content), modifier = Modifier.padding(16.dp))
+                            if (shown.limit < 1000) TextButton(onClick = onLoadMore, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.search_more)) }
                             else Text(stringResource(R.string.search_narrow), style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content), modifier = Modifier.padding(horizontal = 16.dp))
                     }
                 }

@@ -20,6 +20,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
+import dev.swapnilraj.calendar.core.InvitationFilter
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.data.settings.CalendarSettingChange
 import dev.swapnilraj.calendar.ui.calendars.CalendarViewOption
@@ -35,6 +36,7 @@ internal fun phoneSettingsEditorTitle(editor: PhoneSettingEditor): String = stri
     PhoneSettingEditor.TIMED_REMINDER -> R.string.settings_timed_reminder_enabled
     PhoneSettingEditor.ALL_DAY_REMINDER -> R.string.settings_all_day_reminder
     PhoneSettingEditor.WEATHER_UNITS -> R.string.settings_weather_units
+    PhoneSettingEditor.INVITATION_FILTER -> R.string.invitation_filter_title
     PhoneSettingEditor.NONE -> R.string.settings_title
 })
 
@@ -69,6 +71,7 @@ internal fun PhoneSettingsEditor(
                     PhoneSettingEditor.VIEW -> availableViews.distinct().map { it.name }
                     PhoneSettingEditor.ALL_DAY_REMINDER -> AllDayReminderDefault.entries.map { it.name }
                     PhoneSettingEditor.WEATHER_UNITS -> WeatherUnits.entries.map { it.name }
+                    PhoneSettingEditor.INVITATION_FILTER -> InvitationFilter.entries.map { it.name }
                     else -> emptyList()
                 }
                 Column(Modifier.selectableGroup()) {
@@ -85,6 +88,10 @@ internal fun PhoneSettingsEditor(
                                 style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr))
                         }
                     }
+                }
+                if (state.editor == PhoneSettingEditor.INVITATION_FILTER) {
+                    Text(stringResource(R.string.invitation_filter_help),
+                        style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.ContentOrLtr))
                 }
                 if (state.editor == PhoneSettingEditor.ALL_DAY_REMINDER) {
                     Text(stringResource(R.string.settings_all_day_zone_help),
@@ -163,6 +170,7 @@ private fun phoneSettingsChoiceChange(editor: PhoneSettingEditor, key: String): 
     PhoneSettingEditor.VIEW -> CalendarSettingChange.View(CalendarViewOption.valueOf(key))
     PhoneSettingEditor.ALL_DAY_REMINDER -> CalendarSettingChange.AllDayReminder(AllDayReminderDefault.valueOf(key))
     PhoneSettingEditor.WEATHER_UNITS -> CalendarSettingChange.WeatherUnits(WeatherUnits.valueOf(key))
+    PhoneSettingEditor.INVITATION_FILTER -> CalendarSettingChange.InvitationFilter(InvitationFilter.valueOf(key))
     else -> error("Not a choice editor")
 }
 
@@ -195,6 +203,10 @@ internal fun phoneSettingsChoiceLabel(editor: PhoneSettingEditor, key: String): 
     PhoneSettingEditor.WEATHER_UNITS -> when (WeatherUnits.valueOf(key)) {
         WeatherUnits.CELSIUS -> R.string.settings_celsius
         WeatherUnits.FAHRENHEIT -> R.string.settings_fahrenheit
+    }
+    PhoneSettingEditor.INVITATION_FILTER -> when (InvitationFilter.valueOf(key)) {
+        InvitationFilter.ALL -> R.string.invitation_filter_all
+        InvitationFilter.PENDING_ONLY -> R.string.invitation_filter_pending
     }
     else -> R.string.settings_title
 })
