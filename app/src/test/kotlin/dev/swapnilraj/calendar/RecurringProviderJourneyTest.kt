@@ -14,6 +14,7 @@ import dev.swapnilraj.calendar.ui.LiveCalendarDay
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
 import java.time.*
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.*
 import org.junit.Assert.*
 import org.junit.Rule
@@ -39,7 +40,7 @@ class RecurringProviderJourneyTest {
     private val exception = EventRef(CalendarId(2), 11, start.plusSeconds(86400), start.plusSeconds(90000), RecurrenceRef(10, start.plusSeconds(86400)))
 
     @Test fun nativeAllEditCommitsThroughRealSeriesWriterAndReopenedSqlDeduplicates() = fixture(selected) { f ->
-        open("Synthetic template", "Edit event", "Entire series")
+        open(f, "Synthetic template", "Edit event", "Entire series")
         compose.onNode(hasText("Synthetic template") and hasSetTextAction()).performTextReplacement("Updated synthetic template")
         compose.onNodeWithText("Save").performScrollTo().performClick()
         compose.waitUntil(15_000) { f.saved == 1 }
@@ -68,7 +69,7 @@ class RecurringProviderJourneyTest {
 
     @Test fun nativeThisCancellationRequiresConfirmationAndPreservesMasterAndOtherOccurrence() = fixture(exception) { f ->
         val masterBefore = f.provider.rows.events[0].toMap()
-        open("Explicit synthetic override", "Delete event", "This occurrence")
+        open(f, "Explicit synthetic override", "Delete event", "This occurrence")
         compose.onNode(hasText("Delete recurring event") and hasClickAction()).performScrollTo().performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Delete recurring events?").fetchSemanticsNodes().isNotEmpty() }
         assertEquals(0, f.provider.rows.batchCount)
@@ -85,8 +86,17 @@ class RecurringProviderJourneyTest {
         assertTrue(runBlocking { f.store.list() }.isEmpty())
     }
 
-    private fun open(title: String, action: String, scope: String) {
-        compose.waitUntil(15_000) { compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty() }
+    private fun open(f: Fixture, title: String, action: String, scope: String) {
+        try {
+            compose.waitUntil(15_000) {
+                // IO can publish after setContent's initial frame; drain the resulting Compose
+                // work before inspecting semantics rather than polling an uncommitted frame.
+                compose.waitForIdle()
+                compose.onAllNodesWithText(title).fetchSemanticsNodes().isNotEmpty()
+            }
+        } catch (timeout: ComposeTimeoutException) {
+            throw AssertionError("Initial fixture rendering timed out: ${f.provider.readiness()}, batches=${f.provider.rows.batchCount}", timeout)
+        }
         compose.onNodeWithText(title).performClick()
         if (action == "Edit event") {
             val edit = hasContentDescription(action) and hasClickAction() and isEnabled()
@@ -138,6 +148,7 @@ class RecurringProviderJourneyTest {
                     onLocalSaved = { f.saved++ }, onLocalDeleted = { f.deleted++ },
                     requestMeetingWritePermission = { f.permissionChecks++; true })
             } }
+            compose.waitForIdle()
             block(f)
         } finally { scope.cancel(); runBlocking { scope.coroutineContext[Job]!!.join() }; store.close(); context.deleteDatabase(database) }
     }
@@ -155,10 +166,16 @@ class RecurringProviderJourneyTest {
 
     private class ProjectionProvider : ContentProvider() {
         val rows = CalendarSeriesReaderTest.Provider()
+        private val calendarReads = AtomicInteger()
+        private val instanceReads = AtomicInteger()
+        private val instanceRows = AtomicInteger()
+        fun readiness() = "calendarReads=${calendarReads.get()}, instanceReads=${instanceReads.get()}, instanceRows=${instanceRows.get()}"
         override fun onCreate() = true
         override fun query(uri: Uri, fields: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?, signal: CancellationSignal?): Cursor? = query(uri, fields, selection, args, sort)
         override fun query(uri: Uri, fields: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor? {
-            if (uri.pathSegments.first() != "instances") return rows.query(uri, fields, selection, args, sort)
+            if (uri.pathSegments.first() != "instances") return rows.query(uri, fields, selection, args, sort).also {
+                if (uri.pathSegments.first() == "calendars") calendarReads.incrementAndGet()
+            }
             val from = uri.pathSegments[2].toLong(); val until = uri.pathSegments[3].toLong()
             return MatrixCursor(requireNotNull(fields)).apply {
                 rows.instances.forEach { instance ->
@@ -170,7 +187,7 @@ class RecurringProviderJourneyTest {
                         addRow(fields.map { joined[it] }.toTypedArray())
                     }
                 }
-            }
+            }.also { instanceRows.set(it.count); instanceReads.incrementAndGet() }
         }
         override fun applyBatch(operations: ArrayList<ContentProviderOperation>): Array<ContentProviderResult> = rows.applyBatch(operations)
         override fun getType(uri: Uri): String? = null
