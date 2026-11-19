@@ -468,6 +468,12 @@ choosing an offset. The UI must carry that target into explicit review instead o
 
 ### M6 — Recurrence
 
+A pure semantic graph proof recomputes existing planners and conserves every known exception and
+exclusion mapping before future transfer execution. It rejects contradictory selected bounds,
+clock-uncertain ordinal mappings and excessive aggregate work. Raw date-set provenance and existing
+COUNT/end plans remain unchanged. This proof issues no provider authority, clone admission or new
+editing capability; unproved RDATE transformations and existing native restrictions remain closed.
+
 Recurring action eligibility must match the first fresh details read's full calendar namespace.
 A namespace change between those reads scrubs details and exposes no series action or draft.
 
