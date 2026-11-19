@@ -21,6 +21,16 @@ class CalendarOperationRetirement(
         withContext(io + readBudgetContext(readBudgets.mutation)) {
             try {
                 currentCoroutineContext().ensureActive()
+                // Only published encoders can bind a permanent tombstone.
+                // Ordinary recurring UPDATE/DELETE retain their existing closed boundary.
+                when (request) {
+                    is RetirableOperation.Series -> Unit
+                    is RetirableOperation.Create -> Unit
+                    is RetirableOperation.Update -> if (request.ref.recurrence != null) return@withContext OperationRetirementResult.Unsupported
+                    is RetirableOperation.Delete -> if (request.ref.recurrence != null) return@withContext OperationRetirementResult.Unsupported
+                    is RetirableOperation.Meeting -> Unit
+                    is RetirableOperation.MeetingCreate -> Unit
+                }
                 if (request.operationId.isBlank() || request.operationId.length > readBudgets.mutation.maxCellUnits)
                     return@withContext OperationRetirementResult.Unavailable
                 val token = when (request) {
