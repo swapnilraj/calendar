@@ -14,6 +14,10 @@ import java.time.*
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.*
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -207,18 +211,50 @@ class AgendaWidgetConfigurationTest {
         f.close()
     }
 
-    @Test fun overlappingSaveRetriesRejectOldReceiptEvenWithinSameLifecycleEpoch() = runBlocking {
-        val f = Fixture(); val session = f.session()
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun overlappingSaveRetriesRejectOldReceiptEvenWithinSameLifecycleEpoch() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler)); val session = f.session()
         val first = async { f.runtime.saveFreshConfiguration(session, WidgetConfigurationChoice(privacy = WidgetPrivacy.EVENT_TITLES)) }
-        yield()
+        runCurrent()
         val second = async { f.runtime.saveFreshConfiguration(session, WidgetConfigurationChoice()) }
-        yield(); f.commitSave(0)
+        runCurrent(); f.commitSave(0); runCurrent()
         assertEquals(WidgetConfigurationSaveResult.Stale, first.await())
         f.runtime.refresh(); assertFalse(f.text().contains("synthetic secret"))
-        f.commitSave(1)
+        f.commitSave(1); runCurrent()
         assertTrue(second.await() is WidgetConfigurationSaveResult.Saved)
         f.runtime.refresh(); assertTrue(f.text().contains("Busy"))
         f.close()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun configurationDeadlineKeepsLateTitleReceiptQuarantined() = runTest {
+        val f = Fixture(StandardTestDispatcher(testScheduler)); val session = f.session()
+        try {
+            val saving = async {
+                f.runtime.saveFreshConfiguration(session, WidgetConfigurationChoice(privacy = WidgetPrivacy.EVENT_TITLES))
+            }
+            runCurrent()
+            val op = f.save(0)
+            advanceTimeBy(99); runCurrent()
+            assertFalse(saving.isCompleted)
+            assertFalse(op.receipt.isCompleted); assertFalse(op.receipt.isCancelled)
+            advanceTimeBy(1); runCurrent()
+            assertEquals(WidgetConfigurationSaveResult.Unavailable, saving.await())
+            assertFalse(op.receipt.isCompleted); assertFalse(op.receipt.isCancelled)
+            f.runtime.refresh()
+            assertEquals(0, f.reads); assertFalse(f.text().contains("synthetic secret"))
+            assertTrue(f.text().contains(context.getString(R.string.widget_unavailable)))
+            // The durable actor outlives its observer. Its genuine late title-bearing ACK
+            // must invalidate setup without releasing the timed-out runtime quarantine.
+            f.commitSave(0); runCurrent()
+            assertTrue(op.receipt.isCompleted); assertFalse(op.receipt.isCancelled)
+            assertEquals(AgendaWidgetConfigurationState.Ready(op.config, op.epoch), f.row)
+            assertEquals(WidgetPrivacy.EVENT_TITLES, op.config.privacy)
+            f.runtime.refresh()
+            assertEquals(0, f.reads); assertFalse(f.text().contains("synthetic secret"))
+            assertTrue(f.text().contains(context.getString(R.string.widget_unavailable)))
+            assertFalse(f.text().contains("Busy"))
+        } finally { f.close() }
     }
 
     @Test fun forgedOrUnprovenSaveReceiptNeverClearsRemovalQuarantine() = runBlocking {
