@@ -34,6 +34,11 @@ pre-dispatch raw child-collection read race, and a guarded-read correction plus 
 regressions are being prepared. Recovery ACK/identity controls and this source status do not
 establish installed-provider or Google acceptance.
 
+[PR66](https://github.com/swapnilraj/calendar/pull/66) publishes the already integrated pure
+Following ordinal/rule/metadata helpers and explicit UNKNOWN-default rule capability from remote
+`53017c2`. All44 focused helper tests passed6s; full CI is pending at `336c77f`, and the PR remains
+draft. The task attachment is confirmed. This adds no Android adapter or provider admission.
+
 [PR65](https://github.com/swapnilraj/calendar/pull/65) publishes the bounded native-tooling closure
 from remote `e536d54`, including opt-in runner wiring and19 host guards. Its local opt-in
 AndroidTest assembly passed29s. Full CI passed at `5db9c60`, including host guards, test/debug/lint
