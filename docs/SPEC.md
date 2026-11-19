@@ -733,3 +733,9 @@ guest or submit a calendar write. Picker opt-in resets independently on every op
 grant cannot enable a newly opened session. The existing String-name draft format encodes a chosen
 null suggestion name as empty on append; both raw source tuples remain visible and are never merged
 or removed. Selection feedback may mark null/empty names as the same projected draft addition.
+
+The people picker and editable new-guest email rows request an email keyboard. Its IME Done action
+only clears focus and hides the keyboard: it does not append the query, finish the picker, request
+contacts access or save the event. Raw partial or invalid addresses remain in the existing draft path.
+The picker exposes a named accessibility pane and heading. Native IME-first Back and TalkBack
+spoken behavior still require device verification.
