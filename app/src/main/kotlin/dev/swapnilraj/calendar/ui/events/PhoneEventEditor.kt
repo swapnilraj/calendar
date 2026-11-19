@@ -159,7 +159,7 @@ internal fun PhoneEventEditorContent(
     }
     panel?.let { current -> PhoneEditorPanelContent(current, view, use24Hour) { panel = null } }
     state.recurrenceReview?.let { plan ->
-        runCatching { fields.recurrence.normalized() }.getOrNull()?.let { spec -> RecurrenceCreationReview(plan, spec, fields.title, controller::confirmRecurringCreate, controller::dismissRecurrenceReview) }
+        runCatching { fields.recurrence.normalized() }.getOrNull()?.let { spec -> RecurrenceCreationReview(plan, spec, fields.title, controller::confirmRecurringCreate, controller::dismissRecurrenceReview, use24Hour = use24Hour) }
     }
     if (state.confirmDelete) AlertDialog(onDismissRequest = controller::cancelDelete, title = { Text(stringResource(R.string.events_editor_confirm_delete)) }, text = { Text(stringResource(R.string.events_editor_delete_description)) },
         confirmButton = { TextButton(onClick = controller::confirmDelete) { Text(stringResource(R.string.events_editor_delete)) } }, dismissButton = { TextButton(onClick = controller::cancelDelete) { Text(stringResource(R.string.events_editor_cancel)) } })

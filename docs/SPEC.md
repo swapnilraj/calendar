@@ -111,6 +111,8 @@ interval, count or inclusive date limits, explicit master-time review and durabl
 A recurring local save is reported only after known-master journal receipt and actual first native
 instance verification; it never claims Google delivery. Imported unsupported recurrence remains
 preserved and does not imply editing rights.
+The phone creation review uses the selected 12/24-hour convention for both first-event bounds
+and the short expected-occurrence preview.
 
 Timed editor gestures are connected in Day, three-day and week views. Cross-column moves use
 physically visible column bounds (including RTL); continued fragments retain their full original

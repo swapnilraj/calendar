@@ -15,16 +15,19 @@ import androidx.compose.ui.unit.dp
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatterBuilder
 import java.time.format.FormatStyle
 import java.time.format.TextStyle
 
 @Composable
 internal fun RecurrenceCreationReview(plan: RecurrenceCreationPlan, spec: RecurrenceSpec, title: String,
-    onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    onConfirm: () -> Unit, onDismiss: () -> Unit, use24Hour: Boolean = true) {
     val locale = LocalLocale.current.platformLocale
     val bidi = android.text.BidiFormatter.getInstance(LocalLayoutDirection.current == LayoutDirection.Rtl)
     val date = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
-    val timed = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale).withZone(plan.eventZone)
+    val timed = DateTimeFormatterBuilder().appendLocalized(FormatStyle.MEDIUM, null)
+        .appendLiteral(' ').appendPattern(android.text.format.DateFormat.getBestDateTimePattern(locale, if (use24Hour) "Hm" else "hm"))
+        .toFormatter(locale).withZone(plan.eventZone)
     fun day(value: java.time.DayOfWeek) = value.getDisplayName(TextStyle.FULL, locale)
     AlertDialog(onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.recurrence_editor_review)) },
@@ -56,7 +59,7 @@ internal fun RecurrenceCreationReview(plan: RecurrenceCreationPlan, spec: Recurr
                 })
                 Text(when (val time = plan.firstTime) {
                     is EventTime.AllDay -> allDayDateText(time, locale)
-                    is EventTime.Timed -> timedDateText(time, plan.eventZone, locale, true)
+                    is EventTime.Timed -> timedDateText(time, plan.eventZone, locale, use24Hour)
                 })
                 if (!plan.allDay) {
                     Text(bidi.unicodeWrap(stringResource(R.string.recurrence_editor_zone_value, if (plan.eventZone.id == "Z") "UTC" else plan.eventZone.id)))
