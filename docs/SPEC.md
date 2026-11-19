@@ -403,6 +403,13 @@ Read calendar identity, account name/type, display name/colour, owner, timezone,
 access constraints. Keep provider-local IDs distinct from cloud IDs and conservative capabilities
 separate from runtime permissions and event restrictions. Unknown access is not permission to write.
 
+Calendar access values must use canonical decimal representation and fit Int before narrowing.
+Representable unknown levels remain metadata observations with UNKNOWN capabilities. Range and
+detail reads require a known FREEBUSY-or-higher admission before querying private rows; unknown
+levels do not trigger Instances, Events or child reads. Known FREEBUSY retains its existing Busy
+scrubbing. The known-level decision membership, default ALL projections and ARGB conversion remain
+unchanged; this rule does not reinterpret colour bits as access rights.
+
 Use one shared observed invalidation source and cancellable IO range queries. Bounds cover local
 appointments and UTC all-day dates; exact half-open filtering follows the query. Include zero-length
 events starting inside the range, exclude starts at its exclusive end, and return a multi-day
