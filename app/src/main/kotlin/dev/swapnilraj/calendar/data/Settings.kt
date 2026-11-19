@@ -14,6 +14,8 @@ import dev.swapnilraj.calendar.core.CalendarSelection
 import dev.swapnilraj.calendar.core.CalendarInfo
 import dev.swapnilraj.calendar.core.AccessDecision
 import dev.swapnilraj.calendar.data.settings.CalendarSettingsCodec
+import dev.swapnilraj.calendar.data.settings.CalendarSettingChange
+import dev.swapnilraj.calendar.data.settings.CalendarSettingSave
 import dev.swapnilraj.calendar.data.reminders.*
 import dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions
 import java.util.Base64
@@ -113,6 +115,15 @@ class Settings(context: Context, dataStore: DataStore<Preferences>? = null) {
         store.edit { CalendarSettingsCodec.write(it, options) }
         true
     } catch (_: IOException) { false }
+
+    /** Each explicit display choice owns only its field; DataStore serializes concurrent edits. */
+    suspend fun saveCalendarSetting(change: CalendarSettingChange): CalendarSettingSave {
+        if (!CalendarSettingsCodec.valid(change)) return CalendarSettingSave.Invalid
+        return try {
+            store.edit { CalendarSettingsCodec.patch(it, change) }
+            CalendarSettingSave.Saved
+        } catch (_: IOException) { CalendarSettingSave.Unavailable }
+    }
 
     suspend fun setCalendarView(view: String): Boolean {
         if (view !in views) return false

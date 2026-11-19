@@ -789,3 +789,14 @@ DRAFT_UNAVAILABLE remains visible and traversable but is intentionally non-live:
 autosaves can clear/recreate that warning while the user types. No guessed announcement history or
 new persistence seam is introduced. Material date-picker announcements remain intact, and actual
 TalkBack spoken order/repetition still requires device acceptance.
+
+
+### Field-only phone preference saves
+
+An explicit phone-settings choice atomically writes only its own field (or its timezone/reminder
+key pair), preserving unrelated raw preferences, current view, calendar filters and defaults.
+Concurrent independent choices do not replace a stale whole settings object; the latest explicit
+choice for the same reversible display field wins. Invalid values do not enter storage. IO failure
+returns unavailable for explicit retry, and cancellation propagates. Opening, typing, dismissing or
+recreating settings does not itself save. This preference API does not change event or reminder-policy
+conflict rules; the legacy bulk settings API remains available to its existing callers.
