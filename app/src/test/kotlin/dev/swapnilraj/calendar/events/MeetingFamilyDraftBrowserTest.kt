@@ -77,7 +77,8 @@ class MeetingFamilyDraftBrowserTest {
             }
             original.copy(version = version, payload = payload.toString())
         }
-        val controls = listOf(original) + legacy
+        val taggedLegacy = legacy.map { it.copy(payload = JSONObject(it.payload).put("feature", "ordinary-editor").toString()) }
+        val controls = listOf(original) + legacy + taggedLegacy
         controls.forEach { assertNotNull("Valid ordinary v${it.version} control must launch", DraftBrowserCodec.read(it).launch) }
         val tagged = controls.flatMap { control ->
             listOf("future-draft", 42, JSONObject.NULL).map { feature ->
