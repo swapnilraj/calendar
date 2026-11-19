@@ -6,6 +6,10 @@ propagation, or certify/activate a production provider-clone profile. Identity-m
 that a read-only provider descriptor was captured. Fixture-mode PASS requires the full 18-case
 COUNT/UNTIL, DST, prefix-context and rollback matrix plus guarded cleanup.
 
+CI runs the stdlib host guard tests and compiles the opt-in AndroidTest APK. These checks start
+no emulator, grant no permissions and execute no native instrumentation. They establish host/source
+compatibility only; the reviewed pair and current owned boot/provider pins remain required.
+
 The lead must build and review the target debug APK and conditional probe test APK from the same
 checkout. Conditional runner configuration uses `-Pdaylight.providerProbe=true`; the component is
 `dev.swapnilraj.calendar.providerprobe/dev.swapnilraj.calendar.probe.NativeCalendarProviderProbe`.

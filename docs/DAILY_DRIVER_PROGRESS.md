@@ -28,6 +28,12 @@ are retained. Test-only idle checkpoints and bounded non-private readiness count
 without changing assertions or timeouts; the two focused journeys passed and the complete `57fe2ad`
 rerun above passed. The historical timeout cause remains unproven.
 
+[PR65](https://github.com/swapnilraj/calendar/pull/65) publishes the bounded native-tooling closure
+from remote `e536d54`, including opt-in runner wiring and19 host guards. Its local opt-in
+AndroidTest assembly passed29s; full CI is running at `5db9c60`, and the PR remains draft.
+The task attachment is confirmed. CI now checks host guards and compiles the probe without
+starting an emulator or granting permissions.
+
 The [native app-writer harness](audit/evidence/native-app-writer-source-review-2026-11-19.json)
 is now integrated with19 passing host checks, successful AndroidTest compilation/pair assembly,
 and independently verified frozen APK hashes/signatures. The pair binds production base `1a0fd3d`.
