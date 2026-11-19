@@ -807,3 +807,13 @@ choice for the same reversible display field wins. Invalid values do not enter s
 returns unavailable for explicit retry, and cancellation propagates. Opening, typing, dismissing or
 recreating settings does not itself save. This preference API does not change event or reminder-policy
 conflict rules; the legacy bulk settings API remains available to its existing callers.
+
+
+## Planned exception-free Following EXDATE metadata bridge
+
+The approved [receipt4 contract](FOLLOWING_EXDATE_RECEIPT4.md) permits a bounded future implementation
+of metadata-only Following edits with independently decoded EXDATE and no exception graph. It freezes
+exact lexical partitions and native EXDATE writes, preserves nominal COUNT/end limits, and refuses
+unsupported syntax/excluded selection. Legacy2/3 operations retain their issued bytes and recovery;
+no clone/profile or account compatibility is inferred. This is an approved target, not implemented
+behavior or completed recurrence acceptance.
