@@ -21,10 +21,10 @@ class CalendarOperationRetirement(
         withContext(io + readBudgetContext(readBudgets.mutation)) {
             try {
                 currentCoroutineContext().ensureActive()
-                // Only shipped ordinary encoders can bind a permanent tombstone. The remote
-                // draft encoder deliberately does not serialize recurrence; never hash it away.
+                // Only shipped ordinary encoders can bind a permanent tombstone. CREATE now
+                // includes authored recurrence; recurring edits and other families remain separate.
                 when (request) {
-                    is RetirableOperation.Create -> if (request.draft.recurrence != null) return@withContext OperationRetirementResult.Unsupported
+                    is RetirableOperation.Create -> Unit
                     is RetirableOperation.Update -> if (request.ref.recurrence != null) return@withContext OperationRetirementResult.Unsupported
                     is RetirableOperation.Delete -> if (request.ref.recurrence != null) return@withContext OperationRetirementResult.Unsupported
                     else -> return@withContext OperationRetirementResult.Unsupported
