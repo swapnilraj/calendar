@@ -170,8 +170,8 @@ class CalendarFollowingSeriesWriterTest {
         f.store.forceOperationForTest("legacy-zone","FAILED",legacy)
         f.p.failReminder=false
         f.p.beforeBatch={assertEquals("ATTEMPTED",f.store.operation("legacy-zone")!!.phase);assertEquals(legacy,f.store.operation("legacy-zone")!!.resultRef)}
-        val saved=f.writer.mutate("legacy-zone",f.selected,edit.token,frozen) as SeriesMutationResult.LocalSaved
-        assertEquals(canonical,event(f.p,saved.identity.masterEventId)["eventEndTimezone"]);assertNull(event(f.p,1)["eventEndTimezone"])
+        assertEquals(common(MutationResult.Uncertain("legacy-zone",2)),f.writer.mutate("legacy-zone",f.selected,edit.token,frozen))
+        assertEquals(canonical,event(f.p,2)["eventEndTimezone"]);assertNull(event(f.p,1)["eventEndTimezone"])
         assertEquals(2,f.p.batchCount);assertEquals(2,JSONObject(f.store.operation("legacy-zone")!!.resultRef!!).getInt("version"))
     }}
 
@@ -241,7 +241,7 @@ class CalendarFollowingSeriesWriterTest {
     @Test fun failedBatchKeepsOnePreparedUidAcrossExplicitRetryAndRejectsChangedFrozenCommand()=runBlocking{fixture{f->
         val edit=f.editable();val frozen=command(edit,EventPatch(title=FieldChange.Set("Tail")));f.p.failReminder=true
         assertEquals(common(MutationResult.Unavailable),f.writer.mutate("retry",f.selected,edit.token,frozen));assertEquals(1,f.p.count("events"));assertTrue(event(f.p,1)["rrule"]!!.contains("COUNT=8"))
-        val uid=JSONObject(f.store.operation("retry")!!.resultRef!!).getString("uid");assertEquals("FAILED",f.store.operation("retry")!!.phase)
+        val uid=JSONObject(f.store.operation("retry")!!.resultRef!!).getJSONObject("plan").getJSONObject("tail").getString("uid2445");assertEquals("FAILED",f.store.operation("retry")!!.phase)
         assertEquals(common(MutationResult.SafeToRetry("retry")),f.writer.recover("retry"))
         assertEquals(common(MutationResult.Conflict(null)),f.writer.mutate("retry",f.selected,edit.token,command(edit,EventPatch(title=FieldChange.Set("Different")))))
         f.p.failReminder=false;val saved=f.writer.mutate("retry",f.selected,edit.token,frozen) as SeriesMutationResult.LocalSaved
@@ -264,13 +264,14 @@ class CalendarFollowingSeriesWriterTest {
         f.p.failReadsAfterCommit=false;f.store.writableDatabase.execSQL("DELETE FROM edit_snapshots");f.permissions.remove(Manifest.permission.WRITE_CALENDAR);f.store.close()
         assertTrue(f.writer.recover("known") is SeriesMutationResult.LocalSaved);assertEquals(1,f.p.batchCount)
         f.p.setCalendar("_sync_id","calendar-B");f.p.queries.clear()
-        assertEquals(common(MutationResult.Uncertain("known",2)),f.writer.recover("known"));assertTrue(f.p.queries.all{it.path=="calendars"})
+        assertEquals(common(MutationResult.Uncertain("known",null)),f.writer.recover("known"));assertTrue(f.p.queries.all{it.path=="calendars"})
     }}
 
     @Test fun malformedPreparedMaterializationNeverRegeneratesUidAndCanStillBeRetired()=runBlocking{fixture{f->
         val edit=f.editable();val frozen=command(edit);f.p.failReminder=true
         f.writer.mutate("bad",f.selected,edit.token,frozen)
-        val receipt=JSONObject(f.store.operation("bad")!!.resultRef!!).put("uid",JSONObject.NULL)
+        val receipt=JSONObject(f.store.operation("bad")!!.resultRef!!)
+        receipt.getJSONObject("plan").getJSONObject("tail").put("uid2445",JSONObject.NULL)
         f.store.forceOperationForTest("bad","FAILED",receipt.toString());f.p.failReminder=false
         assertEquals(common(MutationResult.Uncertain("bad",null)),f.writer.mutate("bad",f.selected,edit.token,frozen));assertEquals(1,f.p.batchCount)
         val retirement=CalendarOperationRetirement(f.store);val request=RetirableOperation.Series("bad",f.selected,edit.token,frozen)
@@ -289,12 +290,12 @@ class CalendarFollowingSeriesWriterTest {
     @Test fun independentHelpersReusePreparedUidAndConcurrentRequestsNeverInsertTwoTails()=runBlocking{fixture{f->
         val edit=f.editable();val frozen=command(edit);f.p.failReminder=true
         assertEquals(common(MutationResult.Unavailable),f.writer.mutate("prepared",f.selected,edit.token,frozen))
-        val uid=JSONObject(f.store.operation("prepared")!!.resultRef!!).getString("uid");f.p.failReminder=false
+        val uid=JSONObject(f.store.operation("prepared")!!.resultRef!!).getJSONObject("plan").getJSONObject("tail").getString("uid2445");f.p.failReminder=false
         val two=CalendarLocalStore(RuntimeEnvironment.getApplication(),f.store.databaseName)
         try{val source=CalendarSeriesReader(RuntimeEnvironment.getApplication().contentResolver,f.reader,two,f.permissions::contains)
             val writer=CalendarSeriesWriter(RuntimeEnvironment.getApplication().contentResolver,source,two,f.permissions::contains,providerClonePolicy=SyntheticCloneProviderPolicy)
             val saved=writer.mutate("prepared",f.selected,edit.token,frozen) as SeriesMutationResult.LocalSaved
-            assertEquals(uid,event(f.p,saved.identity.masterEventId)["uid2445"]);assertEquals(uid,JSONObject(two.operation("prepared")!!.resultRef!!).getString("uid"))
+            assertEquals(uid,event(f.p,saved.identity.masterEventId)["uid2445"]);assertEquals(uid,JSONObject(two.operation("prepared")!!.resultRef!!).getJSONObject("plan").getJSONObject("tail").getString("uid2445"))
         }finally{two.close()}
     };fixture{f->
         val edit=f.editable();val frozen=command(edit);val two=CalendarLocalStore(RuntimeEnvironment.getApplication(),f.store.databaseName)
@@ -303,7 +304,7 @@ class CalendarFollowingSeriesWriterTest {
             val other=async(Dispatchers.IO){gate.await();writer.mutate("race",f.selected,edit.token,frozen)}
             gate.complete(Unit);val results=listOf(one.await(),other.await())
             assertTrue(results.any{it is SeriesMutationResult.LocalSaved}||f.writer.recover("race") is SeriesMutationResult.LocalSaved)
-            assertEquals(1,f.p.batchCount);assertEquals(2,f.p.count("events"));assertEquals(JSONObject(f.store.operation("race")!!.resultRef!!).getString("uid"),event(f.p,2)["uid2445"])
+            assertEquals(1,f.p.batchCount);assertEquals(2,f.p.count("events"));assertEquals(JSONObject(f.store.operation("race")!!.resultRef!!).getJSONObject("plan").getJSONObject("tail").getString("uid2445"),event(f.p,2)["uid2445"])
         }finally{two.close()}
     }}
 

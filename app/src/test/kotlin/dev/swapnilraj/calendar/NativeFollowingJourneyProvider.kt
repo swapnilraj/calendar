@@ -76,7 +76,13 @@ internal class NativeFollowingJourneyProvider : ContentProvider() {
         val effective = if (nativeMeetingMode && path == "events") projected?.map { field ->
             if (field == "isOrganizer") "COALESCE(isOrganizer, organizer = (SELECT ownerAccount FROM calendars WHERE calendars._id = events.calendar_id)) AS isOrganizer" else field
         }?.toTypedArray() else projected
-        val result = db.query(if (path == "instances") "instance_view" else path, effective, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
+        val table = when {
+            path == "instances" -> "instance_view"
+            path == "attendees" || path == "reminders" && uri.pathSegments.size == 2 ->
+                "(SELECT $path.*, events.calendar_id, events.organizer, events.uid2445 FROM $path JOIN events ON $path.event_id = events._id)"
+            else -> path
+        }
+        val result = db.query(table, effective, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
         afterQuery?.invoke(path)
         return result
     }

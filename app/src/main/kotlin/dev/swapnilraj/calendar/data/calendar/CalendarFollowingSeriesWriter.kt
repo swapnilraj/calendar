@@ -60,6 +60,11 @@ internal class CalendarFollowingSeriesWriter(
         var knownTail:Long?=null
         try {
             store.abandoned(id){CalendarSeriesWriter.retirementFingerprint(selected,token,command)}?.let{return@withLock common(it)}
+            val fingerprint=CalendarSeriesWriter.retirementFingerprint(selected,token,command)
+            val candidate=store.operation(id)
+            if(candidate==null||FollowingExecutionReceipt.handles(candidate))return@withLock mutateFrozen(id,selected,token,command,fingerprint.second,candidate)
+            if(candidate.kind!=fingerprint.first||candidate.signature!=fingerprint.second)return@withLock common(MutationResult.Conflict(null))
+            if(candidate.phase !in setOf("PREPARED","FAILED"))return@withLock recover(candidate,false)
             if(!permissions())return@withLock common(MutationResult.PermissionRequired)
             if(id.isBlank())return@withLock SeriesMutationResult.Invalid("Operation ID is required")
             val(kind,signature)=CalendarSeriesWriter.retirementFingerprint(selected,token,command)
@@ -129,50 +134,244 @@ internal class CalendarFollowingSeriesWriter(
     }}
     private suspend fun recover(operation:CalendarLocalStore.Operation,retry:Boolean):SeriesMutationResult {
         if(operation.phase=="ABANDONED")return common(MutationResult.Retired(operation.id))
-        val parsed=proof(operation)?:return common(MutationResult.Uncertain(operation.id,null))
-        val receipt=parsed.first;val raw=parsed.second
-        if(operation.phase in setOf("PREPARED","FAILED"))return common(if(retry)MutationResult.SafeToRetry(operation.id)else MutationResult.Unavailable)
-        val result=receipt.getLong("result");fun uncertain()=common(MutationResult.Uncertain(operation.id,result))
-        return try {
-        val command=CalendarSeriesWriter.parseFollowingCommand(raw.snapshot,receipt.getJSONObject("command"));val model=material(raw,command,receipt.nullable("uid"),issuedTailEndZone(receipt))
-        val calendar=calendar(raw.snapshot.identity.calendarId)
-        if(!sameCalendar(raw.calendar,calendar))return uncertain()
-        if(!verifyRow(raw.snapshot.identity.masterEventId,model.prefix))return uncertain()
-        if(!verifyChildren(raw.snapshot.identity.masterEventId,model.prefixReminders,raw.attendees[raw.snapshot.identity.masterEventId].orEmpty(),raw.properties[raw.snapshot.identity.masterEventId].orEmpty()))return uncertain()
-        if(!noExceptions(raw.snapshot.identity.masterEventId,raw.master["_sync_id"],raw.snapshot.identity.calendarId))return uncertain()
-        var learnedTailSync:String?=null
-        if(!model.whole){
-            if(!verifyRow(result,requireNotNull(model.tail)+mapOf("_id" to result.toString(),"deleted" to "0","isOrganizer" to "1","hasAlarm" to if(model.tailReminders.isEmpty())"0" else "1",
-                    "hasExtendedProperties" to "0","selfAttendeeStatus" to (model.tailAttendees.singleOrNull()?.get("attendeeStatus")?:"0"),
-                    "rrule" to model.tail["rrule"],"rdate" to null,"exdate" to null,"exrule" to null,"original_id" to null,"original_sync_id" to null,"originalInstanceTime" to null,"originalAllDay" to null)))return uncertain()
-            val identity=rows(eventUri(result),arrayOf("_id","calendar_id","_sync_id","uid2445"),maxRows=1).singleOrNull()?:return uncertain()
-            if(identity["_id"]!=result.toString()||identity["calendar_id"]!=raw.snapshot.identity.calendarId.value.toString()||identity["uid2445"]!=receipt.nullable("uid"))return uncertain()
-            learnedTailSync=identity["_sync_id"]?.takeIf(String::isNotBlank)
-            val known=receipt.nullable("tailSync")?.takeIf(String::isNotBlank)
-            if(known!=null&&known!=learnedTailSync||learnedTailSync!=null&&learnedTailSync==raw.master["_sync_id"])return uncertain()
-            if(!verifyChildren(result,model.tailReminders,model.tailAttendees,emptyList()))return uncertain()
-            if(!noExceptions(result,learnedTailSync,raw.snapshot.identity.calendarId))return uncertain()
+        if(FollowingExecutionReceipt.handles(operation)) {
+            val parsed=try{FollowingExecutionReceipt.parse(operation,readBudgets.maxCanonicalBytes)}catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){return common(MutationResult.Uncertain(operation.id,null))}
+            return recoverFrozen(operation,parsed)
         }
-        val start=templateStart(model.template.time)
-        val end=templateEnd(model.template.time)
-        val uri=CalendarContract.Instances.CONTENT_URI.buildUpon().apply{ContentUris.appendId(this,start.toEpochMilli());ContentUris.appendId(this,Math.addExact(start.toEpochMilli(),1))}.build()
-        val instances=rows(uri,InstanceFields,"event_id = ? AND calendar_id = ? AND begin = ?",arrayOf(result.toString(),raw.snapshot.identity.calendarId.value.toString(),start.toEpochMilli().toString()),1)
-        val native=instances.singleOrNull()?:return uncertain()
-        if(native["event_id"]!=result.toString()||native["calendar_id"]!=raw.snapshot.identity.calendarId.value.toString()||native["begin"]!=start.toEpochMilli().toString()||native["end"]!=end.toEpochMilli().toString()||
-            native["allDay"]!=if(model.start is RecurrenceStart.AllDay)"1" else "0")return uncertain()
-        if(listOf("original_id","original_sync_id","originalInstanceTime").any{!native[it].isNullOrBlank()}||!sameCalendar(raw.calendar,calendar(raw.snapshot.identity.calendarId)))return uncertain()
+        // Historical2 never recorded complete native ACK facts. No current planner can invent
+        // that evidence for an attempted/committed operation after the fact.
+        if(operation.phase in setOf("PREPARED","FAILED")){if(proof(operation)==null)return common(MutationResult.Uncertain(operation.id,null));return common(if(retry)MutationResult.SafeToRetry(operation.id)else MutationResult.Unavailable)}
+        if(operation.phase !in setOf("COMMITTED","VERIFIED"))return common(MutationResult.Uncertain(operation.id,null))
+        return legacyKnown(operation)
+    }
+
+    private suspend fun legacyKnown(operation:CalendarLocalStore.Operation):SeriesMutationResult { return try {
+        val j=JSONObject(requireNotNull(operation.resultRef))
+        require(j.getInt("version")==2&&j.getString("feature")==Feature&&j.getString("kind")==Kind&&j.getString("signature")==operation.signature&&j.getString("stage")=="committed")
+        val source=j.getJSONObject("source");val raw=source.toString();val token=j.getString("token")
+        require(meetingHash("SERIES_EDIT_V1"+raw)==token)
+        val selection=CreateSixJson.ref(source.getJSONObject("selection"));val envelope=JSONObject().put("version",1).put("selected",CreateSixJson.ref(selection)).put("token",token).put("command",j.getJSONObject("command"))
+        require(CreateSixJson.hash(envelope.toString())==operation.signature)
+        val calendar=CreateSixJson.row(source.getJSONObject("calendar"));val master=CreateSixJson.row(source.getJSONObject("master"));val result=CalendarCreateAcknowledgments.integer(j.get("result"));require(result>0)
+        if(!sameCalendar(calendar,calendar(CalendarId(requireNotNull(master["calendar_id"]).toLong()))))return common(MutationResult.Uncertain(operation.id,null))
+        val whole=j.getJSONObject("material").getBoolean("whole")
+        val prefix=requireNotNull(master["_id"]).toLong();require(if(whole)result==prefix else result!=prefix)
+        if(!whole){val uid=requireNotNull(j.nullable("uid"));require(UUID.fromString(uid).toString()==uid&&!uid.equals(master["uid2445"],true))}
+        val expected=if(whole)master else mapOf("_id" to result.toString(),"calendar_id" to master["calendar_id"],"uid2445" to j.nullable("uid"))
+        if(!identityRow(result,requireNotNull(master["calendar_id"]).toLong(),expected["uid2445"],if(whole)expected["_sync_id"]else null,whole).first)return common(MutationResult.Uncertain(operation.id,null))
+        common(MutationResult.Uncertain(operation.id,result))
+    }catch(cancelled:CancellationException){throw cancelled}catch(_:SecurityException){common(MutationResult.PermissionRequired)}catch(_:Exception){common(MutationResult.Uncertain(operation.id,null))}
+    }
+
+    // Called only while the family mutex is held. The owner never re-enters this mutex.
+    internal var frozenPreparationProbe:()->Unit={}
+    internal var frozenCandidateReady:()->Unit={}
+    private suspend fun mutateFrozen(id:String,selected:EventRef,token:EditToken,command:SeriesCommand.FollowingEdit,signature:String,existing:CalendarLocalStore.Operation?):SeriesMutationResult {
+        var attempted:CalendarLocalStore.Operation?=null;var known:Long?=null
+        try {
+            require(id.isNotBlank()&&id.length<=readBudgets.mutation.maxCellUnits)
+            val initial=if(existing!=null){
+                if(existing.kind!=Kind||existing.signature!=signature)return common(MutationResult.Conflict(null))
+                val parsed=try{FollowingExecutionReceipt.parse(existing,readBudgets.maxCanonicalBytes)}catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){return common(MutationResult.Uncertain(id,null))}
+                if(existing.phase !in setOf("PREPARED","FAILED"))return recoverFrozen(existing,parsed)
+                parsed.second
+            }else{
+                if(!permissions())return common(MutationResult.PermissionRequired)
+                val source=sourceReader.checkedSource(selected,token);val raw=raw(source)
+                val frozen=CalendarSeriesWriter.parseFollowingCommand(raw.snapshot,CalendarSeriesWriter.frozenCommandJson(command))
+                val preview=material(raw,frozen,previewUid(raw))
+                if(!preview.whole){
+                    requireCloneProfile()
+                    if(raw.master["uid2445"].isNullOrBlank()&&raw.master["_sync_id"].isNullOrBlank())throw Review("The prefix has no issued identity for a safe independent split")
+                }
+                val model=material(raw,frozen,if(preview.whole)null else newUid(raw))
+                FollowingExecutionReceipt(id,CalendarSeriesWriter.frozenCommandJson(frozen).toString(),token.value,raw.encoded,model.whole,model.ordinal,
+                    prefixValues(raw,model),model.prefix,model.prefixReminders,model.tail,model.tailReminders,model.tailAttendees,templateStart(model.template.time),templateEnd(model.template.time)).also{it.validate();frozenCandidateReady()}
+            }
+            if(!permissions())return common(MutationResult.PermissionRequired)
+            if(!initial.whole)requireCloneProfile()
+            frozenPreflight(initial)
+            currentCoroutineContext().ensureActive();store.prepare(id,signature,Kind,initial.prepared().toString())
+            val winner=store.operation(id)?:return common(MutationResult.Uncertain(id,null))
+            if(winner.kind!=Kind||winner.signature!=signature)return common(MutationResult.Conflict(null))
+            if(winner.phase=="ABANDONED")return common(MutationResult.Retired(id))
+            // A concurrent legacy preparation is never silently converted to3.
+            if(!FollowingExecutionReceipt.handles(winner))return common(MutationResult.Uncertain(id,null))
+            val parsed=try{FollowingExecutionReceipt.parse(winner,readBudgets.maxCanonicalBytes)}catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){return common(MutationResult.Uncertain(id,null))}
+            if(winner.phase !in setOf("PREPARED","FAILED"))return recoverFrozen(winner,parsed)
+            val receipt=parsed.second
+            frozenPreflight(receipt)
+            if(!freshOriginal(receipt))return common(MutationResult.Conflict(null))
+            if(!permissions())return common(MutationResult.PermissionRequired)
+            if(!receipt.whole)requireCloneProfile()
+            currentCoroutineContext().ensureActive()
+            if(!store.attempt(winner))return recover(store.operation(id)?:return common(MutationResult.Uncertain(id,null)),false)
+            attempted=winner.copy(phase="ATTEMPTED")
+            if(!permissions()){check(store.mark(attempted,"FAILED"));return common(MutationResult.PermissionRequired)}
+            if(!receipt.whole&&!providerClonePolicy.allows(ProviderCloneOperation.INDEPENDENT_TAIL))return common(MutationResult.Uncertain(id,null))
+            currentCoroutineContext().ensureActive()
+            val steps=receipt.steps();val results=resolver.applyBatch(CalendarContract.AUTHORITY,ArrayList(steps.map{it.build()}))
+            known=if(receipt.whole)receipt.masterId else CalendarCreateAcknowledgments.insertId(results.getOrNull(steps.indexOfFirst{it.slot=="TAIL"})?.uri,"events").also{require(it!=receipt.masterId)}
+            val minimal=receipt.prepared().put("stage","committed").put("result",known).put("ackComplete",false).toString()
+            val committed=try{FollowingAcknowledgments.capture(results,steps.size)?.let{JSONObject(minimal).put("ackFacts",it).toString().takeIf{raw->raw.toByteArray(Charsets.UTF_8).size<=readBudgets.maxCanonicalBytes}}?:minimal}catch(_:Exception){minimal}
+            check(store.mark(attempted,"COMMITTED",committed))
+            val latest=store.operation(id)?:return common(MutationResult.Uncertain(id,known))
+            return recoverFrozen(latest,FollowingExecutionReceipt.parse(latest,readBudgets.maxCanonicalBytes),justAcknowledged=true)
+        }catch(cancelled:CancellationException){throw cancelled}
+        catch(_:SecurityException){return common(if(attempted==null)MutationResult.PermissionRequired else MutationResult.Uncertain(id,known))}
+        catch(_:OperationApplicationException){return if(attempted==null)common(MutationResult.Unavailable)else try{check(store.mark(requireNotNull(attempted),"FAILED"));common(MutationResult.Unavailable)}catch(cancelled:CancellationException){throw cancelled}catch(_:Exception){common(MutationResult.Uncertain(id,known))}}
+        catch(conflict:SeriesSourceConflict){return common(MutationResult.Conflict(null))}
+        catch(denied:SeriesSourceDenied){return common(MutationResult.Denied(denied.reason))}
+        catch(invalid:CalendarSeriesWriter.Invalid){return common(MutationResult.ValidationFailed(invalid.fields))}
+        catch(review:Review){return if(attempted==null)SeriesMutationResult.PlanningReview(review.reason)else common(MutationResult.Uncertain(id,known))}
+        catch(review:SeriesSourceReview){return if(attempted==null)SeriesMutationResult.PlanningReview(review.reason)else common(MutationResult.Uncertain(id,known))}
+        catch(_:ProviderReadLimitExceeded){return if(attempted==null)SeriesMutationResult.PlanningReview("The complete frozen split exceeds the read or storage budget")else common(MutationResult.Uncertain(id,known))}
+        catch(_:Exception){return common(if(attempted==null)MutationResult.Unavailable else MutationResult.Uncertain(id,known))}
+    }
+
+    private fun frozenPreflight(r:FollowingExecutionReceipt) {
+        r.validate();val steps=r.steps();checkParcel(steps.map{it.build()})
+        Math.subtractExact(r.firstStart.toEpochMilli(),1);Math.addExact(r.firstStart.toEpochMilli(),1)
+        val children=r.children("reminders").size+r.children("attendees").size+r.children("extendedproperties").size+r.prefixReminders.size+r.tailReminders.size+r.tailAttendees.size
+        val width=r.master.size+r.calendar.size+(r.tail?.size?:0)
+        if(children>readBudgets.maxSeriesChildren||100L+8L*children>readBudgets.mutation.maxRows||10L*width+32L*children+256>readBudgets.mutation.maxCells)throw ProviderReadLimitExceeded()
+        val result=if(r.whole)r.masterId else Long.MAX_VALUE
+        val results=steps.mapIndexed{index,s->if(s.kind=="INSERT")ContentProviderResult(ContentUris.withAppendedId(Uri.parse("content://${CalendarContract.AUTHORITY}/${s.table}"),if(s.slot=="TAIL")result else Long.MAX_VALUE-index-1))else ContentProviderResult(requireNotNull(s.expected))}.toTypedArray()
+        val facts=FollowingAcknowledgments.capture(results,steps.size)?:throw Review("Complete native acknowledgements cannot fit the private receipt")
+        val ids=FollowingAcknowledgments.insertIds(facts,steps,result,r.masterId)?:throw Review("Complete native acknowledgement layout is unavailable")
+        val prepared=r.prepared();checkStoredJson(prepared.toString(),readBudgets.maxCanonicalBytes)
+        val minimal=JSONObject(prepared.toString()).put("stage","committed").put("result",result).put("ackComplete",false)
+        checkStoredJson(minimal.toString(),readBudgets.maxCanonicalBytes)
+        val verified=JSONObject(minimal.toString()).put("ackComplete",true).put("ackFacts",facts).put("insertIds",FollowingAcknowledgments.ids(ids)).put("ref",CreateSixJson.ref(r.ref(result))).toString()
+        checkStoredJson(verified,readBudgets.maxCanonicalBytes)
+        if((currentReadBudget()?.consumedTextUnits?:0L)+8L*verified.length+256L*children+10L*r.sourceRaw.length>readBudgets.mutation.maxTextUnits)throw ProviderReadLimitExceeded()
+    }
+
+    /** Recheck complete raw source without a snapshot, an edit-snapshot lookup or current planning. */
+    private suspend fun freshOriginal(r:FollowingExecutionReceipt):Boolean {
+        val calendar=frozenRows(ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,r.calendarId),null,maxRows=1).singleOrNull()?:return false
+        if(calendar!=r.calendar||!sameCalendar(r.calendar,calendar))return false
+        if(calendar["calendar_access_level"]?.toIntOrNull() !in setOf(700,800))return false
+        if(!identityRow(r.masterId,r.calendarId,r.master["uid2445"],r.master["_sync_id"],true).first)return false
+        val guard=identityGuard(r.masterId,r.calendarId,r.master["uid2445"],r.master["_sync_id"],true)
+        if(frozenRows(CalendarContract.Events.CONTENT_URI,null,guard.first,guard.second,1).singleOrNull()!=r.master)return false
+        if(!noExceptions(r.masterId,r.master["_sync_id"],CalendarId(r.calendarId)))return false
+        for(table in listOf("reminders","attendees","extendedproperties")){
+            if(!identityRow(r.masterId,r.calendarId,r.master["uid2445"],r.master["_sync_id"],true).first)return false
+            val actual=frozenRows(Uri.parse("content://${CalendarContract.AUTHORITY}/$table"),null,"event_id = ?",arrayOf(r.masterId.toString()),readBudgets.maxSeriesChildren)
+            if(actual.sortedBy{it["_id"]?.toLongOrNull()}!=r.children(table).sortedBy{it["_id"]?.toLongOrNull()})return false
+        }
+        return identityRow(r.masterId,r.calendarId,r.master["uid2445"],r.master["_sync_id"],true).first
+    }
+
+    private fun identityGuard(id:Long,calendar:Long,uid:String?,sync:String?,guardSync:Boolean):Pair<String,Array<String?>> {
+        var sql="_id = ? AND calendar_id = ?";val args=mutableListOf<String?>(id.toString(),calendar.toString())
+        if(uid==null)sql+=" AND uid2445 IS NULL"else{sql+=" AND uid2445 = ?";args+=uid}
+        if(guardSync){if(sync==null)sql+=" AND _sync_id IS NULL"else{sql+=" AND _sync_id = ?";args+=sync}}
+        return sql to args.toTypedArray()
+    }
+    private suspend fun identityRow(id:Long,calendar:Long,uid:String?,sync:String?,guardSync:Boolean):Pair<Boolean,Map<String,String?>?> {
+        val guard=identityGuard(id,calendar,uid,sync,guardSync)
+        val row=frozenRows(CalendarContract.Events.CONTENT_URI,arrayOf("_id","calendar_id","uid2445","_sync_id"),guard.first,guard.second,1).singleOrNull()
+        return (row!=null&&row["_id"]==id.toString()&&row["calendar_id"]==calendar.toString()&&row["uid2445"]==uid&&(!guardSync||row["_sync_id"]==sync)) to row
+    }
+    private fun tailExpected(r:FollowingExecutionReceipt)=requireNotNull(r.tail)+mapOf("deleted" to "0","isOrganizer" to "1","hasAlarm" to if(r.tailReminders.isEmpty())"0"else"1","hasExtendedProperties" to "0",
+        "selfAttendeeStatus" to (r.tailAttendees.singleOrNull()?.get("attendeeStatus")?:"0"),"rdate" to null,"exrule" to null,"exdate" to null,"original_id" to null,"original_sync_id" to null,"originalInstanceTime" to null,"originalAllDay" to null)
+
+    private suspend fun recoverFrozen(operation:CalendarLocalStore.Operation,parsed:Pair<JSONObject,FollowingExecutionReceipt>,justAcknowledged:Boolean=false):SeriesMutationResult {
         ensureRead()
-        val verified=JSONObject(receipt.toString())
-        if(!model.whole)verified.put("tailSync",receipt.nullable("tailSync")?.takeIf(String::isNotBlank)?:learnedTailSync?:JSONObject.NULL)
-        check(store.mark(operation,"VERIFIED",verified.toString()));sourceReader.refresh()
-        val ref=EventRef(raw.snapshot.identity.calendarId,result,Instant.ofEpochMilli(native.getValue("begin")!!.toLong()),Instant.ofEpochMilli(native.getValue("end")!!.toLong()),RecurrenceRef(result,Instant.ofEpochMilli(native.getValue("begin")!!.toLong())))
-        SeriesMutationResult.LocalSaved(SeriesIdentity(raw.snapshot.identity.calendarId,result),ref)
-        } catch (denied: SecurityException) { throw denied }
-        catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { uncertain() }
+        if(operation.phase in setOf("PREPARED","FAILED"))return common(MutationResult.SafeToRetry(operation.id))
+        if(operation.phase=="ATTEMPTED")return common(MutationResult.Uncertain(operation.id,null))
+        val(proof,r)=parsed;val result=CreateSixJson.number(proof,"result");var bound=true
+        var recheck:(suspend()->Boolean)?=null
+        suspend fun uncertain():SeriesMutationResult {
+            // A guarded empty row can be an observed identity replacement. Preserve a known
+            // result on unavailable checks, but never after an exact binding is observed gone.
+            if(bound)try{if(recheck?.invoke()==false)bound=false}catch(cancelled:CancellationException){throw cancelled}catch(denied:SecurityException){throw denied}catch(_:Exception){}
+            return common(MutationResult.Uncertain(operation.id,result.takeIf{bound}))
+        }
+        return try {
+            suspend fun namespace():Boolean=sameCalendar(r.calendar,calendar(CalendarId(r.calendarId)))
+            if(!namespace()){bound=false;return uncertain()}
+            if(!identityRow(r.masterId,r.calendarId,r.master["uid2445"],r.master["_sync_id"],true).first){bound=false;return uncertain()}
+            val sticky=if(proof.has("tailSync"))CreateSixJson.nullableText(proof,"tailSync")?.takeIf(String::isNotBlank)else null
+            var learned:String?=null;var observedSync:String?=null
+            if(!r.whole){val binding=identityRow(result,r.calendarId,r.uid,null,false);if(!binding.first){bound=false;return uncertain()}
+                observedSync=binding.second?.get("_sync_id");learned=observedSync?.takeIf(String::isNotBlank)}
+            // The generated UID identifies the known tail. Sticky sync is completeness proof,
+            // never a replacement for that UID or permission to read a disagreeing payload.
+            recheck={namespace()&&identityRow(r.masterId,r.calendarId,r.master["uid2445"],r.master["_sync_id"],true).first&&
+                (r.whole||identityRow(result,r.calendarId,r.uid,null,false).first)}
+            bound=true
+            if(!r.whole&&(sticky!=null&&sticky!=learned||learned!=null&&learned==r.master["_sync_id"]))return uncertain()
+            val ids=FollowingAcknowledgments.insertIds(proof.optJSONObject("ackFacts"),r.steps(),result,r.masterId)?:return uncertain()
+            suspend fun prefixBinding()=identityRow(r.masterId,r.calendarId,r.master["uid2445"],r.master["_sync_id"],true).first
+            suspend fun tailBinding()=r.whole||identityRow(result,r.calendarId,r.uid,observedSync,true).first
+            suspend fun parent(id:Long,expected:Map<String,String?>,uid:String?,sync:String?,guardSync:Boolean):Boolean {
+                val guard=identityGuard(id,r.calendarId,uid,sync,guardSync)
+                return frozenRows(CalendarContract.Events.CONTENT_URI,expected.keys.toTypedArray(),guard.first,guard.second,1).singleOrNull()==expected
+            }
+            suspend fun parents()=parent(r.masterId,r.prefix,r.master["uid2445"],r.master["_sync_id"],true)&&
+                (r.whole||parent(result,tailExpected(r),r.uid,observedSync,true))
+            if(!parents())return uncertain()
+            fun expectedChildren(tail:Boolean,table:String):List<Map<String,String?>> {
+                val parent=if(tail)result else r.masterId
+                val rows=if(tail)when(table){"reminders"->r.tailReminders;"attendees"->r.tailAttendees;else->emptyList()}else if(table=="reminders")r.prefixReminders else r.children(table)
+                return rows.mapIndexed{index,row->val label=if(tail){if(table=="reminders")"TAIL_REMINDER:$index"else"TAIL_ATTENDEE:$index"}else"PREFIX_REMINDER:$index"
+                    val id=row["_id"]?.toLong()?:requireNotNull(ids[label]);row+mapOf("_id" to id.toString(),"event_id" to parent.toString())}
+            }
+            suspend fun membership(parent:Long,table:String,expected:List<Map<String,String?>>):Boolean {
+                val actual=frozenRows(Uri.parse("content://${CalendarContract.AUTHORITY}/$table"),arrayOf("_id","event_id"),"event_id = ?",arrayOf(parent.toString()),readBudgets.maxSeriesChildren)
+                return actual.all{it["event_id"]==parent.toString()}&&actual.map{it["_id"]}.distinct().size==actual.size&&actual.map{it["_id"]}.toSet()==expected.map{it["_id"]}.toSet()&&actual.size==expected.size
+            }
+            for(tail in if(r.whole)listOf(false)else listOf(false,true))for(table in listOf("reminders","attendees","extendedproperties")) {
+                val parent=if(tail)result else r.masterId;val expected=expectedChildren(tail,table)
+                if(!membership(parent,table,expected))return uncertain()
+                for(row in expected){
+                    if(!prefixBinding()||!tailBinding())return uncertain()
+                    val uid=if(tail)r.uid else r.master["uid2445"]
+                    val childArgs=mutableListOf<String?>(parent.toString())
+                    var selection="event_id = ?"
+                    // Native Reminder/Attendee item views expose the parent UID/calendar. Property
+                    // payloads retain the existing in-place policy: issued binding before/after.
+                    if(table!="extendedproperties"){
+                        selection+=" AND calendar_id = ?";childArgs+=r.calendarId.toString()
+                        if(uid==null)selection+=" AND uid2445 IS NULL"else{selection+=" AND uid2445 = ?";childArgs+=uid}
+                    }
+                    val uri=ContentUris.withAppendedId(Uri.parse("content://${CalendarContract.AUTHORITY}/$table"),requireNotNull(row["_id"]).toLong())
+                    if(frozenRows(uri,row.keys.toTypedArray(),selection,childArgs.toTypedArray(),1).singleOrNull()!=row)return uncertain()
+                    if(!prefixBinding()||!tailBinding())return uncertain()
+                }
+            }
+            if(!noExceptions(r.masterId,r.master["_sync_id"],CalendarId(r.calendarId))||!r.whole&&!noExceptions(result,learned,CalendarId(r.calendarId)))return uncertain()
+            val ref=r.ref(result);val uri=CalendarContract.Instances.CONTENT_URI.buildUpon().apply{ContentUris.appendId(this,Math.subtractExact(r.firstStart.toEpochMilli(),1));ContentUris.appendId(this,Math.addExact(r.firstStart.toEpochMilli(),1))}.build()
+            val instance=frozenRows(uri,InstanceFields,"event_id = ? AND calendar_id = ? AND begin = ?",arrayOf(result.toString(),r.calendarId.toString(),r.firstStart.toEpochMilli().toString()),1).singleOrNull()?:return uncertain()
+            if(instance["event_id"]!=result.toString()||instance["calendar_id"]!=r.calendarId.toString()||instance["begin"]!=r.firstStart.toEpochMilli().toString()||instance["end"]!=r.firstEnd.toEpochMilli().toString()||instance["allDay"]!=r.prefix["allDay"]||listOf("original_id","original_sync_id","originalInstanceTime").any{instance[it]!=null})return uncertain()
+            if(!prefixBinding()||!tailBinding())return uncertain()
+            if(!parents())return uncertain()
+            for(tail in if(r.whole)listOf(false)else listOf(false,true))for(table in listOf("reminders","attendees","extendedproperties"))if(!membership(if(tail)result else r.masterId,table,expectedChildren(tail,table)))return uncertain()
+            if(!namespace()){bound=false;return uncertain()};ensureRead()
+            val verified=JSONObject(proof.toString()).put("ackComplete",true).put("insertIds",FollowingAcknowledgments.ids(ids)).put("ref",CreateSixJson.ref(ref))
+            if(!r.whole)verified.put("tailSync",learned?:JSONObject.NULL)
+            check(store.mark(operation,"VERIFIED",verified.toString()));sourceReader.refresh()
+            SeriesMutationResult.LocalSaved(SeriesIdentity(CalendarId(r.calendarId),result),ref)
+        }catch(cancelled:CancellationException){throw cancelled}catch(_:SecurityException){common(MutationResult.PermissionRequired)}catch(_:Exception){if(justAcknowledged)common(MutationResult.Uncertain(operation.id,result))else uncertain()}
+    }
+
+    private suspend fun frozenRows(uri:Uri,fields:Array<String>?,selection:String?=null,args:Array<String?>?=null,maxRows:Int):List<Map<String,String?>> {
+        ensureRead()
+        val cursor=suspendCancellableCoroutine<Cursor>{continuation->val signal=CancellationSignal();continuation.invokeOnCancellation{signal.cancel()}
+            try{val result=(resolver.query(uri,fields,selection,args,null,signal)?:error("Provider unavailable")).bounded(maxRows)
+                try{ensureRead()}catch(failure:Exception){result.close();throw failure}
+                continuation.resume(result,onCancellation={_,resource,_->resource.close()})
+            }catch(failure:Exception){continuation.resumeWithException(failure)}}
+        return cursor.use{c->val names=fields?.toList()?:c.columnNames.filterNot{uri.pathSegments.firstOrNull()=="attendees"&&SeriesAttendeeColumns.isJoinedAlias(it)}
+            buildList{while(c.moveToNext()){currentCoroutineContext().ensureActive();ensureRead();add(names.associateWith{field->ensureRead();val column=c.getColumnIndexOrThrow(field);require(c.getType(column)!=Cursor.FIELD_TYPE_BLOB);if(c.isNull(column))null else c.getString(column)})};ensureRead()}}
     }
 
     private fun material(raw:Raw,command:SeriesCommand.FollowingEdit,uid:String?,issuedEndZone:FieldChange<String?> = FieldChange.Keep):Material {
+        // Tests can make actual current planning unavailable after preparation/commit.
+        frozenPreparationProbe()
         owned(raw)
         if(raw.master["dtend"]!=null||RecurrenceMasterTemplates.resolve(raw.snapshot) !is RecurrenceMasterTemplateResult.Ready)throw Review("The original recurring interval requires review")
         val selected=requireNotNull(raw.snapshot.validatedSelection)
@@ -293,8 +492,7 @@ internal class CalendarFollowingSeriesWriter(
         return listOf(row.filterKeys{it in AttendeeCopy})
     }
 
-    private fun operations(source:CalendarSeriesSource,raw:Raw,model:Material):Pair<ArrayList<ContentProviderOperation>,Int?> {
-        val id=raw.snapshot.identity.masterEventId;val ops=owner.followingAssertions(source)
+    private fun prefixValues(raw:Raw,model:Material):Map<String,String?> {
         val prefixValues=if(model.whole)model.prefix.filter{(key,value)->raw.master[key]!=value}.toMutableMap()else mutableMapOf("rrule" to model.prefix["rrule"])
         if(!model.whole){
             // Native updateInstancesLocked returns early without DTSTART. Raw-times replacement
@@ -304,6 +502,12 @@ internal class CalendarFollowingSeriesWriter(
         }
         // DTEND null is explicit even when the source's native row already had null.
         if(model.whole)for(key in listOf("dtstart","dtend","duration","eventTimezone","eventEndTimezone","allDay","rrule"))prefixValues[key]=model.prefix[key]
+        return prefixValues
+    }
+
+    private fun operations(source:CalendarSeriesSource,raw:Raw,model:Material):Pair<ArrayList<ContentProviderOperation>,Int?> {
+        val id=raw.snapshot.identity.masterEventId;val ops=owner.followingAssertions(source)
+        val prefixValues=prefixValues(raw,model)
         ops+=ContentProviderOperation.newUpdate(eventUri(id)).withValues(values(prefixValues)).withExpectedCount(1).withYieldAllowed(false).build()
         if(model.whole){
             val before=raw.reminders[id].orEmpty();if(model.prefixReminders!=before){
@@ -408,7 +612,7 @@ internal class CalendarFollowingSeriesWriter(
         private fun values(row:Map<String,String?>)=ContentValues().apply{row.forEach{(key,value)->if(value==null)putNull(key)else put(key,value)}}
         private fun eventUri(id:Long)=ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,id)
         private fun assertRow(uri:Uri,row:Map<String,String?>)=ContentProviderOperation.newAssertQuery(uri).withValues(values(row)).withExpectedCount(1).withYieldAllowed(false).build()
-        private fun normalInsertId(results:Array<ContentProviderResult>,index:Int):Long{val uri=results.getOrNull(index)?.uri?:error("Missing tail acknowledgement");require(uri.authority==CalendarContract.AUTHORITY&&uri.pathSegments.size==2&&uri.pathSegments.first()=="events");return ContentUris.parseId(uri).also{require(it>0)}}
+        private fun normalInsertId(results:Array<ContentProviderResult>,index:Int):Long=CalendarCreateAcknowledgments.insertId(results.getOrNull(index)?.uri,"events")
         private fun templateStart(time:EventTime)=when(time){is EventTime.Timed->time.start;is EventTime.AllDay->time.dates.start.atStartOfDay(ZoneOffset.UTC).toInstant()}
         private fun templateEnd(time:EventTime)=when(time){is EventTime.Timed->time.end;is EventTime.AllDay->time.dates.endExclusive.atStartOfDay(ZoneOffset.UTC).toInstant()}
         private fun previewUid(raw:Raw)=if(raw.master["uid2445"]!="00000000-0000-4000-8000-000000000001")"00000000-0000-4000-8000-000000000001"else"00000000-0000-4000-8000-000000000002"

@@ -1,6 +1,7 @@
 # Frozen exception-free Following execution
 
-Status: codec/native layout prepared; handler integration verification is pending. This protocol
+Status: the isolated implementation passes 69 focused host checks; aggregate integration verification
+is pending. This protocol
 changes no command bytes, core planner, schema or clone-profile registry. No production clone
 profile is admitted. EXDATE/exception transfer remains outside this packet.
 
@@ -32,7 +33,11 @@ Known-commit READ-only recovery checks namespace/ACL and known prefix/tail ident
 private payload, and remains independent of fresh clone admission. Reminder/attendee item reads
 use native parent UID/calendar guards. Property reads on the unchanged WHOLE path retain the
 existing in-place policy with issued parent checks before and after; no new joined property view
-is assumed. Optional learned tail sync identity remains sticky and cannot replace generated UID.
+is assumed. Optional learned tail sync identity remains sticky and cannot replace generated UID. A sticky-sync
+mismatch with the exact known ID/calendar/generated UID still bound retains known-result uncertainty,
+but permits no payload read, success or proof rewrite. An observed namespace/UID loss suppresses the
+known result; unavailable identity checks do not invent an observed replacement. Raw unissued empty
+sync values are checked as observed and are never rewritten into a stable identity.
 Dispatch still requires fresh clone admission for nonzero splits at all existing boundaries;
 Unverified production policy continues to deny those writes.
 

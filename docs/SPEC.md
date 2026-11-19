@@ -529,6 +529,19 @@ than being rebased onto fresh preservation. These checks do not prove installed-
 cache acceptance and independently admitted profiles remain separate gates; this helper enables no
 new capability.
 
+New exception-free Following operations use family receipt3 to freeze original raw source, exact
+prefix context/native tail values, one prepare-winning independent UID and first-instance bounds.
+Retries compare that original source without edit snapshots or current recurrence compilation.
+Every native assertion/update/delete count and inserted parent/child acknowledgement is bound to
+its prepared index before local success. READ-only known-commit recovery requires fresh namespace,
+issued identity and complete exact child/native-instance proof, and does not require new clone
+admission. WHOLE keeps existing in-place issued-null policies without claiming an unissued stable
+identity; SPLIT requires an issued prefix UID or sync identity. Default Unverified still blocks
+independent tails. Existing receipt2 retries retain their exact old bytes/protocol, while historical
+known commits remain uncertain rather than gaining invented complete ACK evidence. This backend
+change activates no EXDATE/exception transfer, clone profile, Google delivery or physical acceptance.
+See [the private Following protocol](FOLLOWING_EXECUTION_RECEIPT3.md).
+
 ### M8 — Search, preferences and Android entry points
 
 Search title/location/description with cancellation/debounce and calendar filters. Default range is
