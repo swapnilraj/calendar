@@ -240,7 +240,7 @@ fun EventEditorContent(
     }
     state.recurrenceReview?.let { plan ->
         fields.recurrence.normalized()?.let { spec -> RecurrenceCreationReview(plan, spec, fields.title,
-            controller::confirmRecurringCreate, controller::dismissRecurrenceReview) }
+            controller::confirmRecurringCreate, controller::dismissRecurrenceReview, use24Hour = use24Hour) }
     }
     if (draftAction != null) AlertDialog(onDismissRequest = { draftAction = null },
         title = { Text(stringResource(if (draftAction == "replace") R.string.editor_replace_draft else if (controller.hasFrozenSubmission) R.string.editor_retire_discard else R.string.editor_discard_only)) },

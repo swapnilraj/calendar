@@ -161,7 +161,7 @@ private fun PhoneMeetingCreateContent(c: MeetingCreationController, calendars: L
     }
     if(panel!=null && raw!=null) PhoneMeetingCreatePanel(panel!!,c,calendars,editable,actions,use24Hour) {panel=null}
     state.recurrenceReview?.let { review -> RecurrenceCreationReview(review.plan,review.spec,review.title,
-        onConfirm={actions.submit {c.confirmRecurringCreate()}},onDismiss=c::dismissRecurrenceReview) }
+        onConfirm={actions.submit {c.confirmRecurringCreate()}},onDismiss=c::dismissRecurrenceReview,use24Hour=use24Hour) }
     if(state.confirmDiscard) AlertDialog(onDismissRequest=c::cancelDiscard,title={Text(stringResource(R.string.phone_meeting_create_discard_title))},
         text={Text(stringResource(if(c.frozen) R.string.phone_meeting_create_discard_frozen else R.string.phone_meeting_create_discard_raw))},
         confirmButton={TextButton(onClick={actions.submit {c.confirmDiscard()}},enabled=!state.busy){Text(stringResource(R.string.phone_meeting_create_discard))}},
