@@ -64,6 +64,7 @@ fun MonthView(
     allowCreation: Boolean = true,
     onShowDateEvents: ((LocalDate) -> Unit)? = null,
     showWeekends: Boolean = true,
+    showNavigationChrome: Boolean = true,
 ) {
     val locale = LocalLocale.current.platformLocale
     val chooseDateLabel = stringResource(R.string.month_choose_date)
@@ -82,6 +83,7 @@ fun MonthView(
     LaunchedEffect(month, firstDayOfWeek) { verticalScroll.scrollTo(0) }
     Surface(modifier.fillMaxSize()) {
         Column {
+            if (showNavigationChrome) {
             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(enabled = month > YearMonth.of(1, 1), onClick = { sheetDate = null; onNavigateMonth(month.minusMonths(1)) }) {
                     MonthChevron(false, stringResource(R.string.month_previous))
@@ -100,6 +102,7 @@ fun MonthView(
             }
             if (fontScale > 1.3f) TextButton(onClick = { sheetDate = null; onSelectDate(today); onNavigateMonth(YearMonth.from(today)) },
                 modifier = Modifier.align(Alignment.End).padding(end = 8.dp)) { Text(stringResource(R.string.month_today)) }
+            }
             if (hiddenSelection) {
                 val label = stringResource(R.string.month_events_on_date,
                     selectedDate.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale)))

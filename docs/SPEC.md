@@ -5,6 +5,19 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+Production calendars with settings use one shared phone toolbar across Day, three-day, Week,
+Month and Schedule. The month control opens a paged mini-month with an explicit arbitrary-date/year
+picker; month paging alone does not select a date or mutate events. Today uses the selected display
+zone. Choosing a date updates the shared view range, while view changes preserve that date and
+app-local calendar filters. Back collapses the date navigator before leaving the calendar.
+
+The navigation drawer offers implemented views above account calendars; Schedule retains the
+persisted AGENDA identifier. Injected weather controls remain in the drawer footer, and timed views
+retain an accessible Time scale dialog after redundant view-specific toolbars are hidden. No Search
+button is rendered until an actual search port is connected. Standalone view components retain their
+existing navigation chrome by default. This bounded presentation does not establish live Google
+Calendar gesture or pixel parity and changes no provider visibility, synchronization or write policy.
+
 One application-owned reminder runtime serializes framework work and settings commits. Private
 receivers and bounded jobs recover after content, boot, clock, timezone and permission changes.
 Permission-loss cleanup can cancel app-owned delivery even when configuration reads fail, without

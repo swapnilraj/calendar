@@ -41,6 +41,9 @@ fun CalendarDrawerSheet(
     onDefaultCalendarChanged: (CalendarId?) -> Unit,
     onDismiss: () -> Unit,
     footer: @Composable ColumnScope.() -> Unit = {},
+    currentView: CalendarViewOption? = null,
+    onViewSelected: ((CalendarViewOption) -> Unit)? = null,
+    availableViews: List<CalendarViewOption> = emptyList(),
 ) {
     val unique = remember(calendars) { calendars.distinctBy { it.id } }
     val selected = selectedCalendarIds(unique, selection)
@@ -57,6 +60,10 @@ fun CalendarDrawerSheet(
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.calendars_close)) }
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("calendar_drawer_list"), contentPadding = PaddingValues(bottom = 24.dp)) {
+            if (onViewSelected != null && availableViews.isNotEmpty()) item(key = "calendar_views") {
+                CalendarDrawerViews(availableViews, currentView, onViewSelected)
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            }
             item {
                 Text(stringResource(R.string.calendars_visibility_note), style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))

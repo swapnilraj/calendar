@@ -1,5 +1,6 @@
 package dev.swapnilraj.calendar.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -82,6 +83,11 @@ internal fun LiveCalendarDay(
     var writeRequestText by rememberSaveable { mutableStateOf<String?>(null) }
     var showDrafts by rememberSaveable { mutableStateOf(false) }
     var preparingWrite by remember { mutableStateOf(false) }
+    var phoneMonthExpanded by rememberSaveable { mutableStateOf(false) }
+    var phoneMonthText by rememberSaveable { mutableStateOf<String?>(null) }
+    var phoneDatePicker by rememberSaveable { mutableStateOf(false) }
+    var phoneZoomOpen by rememberSaveable { mutableStateOf(false) }
+    var dayNavigationRevision by rememberSaveable { mutableIntStateOf(0) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showDefaultCalendar by rememberSaveable { mutableStateOf(false) }
     var savingSettings by remember { mutableStateOf(false) }
@@ -220,6 +226,13 @@ internal fun LiveCalendarDay(
         if (onOpenReminders != null) TextButton(onClick = { scope.launch { drawer.close(); onOpenReminders() } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Text(stringResource(R.string.reminders_setup_title))
         }
+        if (settings != null) {
+            if (view in listOf(CalendarViewOption.DAY, CalendarViewOption.THREE_DAY, CalendarViewOption.WEEK))
+                TextButton(onClick = { phoneZoomOpen = true; scope.launch { drawer.close() } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                    Text(stringResource(R.string.phone_host_time_scale))
+                }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, content = actions)
+        }
         if (writable) {
             HorizontalDivider()
             TextButton(onClick = { scope.launch { drawer.close(); showDrafts = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
@@ -232,12 +245,44 @@ internal fun LiveCalendarDay(
         if (settings != null) IconButton(onClick = { scope.launch { drawer.open() } },
             modifier = Modifier.semantics { contentDescription = calendarsLabel }) { Text("☰") }
     }
-    val controls: @Composable RowScope.() -> Unit = {
-        if (settings != null) CalendarViewChooser(availableViews, view,
-            onViewSelected = { option -> scope.launch {
-                if (!settings.setCalendarView(option.name)) onPreferenceFailure()
-            } })
-        actions()
+    val controls: @Composable RowScope.() -> Unit = { actions() }
+    fun navigatePhoneDate(date: LocalDate) {
+        val selectedDate = date.coerceIn(MultiDayMinDate, MultiDayMaxDate)
+        selectedDateState.value = selectedDate.toString()
+        phoneMonthExpanded = false
+        phoneMonthText = YearMonth.from(selectedDate).toString()
+        dayNavigationRevision++
+        if (view == CalendarViewOption.AGENDA) agendaWindow(selectedDate, 31).let { agendaRangeText = "${it.start}/${it.endExclusive}" }
+        if (view == CalendarViewOption.THREE_DAY || view == CalendarViewOption.WEEK)
+            planningMultiDayRange(selectedDate, multiDays, firstWeekday).let { multiDayRangeText = "${it.start}/${it.endExclusive}" }
+    }
+    BackHandler(enabled = phoneMonthExpanded || phoneDatePicker || phoneZoomOpen) {
+        phoneMonthExpanded = false; phoneDatePicker = false; phoneZoomOpen = false
+    }
+    if (phoneDatePicker) {
+        val picker = rememberDatePickerState(initialSelectedDateMillis = visibleDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(), yearRange = 1..9999)
+        DatePickerDialog(onDismissRequest = { phoneDatePicker = false }, confirmButton = {
+            TextButton(enabled = picker.selectedDateMillis != null, onClick = {
+                picker.selectedDateMillis?.let { navigatePhoneDate(Instant.ofEpochMilli(it).atOffset(ZoneOffset.UTC).toLocalDate()) }
+                phoneDatePicker = false
+            }) { Text(stringResource(R.string.phone_host_choose)) }
+        }, dismissButton = { TextButton(onClick = { phoneDatePicker = false }) { Text(stringResource(R.string.phone_host_cancel)) } }) {
+            DatePicker(picker, showModeToggle = true)
+        }
+    }
+    if (phoneZoomOpen) {
+        var scale by remember(preferences.hourHeight) { mutableFloatStateOf(preferences.hourHeight) }
+        AlertDialog(onDismissRequest = { phoneZoomOpen = false },
+            title = { Text(stringResource(R.string.phone_host_time_scale)) },
+            text = { Column {
+                Text(stringResource(R.string.phone_host_scale_percent, (scale / 64f * 100).toInt()))
+                Slider(value = scale, onValueChange = { scale = it }, valueRange = 32f..160f,
+                    modifier = Modifier.semantics { contentDescription = "Calendar time scale" })
+            } },
+            confirmButton = { TextButton(onClick = {
+                onSaveHourHeight(scale); dayNavigationRevision++; phoneZoomOpen = false
+            }) { Text(stringResource(R.string.phone_host_choose)) } },
+            dismissButton = { TextButton(onClick = { phoneZoomOpen = false }) { Text(stringResource(R.string.phone_host_cancel)) } })
     }
     val forDay: (LocalDate, ZoneId) -> Flow<CalendarState> = remember(snapshots) {
         { date, zone -> snapshots.map { it.forDay(date, zone) } }
@@ -250,7 +295,15 @@ internal fun LiveCalendarDay(
                 } },
                 onDefaultCalendarChanged = { id -> scope.launch {
                     if (settings?.setDefaultCalendar(id, calendars) == false) onPreferenceFailure()
-                } }, onDismiss = { scope.launch { drawer.close() } }, footer = drawerActions)
+                } }, onDismiss = { scope.launch { drawer.close() } }, footer = drawerActions,
+                currentView = view, availableViews = availableViews,
+                onViewSelected = if (settings != null) ({ option ->
+                    phoneMonthExpanded = false
+                    scope.launch {
+                        if (!settings.setCalendarView(option.name)) onPreferenceFailure()
+                        drawer.close()
+                    }; Unit
+                }) else null)
             else -> ModalDrawerSheet {
                 CalendarReadNotice(metadata, reader::refresh)
                 TextButton(onClick = { scope.launch { drawer.close() } }) { Text(stringResource(R.string.calendar_close_events)) }
@@ -259,6 +312,20 @@ internal fun LiveCalendarDay(
         }
     }) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            if (settings != null) {
+                CalendarPhoneToolbar(visibleDate, displayNow.toLocalDate(), phoneMonthExpanded,
+                    onOpenDrawer = { phoneMonthExpanded = false; scope.launch { drawer.open() } },
+                    onToggleMonth = {
+                        if (!phoneMonthExpanded) phoneMonthText = YearMonth.from(visibleDate).toString()
+                        phoneMonthExpanded = !phoneMonthExpanded
+                    }, onToday = { navigatePhoneDate(displayNow.toLocalDate()) })
+                if (phoneMonthExpanded) CalendarMonthNavigator(
+                    displayedMonth = phoneMonthText?.let(YearMonth::parse) ?: YearMonth.from(visibleDate),
+                    selectedDate = visibleDate, today = displayNow.toLocalDate(), firstDayOfWeek = firstWeekday,
+                    onNavigateMonth = { phoneMonthText = it.toString() },
+                    onSelectDate = ::navigatePhoneDate,
+                    onChooseDate = { phoneDatePicker = true })
+            }
             (snapshot as? CalendarReadState.Ready)?.value?.let { ready ->
                 val chosenCalendars = ready.request.selection
                 val notice = when {
@@ -274,16 +341,17 @@ internal fun LiveCalendarDay(
             }
             Box(Modifier.weight(1f)) {
                 if (view == CalendarViewOption.DAY) {
-                    DayScreen(displayNow, use24Hour, preferences.hourHeight, forDay, onSaveHourHeight,
+                    key(dayNavigationRevision) { DayScreen(displayNow, use24Hour, preferences.hourHeight, forDay, onSaveHourHeight,
                         onEventClick = { it.ref?.let(::openEvent) }, initialDate = visibleDate,
                         initialScrollHour = scrollMinute.takeIf { it >= 0 }?.div(60),
                         actions = controls, leadingActions = openCalendars, compactTitle = settings != null,
                         summary = summary, background = background,
                         onVisibleDateChanged = { selectedDateState.value = it.toString() }, onRetry = reader::refresh,
                         onScrollMinuteChanged = { scrollMinute = it },
-                        onChooseCalendars = if (settings != null) ({ scope.launch { drawer.open() }; Unit }) else null)
+                        onChooseCalendars = if (settings != null) ({ scope.launch { drawer.open() }; Unit }) else null,
+                        showNavigationChrome = settings == null) }
                 } else Column(Modifier.fillMaxSize()) {
-                    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (settings == null) Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         openCalendars(); controls()
                     }
                     when (val state = snapshot) {
@@ -291,7 +359,7 @@ internal fun LiveCalendarDay(
                             AgendaView(agendaRange, visibleDate, state.value.occurrences, displayNow.zone,
                                 onSelectDate = { selectedDateState.value = it.toString() }, onOpenEvent = ::openEvent,
                                 onRequestRange = { agendaRangeText = "${it.start}/${it.endExclusive}" },
-                                today = displayNow.toLocalDate(), modifier = Modifier.weight(1f))
+                                today = displayNow.toLocalDate(), modifier = Modifier.weight(1f), showNavigationChrome = settings == null)
                         } else if (view == CalendarViewOption.THREE_DAY || view == CalendarViewOption.WEEK) {
                             key(view) { MultiDayView(multiDayRange, visibleDate, state.value.occurrences, displayNow, displayNow.zone, use24Hour,
                                 preferences.hourHeight, onSaveHourHeight,
@@ -302,7 +370,7 @@ internal fun LiveCalendarDay(
                                         planningMultiDayRange(currentDate(), 7, firstWeekday) else next
                                     multiDayRangeText = "${aligned.start}/${aligned.endExclusive}"
                                 }, initialScrollMinute = scrollMinute.takeIf { it >= 0 }, onScrollMinuteChanged = { scrollMinute = it },
-                                summary = summary, background = background, modifier = Modifier.weight(1f), showWeekends = options.showWeekends) }
+                                summary = summary, background = background, modifier = Modifier.weight(1f), showWeekends = options.showWeekends, showNavigationChrome = settings == null) }
                         } else MonthView(month, visibleDate, firstWeekday, state.value.occurrences, displayNow.zone,
                             onSelectDate = { selectedDateState.value = it.toString() }, onOpenEvent = ::openEvent,
                             onCreateDate = { createDateAction?.invoke(it) },
@@ -312,7 +380,7 @@ internal fun LiveCalendarDay(
                                 selectedDateState.value = next.atDay(minOf(currentDay, next.lengthOfMonth())).toString()
                             },
                             today = displayNow.toLocalDate(), modifier = Modifier.weight(1f), allowCreation = canCreate,
-                            onShowDateEvents = { monthDayText = it.toString() }, showWeekends = options.showWeekends)
+                            onShowDateEvents = { monthDayText = it.toString() }, showWeekends = options.showWeekends, showNavigationChrome = settings == null)
                         else -> CalendarReadNotice(state, reader::refresh)
                     }
                 }

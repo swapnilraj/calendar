@@ -49,6 +49,7 @@ fun AgendaView(
     onRequestRange: (CalendarDateRange) -> Unit,
     today: LocalDate = LocalDate.now(displayZone),
     modifier: Modifier = Modifier,
+    showNavigationChrome: Boolean = true,
 ) {
     val groups = remember(range, selectedDate, events, displayZone) { agendaDays(range, selectedDate, events, displayZone) }
     val locale = LocalLocale.current.platformLocale
@@ -80,6 +81,7 @@ fun AgendaView(
     }
     Surface(modifier.fillMaxSize()) {
         Column {
+            if (showNavigationChrome) {
             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.agenda_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 TextButton(enabled = today in AgendaMinDate..AgendaMaxDate, onClick = { navigateTo(today) },
@@ -97,6 +99,7 @@ fun AgendaView(
                     modifier = Modifier.weight(1f)) { Text(stringResource(R.string.agenda_earlier)) }
                 TextButton(enabled = later != null, onClick = { later?.let { onSelectDate(it.start); onRequestRange(it) } },
                     modifier = Modifier.weight(1f)) { Text(stringResource(R.string.agenda_later)) }
+            }
             }
             HorizontalDivider()
             LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("agenda_list"), state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
