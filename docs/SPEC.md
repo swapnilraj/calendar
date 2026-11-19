@@ -5,6 +5,14 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+### Explicit organizer edit and cancellation
+
+The injectable organizer-owned meeting workflow retains the original calendar/account, event and
+revision identities when editing guests or meeting fields. Saving or cancelling requires an explicit
+action, preserves unknown provider metadata and keeps conflicts and uncertain outcomes reviewable.
+Opening a draft or returning from a permission prompt never submits automatically. A local save or
+cancellation does not confirm delivery to guests; production routing is a separate integration gate.
+
 ### Authored recurring creation in the phone editor
 
 Production creation enables daily, weekly, monthly and yearly recurrence through the full-height
