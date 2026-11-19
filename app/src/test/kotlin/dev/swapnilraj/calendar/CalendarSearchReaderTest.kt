@@ -378,4 +378,80 @@ class CalendarSearchReaderTest {
             withTimeout(10_000) { while (org.robolectric.Shadows.shadowOf(resolver).getContentObservers(CalendarContract.CONTENT_URI).isNotEmpty()) yield() }
         }
     }
+
+    @Test fun pendingOnlySearchFiltersAfterFreshMetadataAndBeforeResultLimit() = runBlocking {
+        fixture { p, source, _, _ ->
+            listOf(null to 3, 0 to 1, 1 to 0, 0 to 3, 0 to 3).forEachIndexed { index, (organizer, status) ->
+                p.add(event(index.toLong() + 10, start.plusSeconds(index * 60L)).apply { put("isOrganizer", organizer); put("selfAttendeeStatus", status) })
+            }
+            p.instances.forEach { it["selfAttendeeStatus"] = 1 }
+            val result = source.ready(request(calendar = range.copy(invitationFilter = InvitationFilter.PENDING_ONLY), limit = 1))
+            assertEquals(listOf(13L), result.hits.map { it.occurrence.ref.eventId })
+            assertEquals(InvitationState.PENDING, result.hits.single().occurrence.invitation)
+            assertTrue(result.truncated)
+            assertEquals(listOf(CalendarCoverage(CalendarId(2), CoverageReason.INVITATION_CLASSIFICATION_UNKNOWN)), result.coverage)
+            assertTrue(p.calls.filter { it.path == "instances" }.all { "isOrganizer" !in it.fields })
+            assertTrue(p.privateCalls().all { "isOrganizer" in it.fields })
+            assertFalse(p.calls.any { it.path == "attendees" || it.path == "reminders" })
+        }
+    }
+
+    @Test fun pendingOnlySearchUnknownMatchesWarnEvenWithZeroHits() = runBlocking {
+        fixture { p, source, _, _ ->
+            listOf(0 to 4_294_967_299L, 0 to 4_294_967_298L, 0 to "03", 0 to "+3", 0 to "3.0", 0 to null, "false" to 3, 2 to 3, null to 3).forEachIndexed { index, (organizer, status) ->
+                p.add(event(index.toLong() + 10).apply { put("isOrganizer", organizer); put("selfAttendeeStatus", status) })
+            }
+            val result = source.ready(request(calendar = range.copy(invitationFilter = InvitationFilter.PENDING_ONLY)))
+            assertTrue(result.hits.isEmpty())
+            assertFalse(result.truncated)
+            assertEquals(listOf(CalendarCoverage(CalendarId(2), CoverageReason.INVITATION_CLASSIFICATION_UNKNOWN)), result.coverage)
+        }
+    }
+
+    @Test fun pendingOnlySearchScanLimitRetainsUnknownWarningAndTruncation() = runBlocking {
+        fixture(total = 1, pageRows = 1) { p, source, _, _ ->
+            p.add(event(10))
+            p.add(event(11, start.plusSeconds(60)).apply { put("isOrganizer", 0); put("selfAttendeeStatus", 3) })
+            val result = source.ready(request(calendar = range.copy(invitationFilter = InvitationFilter.PENDING_ONLY)))
+            assertTrue(result.hits.isEmpty())
+            assertTrue(result.truncated)
+            assertEquals(listOf(CalendarCoverage(CalendarId(2), CoverageReason.INVITATION_CLASSIFICATION_UNKNOWN)), result.coverage)
+        }
+    }
+
+    @Test fun pendingOnlySearchUnmatchedAndExcludedUnknownsDoNotCreateWarning() = runBlocking {
+        fixture { p, source, _, _ ->
+            p.add(event(10, title = "Unrelated"))
+            p.add(event(11).apply { put("eventStatus", 2) })
+            p.add(event(12).apply { put("deleted", 1) })
+            p.add(event(13).apply { put("isOrganizer", 0); put("selfAttendeeStatus", 1) })
+            val result = source.ready(request(calendar = range.copy(invitationFilter = InvitationFilter.PENDING_ONLY)))
+            assertTrue(result.hits.isEmpty())
+            assertTrue(result.coverage.isEmpty())
+            assertFalse(result.truncated)
+        }
+    }
+
+    @Test fun allSearchKeepsProjectionAndUnknownInvitationDefaults() = runBlocking {
+        fixture { p, source, _, _ ->
+            p.add(event().apply { put("isOrganizer", 0); put("selfAttendeeStatus", 3) })
+            val result = source.ready()
+            assertEquals(InvitationState.UNKNOWN, result.hits.single().occurrence.invitation)
+            assertTrue(result.coverage.isEmpty())
+            assertTrue(p.calls.all { "isOrganizer" !in it.fields })
+        }
+    }
+
+    @Test fun pendingOnlySearchPermissionOrNamespaceChangesCannotPublishRows() = runBlocking {
+        fixture { p, source, _, revoke ->
+            p.add(event().apply { put("isOrganizer", 0); put("selfAttendeeStatus", 3) })
+            p.afterQuery = { if (it == "events") revoke() }
+            assertEquals(CalendarReadState.PermissionRequired, source.result(request(calendar = range.copy(invitationFilter = InvitationFilter.PENDING_ONLY))))
+        }
+        fixture { p, source, _, _ ->
+            p.add(event().apply { put("isOrganizer", 0); put("selfAttendeeStatus", 3) })
+            p.afterQuery = { if (it == "events") p.calendars[0]["_sync_id"] = "replaced-namespace" }
+            assertEquals(CalendarReadState.Unavailable, source.result(request(calendar = range.copy(invitationFilter = InvitationFilter.PENDING_ONLY))))
+        }
+    }
 }
