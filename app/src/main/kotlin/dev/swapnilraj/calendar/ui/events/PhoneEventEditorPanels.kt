@@ -86,7 +86,7 @@ internal fun PhoneEditorPanelContent(panel: PhoneEditorPanel, view: PhoneEventEd
 }
 
 @Composable
-private fun PhoneEditorPanelFrame(title: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+internal fun PhoneEditorPanelFrame(title: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
@@ -104,7 +104,7 @@ private fun PhoneEditorPanelFrame(title: String, onDismiss: () -> Unit, content:
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PhoneEditorDatePicker(raw: String, title: String, enabled: Boolean, onDismiss: () -> Unit, onChange: (String) -> Unit) {
+internal fun PhoneEditorDatePicker(raw: String, title: String, enabled: Boolean, onDismiss: () -> Unit, onChange: (String) -> Unit) {
     var manual by remember { mutableStateOf(false) }
     val date = runCatching { LocalDate.parse(raw) }.getOrNull()?.takeIf { it.year in 1..9999 }
     val picker = key(raw) { rememberDatePickerState(initialSelectedDateMillis = date?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli(), yearRange = 1..9999) }
@@ -124,7 +124,7 @@ private fun PhoneEditorDatePicker(raw: String, title: String, enabled: Boolean, 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PhoneEditorTimePicker(raw: String, title: String, use24Hour: Boolean, enabled: Boolean, onDismiss: () -> Unit, onChange: (String) -> Unit) {
+internal fun PhoneEditorTimePicker(raw: String, title: String, use24Hour: Boolean, enabled: Boolean, onDismiss: () -> Unit, onChange: (String) -> Unit) {
     var manual by remember { mutableStateOf(false) }
     val time = runCatching { LocalTime.parse(raw) }.getOrNull()
     val picker = key(raw) { rememberTimePickerState(initialHour = time?.hour ?: 0, initialMinute = time?.minute ?: 0, is24Hour = use24Hour) }
@@ -143,7 +143,7 @@ private fun PhoneEditorTimePicker(raw: String, title: String, use24Hour: Boolean
 }
 
 @Composable
-private fun PhoneEditorZonePanel(raw: String, enabled: Boolean, onDismiss: () -> Unit, onChange: (String) -> Unit) {
+internal fun PhoneEditorZonePanel(raw: String, enabled: Boolean, onDismiss: () -> Unit, onChange: (String) -> Unit) {
     var query by remember { mutableStateOf("") }; var manual by remember { mutableStateOf(false) }
     val choices = remember { (ZoneId.getAvailableZoneIds() + setOf("UTC", "Z")).sorted() }
     PhoneEditorPanelFrame(stringResource(R.string.phone_event_zone), onDismiss) {
@@ -163,7 +163,7 @@ private fun PhoneEditorZonePanel(raw: String, enabled: Boolean, onDismiss: () ->
 }
 
 @Composable
-private fun PhoneEditorAlertPanel(raw: String, enabled: Boolean, onDismiss: () -> Unit, onChange: (String) -> Unit) {
+internal fun PhoneEditorAlertPanel(raw: String, enabled: Boolean, onDismiss: () -> Unit, onChange: (String) -> Unit) {
     var custom by remember { mutableStateOf(PhoneEventEditorText.alerts(raw) == null) }
     val values = PhoneEventEditorText.alerts(raw)
     PhoneEditorPanelFrame(stringResource(R.string.phone_event_notifications), onDismiss) {

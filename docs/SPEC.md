@@ -713,3 +713,15 @@ substituting successful empty results. It never enumerates account directories, 
 uses network services or logs contact payloads. This source-only packet does not connect a picker,
 request a runtime permission or enable guest changes; those application routes require separate
 composition and retained-draft verification.
+
+
+## Injectable meeting creation presentation
+
+A meeting creation presentation may consume the existing typed CalendarMeetings port and durable
+private draft store. It preserves raw guest email/name rows, requires explicit save and recurrence
+review, and retains conflict/permission/uncertain outcomes. Optional local contact suggestions require
+explicit per-opening opt-in and READ_CONTACTS authority. Unknown recurring-creation eligibility stays
+unavailable; a presentation must not infer admission from a writable calendar. This publication packet
+does not connect production meeting routes, supply a native meeting writer or request contacts access;
+those require separate composition and adapter verification. Local outcomes never claim invitations
+were delivered or a server accepted the meeting.
