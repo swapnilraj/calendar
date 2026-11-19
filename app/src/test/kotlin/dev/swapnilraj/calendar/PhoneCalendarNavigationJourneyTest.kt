@@ -60,14 +60,16 @@ class PhoneCalendarNavigationJourneyTest {
             assertTrue(bounds.zipWithNext().all { (a, b) -> a.top < b.top })
             compose.onNodeWithTag("calendar_drawer_view_$view").performClick()
             awaitView(f, view)
-            expand(); date(month.atDay(15)).assertIsSelected(); collapseBack(f.activity)
+            expand("after selecting $view"); date(month.atDay(15)).assertIsSelected(); collapseBack(f.activity)
             assertNone(f)
             compose.onAllNodesWithTag("calendar_phone_toolbar").assertCountEquals(1)
             compose.onAllNodesWithContentDescription("Change view. Current view:", substring = true).assertCountEquals(0)
         }
+        val previousActivity = f.activity.get()
         compose.runOnUiThread { f.activity.recreate() }
+        assertNotSame("Recreation must replace the MainActivity instance", previousActivity, f.activity.get())
         awaitView(f, "MONTH")
-        expand(); date(month.atDay(15)).assertIsSelected(); assertNone(f)
+        expand("after Activity recreation"); date(month.atDay(15)).assertIsSelected(); assertNone(f)
     }
 
     @Test fun actualTodayUsesFixedDisplayZoneAndBackCollapsesOnlyTheMonthStrip() = mainFixture { f ->
@@ -226,14 +228,31 @@ class PhoneCalendarNavigationJourneyTest {
         } finally { compose.runOnUiThread { activity.pause().stop().destroy() }; provider.close() }
     }
 
-    private fun expand() { shownTag("calendar_phone_month"); compose.onNodeWithTag("calendar_phone_month").performClick(); shownTag("calendar_month_navigator") }
+    private fun expand(context: String = "calendar navigation") {
+        shownTag("calendar_phone_month", "$context: month control")
+        compose.onNodeWithTag("calendar_phone_month").performClick()
+        shownTag("calendar_month_navigator", "$context: expanded month")
+    }
     private fun date(date: LocalDate) = compose.onNodeWithTag("calendar_month_date_${YearMonth.from(date)}_$date")
     private fun choose(date: LocalDate) { date(date).performClick(); compose.waitForIdle(); compose.onNodeWithTag("calendar_month_navigator").assertDoesNotExist() }
-    private fun drawer() { compose.onNodeWithContentDescription("Open navigation menu").performClick(); shownTag("calendar_drawer_views") }
-    private fun shownTag(tag: String) = compose.waitUntil(15_000) { if (!compose.mainClock.autoAdvance) compose.mainClock.advanceTimeBy(16); compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
+    private fun drawer() {
+        compose.onNodeWithContentDescription("Open navigation menu").performClick()
+        shownTag("calendar_drawer_views", "navigation drawer opened before selecting a view")
+    }
+    private fun displayedTag(tag: String): Boolean = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().size == 1 &&
+        compose.onNodeWithTag(tag).isDisplayed()
+    private fun shownTag(tag: String, context: String = tag) = compose.waitUntil("Displayed $tag: $context", 15_000) {
+        if (!compose.mainClock.autoAdvance) compose.mainClock.advanceTimeBy(16) else compose.waitForIdle()
+        displayedTag(tag)
+    }
     private fun collapseBack(activity: ActivityController<MainActivity>) { compose.runOnUiThread { activity.get().onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle() }
     private fun awaitView(f: Fixture, view: String) {
-        compose.waitUntil(15_000) { compose.waitForIdle(); runBlocking { f.app.settings.calendarView.first() } == view }
+        // The DataStore commit can precede both recomposition and the drawer close animation.
+        compose.waitUntil("View $view persisted, drawer closed and phone toolbar displayed", 15_000) {
+            compose.waitForIdle()
+            runBlocking { f.app.settings.calendarView.first() } == view &&
+                !displayedTag("calendar_drawer_views") && displayedTag("calendar_phone_toolbar")
+        }
     }
     private fun assertNone(f: Fixture) {
         assertEquals(none, runBlocking { f.app.settings.calendarSelection.first() })
