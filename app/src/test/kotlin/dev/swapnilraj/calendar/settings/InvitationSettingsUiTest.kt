@@ -52,7 +52,7 @@ class InvitationSettingsUiTest {
         var revision by mutableLongStateOf(0)
         var error by mutableStateOf<String?>(null)
         compose.setContent { DaylightTheme { PhoneSettingsScreen(CalendarSettingsOptions(), CalendarViewOption.entries,
-            { changes += it; error = "Save failed" }, {}, {}, null, saveError = error, savedChangeRevision = revision) } }
+            { changes += it; error = if (changes.size == 1) "Save failed" else null }, {}, {}, null, saveError = error, savedChangeRevision = revision) } }
         open()
         compose.onNodeWithTag("phone_settings_choice_PENDING_ONLY").performClick()
         compose.onNodeWithText("Try again").performClick()
