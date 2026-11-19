@@ -878,3 +878,35 @@ The [new source audit](audit/DAILY_DRIVER_REMAINING_IMPLEMENTATION_2026-11-19.md
 implementation gaps beyond publication and external acceptance. Source completeness is not claimed.
 The last full aggregate gate remains2,408 checks at4e8cf57; subsequent canonical-date hardening has
 four focused checks passing and awaits a new combined gate. Account/device/beta/signing gates remain.
+
+
+### Scoped-series namespace pin integrated — 19 November
+
+A real provider-fixture namespace switch between the first details read and series eligibility
+reproduced an action-authority bug (one failing regression before production changed). The fix
+requires exact full calendar identity equality before exposing series details or actions. All eight
+series journeys passed after the fix; the aggregate adaptation passed eight with recording in84s.
+Both editor and refusal images match the independently inspected publication images byte for byte.
+[Evidence](audit/evidence/series-details-namespace-pin-2026-11-19.json). PR99 publishes the live
+scoped-series route; its CI remains separate from the local aggregate gate.
+
+Published integration now includes PR94 series presentation, PR95 grid gestures, PR96 private edit
+review, PR97 series workflows and PR98 durable grid preparation. Public entry activation and the
+lead grid bridge remain separately staged. Pending-invitation contracts and semantic recurrence
+graph proof are bounded candidates, not enabled/completed features. The full aggregate gate remains
+the earlier2,408 checkpoint; a new combined gate is required after the recent source changes.
+
+
+### Combined gate interrupted in reminder fixture cleanup — 19 November
+
+The attempted default gate at8dc65a9 was interrupted after14m49s: two JVM samples104s apart
+showed the same reminder-settings fixture-finally blocking coroutine. This is not an aggregate
+PASS or proof of a production deadlock. The wrapper's2,441 XML inventory includes stale app output
+and must not be counted as current execution. The last accepted full checkpoint remains2,408.
+[Evidence](audit/evidence/reminder-fixture-cleanup-interruption-2026-11-19.json).
+
+The test-only bounded scheduler-driven cleanup fix preserves every journey assertion and the
+original failure while independently closing resources. All four cases passed with screenshot
+verification. A fresh full gate is still required. Separately, PR100 failed one reminder-opening
+capture in CI; the exact unchanged method passed locally with verification, so its historical cause
+remains unestablished. No screenshots were rebaselined to hide that failure.

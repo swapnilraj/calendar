@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "date": "2026-11-19",
+  "scope": "Reminder settings test fixture cleanup only",
+  "interruptedFullGate": {
+    "status": "INTERRUPTED_NOT_PASSED",
+    "reason": "Confirmed non-progressing synthetic reminder-settings fixture cleanup wait",
+    "rawXmlTotalsAreNotCurrentAcceptance": true,
+    "detail": "The command wrapper inventoried XML files still on disk after interruption. App XML was stale from the prior run; do not treat the2441 inventory total as an executed/passing aggregate gate.",
+    "lastAcceptedFullCheckpoint": "2408 at4e8cf57",
+    "source": "8dc65a98dda3de010ead1a42ec58b96633f79991",
+    "exitCode": 130
+  },
+  "elapsedBeforeInterruption": 888.904,
+  "beforeSource": "8dc65a98dda3de010ead1a42ec58b96633f79991",
+  "evidenceDirectory": "/tmp/daylight-graph-namespace-full-gate1-evidence",
+  "stackSamples": {
+    "worker-threads-1623.txt": "c651615758fb26b2ec9d9f56751756bf135b24142bd1a2176a12f42caf7c683c",
+    "worker-threads-second.txt": "bb6021259cf5c8e7bbf84355f7a1b75b28c302607e038a16b4d050c0a64c2996"
+  },
+  "signalRecord": {
+    "status": "SIGINT_ATTEMPTED_OWN_GRADLE_CLIENT",
+    "at": "2026-11-19T16:24:55.843663+00:00",
+    "clientPid": 267204,
+    "test": "ReminderSettingsJourneyTest.permissionPageAndReadRevokeKeepPendingRawChoicesButScrubCalendarMetadata",
+    "observedLocation": "fixture finally runBlocking line176",
+    "twoIndependentThreadSamples": true,
+    "reason": "Non-progressing synthetic fixture cleanup wait; preserve run as interrupted, not passed",
+    "nativeProviderDeviceActions": "NONE"
+  },
+  "fixSource": "9009ce60aad28fae324154ea2ccb364ffc4b940e",
+  "fix": "Bounded scheduler-driven async teardown; original4 bodies/assertions retained; same settings reset/reconcile; failures retained and independent resources closed",
+  "focusedEvidence": "/tmp/daylight-reminder-journey-cleanup-focus4-evidence/result.json",
+  "focusedTests": 4,
+  "focusedFailures": 0,
+  "focusedErrors": 0,
+  "focusedSkipped": 0,
+  "screenshotVerification": true,
+  "limits": [
+    "No production change or proved production deadlock",
+    "No new aggregate PASS until rerun completes",
+    "Separate PR100 screenshot capture failure was not reproduced by unchanged single-method verification; historical cause unknown"
+  ]
+}
