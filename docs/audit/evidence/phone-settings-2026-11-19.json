@@ -1,0 +1,60 @@
+{
+  "date": "2026-11-19",
+  "source": "a1dd9dd8059fbaf95af8c59e921413f59daeaf70",
+  "fieldOnlyPersistence": {
+    "source": "ec8664f",
+    "tests": 18,
+    "failures": 0,
+    "log": "/tmp/daylight-field-only-settings-focused1.log"
+  },
+  "components": {
+    "source": "c54a4d4",
+    "tests": 12,
+    "failures": 0,
+    "log": "/tmp/daylight-phone-settings-component-focused2.log",
+    "firstAttempt": "Test compile error from chaining Unit-returning performTextReplacement; split actions, no product workaround"
+  },
+  "firstHostAttempt": {
+    "tests": 2,
+    "passed": 1,
+    "failures": 1,
+    "log": "/tmp/daylight-phone-settings-host-focused1.log",
+    "xml": "/tmp/daylight-phone-settings-host-focused1-xml",
+    "failure": "Expected changed integration_settings_retry.png; stopped before later journey assertions"
+  },
+  "recording": {
+    "command": "./gradlew :app:recordRoborazziDebug --tests *PhoneSettingsScreenshotsTest --tests *PhoneSettingsWorkflowTest --tests *LiveCalendarDayTest.settingsSaveChangesDisplayAndDefaultsWithoutLosingFiltersOrFailedInputs",
+    "tests": 11,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsedSeconds": 22,
+    "log": "/tmp/daylight-phone-settings-record2.log",
+    "xml": "/tmp/daylight-phone-settings-record2-xml",
+    "inspected": {
+      "phone_settings_duration_invalid.png": "8b48d9c4be7e12a2ea45fb2743d15c2b4e7fbf26d1dd9827e884ad12a4dd94c4",
+      "phone_settings_general_dark_fixed_zone.png": "c94f4f33d49a936f247d2b8c569aecc7b7175edae8c7ef9eafa52e0765456063",
+      "phone_settings_general_light.png": "c93a309f47808666b31c50cbdaeef5b309341501f4fa76ac9e95e03d3093fe7a",
+      "phone_settings_general_rtl_large.png": "287ad827aee4516c307e0f89c422474e2c38218ca04eb9423124abde659b9568",
+      "phone_settings_home_dark.png": "a62cf9fc162b92ef16e9b06788a18aa5bde3005f9b756a385ea035198f56da5a",
+      "phone_settings_home_light.png": "e480b29197c3e7bc5536b5ffc974d5c6f13cd940917a9f6444dc56a2cffc7434",
+      "phone_settings_home_rtl_large.png": "7d543117906b8fce93f51898b0b2c65c096238e39590a6bbde35999f1ea07dbe",
+      "phone_settings_save_error.png": "4bacbc2b924449f0c80c4c69fb9d8c10ac97904fa62e7443034898a3db3529a6",
+      "phone_settings_weather.png": "85b7bf1daedc43c35c2500884e2b23b7f12ceadf640987c704f1e4f8f887a21c",
+      "integration_settings_retry.png": "02282a13805a579181b00571063d368435eb0471fa0b8a304601b43a0715b46b"
+    },
+    "review": "All ten images inspected; two RTL captures re-recorded/reinspected after logical heading/wrapped-paragraph alignment correction"
+  },
+  "hostJourneys": [
+    "Failed duration save retains 75; explicit retry applies only duration",
+    "Newer external MONTH view and zoom92 survive retry, original filters/weekends retained",
+    "Declined switch affects actual provider-backed presentation",
+    "Loading/Unavailable hide all editor controls; masked system Back retains exact unfinished input",
+    "Opening/typing/masking/Cancel never auto-save"
+  ],
+  "completeGate": "PENDING",
+  "limitations": [
+    "Google Settings/General reference only; selector persistence and exact pixel parity unverified",
+    "No physical TalkBack/account/beta/stable-signing acceptance"
+  ]
+}

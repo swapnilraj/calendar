@@ -258,3 +258,14 @@ Eight reference images and the detailed observation report remain outside Git in
 historical statement that no installed APK was available, solely for the surfaces actually inspected.
 Daylight should use the observed hierarchy for supported settings and keep its own working defaults,
 reminders and weather controls. Unsupported Google controls must not become inert UI affordances.
+
+
+### Daylight implementation following the Settings observation
+
+The phone flow now implements Settings → General for existing supported preferences, with real
+creation-default/reminder callbacks and separate Daylight display/reminder/weather groups. Dedicated
+in-place editors preserve explicit save/cancel and field-only persistence; legacy component sheets
+remain available. Ten synthetic screenshots were recorded/inspected, including dark theme, fixed zone,
+large-font RTL, invalid input and a failed save. Logical heading and wrapped-paragraph alignment was
+corrected after inspection. This verifies Daylight's local flow; Google selector appearance, save
+behavior, exact dimensions and main/editor/account UX still require live reference evidence.

@@ -601,3 +601,29 @@ Field-only phone-preference persistence is integrated as `ec8664f`: 18 focused c
 including independent concurrent edits, exact preservation of unrelated unknown/malformed values,
 compound timezone/reminder changes, invalid input and IO/cancellation behavior. New Settings/General
 components and host wiring are in progress, not yet accepted by screenshots or the complete gate.
+
+
+### Phone Settings/General integrated — complete gate pending
+
+The production drawer now opens Settings → General with focused in-place editors and explicit
+field-only saves. Supported choices, actual default-calendar/reminder actions and Daylight weather
+preferences are present; unsupported Google controls are omitted. Loading/read failure masks controls
+and system Back while retaining unfinished input. Save failure retains the proposal; explicit retry
+preserves a newer independently changed view/zoom and existing calendar filters.
+
+[Retained evidence](audit/evidence/phone-settings-2026-11-19.json):18 persistence checks,12 component/state
+checks and11 final recording/host checks pass. The original host attempt stopped at the expected
+changed screenshot; after recording, its complete retry/display/filter assertions pass. Ten images
+were inspected; two RTL large-font images were corrected/reinspected for logical-start alignment.
+This is synthetic UI/provider evidence. Exact Google selectors/persistence, spoken accessibility,
+physical-device/account/beta and stable release acceptance remain pending. A new complete aggregate
+gate is queued; the earlier2,289 checkpoint remains the last full passing checkpoint until it completes.
+
+The native query-sort/diagnostic correction is integrated as `49cab71`, with5 JVM regressions and27
+host guards passing. A real CalendarWriter regression reaches VERIFIED receipt6 through the same sort
+policy in one batch. Native AndroidTest compilation/execution and retained-fixture diagnosis remain
+pending; no event, journal or failed-run cleanup was replayed. [PR70](https://github.com/swapnilraj/calendar/pull/70)
+publishes the corrected Following3 backend with159 focused tests passing and CI pending. Only private
+legacy serializer localization was selectively ported into the aggregate (`659c0e9`); wire coercion,
+source/command fingerprints and receipt semantics are unchanged. Its attachment request remains
+unconfirmed while the task artifact endpoint is unavailable.
