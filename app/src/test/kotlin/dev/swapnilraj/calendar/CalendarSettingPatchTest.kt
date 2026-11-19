@@ -157,4 +157,26 @@ class CalendarSettingPatchTest {
             }
         } finally { directory.deleteRecursively() }
     }
+
+    @Test fun legacyFullSavePreservesOpaqueInvitationFilterUntilExplicitChoice() = runBlocking {
+        val observed = mutableListOf<Any?>()
+        val snapshots = listOf(preferencesOf(stringPreferencesKey("display_invitation_filter") to "FUTURE_FILTER"),
+            preferencesOf(intPreferencesKey("display_invitation_filter") to 8),
+            preferencesOf(stringPreferencesKey("display_invitation_filter") to "PENDING_ONLY"))
+        for (initial in snapshots) {
+            val store = Store(initial.toMutablePreferences().apply { this[stringPreferencesKey("unrelated")] = "retained" }.toPreferences())
+            val writer = settings(store)
+            val options = CalendarSettingsCodec.read(store.stored, "DAY")
+            val legacyEdit = SettingsDraft.from(options).copy(duration = "135", weatherVisible = false)
+                .validated(dev.swapnilraj.calendar.ui.calendars.CalendarViewOption.entries)!!
+            assertTrue(writer.setDisplaySettings(legacyEdit))
+            observed += raw(store.stored)["display_invitation_filter"]
+            assertEquals(135, store.stored[intPreferencesKey("display_default_duration_minutes")])
+            assertEquals(false, store.stored[booleanPreferencesKey("display_weather_visible")])
+            assertEquals("retained", store.stored[stringPreferencesKey("unrelated")])
+            assertEquals(CalendarSettingSave.Saved, writer.saveCalendarSetting(CalendarSettingChange.InvitationFilter(InvitationFilter.ALL)))
+            assertEquals("ALL", store.stored[stringPreferencesKey("display_invitation_filter")])
+        }
+        assertEquals(listOf("FUTURE_FILTER", 8, "PENDING_ONLY"), observed)
+    }
 }
