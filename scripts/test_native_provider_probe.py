@@ -161,6 +161,17 @@ class HostOrderingTest(unittest.TestCase):
                 if outcome == "ambiguous": return "PID NAME\n" + tokens[2] + " other.process"
                 if outcome == "running": return "PID NAME\n" + tokens[2] + " " + host.APP
                 return "PID NAME"
+            def read_reported_target_pid(self, process):
+                host.validate_target_process(process)
+                key = next(key for key, value in PROCESSES.items() if value["pid"] == process["pid"])
+                events.append(("target-ps", key)); outcome = process_states.get(key, "absent")
+                facts = {"command": ["adb", "-s", GUARD["serial"], "shell", "ps -p " + str(process["pid"]) + " -o PID,NAME"],
+                         "returncode": 0, "stdout": "PID NAME\n", "stderr": "", "failure": None, "outputTruncated": False, "timedOut": False}
+                if outcome == "unreadable": facts.update(returncode=None, failure="READ_TIMEOUT", timedOut=True)
+                elif outcome == "ambiguous": facts["stdout"] += str(process["pid"]) + " other.process\n"
+                elif outcome == "running": facts["stdout"] += str(process["pid"]) + " " + host.APP + "\n"
+                elif outcome == "absent-exit1": facts["returncode"] = 1
+                return facts
         def instrument(adb, run, mode, pins, output, label, endzone="distinct", phase=None, boot=None, process_witness=False):
             events.append(("instrument-enter", phase or mode))
             if bad_phase is not None and phase == bad_phase:
@@ -233,13 +244,21 @@ class HostOrderingTest(unittest.TestCase):
             self.assertNotIn(("instrument-enter", "CLEANUP"), events)
             if outcome != "running": self.assertEqual(1, events.count(("target-ps", "RECOVER_READ_ONLY")))
 
-    def test_unreadable_nonzero_or_ambiguous_ps_preflight_creates_no_fixture_and_grants_no_permission(self):
+    def test_unreadable_or_ambiguous_ps_preflight_creates_no_fixture_and_grants_no_permission(self):
         for outcome in ("unreadable", "ambiguous", "running"):
             with tempfile.TemporaryDirectory() as d:
                 args = self.setup_run(d); events, result = self.execute(args, process_states={"identity": outcome})
             self.assertEqual("FAIL", result["status"])
             self.assertNotIn(("instrument-enter", "CREATE_STAGE"), events)
             self.assertFalse(any(e[:2] in (("pm", "grant"), ("pm", "revoke")) for e in events))
+
+    def test_documented_exit1_header_only_still_requires_all_protocol_phases_and_proofs(self):
+        with tempfile.TemporaryDirectory() as d:
+            events, result = self.execute(self.setup_run(d), process_states={key: "absent-exit1" for key in PROCESSES})
+        self.assertEqual("PASS", result["status"])
+        self.assertEqual(1, events.count(("instrument-enter", "CREATE_STAGE")))
+        self.assertEqual(1, events.count(("instrument-enter", "RECOVER_READ_ONLY")))
+        self.assertEqual(1, events.count(("instrument-enter", "CLEANUP")))
 
     def test_identity_mode_keeps_no_calendar_permission_or_process_read_behavior(self):
         with tempfile.TemporaryDirectory() as d:
@@ -272,6 +291,112 @@ class DeviceGuardTest(unittest.TestCase):
             adb = Adb({key: wrong})
             with self.assertRaises(host.Refusal): host.guard_device(adb, args)
             self.assertNotIn(("devices",), adb.calls)
+
+
+class ExactReportedPidReadTest(unittest.TestCase):
+    process = PROCESSES["CREATE_STAGE"]
+
+    def call(self, output, result=None, error=None, guard_side_effect=None):
+        adb = host.Adb("adb", GUARD["serial"])
+        with patch.object(host.subprocess, "run", return_value=result, side_effect=error) as run, \
+                patch.object(host, "guard_device", side_effect=guard_side_effect or (lambda *_: dict(GUARD))), \
+                patch.object(host.time, "sleep"):
+            proof = host.confirm_target_exit(adb, object(), self.process, output, "target")
+        return proof, run
+
+    def test_header_only_exit0_and_documented_exit1_are_accepted_with_raw_facts(self):
+        for code in (0, 1):
+            result = host.subprocess.CompletedProcess([], code, b"  PID NAME                       \n", b"")
+            with tempfile.TemporaryDirectory() as d:
+                proof, run = self.call(Path(d), result=result)
+                retained = json.loads((Path(d) / "target.target-exit.json").read_text())
+            self.assertEqual("TARGET_PID_ABSENT", proof["status"])
+            self.assertEqual(code, retained["pidReads"][0]["returncode"])
+            self.assertEqual("  PID NAME                       \n", retained["pidReads"][0]["stdout"])
+            self.assertEqual("", retained["pidReads"][0]["stderr"])
+            self.assertEqual(["adb", "-s", GUARD["serial"], "shell", "ps -p 11111 -o PID,NAME"], run.call_args.args[0])
+            self.assertEqual(1, run.call_count)
+
+    def test_other_codes_stderr_malformed_and_extra_rows_are_refused_and_retained(self):
+        fixtures = [(2, b"PID NAME\n", b""), (-1, b"PID NAME\n", b""), (0, b"PID NAME\n", b"warning"),
+                    (1, b"PID NAME\n", b"\n"), (0, b"", b""), (1, b"PID COMMAND\n", b""),
+                    (1, b"PID NAME\n11111 " + host.APP.encode() + b"\n", b""),
+                    (0, b"PID NAME\n11111 other.app\n", b""), (0, b"PID NAME\n\n", b""),
+                    (1, b"PID NAME\n11111 other.app\n11112 extra.app\n", b"")]
+        for code, stdout, stderr in fixtures:
+            with tempfile.TemporaryDirectory() as d:
+                with self.assertRaises(host.Refusal):
+                    self.call(Path(d), result=host.subprocess.CompletedProcess([], code, stdout, stderr))
+                proof = json.loads((Path(d) / "target.target-exit.json").read_text())
+            self.assertEqual("UNPROVEN", proof["status"])
+            self.assertEqual(code, proof["pidReads"][0]["returncode"])
+            self.assertEqual(stdout.decode(), proof["pidReads"][0]["stdout"])
+            self.assertEqual(stderr.decode(), proof["pidReads"][0]["stderr"])
+            self.assertEqual("EXACT_PID_RESULT", proof["failureStage"])
+
+    def test_utf_limits_and_timeouts_refuse_even_when_partial_header_looks_valid(self):
+        fixtures = [(host.subprocess.CompletedProcess([], 1, b"\xff", b""), None, "UTF8_ERROR"),
+                    (host.subprocess.CompletedProcess([], 1, b"PID NAME\n" + b" " * 16384, b""), None, "OUTPUT_LIMIT"),
+                    (host.subprocess.CompletedProcess([], 0, b"PID NAME\n", b"x" * 16385), None, "OUTPUT_LIMIT"),
+                    (None, host.subprocess.TimeoutExpired("adb", 30, output=b"PID NAME\n", stderr=b""), "READ_TIMEOUT"),
+                    (None, OSError("synthetic read failure"), "LOCAL_READ_ERROR")]
+        for result, error, expected in fixtures:
+            with tempfile.TemporaryDirectory() as d:
+                with self.assertRaises(host.Refusal): self.call(Path(d), result=result, error=error)
+                proof = json.loads((Path(d) / "target.target-exit.json").read_text())
+            self.assertEqual("UNPROVEN", proof["status"])
+            self.assertEqual(expected, proof["pidReads"][0]["failure"])
+            self.assertLessEqual(len(proof["pidReads"][0]["stdout"]), 16384)
+            self.assertLessEqual(len(proof["pidReads"][0]["stderr"]), 16384)
+
+    def test_general_adb_read_remains_strict_even_for_header_only_exit1(self):
+        adb = host.Adb("adb", GUARD["serial"])
+        with patch.object(host.subprocess, "run", return_value=host.subprocess.CompletedProcess([], 1, b"PID NAME\n", b"")):
+            with self.assertRaises(host.Refusal): adb.read(["ps", "-p", "11111", "-o", "PID,NAME"], shell=True)
+            with self.assertRaises(host.Refusal): adb.read(["get-state"])
+
+    def test_owned_row_is_still_running_only_for_exit0_then_exit1_can_confirm_absence(self):
+        sequence = [host.subprocess.CompletedProcess([], 0, b"PID NAME\n11111 " + host.APP.encode() + b"\n", b""),
+                    host.subprocess.CompletedProcess([], 1, b"PID NAME\n", b"")]
+        with tempfile.TemporaryDirectory() as d:
+            proof, run = self.call(Path(d), error=sequence)
+        self.assertEqual(["REPORTED_OWNED_PID_PRESENT", "REPORTED_PID_ABSENT"], proof["observations"])
+        self.assertEqual([0, 1], [row["returncode"] for row in proof["pidReads"]])
+        self.assertEqual(2, run.call_count)
+
+    def test_guard_change_after_pid_read_keeps_read_facts_but_never_confirms_exit(self):
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(host.Refusal):
+                self.call(Path(d), result=host.subprocess.CompletedProcess([], 1, b"PID NAME\n", b""),
+                          guard_side_effect=[dict(GUARD), host.Refusal("boot changed")])
+            proof = json.loads((Path(d) / "target.target-exit.json").read_text())
+        self.assertEqual("UNPROVEN", proof["status"])
+        self.assertEqual("GUARD_AFTER_PID_READ", proof["failureStage"])
+        self.assertEqual(1, proof["pidReads"][0]["returncode"])
+
+    def test_actual_guard_failure_records_exact_guard_tokens_and_pid_facts(self):
+        class GuardChangingReads:
+            boots = 0
+            def read(self, tokens, shell=False):
+                if tokens == ["cat", "/proc/sys/kernel/random/boot_id"]:
+                    self.boots += 1
+                    return BOOT if self.boots == 1 else RUN
+                values = {("get-state",): "device", ("emu", "avd", "name"): host.OWNED_AVD + "\nOK",
+                          ("getprop", "ro.kernel.qemu"): "1", ("am", "get-current-user"): "0",
+                          ("getprop", "ro.build.fingerprint"): PINS["buildFingerprint"]}
+                return values[tuple(tokens)]
+            def read_reported_target_pid(self, process):
+                return {"returncode": 1, "stdout": "PID NAME\n", "stderr": "", "failure": None,
+                        "timedOut": False, "outputTruncated": False}
+        args = type("Args", (), {"serial": GUARD["serial"], "expected_avd": host.OWNED_AVD, "expected_boot_id": BOOT})()
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(host.Refusal): host.confirm_target_exit(GuardChangingReads(), args, self.process, Path(d), "guard")
+            proof = json.loads((Path(d) / "guard.target-exit.json").read_text())
+        self.assertEqual("UNPROVEN", proof["status"])
+        self.assertEqual("GUARD_AFTER_PID_READ", proof["failureStage"])
+        self.assertEqual(["cat", "/proc/sys/kernel/random/boot_id"], proof["guardReads"][-1]["tokens"])
+        self.assertEqual(RUN, proof["guardReads"][-1]["stdout"])
+        self.assertEqual(1, proof["pidReads"][0]["returncode"])
 
 
 if __name__ == "__main__":
