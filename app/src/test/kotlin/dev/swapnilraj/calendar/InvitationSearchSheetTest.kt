@@ -1,7 +1,6 @@
 package dev.swapnilraj.calendar
 
 import androidx.compose.runtime.*
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -51,7 +50,12 @@ class InvitationSearchSheetTest {
         var opens = 0
         compose.setContent { DaylightTheme { SearchSheet(shown, {}, {}, {}, {}, {}, { opens++ }, {}) } }
         compose.onNodeWithTag("search_results").performScrollToNode(hasTestTag("search_hit_1_1"))
-        val click = compose.onNodeWithTag("search_hit_1_1").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        val rendered = shown
+        val hit = rendered.hits.single()
+        val click = { openCurrentSearchHit(rendered, shown, hit) { opens++ } }
+        compose.onNodeWithTag("search_hit_1_1").performClick()
+        assertEquals(1, opens)
+        opens = 0
         compose.runOnIdle { shown = shown.copy(calendar = calendar.copy(invitationFilter = InvitationFilter.ALL)) }
         compose.onNodeWithText("Private title").assertDoesNotExist()
         compose.runOnIdle { click() }

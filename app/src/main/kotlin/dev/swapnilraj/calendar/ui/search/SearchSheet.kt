@@ -159,10 +159,7 @@ fun SearchSheet(
                                 leadingContent = { Box(Modifier.size(12.dp).background(Color(event.color or 0xff000000.toInt()), CircleShape)) },
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("search_hit_${event.ref.calendarId.value}_${event.ref.eventId}")
                                     .clickable(onClickLabel = action) {
-                                        val current = latestShown
-                                        if (current.calendar == shown.calendar && current.query == shown.query &&
-                                            current.limit == shown.limit && current.includeDeclined == shown.includeDeclined &&
-                                            current.hits.any { it == hit }) onOpenEvent(event.ref)
+                                        openCurrentSearchHit(shown, latestShown, hit, onOpenEvent)
                                     })
                         }
                     }
@@ -190,6 +187,14 @@ fun SearchSheet(
             if (chosen != null && !validSearchRange(chosen)) Text(stringResource(R.string.search_range_error), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
         }
     }
+}
+
+/** Revalidate retained row actions against the latest context before exposing an event reference. */
+internal fun openCurrentSearchHit(rendered: SearchUiState, current: SearchUiState, hit: CalendarSearchHit,
+    onOpen: (EventRef) -> Unit) {
+    if (current.calendar == rendered.calendar && current.query == rendered.query &&
+        current.limit == rendered.limit && current.includeDeclined == rendered.includeDeclined &&
+        current.hits.any { it == hit }) onOpen(hit.occurrence.ref)
 }
 
 /** Ungrouped search rows always identify their local date; agenda groups supply that context separately. */
