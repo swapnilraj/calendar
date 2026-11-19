@@ -1,0 +1,195 @@
+{
+  "publication": {
+    "source": "667b49b157601b630e638b4ae1a2ecc46cca965c",
+    "log": "/tmp/daylight-rsvp-publication-focused1.log",
+    "xml": "/tmp/daylight-rsvp-publication-focused1-xml",
+    "seconds": 62,
+    "counts": {
+      "tests": 60,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": [
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.MeetingResponseControllerTest",
+        "tests": 31,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.MeetingResponseDraftDiscoveryTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.MeetingResponseNamespaceReviewTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.MeetingResponseScreenTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.MeetingResponseWorkflowScreenTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.MeetingResponseWorkflowTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "record": false,
+    "verify": false,
+    "scope": "Injected RSVP controllers/component/workflow and raw draft semantics; no app routes, native device or server delivery."
+  },
+  "recordAndRootChecks": {
+    "source": "667b49b",
+    "recordLog": "/tmp/daylight-rsvp-publication-record1.log",
+    "recordXml": "/tmp/daylight-rsvp-publication-record1-xml",
+    "recordCounts": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "seconds": 9,
+    "path": "app/src/test/screenshots/meeting_response_light.png",
+    "publicationSha256": "027e683032c1e95f52a0083c08ccc6d02462f39d7dcb07ed774554d05bcab160",
+    "rootBefore": {
+      "app/src/test/screenshots/meeting_response_light.png": "de7cc729e73e010e472bbd47d0b035627bff80c41dd71b7af9b6ea0b8ff7c976",
+      "app/src/test/screenshots/integration_native_rsvp_respond.png": "043fba7a30f7618b814dcd2bac4c6da332d460716123d37482783857d3a8170f",
+      "app/src/test/screenshots/integration_native_rsvp_response.png": "311cc5d2f55bd4a202082c312802acbc069493b0926d785082ece8fd72698257"
+    },
+    "publicationInspected": true,
+    "observations": [
+      "Explicit24-hour UTC summary has09:00/10:00 GMT and bothdates.",
+      "Explicitscope/response choices, decline consequences, local-only save disclaimer and save action remain visible."
+    ],
+    "scope": "Synthetic component only; native heading baselines unchanged so far.",
+    "rootRecord": {
+      "source": "6658805",
+      "seconds": 25,
+      "counts": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "log": "/tmp/daylight-rsvp-root-record1.log",
+      "xml": "/tmp/daylight-rsvp-root-record1-xml",
+      "sha256": "027e683032c1e95f52a0083c08ccc6d02462f39d7dcb07ed774554d05bcab160",
+      "matchesPublication": true,
+      "inspected": true
+    },
+    "rootVerify": {
+      "codeSource": "665880515be7e1d3a6fe8fb0e6942da61f91b9f5",
+      "headAtEvidence": "7e9f1fa522265a642a215354ba0ef515597fe253",
+      "laterCommittedDelta": [
+        "app/src/test/screenshots/meeting_response_light.png",
+        "docs/DAILY_DRIVER_PROGRESS.md",
+        "docs/audit/evidence/reminder-prebind-regression-2026-11-19.json"
+      ],
+      "deltaOnlyDocsAndRecordedComponentImage": true,
+      "metadataNote": "An initial docs-only HEAD assertion observed the concurrent lead image commit7e9f1fa; whitelist corrected to the exact inspected image. This was metadata validation, not a test failure or source-code change.",
+      "counts": {
+        "tests": 65,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "classes": [
+        {
+          "name": "dev.swapnilraj.calendar.NativeRsvpJourneyTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "dev.swapnilraj.calendar.events.meetings.MeetingResponseControllerTest",
+          "tests": 31,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "dev.swapnilraj.calendar.events.meetings.MeetingResponseDraftDiscoveryTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "dev.swapnilraj.calendar.events.meetings.MeetingResponseNamespaceReviewTest",
+          "tests": 4,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "dev.swapnilraj.calendar.events.meetings.MeetingResponseScreenTest",
+          "tests": 7,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "dev.swapnilraj.calendar.events.meetings.MeetingResponseWorkflowScreenTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "dev.swapnilraj.calendar.events.meetings.MeetingResponseWorkflowTest",
+          "tests": 8,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ],
+      "seconds": 19,
+      "log": "/tmp/daylight-rsvp-root-functional65.log",
+      "xml": "/tmp/daylight-rsvp-root-functional65-xml",
+      "record": false,
+      "verify": true,
+      "rootBrowserCasesPreservedAndPassed": [
+        "browserRecognizesResponsesBeforeLegacyVersionsAndRetainsCorruption",
+        "browserOpensExactResponseDescriptorAndUnwiredHostHasNoOpenAction"
+      ],
+      "afterImageHashes": {
+        "app/src/test/screenshots/meeting_response_light.png": "027e683032c1e95f52a0083c08ccc6d02462f39d7dcb07ed774554d05bcab160",
+        "app/src/test/screenshots/integration_native_rsvp_respond.png": "043fba7a30f7618b814dcd2bac4c6da332d460716123d37482783857d3a8170f",
+        "app/src/test/screenshots/integration_native_rsvp_response.png": "311cc5d2f55bd4a202082c312802acbc069493b0926d785082ece8fd72698257"
+      },
+      "nativeImagesUnchanged": true
+    },
+    "publicationImageCommit": "f0c3d05",
+    "rootImageCommit": "7e9f1fa"
+  },
+  "pullRequest": "https://github.com/swapnilraj/calendar/pull/80",
+  "publicationHead": "f0c3d057317da1d048f945a8b6eaa93242eb1e58",
+  "ci": "PENDING_RUN_44499665164",
+  "attachment": "CONFIRMED",
+  "rootIntegration": "6658805",
+  "rootBaseline": "7e9f1fa",
+  "independentSourceReview": "NO_BLOCKING_FINDINGS",
+  "leadImageInspection": "PASS",
+  "acceptance": "Synthetic only. Production-route publication and device/account acceptance pending. No newer root full gate yet."
+}

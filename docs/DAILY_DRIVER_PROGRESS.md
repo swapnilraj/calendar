@@ -5,8 +5,12 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 ## Latest local integration checkpoint
 
 At aggregate source `6658805`, RSVP summaries now receive the selected clock convention and display
-zone from the main route. The separate bounded publication at `667b49b` passed60 focused tests;
-root integration, affected screenshot verification and a new complete gate remain in progress.
+zone from the main route. The separate bounded publication passed60 focused tests; the root passed65,
+including both browser cases and three native-provider synthetic journeys. One component baseline
+was recorded and inspected in each worktree (identical bytes); both native heading images remained
+unchanged. [PR80](https://github.com/swapnilraj/calendar/pull/80) is open with CI pending at `f0c3d05`.
+[Evidence](audit/evidence/rsvp-publication-2026-11-19.json) distinguishes publication from aggregate
+routing; a new complete root gate and device/account response acceptance remain pending.
 
 The separate isolated reminder probe at `9221e27` passed15 focused checks, including the unchanged
 actual-package/Application/recovery-receiver regression: zero framework jobs versus one retry job
