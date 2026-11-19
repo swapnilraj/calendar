@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -38,7 +39,7 @@ internal fun PhoneSettingsHeader(title: String, enabled: Boolean, onBack: () -> 
         Spacer(Modifier.width(16.dp))
         Box(Modifier.weight(1f).padding(vertical = 12.dp), contentAlignment = Alignment.CenterStart) {
             Text(title, style = MaterialTheme.typography.titleLarge.copy(textDirection = TextDirection.ContentOrLtr),
-                modifier = Modifier.semantics { heading() })
+                textAlign = phoneSettingsTextAlign(), modifier = Modifier.fillMaxWidth().semantics { heading() })
         }
     }
 }
@@ -58,11 +59,11 @@ internal fun PhoneSettingsRow(
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(start = start, end = 24.dp, top = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr),
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha))
+            Text(title, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr),
+                textAlign = phoneSettingsTextAlign(), color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha))
             subtitle?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.ContentOrLtr),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha))
+                Text(it, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.ContentOrLtr),
+                    textAlign = phoneSettingsTextAlign(), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha))
             }
         }
     }
@@ -76,7 +77,7 @@ internal fun PhoneSettingsSwitch(title: String, checked: Boolean, tag: String, e
             .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange)
             .padding(start = start, end = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(title, Modifier.weight(1f).padding(end = 16.dp),
-                style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr))
+                style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr), textAlign = phoneSettingsTextAlign())
             Switch(checked = checked, onCheckedChange = null, enabled = enabled)
         }
     }
@@ -85,8 +86,12 @@ internal fun PhoneSettingsSwitch(title: String, checked: Boolean, tag: String, e
 @Composable
 internal fun PhoneSettingsSection(title: String) {
     Box(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 8.dp), contentAlignment = Alignment.CenterStart) {
-        Text(title, Modifier.semantics { heading() },
+        Text(title, Modifier.fillMaxWidth().semantics { heading() },
             style = MaterialTheme.typography.titleSmall.copy(textDirection = TextDirection.ContentOrLtr),
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+            textAlign = phoneSettingsTextAlign(), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+@Composable
+private fun phoneSettingsTextAlign(): TextAlign =
+    if (LocalLayoutDirection.current == LayoutDirection.Rtl) TextAlign.Right else TextAlign.Left
