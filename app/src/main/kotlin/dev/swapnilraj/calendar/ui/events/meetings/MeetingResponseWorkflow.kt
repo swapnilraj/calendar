@@ -59,9 +59,10 @@ suspend fun prepareReviewedMeetingResponse(launch: MeetingResponseLaunch, result
 fun MeetingResponseWorkflow(launch: MeetingResponseLaunch, meetings: CalendarMeetings, store: AtomicDraftStore,
     requestWritePermission: suspend () -> Boolean, onDismiss: () -> Unit,
     onLocalSaved: (MeetingMutationResult.LocalSaved) -> Unit,
-    onReplacedLaunch: ((MeetingResponseLaunch) -> Unit)? = null, displayZone: ZoneId = ZoneId.systemDefault()) {
+    onReplacedLaunch: ((MeetingResponseLaunch) -> Unit)? = null, displayZone: ZoneId = ZoneId.systemDefault(),
+    use24Hour: Boolean = true) {
     key(launch.draftId, launch.generation, launch.selected, meetings, store) {
-        MeetingResponseWorkflowBody(launch, meetings, store, requestWritePermission, onDismiss, onLocalSaved, onReplacedLaunch, displayZone)
+        MeetingResponseWorkflowBody(launch, meetings, store, requestWritePermission, onDismiss, onLocalSaved, onReplacedLaunch, displayZone, use24Hour)
     }
 }
 
@@ -70,7 +71,7 @@ fun MeetingResponseWorkflow(launch: MeetingResponseLaunch, meetings: CalendarMee
 private fun MeetingResponseWorkflowBody(launch: MeetingResponseLaunch, meetings: CalendarMeetings, store: AtomicDraftStore,
     requestWritePermission: suspend () -> Boolean, onDismiss: () -> Unit,
     onLocalSaved: (MeetingMutationResult.LocalSaved) -> Unit,
-    onReplacedLaunch: ((MeetingResponseLaunch) -> Unit)?, displayZone: ZoneId) {
+    onReplacedLaunch: ((MeetingResponseLaunch) -> Unit)?, displayZone: ZoneId, use24Hour: Boolean) {
     val coroutine = rememberCoroutineScope()
     val permission by rememberUpdatedState(requestWritePermission)
     val replacementHandler by rememberUpdatedState(onReplacedLaunch)
@@ -97,7 +98,7 @@ private fun MeetingResponseWorkflowBody(launch: MeetingResponseLaunch, meetings:
                         } else { replacementFailed = true; replacing = false }
                     }
                 }
-            })
+            }, use24Hour = use24Hour)
     } else ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.meeting_response_title), style = MaterialTheme.typography.headlineSmall)

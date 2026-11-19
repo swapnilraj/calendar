@@ -840,7 +840,8 @@ internal fun LiveCalendarDay(
         if (launch != null) MeetingResponseWorkflow(launch, requireNotNull(meetings), requireNotNull(atomicDrafts),
             requireNotNull(requestMeetingWritePermission), onDismiss = { meetingWriteText = null },
             onLocalSaved = { meetingWriteText = null; reader.refresh(); onLocalSaved() },
-            onReplacedLaunch = { meetingWriteText = MeetingResponseRouteCodec.encode(it) }, displayZone = displayNow.zone)
+            onReplacedLaunch = { meetingWriteText = MeetingResponseRouteCodec.encode(it) }, displayZone = displayNow.zone,
+            use24Hour = use24Hour)
         else ModalBottomSheet(onDismissRequest = { meetingWriteText = null }) {
             Text(stringResource(R.string.meeting_response_draft_review), Modifier.padding(24.dp))
             TextButton(onClick = { meetingWriteText = null }) { Text(stringResource(R.string.events_close)) }

@@ -36,6 +36,9 @@ Android emulator; see the dated evidence update in GOOGLE_CALENDAR_UX_PARITY.md.
 flows and exact live/pixel parity remain unverified. Provider
 permissions, draft preservation and uncertain-save handling remain required under the matched UI.
 
+Invitation response summaries use the host's selected 12/24-hour convention and display time zone,
+including explicit offsets. Formatting never changes the frozen event time, draft or response command.
+
 Production ordinary create/edit and event details use full-height phone presentations with fixed
 close/Save or close/edit/overflow controls. Date/time and repeat inputs open focused pickers, with
 raw invalid input and explicit offset choices retained for review. This presentation delegates the

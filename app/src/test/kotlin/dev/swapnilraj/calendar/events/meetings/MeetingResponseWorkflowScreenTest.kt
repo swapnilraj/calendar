@@ -7,6 +7,7 @@ import dev.swapnilraj.calendar.ui.events.*
 import dev.swapnilraj.calendar.ui.events.meetings.*
 import dev.swapnilraj.calendar.ui.theme.DaylightTheme
 import java.time.ZoneOffset
+import java.time.ZoneId
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -25,6 +26,32 @@ class MeetingResponseWorkflowScreenTest {
     @get:Rule val compose = createComposeRule()
     private val f = MeetingResponseFixture()
     @After fun stop() { f.scope.cancel() }
+
+    @Test fun twelveHourWorkflowForwardsClockAndDisplayZoneWithoutChangingDraftOrSubmitting() = runBlocking<Unit> {
+        val launch = f.prepare(); val exact = f.record(); val originalTime = f.source.details.occurrence.time
+        compose.setContent { DaylightTheme {
+            MeetingResponseWorkflow(launch, f.meetings, f.store, f.permission, {}, {},
+                displayZone = ZoneId.of("America/New_York"), use24Hour = false)
+        } }
+        compose.waitUntil { compose.onAllNodesWithText("5:00 AM GMT-4", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("6:00 AM GMT-4", substring = true).assertIsDisplayed()
+        compose.onAllNodesWithText("05:00", substring = true).assertCountEquals(0)
+        assertEquals(exact, f.record()); assertEquals(originalTime, f.source.details.occurrence.time)
+        assertTrue(f.calls.isEmpty()); assertEquals(0, f.permissionCalls)
+    }
+
+    @Test fun twentyFourHourWorkflowForwardsClockAndFractionalZoneWithoutChangingDraftOrSubmitting() = runBlocking<Unit> {
+        val launch = f.prepare(); val exact = f.record(); val originalTime = f.source.details.occurrence.time
+        compose.setContent { DaylightTheme {
+            MeetingResponseWorkflow(launch, f.meetings, f.store, f.permission, {}, {},
+                displayZone = ZoneId.of("Asia/Kolkata"), use24Hour = true)
+        } }
+        compose.waitUntil { compose.onAllNodesWithText("14:30 GMT+5:30", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("15:30 GMT+5:30", substring = true).assertIsDisplayed()
+        compose.onAllNodesWithText("PM", substring = true).assertCountEquals(0)
+        assertEquals(exact, f.record()); assertEquals(originalTime, f.source.details.occurrence.time)
+        assertTrue(f.calls.isEmpty()); assertEquals(0, f.permissionCalls)
+    }
 
     @Test fun nativeWorkflowSavesOnlyExplicitInvitationResponse() = runBlocking<Unit> {
         val launch = f.prepare(); var saved: MeetingMutationResult.LocalSaved? = null

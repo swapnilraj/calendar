@@ -17,28 +17,28 @@ import androidx.compose.ui.unit.dp
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.allDayDateText
+import dev.swapnilraj.calendar.ui.events.timedDateText
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MeetingResponseSheet(controller: MeetingResponseController, onDismiss: () -> Unit,
     onLocalSaved: (MeetingMutationResult.LocalSaved) -> Unit, displayZone: ZoneId = ZoneId.systemDefault(),
-    onReview: ((MeetingReadResult<EditableMeeting>) -> Unit)? = null) {
+    onReview: ((MeetingReadResult<EditableMeeting>) -> Unit)? = null, use24Hour: Boolean = true) {
     val coroutine = rememberCoroutineScope()
     val sheet = rememberModalBottomSheetState(confirmValueChange = { it != SheetValue.Hidden || !controller.state.busy })
     fun close() { coroutine.launch { if (controller.prepareDismiss()) onDismiss() else sheet.show() } }
     LaunchedEffect(controller.state.result) { controller.state.result?.let(onLocalSaved) }
     ModalBottomSheet(onDismissRequest = ::close, sheetState = sheet) {
-        MeetingResponseContent(controller, ::close, displayZone, onReview)
+        MeetingResponseContent(controller, ::close, displayZone, onReview, use24Hour)
     }
 }
 
 @Composable
 fun MeetingResponseContent(controller: MeetingResponseController, onClose: () -> Unit,
-    displayZone: ZoneId = ZoneId.systemDefault(), onReview: ((MeetingReadResult<EditableMeeting>) -> Unit)? = null) {
+    displayZone: ZoneId = ZoneId.systemDefault(), onReview: ((MeetingReadResult<EditableMeeting>) -> Unit)? = null,
+    use24Hour: Boolean = true) {
     val state = controller.state; val coroutine = rememberCoroutineScope()
     var discard by remember { mutableStateOf(false) }
     val locale = LocalLocale.current.platformLocale
@@ -48,11 +48,7 @@ fun MeetingResponseContent(controller: MeetingResponseController, onClose: () ->
         Text(controller.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
         controller.time?.let { time -> Text(when (time) {
             is EventTime.AllDay -> allDayDateText(time, locale)
-            is EventTime.Timed -> {
-                val formatter = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale).withZone(displayZone)
-                val bidi = android.text.BidiFormatter.getInstance(locale)
-                stringResource(R.string.meeting_response_time, bidi.unicodeWrap(formatter.format(time.start)), bidi.unicodeWrap(formatter.format(time.end)))
-            }
+            is EventTime.Timed -> timedDateText(time, displayZone, locale, use24Hour)
         }) }
         controller.calendarLabel?.let { Text(it) }
         controller.accountLabel?.let { Text(it) }
