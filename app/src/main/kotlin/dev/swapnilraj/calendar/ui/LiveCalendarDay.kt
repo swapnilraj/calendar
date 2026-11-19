@@ -40,6 +40,8 @@ import dev.swapnilraj.calendar.ui.month.MonthView
 import dev.swapnilraj.calendar.ui.month.monthDates
 import dev.swapnilraj.calendar.ui.month.MonthDaySheet
 import dev.swapnilraj.calendar.ui.month.monthEventsByDate
+import dev.swapnilraj.calendar.ui.search.defaultSearchRange
+import dev.swapnilraj.calendar.ui.search.validSearchRange
 import java.time.*
 import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.flow.*
@@ -78,11 +80,15 @@ internal fun LiveCalendarDay(
     preferenceOverride: CalendarPreferenceState? = null,
     onOpenReminders: (() -> Unit)? = null,
     recurringCreationSupported: Boolean = false,
+    search: CalendarSearch? = null,
 ) {
     val scope = rememberCoroutineScope()
     val selectedDateState = rememberSaveable { mutableStateOf<String?>(null) }
     var writeRequestText by rememberSaveable { mutableStateOf<String?>(null) }
     var showDrafts by rememberSaveable { mutableStateOf(false) }
+    var showSearch by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var searchRangeText by rememberSaveable { mutableStateOf<String?>(null) }
     var preparingWrite by remember { mutableStateOf(false) }
     var phoneMonthExpanded by rememberSaveable { mutableStateOf(false) }
     var phoneMonthText by rememberSaveable { mutableStateOf<String?>(null) }
@@ -225,6 +231,9 @@ internal fun LiveCalendarDay(
     val drawerActions: @Composable ColumnScope.() -> Unit = {
         if (metadata is CalendarReadState.Ready && preferences.defaultCalendar != null && verifiedDefault == null) Text(stringResource(R.string.navigation_default_calendar_changed),
             modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
+        if (search != null) TextButton(onClick = { scope.launch { drawer.close(); showSearch = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+            Text(stringResource(R.string.search_title))
+        }
         if (settings != null) TextButton(onClick = { scope.launch { drawer.close(); showSettings = true } }, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Text(stringResource(R.string.settings_title))
         }
@@ -324,7 +333,8 @@ internal fun LiveCalendarDay(
                     onToggleMonth = {
                         if (!phoneMonthExpanded) phoneMonthText = YearMonth.from(visibleDate).toString()
                         phoneMonthExpanded = !phoneMonthExpanded
-                    }, onToday = { navigatePhoneDate(displayNow.toLocalDate()) })
+                    }, onToday = { navigatePhoneDate(displayNow.toLocalDate()) },
+                    onSearch = if (search != null) ({ dayNavigationRevision++; phoneMonthExpanded = false; showSearch = true }) else null)
                 if (phoneMonthExpanded) CalendarMonthNavigator(
                     displayedMonth = phoneMonthText?.let(YearMonth::parse) ?: YearMonth.from(visibleDate),
                     selectedDate = visibleDate, today = displayNow.toLocalDate(), firstDayOfWeek = firstWeekday,
@@ -456,6 +466,29 @@ internal fun LiveCalendarDay(
             onDismiss = { writeRequestText = null },
             onSaved = { writeRequestText = null; reader.refresh(); onLocalSaved() },
             onDeleted = { writeRequestText = null; reader.refresh(); onLocalDeleted() })
+    }
+    if (showSearch && search != null) {
+        val searchRange = remember(searchRangeText, displayNow.toLocalDate()) {
+            runCatching { searchRangeText?.split('/')?.let { CalendarDateRange(LocalDate.parse(it[0]), LocalDate.parse(it[1])) } }
+                .getOrNull()?.takeIf(::validSearchRange) ?: defaultSearchRange(displayNow.toLocalDate())
+        }
+        SearchWorkflow(search, effectiveSelection, displayNow.zone, options.showDeclined, searchQuery, searchRange,
+            onQueryChange = { searchQuery = it },
+            onRangeChange = { searchRangeText = "${it.start}/${it.endExclusive}" },
+            onChooseCalendars = { showSearch = false; scope.launch { drawer.open() } },
+            onOpen = { hit ->
+                val date = when (val time = hit.occurrence.time) {
+                    is EventTime.AllDay -> time.dates.start
+                    is EventTime.Timed -> time.start.atZone(displayNow.zone).toLocalDate()
+                }.coerceIn(MultiDayMinDate, MultiDayMaxDate)
+                selectedDateState.value = date.toString()
+                dayNavigationRevision++
+                if (view == CalendarViewOption.AGENDA) agendaWindow(date, 31).let { agendaRangeText = "${it.start}/${it.endExclusive}" }
+                if (view == CalendarViewOption.THREE_DAY || view == CalendarViewOption.WEEK)
+                    planningMultiDayRange(date, multiDays, firstWeekday).let { multiDayRangeText = "${it.start}/${it.endExclusive}" }
+                showSearch = false
+                openEvent(hit.occurrence.ref)
+            }, onDismiss = { showSearch = false })
     }
     if (showDefaultCalendar && settings != null) AlertDialog(onDismissRequest = { showDefaultCalendar = false },
         title = { Text(stringResource(R.string.calendars_creation_default)) },
