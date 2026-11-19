@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-19",
+  "sourceCheckpoint": "97c3f3f",
+  "testsOnlyCommit": "42ab680",
+  "scope": "actual provider adapter with synthetic transactional provider; not native CalendarProvider or Google sync",
+  "test": "CalendarFollowingSeriesWriterTest.titleOnlyFollowingSplitPreservesDistinctAndNullEndZones",
+  "result": {
+    "tests": 1,
+    "failures": 1,
+    "errors": 0,
+    "skipped": 0,
+    "assertion": "Metadata-only split must preserve raw end zone: [source=null tail=Europe/London]"
+  },
+  "observations": [
+    "Admitted NULL eventEndTimezone source, title-only Following split, temporal/zone/rule Keep",
+    "Mutation returns LocalSaved with one batch; prefix raw map preserved except RRULE",
+    "Tail eventEndTimezone changes from SQL NULL to Europe/London",
+    "Distinct nonblank end timezone is rejected as UNSUPPORTED_EVENT with zero provider writes"
+  ],
+  "limitations": [
+    "Explicit synthetic clone policy was injected; production clone admission remains disabled",
+    "Initial fixture-cast failure was corrected and is not defect evidence",
+    "Correction and passing-after evidence pending"
+  ],
+  "xmlSha256": "e0398137ae10292e28fa20c774966a092c60d13fdb717e5b7a4e2271b7fffc8d",
+  "temporaryXml": "/tmp/daylight-following-end-zone-before.xml",
+  "temporaryLog": "/tmp/daylight-following-end-zone-before.log"
+}

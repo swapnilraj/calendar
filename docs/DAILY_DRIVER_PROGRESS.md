@@ -11,6 +11,12 @@ tests. Command: `./gradlew test :app:assembleDebug :app:lintDebug`; log
 `1fca3bfbeb9b1ceed348c1ddfcfb5c5d77688f2275f85a5ab76345254a2ef45a`.
 This remains a debug-signed local build, not a stable release or daily-driver certification.
 
+Independent [Following metadata regression evidence](audit/evidence/following-null-end-zone-before-2026-11-19.json)
+subsequently exposed a title-only split changing an admitted SQL NULL end timezone to the start zone.
+The synthetic adapter returned LocalSaved with one batch while preserving the prefix except RRULE.
+Distinct nonblank end zones remain rejected before mutation. The corrective packet is pending;
+production clone admission remains disabled. The passing checkpoint above predates this new test.
+
 The shared Add people picker is connected to meeting creation and owned one-off editing. Optional
 local DEFAULT-directory contact search requires an explicit opt-in on each opening; typing, opening
 an editor and an existing OS grant never enable it automatically. Manual email entry remains usable
