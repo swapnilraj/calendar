@@ -2,6 +2,7 @@ package dev.swapnilraj.calendar
 
 import androidx.datastore.preferences.core.*
 import dev.swapnilraj.calendar.data.settings.CalendarSettingsCodec
+import dev.swapnilraj.calendar.core.InvitationFilter
 import dev.swapnilraj.calendar.ui.calendars.CalendarViewOption
 import dev.swapnilraj.calendar.ui.settings.*
 import java.time.ZoneId
@@ -98,5 +99,36 @@ class CalendarSettingsCodecTest {
         for ((key, value) in before) assertEquals("Unrelated ${key.name}", value, preferences.asMap()[key])
         assertTrue(preferences.asMap().keys.filter { it !in before.keys }.all { it.name.startsWith("display_") || it.name == "calendar_view" })
         assertEquals(CalendarSettingsOptions(), CalendarSettingsCodec.read(preferences, "DAY"))
+    }
+
+    @Test fun invitationFilterRoundTripsByNameWithoutChangingOtherOptions() {
+        for (filter in InvitationFilter.entries) {
+            val options = CalendarSettingsOptions(defaultDurationMinutes = 75, showDeclined = false, invitationFilter = filter)
+            val preferences = mutablePreferencesOf(stringPreferencesKey("opaque") to "retained")
+            CalendarSettingsCodec.write(preferences, options)
+            assertEquals(filter.name, preferences[stringPreferencesKey("display_invitation_filter")])
+            assertEquals(options, CalendarSettingsCodec.read(preferences, "DAY"))
+            assertEquals("retained", preferences[stringPreferencesKey("opaque")])
+        }
+    }
+
+    @Test fun missingFutureAndMalformedInvitationFiltersDefaultWithoutRepair() {
+        val snapshots = listOf(emptyPreferences(),
+            preferencesOf(stringPreferencesKey("display_invitation_filter") to "FUTURE_FILTER"),
+            preferencesOf(stringPreferencesKey("display_invitation_filter") to "pending_only"),
+            preferencesOf(stringPreferencesKey("display_invitation_filter") to " PENDING_ONLY"),
+            preferencesOf(intPreferencesKey("display_invitation_filter") to 1))
+        for (snapshot in snapshots) {
+            val before = snapshot.asMap().toMap()
+            assertEquals(InvitationFilter.ALL, CalendarSettingsCodec.read(snapshot, "DAY").invitationFilter)
+            assertEquals(before, snapshot.asMap())
+        }
+    }
+
+    @Test fun unrelatedLegacyDraftEditRetainsPendingInvitationFilter() {
+        val original = CalendarSettingsOptions(invitationFilter = InvitationFilter.PENDING_ONLY)
+        val saved = SettingsDraft.from(original).copy(duration = "135", showWeekends = false).validated(CalendarViewOption.entries)
+        assertEquals(original.copy(defaultDurationMinutes = 135, showWeekends = false), saved)
+        assertEquals(InvitationFilter.ALL, SettingsDraft.from(CalendarSettingsOptions()).validated(CalendarViewOption.entries)!!.invitationFilter)
     }
 }

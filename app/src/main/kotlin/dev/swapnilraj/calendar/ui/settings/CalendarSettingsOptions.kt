@@ -1,6 +1,7 @@
 package dev.swapnilraj.calendar.ui.settings
 
 import dev.swapnilraj.calendar.ui.calendars.CalendarViewOption
+import dev.swapnilraj.calendar.core.InvitationFilter
 import java.time.DayOfWeek
 import java.time.ZoneId
 import java.time.temporal.WeekFields
@@ -19,6 +20,7 @@ data class CalendarSettingsOptions(
     val displayZone: DisplayZoneOption = DisplayZoneOption.Device,
     val weatherVisible: Boolean = true,
     val weatherUnits: WeatherUnits = WeatherUnits.CELSIUS,
+    val invitationFilter: InvitationFilter = InvitationFilter.ALL,
 ) {
     init {
         require(defaultDurationMinutes in 1..1440)
@@ -64,6 +66,7 @@ internal data class SettingsDraft(
     val zone: String,
     val weatherVisible: Boolean,
     val units: WeatherUnits,
+    val invitationFilter: InvitationFilter = InvitationFilter.ALL,
 ) {
     fun errors(availableViews: List<CalendarViewOption>): Set<SettingsField> = buildSet {
         if (view !in availableViews) add(SettingsField.VIEW)
@@ -75,12 +78,12 @@ internal data class SettingsDraft(
         if (errors(availableViews).isNotEmpty()) return null
         return CalendarSettingsOptions(view, duration.trim().toInt(), if (timedReminderEnabled) timedReminder.trim().toInt() else null,
             allDayReminder, firstWeekday, showWeekends, showDeclined, theme,
-            if (fixedZone) DisplayZoneOption.Fixed(requireNotNull(fixedSettingsZone(zone))) else DisplayZoneOption.Device, weatherVisible, units)
+            if (fixedZone) DisplayZoneOption.Fixed(requireNotNull(fixedSettingsZone(zone))) else DisplayZoneOption.Device, weatherVisible, units, invitationFilter)
     }
     companion object {
         fun from(options: CalendarSettingsOptions) = SettingsDraft(options.defaultView, options.defaultDurationMinutes.toString(),
             (options.timedReminderMinutes ?: 10).toString(), options.timedReminderMinutes != null, options.allDayReminder, options.firstWeekday,
             options.showWeekends, options.showDeclined, options.theme, options.displayZone is DisplayZoneOption.Fixed,
-            (options.displayZone as? DisplayZoneOption.Fixed)?.zone?.id ?: "", options.weatherVisible, options.weatherUnits)
+            (options.displayZone as? DisplayZoneOption.Fixed)?.zone?.id ?: "", options.weatherVisible, options.weatherUnits, options.invitationFilter)
     }
 }

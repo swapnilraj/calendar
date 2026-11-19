@@ -15,6 +15,7 @@ sealed interface CalendarSettingChange {
     data class Theme(val value: SettingsTheme) : CalendarSettingChange
     data class DisplayZone(val value: DisplayZoneOption) : CalendarSettingChange
     data class WeatherVisible(val value: Boolean) : CalendarSettingChange
+    data class InvitationFilter(val value: dev.swapnilraj.calendar.core.InvitationFilter) : CalendarSettingChange
     data class WeatherUnits(val value: dev.swapnilraj.calendar.ui.settings.WeatherUnits) : CalendarSettingChange
 }
 

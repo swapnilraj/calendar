@@ -3,13 +3,18 @@ package dev.swapnilraj.calendar
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import dev.swapnilraj.calendar.data.Settings
+import dev.swapnilraj.calendar.data.CalendarPreferenceState
+import dev.swapnilraj.calendar.core.InvitationFilter
 import dev.swapnilraj.calendar.data.settings.*
 import dev.swapnilraj.calendar.ui.settings.*
 import java.io.IOException
 import java.time.ZoneId
+import java.nio.file.Files
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.junit.Assert.*
@@ -89,5 +94,67 @@ class CalendarSettingPatchTest {
         catch (_: CancellationException) { }
         assertEquals("DARK", store.stored[stringPreferencesKey("display_theme")])
         assertEquals(3, store.updates)
+    }
+
+    @Test fun concurrentInvitationAndUnrelatedChangesPersistWithoutLostUpdates() = runBlocking {
+        val initial = preferencesOf(stringPreferencesKey("display_zone_mode") to "FUTURE_ZONE",
+            stringPreferencesKey("reminder_policy_v1") to "opaque-policy", longPreferencesKey("default_calendar_id") to 9L)
+        val store = Store(initial)
+        val writer = settings(store)
+        val results = listOf(async { writer.saveCalendarSetting(CalendarSettingChange.InvitationFilter(InvitationFilter.PENDING_ONLY)) },
+            async { writer.saveCalendarSetting(CalendarSettingChange.Duration(135)) }).awaitAll()
+        assertEquals(listOf(CalendarSettingSave.Saved, CalendarSettingSave.Saved), results)
+        assertEquals(raw(initial) + mapOf("display_invitation_filter" to "PENDING_ONLY", "display_default_duration_minutes" to 135), raw(store.stored))
+        // A new Settings owner reads the same persisted store, without a remembered UI value.
+        val reopened = settings(store)
+        assertEquals(CalendarSettingSave.Saved, reopened.saveCalendarSetting(CalendarSettingChange.Theme(SettingsTheme.DARK)))
+        assertEquals(InvitationFilter.PENDING_ONLY, CalendarSettingsCodec.read(store.stored, "DAY").invitationFilter)
+        assertEquals(CalendarSettingSave.Saved, reopened.saveCalendarSetting(CalendarSettingChange.InvitationFilter(InvitationFilter.ALL)))
+        assertEquals("ALL", store.stored[stringPreferencesKey("display_invitation_filter")])
+        assertEquals(135, store.stored[intPreferencesKey("display_default_duration_minutes")])
+        assertEquals("FUTURE_ZONE", store.stored[stringPreferencesKey("display_zone_mode")])
+    }
+
+    @Test fun unrelatedPatchesPreserveUnknownInvitationBytesUntilExplicitChoice() = runBlocking {
+        for (initial in listOf(preferencesOf(stringPreferencesKey("display_invitation_filter") to "FUTURE_FILTER"),
+            preferencesOf(intPreferencesKey("display_invitation_filter") to 8))) {
+            val store = Store(initial)
+            val writer = settings(store)
+            assertEquals(InvitationFilter.ALL, CalendarSettingsCodec.read(store.stored, "DAY").invitationFilter)
+            assertEquals(CalendarSettingSave.Saved, writer.saveCalendarSetting(CalendarSettingChange.ShowWeekends(false)))
+            assertEquals(raw(initial) + ("display_show_weekends" to false), raw(store.stored))
+            assertEquals(CalendarSettingSave.Saved, writer.saveCalendarSetting(CalendarSettingChange.InvitationFilter(InvitationFilter.PENDING_ONLY)))
+            assertEquals(mapOf("display_invitation_filter" to "PENDING_ONLY", "display_show_weekends" to false), raw(store.stored))
+        }
+    }
+
+    @Test fun invitationChoicePersistsThroughRealDataStoreCloseAndReopen() = runBlocking {
+        val directory = Files.createTempDirectory("invitation-preferences").toFile()
+        val file = java.io.File(directory, "settings.preferences_pb")
+        suspend fun <T> opened(block: suspend (Settings) -> T): T {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val disk = PreferenceDataStoreFactory.create(scope = scope) { file }
+            try { return block(Settings(RuntimeEnvironment.getApplication(), disk)) }
+            finally { scope.cancel(); scope.coroutineContext[Job]!!.join() }
+        }
+        try {
+            opened { settings ->
+                assertEquals(CalendarSettingSave.Saved, settings.saveCalendarSetting(CalendarSettingChange.InvitationFilter(InvitationFilter.PENDING_ONLY)))
+                assertEquals(CalendarSettingSave.Saved, settings.saveCalendarSetting(CalendarSettingChange.ShowDeclined(false)))
+            }
+            opened { settings ->
+                val snapshot = settings.calendarPreferences.filterIsInstance<CalendarPreferenceState.Ready>().first().value
+                assertEquals(InvitationFilter.PENDING_ONLY, snapshot.options.invitationFilter)
+                assertFalse(snapshot.options.showDeclined)
+                val legacyEdit = SettingsDraft.from(snapshot.options).copy(duration = "135").validated(dev.swapnilraj.calendar.ui.calendars.CalendarViewOption.entries)!!
+                assertTrue(settings.setDisplaySettings(legacyEdit))
+            }
+            opened { settings ->
+                val snapshot = settings.calendarPreferences.filterIsInstance<CalendarPreferenceState.Ready>().first().value
+                assertEquals(InvitationFilter.PENDING_ONLY, snapshot.options.invitationFilter)
+                assertEquals(135, snapshot.options.defaultDurationMinutes)
+                assertFalse(snapshot.options.showDeclined)
+            }
+        } finally { directory.deleteRecursively() }
     }
 }

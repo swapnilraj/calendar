@@ -18,17 +18,18 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import dev.swapnilraj.calendar.R
+import dev.swapnilraj.calendar.core.InvitationFilter
 import dev.swapnilraj.calendar.ui.calendars.CalendarViewOption
 import java.time.ZoneId
 
 private val DraftSaver = listSaver<SettingsDraft, Any>(save = {
     listOf(it.view.name, it.duration, it.timedReminder, it.timedReminderEnabled, it.allDayReminder.name,
-        it.firstWeekday.name, it.showWeekends, it.showDeclined, it.theme.name, it.fixedZone, it.zone, it.weatherVisible, it.units.name)
+        it.firstWeekday.name, it.showWeekends, it.showDeclined, it.theme.name, it.fixedZone, it.zone, it.weatherVisible, it.units.name, it.invitationFilter.name)
 }, restore = {
     SettingsDraft(CalendarViewOption.valueOf(it[0] as String), it[1] as String, it[2] as String, it[3] as Boolean,
         AllDayReminderDefault.valueOf(it[4] as String), FirstWeekdayOption.valueOf(it[5] as String), it[6] as Boolean,
         it[7] as Boolean, SettingsTheme.valueOf(it[8] as String), it[9] as Boolean, it[10] as String, it[11] as Boolean,
-        WeatherUnits.valueOf(it[12] as String))
+        WeatherUnits.valueOf(it[12] as String), InvitationFilter.entries.firstOrNull { filter -> filter.name == it.getOrNull(13) } ?: InvitationFilter.ALL)
 })
 
 /**
