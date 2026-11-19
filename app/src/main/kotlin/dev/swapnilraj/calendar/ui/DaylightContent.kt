@@ -146,6 +146,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState)
                         settings = app.settings,
                         preferenceOverride = preferences,
                         mutations = mutations,
+                        recurringCreationSupported = true,
                         onOpenReminders = { remindersOpen = true },
                         drafts = app.calendarLocalStore,
                         retirement = app.operationRetirement,

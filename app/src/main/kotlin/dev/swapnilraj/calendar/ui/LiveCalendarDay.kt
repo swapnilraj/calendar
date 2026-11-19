@@ -77,6 +77,7 @@ internal fun LiveCalendarDay(
     draftClock: Clock = Clock.systemUTC(),
     preferenceOverride: CalendarPreferenceState? = null,
     onOpenReminders: (() -> Unit)? = null,
+    recurringCreationSupported: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val selectedDateState = rememberSaveable { mutableStateOf<String?>(null) }
@@ -447,6 +448,7 @@ internal fun LiveCalendarDay(
     if (mutations != null && drafts != null) writeRequestText?.let { raw ->
         val request = remember(raw) { EventWriteRequest.decode(raw) }
         EventWriteWorkflow(request, mutations, drafts, calendars, use24Hour, clock = draftClock,
+            recurringCreationSupported = recurringCreationSupported,
             retirement = retirement, requestWritePermission = requestWritePermission,
             onReplacedLaunch = { replacement ->
                 writeRequestText = EventWriteRequest.fromLaunch(replacement, visibleDate, displayNow.zone).encode()
