@@ -35,7 +35,8 @@ def phase_report(phase, run=RUN):
               "batchAssertionCap": 128, "deadlineKind": "cooperative", "directQueryCount": 80,
               "batchAssertionCount": 6}
     report["cleanup"] = ({"status": "VERIFIED_CALENDAR_AND_TRACKED_IDS_ABSENT", "trackedEventCount": 6,
-                          "localFiles": "VERIFIED_EXACT_RUN_FILES_ABSENT", "directQueryCount": 250, "batchAssertionCount": 7} if phase == "CLEANUP" else
+                          "localFiles": "VERIFIED_EXACT_RUN_FILES_ABSENT", "directQueryCount": 250, "batchAssertionCount": 7,
+                          "trackedIdCheckScope": "GLOBAL_TRACKED_IDS"} if phase == "CLEANUP" else
                          {"status": "RETAINED_FOR_EXPLICIT_NEXT_PHASE", "ownershipVerified": True})
     if phase == "RECOVER_READ_ONLY":
         report["recovery"] = {"readGranted": True, "writeDenied": True, "authoringTrapInstalled": True,
@@ -67,7 +68,8 @@ class PhaseProtocolTest(unittest.TestCase):
             with self.assertRaises(host.Refusal): host.require_app_phase(report, "RECOVER_READ_ONLY", RUN, PINS)
 
     def test_cleanup_requires_calendar_events_and_local_files_absent(self):
-        for key, value in (("status", "BLOCKED_NO_BLIND_DELETE"), ("trackedEventCount", 5), ("localFiles", "UNKNOWN")):
+        for key, value in (("status", "CLEANUP_WITHHELD"), ("trackedEventCount", 5), ("localFiles", "UNKNOWN"),
+                           ("trackedIdCheckScope", "CALENDAR_SCOPED")):
             report = phase_report("CLEANUP"); report["cleanup"][key] = value
             with self.assertRaises(host.Refusal): host.require_app_phase(report, "CLEANUP", RUN, PINS)
 

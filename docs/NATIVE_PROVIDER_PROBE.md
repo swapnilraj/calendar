@@ -125,7 +125,7 @@ This is one explicitly requested three-phase protocol, not automatic retries:
    **solely** for a final fresh-process CLEANUP phase. The existing guarded calendar-ID/account/type/
    name/owner assertion and exact owned-calendar delete remain in use. All6 tracked event IDs,
    fixture namespace, exclusive local database/sidecars and private run manifest must be absent.
-   Only this complete result is PASS. STAGED/RECOVERED are never final acceptance.
+   Cleanup has its own admission fence, including the outer finally path: an admitted, completed CLEANUP entry, RECOVERED state, and all6 VERIFIED cases each recovered twice are required before any mutation. Failed/partial/unknown app runs report CLEANUP_WITHHELD and retain their fixture/artifacts. Only complete cleanup is PASS. STAGED/RECOVERED are never final acceptance.
 
 The observer forwards the original app batch to the real CalendarProvider as one transaction;
 `ContentResolver.wrap(ContentProvider)` is a public SDK API, not a replacement calendar engine.
@@ -150,7 +150,7 @@ cleanup. In particular, failed or interrupted READ-only recovery leaves WRITE de
 retained fixture/store for lead inspection; it does **not** authorize cleanup or a rerun. Cleanup
 failure also remains failure. There is no standalone automatic resume/cleanup command. Any later
 recovery decision requires review of that same run's artifacts and ownership, never a fresh-run
-substitution. Existing identity-only and18-case modes keep their original protocol.
+substitution. Identity-only behavior and the18-case fixture matrix/pins stay unchanged; future cleanup uses the stronger bounded tracked-ID absence check described below.
 
 Host verification (no adb or device calls):
 
@@ -172,8 +172,13 @@ UTC-date two-day all-day events, each with COUNT and UNTIL.
 
 The [complete bounded host/probe report](audit/evidence/native-local-provider-api35-2026-11-18.json)
 records the exact APK/provider/build/signature pins, bounds, guards and case outcomes. Cleanup
-verified the owned synthetic calendar and all30 tracked event IDs absent (delete acknowledgment
-received;186 direct queries and79 batch assertions overall). The SDK probe input was built after
+verified the owned synthetic calendar absent and all30 tracked event IDs absent **within that
+calendar**, using the original calendar-scoped tracked-ID query (delete acknowledgment received;186
+direct queries and79 batch assertions overall). That artifact is preserved unchanged; it does not
+establish global tracked-ID absence. The corrected source now checks only the bounded tracked _id
+list across the public Events collection, projecting _id alone after guarded owned-calendar deletion.
+Any surviving ID blocks PASS, without reading foreign payloads or deleting a replacement row. This
+stronger cleanup check has not yet been run on the native provider. The SDK probe input was built after
 `43c2755`; it directly exercises native LOCAL operations, rather than running Daylight's complete
 series writer or a Google sync adapter. Google/Workspace round-trips remain NOT_RUN and production
 profile activation remains NONE. No runtime Google Calendar UX or device reminder claim follows.

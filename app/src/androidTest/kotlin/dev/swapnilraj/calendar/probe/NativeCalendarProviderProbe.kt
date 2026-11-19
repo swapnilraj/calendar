@@ -147,8 +147,10 @@ class NativeCalendarProviderProbe : Instrumentation() {
         var successStatus = "PASS"
             private set
         private var appPhase: String? = null
+        private var appRequested = false
         private var appState: NativeWriterProbeState? = null
         private var appCompleted = false
+        private var admittedCleanup = false
 
         fun run(report: JSONObject) {
             val optIn = argument("probeOptIn")
@@ -162,6 +164,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
                 return
             }
             if (optIn == "LOCAL_APP_CREATE_V1") {
+                appRequested = true
                 appPhase = argument("probeAppPhase").also { requireCondition(it in setOf("CREATE_STAGE", "RECOVER_READ_ONLY", "CLEANUP"), "INVALID_APP_PHASE") }
                 runApp(report)
                 appCompleted = true
@@ -245,6 +248,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
             if (appPhase == "CLEANUP") {
                 requireCondition((0 until state.cases.length()).all { state.cases.getJSONObject(it).getInt("recoveries") == 2 }, "APP_RECOVERY_INCOMPLETE")
                 report.put("cases", NativeCalendarWriterProbeCases.reportCases(state)).put("ownershipProof", "EXACT_RUN_MANIFEST_AND_CALENDAR")
+                admittedCleanup = true
                 return
             }
             val sourceUid = query(C.CONTENT_URI, arrayOf(C._SYNC_ID), calendarSelection(), calendarArgs()).single()[C._SYNC_ID]?.takeIf(String::isNotBlank)
@@ -451,12 +455,23 @@ class NativeCalendarProviderProbe : Instrumentation() {
 
         fun cleanup(report: JSONObject): Boolean {
             val result = JSONObject(); report.put("cleanup", result)
-            if (appPhase != null && (appPhase == "RECOVER_READ_ONLY" || appPhase == "CREATE_STAGE" && appCompleted)) {
-                result.put("status", "RETAINED_FOR_EXPLICIT_NEXT_PHASE").put("ownershipVerified", appState != null)
-                return true
+            if (appRequested && appPhase != "CLEANUP") {
+                result.put("status", if (appCompleted) "RETAINED_FOR_EXPLICIT_NEXT_PHASE" else "CLEANUP_WITHHELD")
+                    .put("ownershipVerified", appCompleted && appState != null)
+                return appCompleted
             }
-            if (appPhase != null && appState == null) {
-                result.put("status", "BLOCKED_NO_VALID_RUN_MANIFEST")
+            if (appRequested && appState == null) {
+                result.put("status", "CLEANUP_WITHHELD").put("reason", "NO_VALID_RUN_MANIFEST")
+                return false
+            }
+            // Admission failure must not authorize deletion through this finally path. In
+            // particular a valid STAGED/RECOVERING manifest is not a CLEANUP capability.
+            if (appPhase == "CLEANUP" && (!admittedCleanup || !appCompleted || appState?.phase != "RECOVERED" ||
+                    appState?.cases?.length() != 6 || (0 until 6).any { index ->
+                        val row = requireNotNull(appState).cases.getJSONObject(index)
+                        row.getString("phase") != "VERIFIED" || row.getInt("recoveries") != 2
+                    })) {
+                result.put("status", "CLEANUP_WITHHELD").put("reason", "CLEANUP_NOT_ADMITTED")
                 return false
             }
             inCleanup = true
@@ -465,6 +480,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
                     .put("directQueryCount", directQueries).put("batchAssertionCount", batchAssertions)
                 return true
             }
+            var deletionAttempted = false
             return try {
                 step("cleanup-owned-local-calendar")
                 appState?.assertPersisted(context)
@@ -488,6 +504,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
                     guardCalendar()
                     var acknowledged = false
                     try {
+                        deletionAttempted = true
                         val deleted = applyBatch(arrayListOf(calendarAssertion(),
                             ContentProviderOperation.newDelete(localCalendarUri()).withSelection(calendarSelection(), calendarArgs())
                                 .withExpectedCount(1).withYieldAllowed(false).build()))
@@ -498,16 +515,16 @@ class NativeCalendarProviderProbe : Instrumentation() {
                 requireCondition(namespace().isEmpty(), "CLEANUP_CALENDAR_REMAINED")
                 if (calendarId != null && knownEventIds.isNotEmpty()) {
                     val leftover = query(E.CONTENT_URI, arrayOf(E._ID),
-                        "${E.CALENDAR_ID}=? AND ${E._ID} IN (${knownEventIds.joinToString(",") { "?" }})",
-                        (listOf(calendar().toString()) + knownEventIds.map(Long::toString)).toTypedArray())
+                        "${E._ID} IN (${knownEventIds.joinToString(",") { "?" }})",
+                        knownEventIds.map(Long::toString).toTypedArray())
                     requireCondition(leftover.isEmpty(), "CLEANUP_TRACKED_EVENTS_REMAINED")
                 }
                 result.put("status", "VERIFIED_CALENDAR_AND_TRACKED_IDS_ABSENT").put("trackedEventCount", knownEventIds.size)
-                    .put("directQueryCount", directQueries).put("batchAssertionCount", batchAssertions)
+                    .put("directQueryCount", directQueries).put("batchAssertionCount", batchAssertions).put("trackedIdCheckScope", "GLOBAL_TRACKED_IDS")
                 appState?.let { state -> state.phase = "CLEANED"; saveAppState(); state.deleteAfterVerifiedCleanup(context); result.put("localFiles", "VERIFIED_EXACT_RUN_FILES_ABSENT") }
                 true
             } catch (failure: Exception) {
-                result.put("status", "BLOCKED_NO_BLIND_DELETE").put("failure", safeFailure(failure))
+                result.put("status", if (appRequested && !deletionAttempted) "CLEANUP_WITHHELD" else "BLOCKED_NO_BLIND_DELETE").put("failure", safeFailure(failure))
                     .put("directQueryCount", directQueries).put("batchAssertionCount", batchAssertions)
                 false
             }

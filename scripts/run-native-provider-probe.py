@@ -263,7 +263,7 @@ def require_app_phase(report, phase, run_id, pins):
             raise Refusal("app probe cumulative budget proof is incomplete")
     if phase == "CLEANUP":
         if (cleanup.get("status") != "VERIFIED_CALENDAR_AND_TRACKED_IDS_ABSENT" or cleanup.get("trackedEventCount") != 6 or
-                cleanup.get("localFiles") != "VERIFIED_EXACT_RUN_FILES_ABSENT"):
+                cleanup.get("localFiles") != "VERIFIED_EXACT_RUN_FILES_ABSENT" or cleanup.get("trackedIdCheckScope") != "GLOBAL_TRACKED_IDS"):
             raise Refusal("app probe exact fixture cleanup was not verified")
     elif cleanup.get("status") != "RETAINED_FOR_EXPLICIT_NEXT_PHASE" or cleanup.get("ownershipVerified") is not True or report.get("fixtureRetained") is not True:
         raise Refusal("app probe staged ownership was not durably retained")
