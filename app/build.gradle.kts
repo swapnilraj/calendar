@@ -20,6 +20,11 @@ android {
         versionName = providers.gradleProperty("daylight.versionName").orNull?.also {
             require(it.length <= 64 && it.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?"))) { "Invalid daylight.versionName" }
         } ?: "0.1.0"
+        // SDK-only LOCAL provider experiments are explicit test builds, never release entry points.
+        if (providers.gradleProperty("daylight.providerProbe").orNull == "true") {
+            testApplicationId = "dev.swapnilraj.calendar.providerprobe"
+            testInstrumentationRunner = "dev.swapnilraj.calendar.probe.NativeCalendarProviderProbe"
+        }
     }
 
     compileOptions {
