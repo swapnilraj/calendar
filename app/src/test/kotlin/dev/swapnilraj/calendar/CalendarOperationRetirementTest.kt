@@ -90,7 +90,6 @@ class CalendarOperationRetirementTest {
         val requests=listOf<RetirableOperation>(
             RetirableOperation.Update("recurring-update",recurring,token,EventPatch(title=FieldChange.Set("Changed"))),
             RetirableOperation.Delete("recurring-delete",recurring,token),
-            RetirableOperation.Series("following-edit",recurring,token,SeriesCommand.FollowingEdit(RecurrenceEditIntent.FollowingSeriesEdit(RecurrenceKey.Timed(start)))),
             RetirableOperation.Meeting("meeting",ref,token,MeetingCommand.Respond(RecurrenceScope.THIS,MeetingResponse.YES)),
             RetirableOperation.MeetingCreate("meeting-create",token,draft,listOf(MeetingGuestInput("guest@example.invalid",MeetingGuestType.REQUIRED))))
         requests.forEach{request->

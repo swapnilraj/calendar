@@ -36,6 +36,7 @@ class CalendarSeriesWriter(
     private val providerClonePolicy: ProviderClonePolicy = ProviderClonePolicy.Unverified,
 ) : CalendarSeriesMutations {
     private val mutex = Mutex()
+    private val followingEdits = CalendarFollowingSeriesWriter(resolver, sourceReader, store, hasPermission, this, io, budget, readBudgets, providerClonePolicy)
     private class Unsupported(val reason: String) : Exception()
     internal class Invalid(val fields: Set<InvalidEventField>) : Exception()
     private data class Prepared(val operations: ArrayList<ContentProviderOperation>, val receipt: JSONObject, val source: CalendarSeriesSource,
@@ -75,8 +76,10 @@ class CalendarSeriesWriter(
                 supported.copy(fields = series.allowedFields, recurrence = AccessDecision.ALLOWED)
             } catch (_: Unsupported) { supported }
             catch (_: SeriesSourceReview) { supported }
+            val followingEdit = followingEdits.capabilities(source, series)
+            val followingRights = followingEdit?.copy(delete = following.delete) ?: following
             series.copy(allowedFields = temporal.fields, scopes = mapOf(RecurrenceScope.ALL to temporal,
-                RecurrenceScope.THIS to thisCapabilities, RecurrenceScope.FOLLOWING to following))
+                RecurrenceScope.THIS to thisCapabilities, RecurrenceScope.FOLLOWING to followingRights))
         }
     } catch (_: SecurityException) { SeriesReadResult.PermissionRequired }
     catch (denied: SeriesSourceDenied) { SeriesReadResult.Denied(denied.reason) }
@@ -88,7 +91,7 @@ class CalendarSeriesWriter(
             try { store.abandoned(operationId) { retirementFingerprint(selected, token, command) }?.let { return@withLock common(it) } }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { return@withLock common(MutationResult.Unavailable) }
-            if (command is SeriesCommand.FollowingEdit) return@withLock SeriesMutationResult.Unsupported("Following edits are not included in this backend publication")
+            if (command is SeriesCommand.FollowingEdit) return@withLock followingEdits.mutate(operationId, selected, token, command)
             if (!permissions()) return@withLock common(MutationResult.PermissionRequired)
             var attempted = false
             var dispatch: CalendarLocalStore.Operation? = null
@@ -626,7 +629,7 @@ class CalendarSeriesWriter(
         catch (_: Exception) { return@withLock common(MutationResult.Unavailable) }
         if (!hasPermission(Manifest.permission.READ_CALENDAR)) return@withLock common(MutationResult.PermissionRequired)
         try { store.operation(operationId)?.let { operation ->
-            try { recover(operation, true) }
+            try { if (CalendarFollowingSeriesWriter.handles(operation.kind)) followingEdits.recover(operationId) else recover(operation, true) }
             catch (denied: SecurityException) { throw denied }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { common(MutationResult.Uncertain(operationId, null)) }
