@@ -10,7 +10,6 @@ display zone for explicit review. That target does not choose an offset or imply
 presentation must use the same snapped wall position instead of the unsnapped pointer location;
 accepting a specific valid offset remains a separate explicit action.
 
-Incoming EDIT suggestions remain separate from the freshly verified original event and calendar namespace. Explicit Apply prepares an exact private native draft bound to its original source token, baseline and review revision; reopening, permission return or changed metadata never rebases or applies suggestions automatically. A matching permanent handoff receipt is required before editor exposure, and generic draft opens cannot bypass the private review host. Missing source-zone authorship requires explicit review while untouched native NULL values remain unchanged. This private destination foundation does not activate public intent filters, application owners or browser routes.
 
 For a modern, unsubmitted ordinary edit of an imported event with a genuinely NULL source zone,
 an explicit permitted zone-picker/manual selection records authored zone intent even when the
@@ -437,6 +436,10 @@ does not query private children or construct an occurrence reference. Canonical 
 provider-expanded Instances; recurring/detached event IDs require an explicit occurrence hint. Hidden
 app/provider display filters do not authorize or prevent a directly requested readable link. Missing
 or canceled/deleted rows, ambiguous identity, and insufficient read authority do not open stale details.
+
+#### Private incoming EDIT review
+
+Incoming EDIT suggestions remain separate from the freshly verified original event and calendar namespace. Explicit Apply prepares an exact private native draft bound to its original source token, baseline and review revision; reopening, permission return or changed metadata never rebases or applies suggestions automatically. A matching permanent handoff receipt is required before editor exposure, and generic draft opens cannot bypass the private review host. Missing source-zone authorship requires explicit review while untouched native NULL values remain unchanged. This private destination foundation does not activate public intent filters, application owners or browser routes.
 
 ### M9 — App-owned reminders
 
