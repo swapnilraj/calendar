@@ -5,6 +5,14 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+### Retained meeting-family drafts
+
+The draft browser identifies response, creation and organizer-owned meeting records before ordinary
+draft decoding. Unknown or corrupt family/version records remain retained with no ordinary launch.
+Each family exposes Open only when the host supplies its matching callback; refreshing or listing
+never submits, normalizes or rewrites a draft. Discard keeps exact-record concurrency checks.
+Existing ordinary sorting, display and error behavior remain unchanged. Application routing is separate.
+
 ### Self-contained ordinary edit recovery
 
 New one-off UPDATE/DELETE operations freeze receipt4 source and native write plans before dispatch.
