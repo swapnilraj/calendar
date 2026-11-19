@@ -632,7 +632,10 @@ never submit provider writes. Incomplete inputs remain durable, unsupported recu
 visible, and an exact permanent handoff receipt precedes Save access. The browser hides only strictly
 recognized handoff receipts, routes unfinished incoming inputs back through their private review,
 and blocks generic incoming-native launches without a matching receipt. Date navigation consumes its
-session once and converts the original instant using fresh display-zone settings. Eligible EDIT
+session once and converts the original instant using fresh display-zone settings. Private date hints
+accept only the factory's canonical URI, with exactly one session value; duplicate parameters,
+encoded aliases and alternative numeric date representations cannot select a navigation session.
+Eligible EDIT
 suggestions use the separate source-pinned version8 review above; recurring/guest editing and live
 Google UX verification remain separate.
 

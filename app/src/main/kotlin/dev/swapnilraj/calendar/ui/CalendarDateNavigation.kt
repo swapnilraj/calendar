@@ -26,11 +26,13 @@ internal object CalendarDateIntents {
         if (intent?.action != ACTION || intent.component != ComponentName(context, MainActivity::class.java)) null
         else intent.data?.takeIf { it.toString().length <= 512 && it.scheme == "daylight" && it.authority == "calendar-date" &&
             it.fragment == null && it.pathSegments.size == 1 && it.queryParameterNames == setOf("session") }?.let { uri ->
-            val id = requireNotNull(uri.getQueryParameter("session"))
+            val id = uri.getQueryParameters("session").single()
             require(UUID.fromString(id).toString() == id)
             val instant = Instant.ofEpochMilli(uri.pathSegments.single().toLong())
             require(instant.atOffset(ZoneOffset.UTC).year in 1..9999)
-            CalendarDateNavigation(id, instant)
+            CalendarDateNavigation(id, instant).also { value ->
+                require(uri == this.intent(context, value).data)
+            }
         }
     } catch (_: Exception) { null }
 }
