@@ -34,7 +34,19 @@ data class SearchUiState(
     val snapshot: CalendarSearchSnapshot? = null,
 ) {
     /** Rows are exposed only from the current successfully matched request. */
-    val hits: List<CalendarSearchHit> get() = if (status == SearchStatus.RESULTS) snapshot?.hits.orEmpty() else emptyList()
+    val matchingSnapshot: CalendarSearchSnapshot? get() = snapshot?.takeIf {
+        it.request == CalendarSearchRequest(query.trim(), calendar, limit, includeDeclined)
+    }?.let { current ->
+        if (calendar.invitationFilter == InvitationFilter.ALL) current else current.copy(
+            hits = current.hits.filter { it.occurrence.invitation == InvitationState.PENDING },
+            coverage = (current.coverage + current.hits.filter { it.occurrence.invitation == InvitationState.UNKNOWN }
+                .map { CalendarCoverage(it.occurrence.ref.calendarId, CoverageReason.INVITATION_CLASSIFICATION_UNKNOWN) }).distinct(),
+        )
+    }
+    val hits: List<CalendarSearchHit> get() = if (status == SearchStatus.RESULTS)
+        matchingSnapshot?.hits.orEmpty().filter {
+            calendar.invitationFilter == InvitationFilter.ALL || it.occurrence.invitation == InvitationState.PENDING
+        } else emptyList()
 }
 
 /**
@@ -113,8 +125,11 @@ class SearchController(scope: CoroutineScope, private val port: CalendarSearch,
     }
     fun setQuery(raw: String) { change { it.copy(query = raw, limit = 200) } }
     fun setRange(range: CalendarDateRange) { change { it.copy(calendar = it.calendar.copy(range = range), limit = 200) } }
-    fun updateContext(selection: CalendarSelection, zone: ZoneId, includeDeclined: Boolean = input.value.includeDeclined) {
-        change { it.copy(calendar = it.calendar.copy(selection = selection, displayZone = zone), includeDeclined = includeDeclined, limit = 200) }
+    fun updateContext(selection: CalendarSelection, zone: ZoneId, includeDeclined: Boolean = input.value.includeDeclined,
+        invitationFilter: InvitationFilter? = null) {
+        // An omitted filter retains the latest value inside the atomic context update.
+        change { it.copy(calendar = it.calendar.copy(selection = selection, displayZone = zone,
+            invitationFilter = invitationFilter ?: it.calendar.invitationFilter), includeDeclined = includeDeclined, limit = 200) }
     }
     fun loadMore() {
         if (state.value.status in setOf(SearchStatus.RESULTS, SearchStatus.NO_MATCHES) && state.value.snapshot?.truncated == true) change { it.copy(limit = (it.limit + 200).coerceAtMost(1000)) }
@@ -129,13 +144,19 @@ class SearchController(scope: CoroutineScope, private val port: CalendarSearch,
             CalendarSelection.ProviderVisible -> snapshot.calendars.filter { it.providerVisible }.mapTo(mutableSetOf()) { it.id }
             is CalendarSelection.Explicit -> selection.ids
         }
-        val eligible = snapshot.hits.filter { hit ->
+        val inScope = snapshot.hits.filter { hit ->
             hit.occurrence.ref.calendarId in selectedIds &&
                 (request.includeDeclined || !hit.occurrence.declined) && hit.occurrence.time.intersects(request.calendar.range, request.calendar.displayZone)
-        }.distinctBy { it.occurrence.ref }.sortedWith(compareBy<CalendarSearchHit> { it.occurrence.ref.instanceStart }
+        }
+        val pendingOnly = request.calendar.invitationFilter == InvitationFilter.PENDING_ONLY
+        val unknownCoverage = if (pendingOnly) inScope.filter { it.occurrence.invitation == InvitationState.UNKNOWN }
+            .map { CalendarCoverage(it.occurrence.ref.calendarId, CoverageReason.INVITATION_CLASSIFICATION_UNKNOWN) } else emptyList()
+        val eligible = inScope.filter { !pendingOnly || it.occurrence.invitation == InvitationState.PENDING }
+            .distinctBy { it.occurrence.ref }.sortedWith(compareBy<CalendarSearchHit> { it.occurrence.ref.instanceStart }
             .thenBy { it.occurrence.ref.calendarId.value }.thenBy { it.occurrence.ref.eventId }
             .thenBy { it.occurrence.ref.instanceEnd }.thenBy { it.occurrence.ref.recurrence?.masterEventId }
             .thenBy { it.occurrence.ref.recurrence?.originalStart })
-        return snapshot.copy(hits = eligible.take(request.limit), truncated = snapshot.truncated || eligible.size > request.limit)
+        return snapshot.copy(hits = eligible.take(request.limit), coverage = (snapshot.coverage + unknownCoverage).distinct(),
+            truncated = snapshot.truncated || eligible.size > request.limit)
     }
 }

@@ -47,6 +47,12 @@ internal fun PhoneSettingsGeneral(
             HorizontalDivider()
         }
         item {
+            PhoneSettingsRow(stringResource(R.string.invitation_filter_title),
+                phoneSettingsChoiceLabel(PhoneSettingEditor.INVITATION_FILTER, options.invitationFilter.name),
+                "phone_settings_row_invitations", !busy) { onOpen(PhoneSettingEditor.INVITATION_FILTER) }
+            HorizontalDivider()
+        }
+        item {
             PhoneSettingsRow(stringResource(R.string.phone_settings_duration), pluralStringResource(R.plurals.settings_minutes, options.defaultDurationMinutes, options.defaultDurationMinutes),
                 "phone_settings_row_duration", !busy) { onOpen(PhoneSettingEditor.DURATION) }
         }

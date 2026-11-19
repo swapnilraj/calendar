@@ -42,7 +42,8 @@ class PhoneSettingsWorkflowTest {
                 onClose = { closes++ }, onChooseDefaultCalendar = {}, onOpenReminders = null)
         } }
         compose.onNodeWithTag("phone_settings_open_general").performClick()
-        compose.onNodeWithTag("phone_settings_row_duration").performScrollTo().performClick()
+        compose.onNodeWithTag("phone_settings_general_list").performScrollToNode(hasTestTag("phone_settings_row_duration"))
+        compose.onNodeWithTag("phone_settings_row_duration").performClick()
         compose.onNodeWithTag("phone_settings_editor_input").performTextReplacement("unfinished")
         compose.runOnIdle { preferences = CalendarPreferenceState.Loading }
         compose.onNodeWithText(RuntimeEnvironment.getApplication().getString(R.string.navigation_preferences_loading)).assertIsDisplayed()

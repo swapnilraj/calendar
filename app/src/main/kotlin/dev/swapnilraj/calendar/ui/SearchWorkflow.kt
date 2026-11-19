@@ -10,17 +10,18 @@ import java.time.ZoneId
 @Composable
 internal fun SearchWorkflow(port: CalendarSearch, selection: CalendarSelection, zone: ZoneId, includeDeclined: Boolean,
     query: String, range: CalendarDateRange, onQueryChange: (String) -> Unit, onRangeChange: (CalendarDateRange) -> Unit,
-    onChooseCalendars: () -> Unit, onOpen: (CalendarSearchHit) -> Unit, onDismiss: () -> Unit) {
+    onChooseCalendars: () -> Unit, onOpen: (CalendarSearchHit) -> Unit, onDismiss: () -> Unit,
+    invitationFilter: InvitationFilter = InvitationFilter.ALL) {
     val scope = rememberCoroutineScope()
     val controller = remember(port) {
-        SearchController(scope, port, CalendarRequest(range, zone, selection), includeDeclined).also { it.setQuery(query) }
+        SearchController(scope, port, CalendarRequest(range, zone, selection, invitationFilter), includeDeclined).also { it.setQuery(query) }
     }
     DisposableEffect(controller) { onDispose { controller.close() } }
-    LaunchedEffect(controller, selection, zone, includeDeclined) { controller.updateContext(selection, zone, includeDeclined) }
+    LaunchedEffect(controller, selection, zone, includeDeclined, invitationFilter) { controller.updateContext(selection, zone, includeDeclined, invitationFilter) }
     LaunchedEffect(controller, query) { controller.setQuery(query) }
     LaunchedEffect(controller, range) { controller.setRange(range) }
     val state by controller.state.collectAsStateWithLifecycle()
-    val shown = searchStateForContext(state, query, range, selection, zone, includeDeclined)
+    val shown = searchStateForContext(state, query, range, selection, zone, includeDeclined, invitationFilter)
     SearchSheet(shown,
         onQueryChange = { controller.setQuery(it); onQueryChange(it) },
         onRangeChange = { controller.setRange(it); onRangeChange(it) },
@@ -29,15 +30,17 @@ internal fun SearchWorkflow(port: CalendarSearch, selection: CalendarSelection, 
         onOpenEvent = { ref ->
             val current = controller.state.value
             if (current.query == query && current.calendar.range == range && current.calendar.selection == selection &&
-                current.calendar.displayZone == zone && current.includeDeclined == includeDeclined)
+                current.calendar.displayZone == zone && current.includeDeclined == includeDeclined &&
+                current.calendar.invitationFilter == invitationFilter)
                 current.hits.firstOrNull { it.occurrence.ref == ref }?.let(onOpen)
         }, onDismiss = onDismiss)
 }
 
 /** Hide old private rows in the composition that precedes the controller's context-update effect. */
 internal fun searchStateForContext(state: SearchUiState, query: String, range: CalendarDateRange,
-    selection: CalendarSelection, zone: ZoneId, includeDeclined: Boolean): SearchUiState {
-    val calendar = CalendarRequest(range, zone, selection)
+    selection: CalendarSelection, zone: ZoneId, includeDeclined: Boolean,
+    invitationFilter: InvitationFilter = InvitationFilter.ALL): SearchUiState {
+    val calendar = CalendarRequest(range, zone, selection, invitationFilter)
     if (state.query == query && state.calendar == calendar && state.includeDeclined == includeDeclined) return state
     val status = when {
         query.isBlank() -> SearchStatus.EMPTY_QUERY

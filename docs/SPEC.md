@@ -459,6 +459,15 @@ complete selected local window with no known or possible conflict may report tha
 This pure contract activates no UI/native read adapter and grants no save authority or coworker
 availability claim; later adapters must mask invalidated or permission-lost contexts immediately.
 
+The native selected-calendar advisory reader pins full calendar identities and requests ALL
+invitations with declined rows included, independently of display, widget and reminder filters.
+It shares provider invalidation and emits Loading before guarded IO for each invalidation. Canonical
+raw calendar authority and batched occupancy metadata are checked through two range/metadata passes
+under one bounded attempt budget. Unknown observations remain possible; partial, unsupported or
+unavailable reads never certify clear time. Complete coverage describes the selected local provider
+window only. This read port activates no UI, save authority, coworker availability or cloud guarantee;
+permission loss without a provider notification still requires lifecycle masking and refresh.
+
 ### M8 — Search, preferences and Android entry points
 
 Search title/location/description with cancellation/debounce and calendar filters. Default range is
@@ -854,6 +863,14 @@ contract adds no visible control or live-view filtering until the separate prese
 
 ## Phone Settings and General
 
+General → Invitations offers All events (the default) and Pending invitations only through the
+typed app-local preference. The choice applies to calendar views and search; a changed search context
+immediately masks stale hits and rejects old-context clicks. Only confirmed pending invitations
+appear in pending-only results. UNKNOWN classification retains coverage and qualifies empty results.
+Reminder, widget and direct-link reads keep independent ALL requests. Calendar selection, declined
+controls, preference readiness and existing privacy/source masking remain in force. Recreating the
+app retains the filter; provider rows, visibility and synchronization settings are unchanged.
+
 The drawer opens full-height Settings → General for existing supported preferences. Grouped
 rows/switches and focused in-place choice/numeric/zone editors replace the production bulk sheet;
 legacy component fixtures retain their sheet API. Current persisted view is labelled View. Home
@@ -927,3 +944,25 @@ for its timed summary, alongside display zone; this formatting does not change n
 This packet supplies injected presentation only. Production details/browser routes and Google/Workspace
 response delivery need separate integration and acceptance. Unwired browser cases are retained for
 that integration rather than skipped as successful presentation tests.
+
+
+## Isolated whole-series graph duration receipt contract
+
+The independent `SERIES_GRAPH_DURATION_V1` family uses receipt version 1 and the fingerprint
+prefix `series-graph-duration-v1:`. Its explicit command contains only the selected recurring
+reference, exact source token and a positive whole-second timed duration or positive whole-day
+all-day duration. Issued execution capability defaults to UNKNOWN; readable source and a complete
+semantic graph proof do not grant write authority.
+
+The strict codec binds the exact unchanged canonical sourceV1 bytes, command, complete calendar
+namespace including provider ID, all live membership, moved/cancelled exception identities and
+actual bounds, unchanged child sets and raw exclusions. It recomputes the bounded recurrence graph
+proof and derives an expected postimage changing only the existing master DURATION. Every exception
+and all other raw fields remain exact. Native all-day boundaries and year limits, original-selected
+source-duration bounds, strict phase/acknowledgement evidence and worst committed-envelope limits
+are validated before a receipt can be created or adopted. RDATE/EXRULE temporal changes remain closed.
+
+This is an inert command/port and receipt codec only. No provider executor, editor/frozen-submission
+activation, retirement branch, native authority, clone profile or schema change is enabled. Existing
+WholeEdit guards, sourceV1 bytes, legacy fingerprints and numeric/frozen/receipt families are not
+reinterpreted or migrated. Provider, account and device acceptance remain separate gates.
