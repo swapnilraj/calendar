@@ -608,10 +608,16 @@ The bounded series backend admits only scopes supported by complete fresh source
 identity, current ACL/capability and the injected provider policy. The production clone policy remains
 unverified and admits no clone-dependent scope. This publication does not wire a UI action.
 THIS/ALL edit/delete and FOLLOWING delete preserve their existing bounded planner and journal rules;
-FOLLOWING edit remains closed in this packet. Unsupported or incomplete recurrence requires review.
+Unsupported or incomplete recurrence requires review.
 
-This is the legacy series protocol: recovery can depend on its stored source and current planner.
-It does not establish source-free frozen Following3 execution, complete child-acknowledgement proof,
+THIS/ALL edits and scoped deletes retain the legacy series protocol: recovery can depend on stored
+source and current planning. New exception-free FOLLOWING edits use the privately versioned
+[frozen Following3 protocol](FOLLOWING_EXECUTION_RECEIPT3.md): immutable winning native plan/UID,
+complete indexed count/insert acknowledgements, guarded child reads and READ-only known-commit
+recovery. Existing legacy Following2 operations retain their bytes and conservative protocol; no
+silent migration or replay of uncertain attempted writes occurs. Nonzero splits still require an
+explicitly verified injected clone policy and an issued prefix UID or sync identity; the production
+default remains unverified. Ordinal-zero in-place eligibility is unchanged. This does not establish
 EXDATE/exception transfer or Google/Workspace propagation. Permanent retirement fences bind exact
 operation/fingerprint; unsupported families and unknown phases fail closed without provider dispatch.
 Synthetic provider tests are local evidence only, not installed-provider certification.

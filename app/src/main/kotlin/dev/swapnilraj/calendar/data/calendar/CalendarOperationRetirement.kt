@@ -22,9 +22,9 @@ class CalendarOperationRetirement(
             try {
                 currentCoroutineContext().ensureActive()
                 // Only shipped ordinary/scoped-series encoders can bind a permanent tombstone.
-                // Following edits, ordinary recurring edits and meeting families stay closed.
+                // Ordinary recurring edits and meeting families stay closed.
                 when (request) {
-                    is RetirableOperation.Series -> if (request.command is SeriesCommand.FollowingEdit) return@withContext OperationRetirementResult.Unsupported
+                    is RetirableOperation.Series -> Unit
                     is RetirableOperation.Create -> Unit
                     is RetirableOperation.Update -> if (request.ref.recurrence != null) return@withContext OperationRetirementResult.Unsupported
                     is RetirableOperation.Delete -> if (request.ref.recurrence != null) return@withContext OperationRetirementResult.Unsupported

@@ -9,7 +9,7 @@ import java.time.*
 
 /** Bounded SQL fixture for scoped-series transactions and DAILY/WEEKLY first-instance checks.
  * Synthetic expansion/cache behavior is a regression model, not installed-provider or sync proof. */
-internal class ScopedSeriesSqlProvider : ContentProvider() {
+internal open class ScopedSeriesSqlProvider : ContentProvider() {
     var allowUpdates=false
     var expandInstances=false
     var cacheExpandedTemporalRows=false

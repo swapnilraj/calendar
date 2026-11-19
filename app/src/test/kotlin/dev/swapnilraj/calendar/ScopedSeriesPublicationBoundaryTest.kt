@@ -31,6 +31,7 @@ class ScopedSeriesPublicationBoundaryTest {
     }
     @Test fun publishedScopeGoldenFingerprintsFenceLateWorkersBeforePermissionOrSourceReads()=runBlocking{fixture(false){f->
         val commands=listOf(
+            Triple(following,"SERIES_V1_FOLLOWING_EDIT","""{"type":"following","expected":{"instant":"2028-01-04T09:00:00Z"},"patch":{},"duration":"keep","rule":{},"selectedPatch":{}}"""),
             Triple(whole,"SERIES_V1_ALL_EDIT","""{"type":"whole","expected":{"local":"2028-01-03T09:00","zone":"UTC","offset":null},"patch":{"title":"Frozen"},"duration":"keep","rule":{}}"""),
             Triple(SeriesCommand.OccurrenceEdit(EventPatch(title=FieldChange.Set("Frozen"))),"SERIES_V1_THIS_EDIT","""{"type":"this","patch":{"title":"Frozen"}}"""),
             Triple(SeriesCommand.Delete(RecurrenceScope.ALL),"SERIES_V1_ALL_DELETE","""{"type":"delete","scope":"ALL"}"""),
@@ -46,28 +47,29 @@ class ScopedSeriesPublicationBoundaryTest {
         }
         assertTrue(f.provider.calls.isEmpty())
     }}
-    @Test fun followingEditIsUnsupportedUnretirableAndCannotCreateAJournal()=runBlocking{fixture(false){f->
-        assertTrue(f.writer.mutate("closed",selected,token,following) is SeriesMutationResult.Unsupported)
+    @Test fun followingRetirementFencesTheLateWorkerBeforePermissionsOrSourceReads()=runBlocking{fixture(false){f->
         val request=RetirableOperation.Series("closed",selected,token,following)
-        assertEquals(OperationRetirementResult.Unsupported,f.retirement.inspect(request));assertEquals(OperationRetirementResult.Unsupported,f.retirement.retire(request))
-        assertNull(f.store.operationHeader("closed"));assertTrue(f.provider.calls.isEmpty())
+        assertEquals(OperationRetirementResult.Retired("closed"),f.retirement.retire(request))
+        assertEquals(common(MutationResult.Retired("closed")),f.writer.mutate("closed",selected,token,following))
+        assertEquals(common(MutationResult.Retired("closed")),f.writer.recover("closed"));assertTrue(f.provider.calls.isEmpty())
     }}
     @Test fun unknownFollowingReceiptsNeverOfferRetryReadPayloadOrReplay()=runBlocking{fixture(true){f->
         val(kind,hash)=CalendarSeriesWriter.retirementFingerprint(selected,token,following)
         for(phase in listOf("PREPARED","FAILED","ATTEMPTED","COMMITTED","VERIFIED")){
             val id="closed-$phase";f.store.prepare(id,hash,kind)
-            f.store.forceOperationForTest(id,phase,if(phase=="PREPARED")null else "Opaque unshipped receipt")
+            f.store.forceOperationForTest(id,phase,null)
             val before=f.store.operation(id)
             assertEquals(common(MutationResult.Uncertain(id,null)),f.writer.recover(id))
-            assertTrue(f.writer.mutate(id,selected,token,following) is SeriesMutationResult.Unsupported)
+            assertEquals(common(MutationResult.Uncertain(id,null)),f.writer.mutate(id,selected,token,following))
             assertEquals(before,f.store.operation(id))
-            assertEquals(OperationRetirementResult.Unsupported,f.retirement.retire(RetirableOperation.Series(id,selected,token,following)))
+            val expected=when(phase){"PREPARED","FAILED"->OperationRetirementResult.Retired(id);"ATTEMPTED"->OperationRetirementResult.Blocked(id,RetirementBlockReason.MAY_HAVE_DISPATCHED);else->OperationRetirementResult.Blocked(id,RetirementBlockReason.RECORDED_COMMIT)}
+            assertEquals(expected,f.retirement.retire(RetirableOperation.Series(id,selected,token,following)))
         }
         assertTrue(f.provider.calls.isEmpty())
     }}
     @Test fun seriesRetirementRacesOnlyTheExactAttemptAndCannotBeResurrected()=runBlocking{fixture(false){f->
         val other=CalendarLocalStore(f.context,f.store.databaseName)
-        try{for((index,command)in listOf<SeriesCommand>(whole,SeriesCommand.OccurrenceEdit(EventPatch(title=FieldChange.Set("Frozen"))),SeriesCommand.Delete(RecurrenceScope.FOLLOWING)).withIndex()){
+        try{for((index,command)in listOf<SeriesCommand>(following,whole,SeriesCommand.OccurrenceEdit(EventPatch(title=FieldChange.Set("Frozen"))),SeriesCommand.Delete(RecurrenceScope.FOLLOWING)).withIndex()){
             val id="race-$index";val(kind,hash)=CalendarSeriesWriter.retirementFingerprint(selected,token,command);f.store.prepare(id,hash,kind)
             val prepared=f.store.operation(id)!!;val gate=CompletableDeferred<Unit>()
             val attempt=async(Dispatchers.Default){gate.await();f.store.attempt(prepared)}
@@ -93,6 +95,8 @@ class ScopedSeriesPublicationBoundaryTest {
             assertEquals(AccessDecision.UNKNOWN,edit.scopes.getValue(RecurrenceScope.FOLLOWING).recurrence)
             assertEquals(AccessDecision.ALLOWED,edit.scopes.getValue(RecurrenceScope.FOLLOWING).delete)
             fun rows():Int= p.query(CalendarContract.Instances.CONTENT_URI.buildUpon().appendPath("${start.minusSeconds(1).toEpochMilli()}").appendPath("${start.plusSeconds(10*86400).toEpochMilli()}").build(),arrayOf("event_id","begin","end"),null,null,null).use{it.count}
+            assertTrue(writer.mutate("unverified-tail",ref,edit.token,SeriesCommand.FollowingEdit(RecurrenceEditIntent.FollowingSeriesEdit(RecurrenceKey.Timed(ref.instanceStart)))) is SeriesMutationResult.PlanningReview)
+            assertNull(store.operation("unverified-tail"));assertEquals(1,p.batchCount)
             assertEquals(8,rows());p.batchCount=0
             assertTrue(writer.mutate("truncate",ref,edit.token,SeriesCommand.Delete(RecurrenceScope.FOLLOWING)) is SeriesMutationResult.LocalDeleted)
             assertEquals(2,rows());assertEquals(1,p.batchCount)
