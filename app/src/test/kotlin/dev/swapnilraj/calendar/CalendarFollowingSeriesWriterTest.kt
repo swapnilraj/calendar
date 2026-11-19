@@ -131,6 +131,30 @@ class CalendarFollowingSeriesWriterTest {
         assertEquals("VERIFIED",f.store.operation("split")!!.phase)
     }}
 
+    @Test fun titleOnlyFollowingSplitPreservesDistinctAndNullEndZones()=runBlocking {
+        val losses=mutableListOf<String>()
+        for(endZone in listOf("America/New_York",null))fixture(providerClonePolicy=SyntheticCloneProviderPolicy){f->
+            f.p.db.execSQL("UPDATE events SET eventEndTimezone=? WHERE _id=1",arrayOf(endZone))
+            val before=event(f.p,1)
+            if(endZone!=null){
+                assertEquals("Distinct end zones are explicitly unsupported before editing",SeriesReadResult.Denied(MutationDenial.UNSUPPORTED_EVENT),f.writer.loadForEdit(f.selected))
+                assertEquals(before,event(f.p,1));assertEquals(0,f.p.batchCount)
+                return@fixture
+            }
+            val edit=f.editable()
+            assertEquals(AccessDecision.ALLOWED,edit.scopes.getValue(RecurrenceScope.FOLLOWING).edit)
+            val outcome=f.writer.mutate("end-zone",f.selected,edit.token,command(edit,EventPatch(title=FieldChange.Set("Tail title"))))
+            assertTrue("Title-only split must be admitted by the explicit synthetic policy: $outcome",outcome is SeriesMutationResult.LocalSaved)
+            val saved=outcome as SeriesMutationResult.LocalSaved
+            val prefix=event(f.p,1);val tail=event(f.p,saved.identity.masterEventId)
+            assertEquals("Prefix changes only its recurrence limit",before.filterKeys{it!="rrule"},prefix.filterKeys{it!="rrule"})
+            assertEquals("Tail title",tail["title"]);assertEquals(before["eventTimezone"],tail["eventTimezone"])
+            if(before["eventEndTimezone"]!=tail["eventEndTimezone"])losses+="source=$endZone tail=${tail["eventEndTimezone"]}"
+            assertEquals(1,f.p.batchCount)
+        }
+        assertTrue("Metadata-only split must preserve raw end zone: $losses",losses.isEmpty())
+    }
+
     @Test fun literalUntilAndIndependentChangedLimitRemainExact()=runBlocking{fixture{f->
         val raw="WKST=SU;FREQ=DAILY;UNTIL=20261125T103017Z"
         f.p.db.execSQL("UPDATE events SET rrule = ?",arrayOf(raw));val edit=f.editable()
