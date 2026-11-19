@@ -226,8 +226,19 @@ class CalendarReader(
     internal fun <T> observeProviderReads(block: suspend () -> T): Flow<CalendarReadState<T>> =
         changes.mapLatest { guarded(readBudgets.search, block) }.onStart { emit(CalendarReadState.Loading) }
 
+    /** Advisory reads mask their previous value before every invalidation's guarded IO. */
+    internal fun <T> observeInvalidatingProviderReads(block: suspend () -> T): Flow<CalendarReadState<T>> =
+        changes.transformLatest {
+            emit(CalendarReadState.Loading)
+            emit(guarded(readBudgets.search, block))
+        }.onStart { emit(CalendarReadState.Loading) }
+
     internal suspend fun searchCalendars(beforeQuery: () -> Unit): List<CalendarInfo> =
         withFreshReadBudget(readBudgets.calendars) { queryCalendars(beforeQuery) }
+
+    /** Advisory joins charge repeated metadata materialization to their active attempt budget. */
+    internal suspend fun conflictCalendars(beforeQuery: () -> Unit): List<CalendarInfo> =
+        withReadBudget(readBudgets.calendars) { queryCalendars(beforeQuery) }
 
     internal suspend fun searchPage(request: CalendarRequest, calendars: List<CalendarInfo>, maxRows: Int,
         beforeQuery: () -> Unit): CalendarOccurrencePage {
