@@ -612,6 +612,20 @@ by this publication. These are local provider guarantees, not Google/Workspace s
 scoped-edit admission, provider-clone certification or physical-device acceptance. Live recurring-create
 UI activation is a separate packet and remains disabled by default here.
 
+## Native meeting adapter publication
+
+Injected native meeting adapters preserve their existing asserted writes, durable frozen commands,
+exact identities, conflict and uncertain-outcome behavior. Owned meeting edits retain unknown metadata
+and opaque guests. Imported/generated recurrence scopes require issued source rights and the existing
+provider-clone admission policy; publishing adapters does not admit a new provider. Retrying an unknown
+create or inferring invitation/server delivery from a device-local save remains forbidden.
+
+Meeting retirement uses the exact meeting fingerprint encoders while the already-published ordinary
+recurring UPDATE/DELETE retirement safety gate remains closed. Meeting-authored time validation may
+use its own provider-zone check without changing existing ordinary validation or receipt protocols.
+This adapter packet is not production CalendarApp/meeting-route wiring, account acceptance, a schema
+migration or an ordinary receipt4 migration.
+
 ## Complete series source reading
 
 The backend series source adapter reads the complete bounded master/exception/child graph
@@ -701,18 +715,3 @@ substituting successful empty results. It never enumerates account directories, 
 uses network services or logs contact payloads. This source-only packet does not connect a picker,
 request a runtime permission or enable guest changes; those application routes require separate
 composition and retained-draft verification.
-
-
-## Native meeting adapter publication
-
-Injected native meeting adapters preserve their existing asserted writes, durable frozen commands,
-exact identities, conflict and uncertain-outcome behavior. Owned meeting edits retain unknown metadata
-and opaque guests. Imported/generated recurrence scopes require issued source rights and the existing
-provider-clone admission policy; publishing adapters does not admit a new provider. Retrying an unknown
-create or inferring invitation/server delivery from a device-local save remains forbidden.
-
-Meeting retirement uses the exact meeting fingerprint encoders while the already-published ordinary
-recurring UPDATE/DELETE retirement safety gate remains closed. Meeting-authored time validation may
-use its own provider-zone check without changing existing ordinary validation or receipt protocols.
-This adapter packet is not production CalendarApp/meeting-route wiring, account acceptance, a schema
-migration or an ordinary receipt4 migration.
