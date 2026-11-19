@@ -611,8 +611,7 @@ Following-disable variant must not replace the aggregate's Following3 implementa
 
 Field-only phone-preference persistence is integrated as `ec8664f`: 18 focused checks pass in 14s,
 including independent concurrent edits, exact preservation of unrelated unknown/malformed values,
-compound timezone/reminder changes, invalid input and IO/cancellation behavior. New Settings/General
-components and host wiring are in progress, not yet accepted by screenshots or the complete gate.
+compound timezone/reminder changes, invalid input and IO/cancellation behavior. The subsequent connected Settings/General packet below passes screenshots and the complete2,320 gate.
 
 
 ### Phone Settings/General integrated — complete gate passed
@@ -641,7 +640,28 @@ unconfirmed while the task artifact endpoint is unavailable.
 
 
 The separate readonly retained-fixture inspection packet `671dfea` has34 mocked host tests passing
-and a reviewed three-query/no-cleanup branch. Its native pair compilation is in progress; no device
-execution or cleanup is authorized by that source result alone. The connected28-file phone-settings
+and a reviewed three-query/no-cleanup branch. Its native pair compiled in36s; the later bounded read-only execution below passed, without cleanup. The connected28-file phone-settings
 publication is prepared on merged `8ccdf74`, with selective Live wiring/test changes rather than
-copying the aggregate tree; its own52-check publication run is queued.
+copying the aggregate tree; its own52-check publication run passed53s at `39c17b5` with existing PNGs
+verified and all12 original Live tests retained. Two zero-test environment failures (incomplete system
+JDK, then missing SDK environment) are preserved; complete JDK helper plus explicit ANDROID_HOME fixed
+them without code changes. Draft [PR71](https://github.com/swapnilraj/calendar/pull/71) is open with CI
+running. Its attachment request is unconfirmed because the artifact endpoint did not respond.
+
+
+### Retained native fixture read-only capture passed
+
+The [owned API-35 inspection](audit/evidence/native-abandoned-fixture-readonly-api35-2026-11-19.json)
+completed in119.677s using reviewed/frozen `671dfea` APKs. Both guarded updates, all7 outer device
+checks, exact old/new PID absence proofs and provider descriptor checks passed. Exact calendar1's
+namespace matched and Events membership was0. Three direct queries left the reviewed manifest/DB
+hashes unchanged, no WAL/SHM and an empty journal. Typed native capabilities include owner700,
+alert method1/max2, timezone modification1, availability0/1/2, UTC, visible0 and syncEvents1.
+No permission commands, event writes, cleanup, replay, adoption or kill occurred. The fixture remains
+retained. PASS means completed read-only capture, not six-case app-writer, Google/Workspace or release
+acceptance. A fresh identity/six-case protocol is being planned with new fixture/operation IDs.
+
+Receipt4 EXDATE bridge source is isolated at `739ab86` on its approved lead contract, not integrated.
+Lead review added strict metadata clock/zone/WHOLE-context invariants and metadata-only capabilities
+for nonempty exclusions. Its195-check focus is in progress; no implementation/native acceptance is
+claimed from that pending run. Moved/cancelled exception graph transfer remains separate.

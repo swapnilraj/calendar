@@ -1,0 +1,158 @@
+{
+  "durationSeconds": 119.677,
+  "fixtureDisposition": "RETAINED_UNCHANGED",
+  "fixtureRunId": "bf8af411-bef6-4a2d-a923-0e5a98bb44df",
+  "guardResults": {
+    "initial.guard.json": "PASS",
+    "inspection-after.guard.json": "PASS",
+    "inspection-before.guard.json": "PASS",
+    "install-1-after.guard.json": "PASS",
+    "install-1-before.guard.json": "PASS",
+    "install-2-after.guard.json": "PASS",
+    "install-2-before.guard.json": "PASS"
+  },
+  "inspection": {
+    "calendarId": 1,
+    "capabilities": {
+      "accessLevel": {
+        "state": "INTEGER",
+        "value": 700
+      },
+      "allowedAttendeeTypes": {
+        "state": "INTEGERS",
+        "values": [
+          0,
+          1,
+          2
+        ]
+      },
+      "allowedAvailability": {
+        "state": "INTEGERS",
+        "values": [
+          0,
+          1,
+          2
+        ]
+      },
+      "allowedReminders": {
+        "state": "INTEGERS",
+        "values": [
+          1
+        ]
+      },
+      "canModifyTimeZone": {
+        "state": "INTEGER",
+        "value": 1
+      },
+      "maxReminders": {
+        "state": "INTEGER",
+        "value": 2
+      },
+      "providerUidPresent": false,
+      "syncEvents": {
+        "state": "INTEGER",
+        "value": 1
+      },
+      "timeZoneIsUtc": true,
+      "visible": {
+        "state": "INTEGER",
+        "value": 0
+      }
+    },
+    "cleanup": "NOT_AVAILABLE_IN_THIS_MODE",
+    "databaseSha256": "b238f636911977ba36b3e0115f7960cdc66bb3cc0f5cf3b2f57f5dd826ff7f22",
+    "directQueryCount": 3,
+    "emptyMembership": true,
+    "eventCount": 0,
+    "eventRowCap": 16,
+    "fixtureRunId": "bf8af411-bef6-4a2d-a923-0e5a98bb44df",
+    "journalEmpty": true,
+    "manifestAssertions": 0,
+    "manifestCaseCount": 0,
+    "manifestPhase": "CREATING",
+    "manifestQueries": 5,
+    "manifestSha256": "8ba9f1684e12e54a67f105315a6633ae1a40bad4becf42ef77a562338bf497e1",
+    "namespaceMatched": true,
+    "privateFilesUnchanged": true,
+    "privateMutations": 0,
+    "providerMutations": 0,
+    "queryTimeoutSeconds": 30,
+    "readGranted": true,
+    "shmAbsent": true,
+    "walAbsent": true
+  },
+  "permissionCommandsCleanupReplayAdoptionKill": "NOT_RUN",
+  "pidExitProofs": {
+    "inspection.target-exit.json": {
+      "observations": [
+        "REPORTED_PID_ABSENT"
+      ],
+      "returncodes": [
+        1
+      ],
+      "status": "TARGET_PID_ABSENT",
+      "targetProcess": {
+        "name": "dev.swapnilraj.calendar",
+        "pid": 7414,
+        "startElapsedRealtime": 8866969
+      }
+    },
+    "old-create-before-install.target-exit.json": {
+      "observations": [
+        "REPORTED_PID_ABSENT"
+      ],
+      "returncodes": [
+        1
+      ],
+      "status": "TARGET_PID_ABSENT",
+      "targetProcess": {
+        "name": "dev.swapnilraj.calendar",
+        "pid": 6312,
+        "startElapsedRealtime": 4659615
+      }
+    },
+    "old-create.target-exit.json": {
+      "observations": [
+        "REPORTED_PID_ABSENT"
+      ],
+      "returncodes": [
+        1
+      ],
+      "status": "TARGET_PID_ABSENT",
+      "targetProcess": {
+        "name": "dev.swapnilraj.calendar",
+        "pid": 6312,
+        "startElapsedRealtime": 4659615
+      }
+    }
+  },
+  "providerDescriptorUnchanged": true,
+  "resultSha256": "4a17b784eb4e34f794b1268e88791c840cacb18be3e0ee7d14204b8ab709d6c8",
+  "runId": "5ce602b8-4fe2-458c-ab24-51eeab3f1480",
+  "scope": "COMPLETED_BOUNDED_READONLY_CAPTURE_NOT_CLEANUP_AUTHORITY",
+  "sourceCommit": "671dfea7e13fc90f9accc1e944e13621289bd78b",
+  "status": "PASS",
+  "twoInstallReturncodes": {
+    "1": {
+      "hostAdbProcessExited": true,
+      "returncode": 0,
+      "seconds": 10.014
+    },
+    "2": {
+      "hostAdbProcessExited": true,
+      "returncode": 0,
+      "seconds": 15.009
+    }
+  },
+  "leadReview": {
+    "summarySha256": "734ed98fc920ef6f01b1c2be515a5aa696e05188bc1c5707be019f036c930506",
+    "resultSha256Recomputed": "4a17b784eb4e34f794b1268e88791c840cacb18be3e0ee7d14204b8ab709d6c8",
+    "pairMetadataSha256": "8ec5b88ba9a1c05badb45522bf3db1cef2195fd1a7a94593a4719f7e057a1cd1",
+    "appApkSha256": "820517167a45894d2d0f0d6ef9063d54139e089095ae9333a240bada8879debb",
+    "testApkSha256": "19e87739c1a8ab05cc88cc88cd5f438b58cc966b26f0c54884549567e78d8490",
+    "bothSignaturesVerified": true,
+    "signerSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278",
+    "appWriterSixCaseProtocol": "NOT_RUN_WITH_THIS_PAIR",
+    "fixtureCleanup": "NOT_RUN"
+  }
+}
