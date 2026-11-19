@@ -1,0 +1,22 @@
+<resources>
+    <string name="guest_picker_title">Add people</string>
+    <string name="guest_picker_back">Back</string>
+    <string name="guest_picker_search">Name or email address</string>
+    <string name="guest_picker_clear">Clear search</string>
+    <string name="guest_picker_add_email">Add email to draft</string>
+    <string name="guest_picker_manual_help">You can enter an email without contacts access. Review names and roles in the meeting editor. Adding people here does not save the meeting.</string>
+    <string name="guest_picker_enable_contacts">Search device contacts</string>
+    <string name="guest_picker_permission_help">Contacts access is unavailable. You can still enter email addresses.</string>
+    <string name="guest_picker_permission_retry">Allow contacts access</string>
+    <string name="guest_picker_loading">Searching device contacts…</string>
+    <string name="guest_picker_no_results">No matching email addresses</string>
+    <string name="guest_picker_results">Device contact results</string>
+    <string name="guest_picker_added">Already in this draft</string>
+    <string name="guest_picker_refine">More matches are available. Refine your search.</string>
+    <string name="guest_picker_unavailable">Contacts could not be searched. You can still enter an email address.</string>
+    <string name="guest_picker_invalid_query">Refine your search. You can still add an email to the draft.</string>
+    <string name="guest_picker_query_help">Type at least two characters to search device contacts.</string>
+    <string name="guest_picker_draft_rows">People added to this draft</string>
+    <string name="guest_picker_flush_failed">Latest entries could not be saved to the draft. Try Done again, or go back to review them.</string>
+    <string name="guest_picker_open">Search or enter email</string>
+</resources>

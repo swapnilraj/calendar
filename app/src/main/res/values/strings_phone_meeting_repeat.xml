@@ -1,0 +1,5 @@
+<resources>
+    <string name="phone_meeting_create_repeating">Repeating meeting</string>
+    <string name="phone_meeting_create_recurrence_invalid">Check the repeat pattern, dates, and times. The first repeat must match the meeting’s start.</string>
+    <string name="phone_meeting_create_recurrence_review">This repeat pattern needs further review. Your entries remain in this draft.</string>
+</resources>
