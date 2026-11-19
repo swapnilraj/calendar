@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "date": "2026-11-19",
+  "scope": "SDK35 isolated LOCAL reminder smoke; unknown calendar-create outcome retained",
+  "hostSource": "5d4e6946cbd417a94ca8072c01d50af29a0a91c6",
+  "apkSource": "2f02df949c430fbd829b7004bf6a102036297e4d",
+  "generationId": "e132aaa0-53c2-4325-a671-ccf3992eb8fd",
+  "runId": "6d8690ea-a001-4621-b1b2-b3f8273927b8",
+  "targetUid": 10217,
+  "testUid": 10218,
+  "metadataBaseline": "PASS_UNBOUND_NO_DATA",
+  "readyHandoff": "PASS_METADATA_ONLY_OLD_AND_NEW_PID_EXIT_DURABLE_CLOSURE",
+  "originalBaselineSha256": "c6da1015d1487c2f14b895058180e7d4c9155b8bcc825bc9cf007d1500d5f3a1",
+  "readyPreflightSha256": "3c065c2c907109702fd0ad07f8ba65c73a288112475f405b10ce38c167e3dae9",
+  "actualRun": {
+    "status": "FAIL",
+    "state": "FAILED_RETAINED",
+    "failureCode": "SMOKE_UNAVAILABLE_RETAINED",
+    "elapsedMillis": 13177,
+    "calendarId": null,
+    "eventId": null,
+    "failedAt": "CALENDAR_ATTEMPTED",
+    "nativeOutcome": "UNKNOWN_RETAINED",
+    "capture": {
+      "adbExitCode": 0,
+      "instrumentationCodes": [
+        0
+      ],
+      "late": false,
+      "schema": 1
+    }
+  },
+  "likelyHarnessDefect": "Calendar ACK parser rejected all query-bearing URIs although submitted calendar URI has sync-adapter/account query and provider may echo it; actual ACK unavailable, cause not conclusively established.",
+  "rollback": {
+    "schema": 1,
+    "status": "PERMISSION_ONLY_ROLLBACK_READBACK_VERIFIED",
+    "uid": 10217,
+    "originalBaselineSha256": "c6da1015d1487c2f14b895058180e7d4c9155b8bcc825bc9cf007d1500d5f3a1",
+    "readyPreflightSha256": "3c065c2c907109702fd0ad07f8ba65c73a288112475f405b10ce38c167e3dae9",
+    "failedRunSha256": "b5fbba0268f6efad9fd471e0149c2184d9005793e74dc86b1a33ce91641e4e4e",
+    "originalRuntimeFlagsMatch": true,
+    "runtimeFlags": {
+      "android.permission.READ_CALENDAR": {
+        "granted": false,
+        "flags": [
+          "USER_SENSITIVE_WHEN_DENIED",
+          "USER_SENSITIVE_WHEN_GRANTED"
+        ]
+      },
+      "android.permission.WRITE_CALENDAR": {
+        "granted": false,
+        "flags": [
+          "USER_SENSITIVE_WHEN_DENIED",
+          "USER_SENSITIVE_WHEN_GRANTED"
+        ]
+      },
+      "android.permission.POST_NOTIFICATIONS": {
+        "granted": false,
+        "flags": [
+          "USER_SENSITIVE_WHEN_DENIED",
+          "USER_SENSITIVE_WHEN_GRANTED"
+        ]
+      }
+    },
+    "normalSettingsExactSwitch": "OBSERVED_OFF",
+    "exactOpAllowed": false,
+    "rawExactOpModeEquality": "NOT_CLAIMED",
+    "failedPidAbsent": 14345,
+    "noProcess": true,
+    "retainedManifestSha256": "e62900b5d6441f029951ed634971eb47473e6c02fea82644b884c8681b25c133",
+    "providerData": "UNKNOWN_RETAINED_NO_LOOKUP_OR_CLEANUP",
+    "privateData": "RETAINED_MANIFEST_UNCHANGED",
+    "hostLedgerRestored": "NOT_CLAIMED_CONSUMED_RUN",
+    "publicApiCapabilitiesRestored": "NOT_PROVEN_NO_NEW_INSTRUMENTATION",
+    "alarmSnoozeAcceptance": "NOT_PASSED"
+  },
+  "artifactDirectory": "/tmp/daylight-smoke-guarded-sdk-e132aaa0-53c2-4325-a671-ccf3992eb8fd",
+  "artifactHashes": {
+    "03-original-preflight.json": "c6da1015d1487c2f14b895058180e7d4c9155b8bcc825bc9cf007d1500d5f3a1",
+    "03-original-preflight.json.lifecycle.json": "9c67a2f6b71931693d3ae8e26772e91dbace2e6ff31d38dcc8d4a68b9c518f83",
+    "08-ready-handoff.json": "3c065c2c907109702fd0ad07f8ba65c73a288112475f405b10ce38c167e3dae9",
+    "08-ready-handoff.json.lifecycle.json": "e5b1fef6ea0f613f146acc0545bde69dd5b069c5f83195082cd14d44dfa46f3c",
+    "09-real-smoke.json": "b5fbba0268f6efad9fd471e0149c2184d9005793e74dc86b1a33ce91641e4e4e",
+    "09-real-smoke.json.attempt.json": "3979429d351e5354069a4e2ff2b059d3c42960b5ae852395a8d6055dd49c4f1e",
+    "09-real-smoke.json.capture.json": "ef1e587c7d87d015eaa9c21b05fc6c135c9351a991a4e60965bb918a517aab13",
+    "10-failure-manifest-diagnostic.json": "9e8b834ab39629a9fd512015f8ab64b8ae263621baee812a180a0fd46e31d85c",
+    "13-runtime-permission-rollback.json": "00939148fd0d39dc6930d9cf4568cfa3b5af978f2786fd94ddf53f8c8be1a2e4",
+    "14-permission-only-rollback-summary.json": "c778ef01e9c65868a1f61608ed21ce7ee9cf64c22e999ceaa998be047e9f9e84"
+  },
+  "limits": [
+    "No alarm/snooze acceptance passed",
+    "No retry, lookup, adoption, provider cleanup, private cleanup, reset, or reinstall",
+    "Failed claim and exact manifest remain retained",
+    "No CLEAN or ledger RESTORED claimed",
+    "Full public API restored-capability snapshot not proven",
+    "No Google/Workspace, Doze, reboot, process-death, TalkBack or release acceptance"
+  ]
+}

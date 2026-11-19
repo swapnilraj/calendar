@@ -861,3 +861,20 @@ provider descriptor. Required dedicated signed-in account/device setup is reques
 [PR72](https://github.com/swapnilraj/calendar/pull/72) publishes the EXDATE metadata bridge: full CI
 passed5m8 at `48920ea`, merged as `d9452e4`. Attachment request remains unconfirmed because the task
 artifact endpoint did not respond. Month publication is the next bounded UI packet.
+
+
+### Reminder smoke retained failure and remaining implementation audit — 19 November
+
+The fresh SDK35 reminder generation passed its metadata baseline and durable prebind handoff, then
+actual RUN failed in13.177s at CALENDAR_ATTEMPTED with no acknowledged calendar/event ID. The
+calendar-create outcome remains unknown; no alarm or snooze delivery passed. The likely harness
+ACK-query admission defect is under a separate source fix, without retrying this consumed run.
+Normal Settings exact access was returned OFF and the original three runtime grant booleans/flags
+were verified restored. The failed journal remains unchanged; no provider/private cleanup, CLEAN,
+ledger RESTORED or full public-API restoration is claimed. See
+[audit evidence](audit/evidence/native-reminder-smoke-failed-calendar-ack-2026-11-19.json).
+
+The [new source audit](audit/DAILY_DRIVER_REMAINING_IMPLEMENTATION_2026-11-19.md) identifies seven
+implementation gaps beyond publication and external acceptance. Source completeness is not claimed.
+The last full aggregate gate remains2,408 checks at4e8cf57; subsequent canonical-date hardening has
+four focused checks passing and awaits a new combined gate. Account/device/beta/signing gates remain.
