@@ -10,6 +10,7 @@ import android.provider.CalendarContract
 import dev.swapnilraj.calendar.core.*
 import java.time.*
 import java.util.UUID
+import java.security.MessageDigest
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -626,6 +627,12 @@ internal class CalendarFollowingSeriesWriter(
     private fun permissions()=hasPermission(Manifest.permission.READ_CALENDAR)&&hasPermission(Manifest.permission.WRITE_CALENDAR)
     private fun ensureRead(){if(!hasPermission(Manifest.permission.READ_CALENDAR))throw SecurityException()}
     companion object{
+        private fun meetingHash(raw: String) = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+        private fun meetingRowJson(row: Map<String, String?>) = JSONObject().apply { row.toSortedMap().forEach { (key, value) -> put(key, value ?: JSONObject.NULL) } }
+        private fun meetingRow(json: JSONObject) = json.keys().asSequence().associateWith { if (json.isNull(it)) null else json.getString(it) }
+        private fun meetingIdentity(row: Map<String, String?>) = CalendarIdentity(CalendarId(requireNotNull(row["_id"]?.toLongOrNull())), CalendarAccount(row["account_name"].orEmpty(), row["account_type"].orEmpty()),
+            row["ownerAccount"]?.takeIf(String::isNotBlank), row["_sync_id"]?.takeIf(String::isNotBlank))
+
         private const val Kind="SERIES_V1_FOLLOWING_EDIT"
         private const val Feature="SERIES_FOLLOWING_EDIT_V2"
         fun handles(kind:String)=kind==Kind
