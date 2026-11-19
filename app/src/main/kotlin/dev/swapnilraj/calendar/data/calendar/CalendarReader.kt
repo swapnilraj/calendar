@@ -203,7 +203,8 @@ class CalendarReader(
                 else {
                     if (!calendar.providerVisible) add(CalendarCoverage(id, CoverageReason.PROVIDER_HIDDEN))
                     if (!calendar.syncEnabled) add(CalendarCoverage(id, CoverageReason.SYNC_DISABLED))
-                    if (calendar.accessLevel?.let { it < CalendarContract.Calendars.CAL_ACCESS_FREEBUSY } == true)
+                    if (calendar.accessLevel?.let { it < CalendarContract.Calendars.CAL_ACCESS_FREEBUSY } == true ||
+                        request.invitationFilter == InvitationFilter.PENDING_ONLY && calendar.capabilities.readDetails != AccessDecision.ALLOWED)
                         add(CalendarCoverage(id, CoverageReason.INSUFFICIENT_ACCESS))
                 }
             }
@@ -214,7 +215,11 @@ class CalendarReader(
         if (eligible.isEmpty()) return CalendarSnapshot(request, calendars, emptyList(), coverage)
         val page = queryOccurrences(request, byId, eligible)
         if (page.truncated) throw ProviderReadLimitExceeded()
-        return CalendarSnapshot(request, calendars, page.occurrences, coverage)
+        if (request.invitationFilter == InvitationFilter.ALL) return CalendarSnapshot(request, calendars, page.occurrences, coverage)
+        val unknown = page.occurrences.filter { it.invitation == InvitationState.UNKNOWN &&
+            byId[it.ref.calendarId]?.capabilities?.readDetails == AccessDecision.ALLOWED }
+            .map { CalendarCoverage(it.ref.calendarId, CoverageReason.INVITATION_CLASSIFICATION_UNKNOWN) }.distinct()
+        return CalendarSnapshot(request, calendars, page.occurrences.filter { it.invitation == InvitationState.PENDING }, (coverage + unknown).distinct())
     }
 
     /** Adapter reads share the existing root observer; no per-page observers or dormant jobs. */
@@ -230,6 +235,8 @@ class CalendarReader(
         val ids = (request.selection as? CalendarSelection.Explicit)?.ids ?: error("Search selection must be resolved")
         val byId = calendars.associateBy { it.id }
         check(ids.all { byId[it]?.capabilities?.readDetails == AccessDecision.ALLOWED })
+        // Search classifies fresh Events metadata after this unfiltered candidate page. Dropping
+        // UNKNOWN/answered Instances here would lose coverage or consume its result limit early.
         return queryOccurrences(request, byId, ids.sortedBy { it.value }, maxRows, beforeQuery, includeTitle = false)
     }
 
@@ -252,29 +259,38 @@ class CalendarReader(
                     currentCoroutineContext().ensureActive()
                     val id = CalendarId(cursor.requiredLong(CalendarContract.Instances.CALENDAR_ID))
                     if (id !in eligible) continue
-                    val occurrence = cursor.occurrence(byId[id], parents)
+                    val occurrence = cursor.occurrence(byId[id], parents, request.invitationFilter == InvitationFilter.PENDING_ONLY)
                     if (occurrence.time.intersects(request.range, request.displayZone)) add(occurrence)
                 }
             }
         }
-        val projected = if (includeTitle) instanceFields else instanceFields.filterNot { it == CalendarContract.Instances.TITLE }.toTypedArray()
+        val materialized = if (includeTitle && request.invitationFilter == InvitationFilter.PENDING_ONLY)
+            instanceFields + CalendarContract.Events.IS_ORGANIZER else instanceFields
+        val projected = if (includeTitle) materialized else materialized.filterNot { it == CalendarContract.Instances.TITLE }.toTypedArray()
         val occurrences = query(uri, projected, selection, eligible.map { it.value.toString() }.toTypedArray(),
             "${CalendarContract.Instances.BEGIN} ASC, ${CalendarContract.Instances.EVENT_ID} ASC", beforeQuery).use { cursor ->
-            MatrixCursor(instanceFields).use { bounded ->
+            MatrixCursor(materialized).use { bounded ->
                 // Bound raw rows BEFORE the sync-parent identity prepass or occurrence materialization.
                 while (cursor.moveToNext()) {
                     currentCoroutineContext().ensureActive()
                     if (scanned == rowLimit) { truncated = true; break }
                     scanned++
                     val id = CalendarId(cursor.requiredLong(CalendarContract.Instances.CALENDAR_ID))
-                    if (id in eligible) bounded.addRow(instanceFields.map { field -> if (!includeTitle && field == CalendarContract.Instances.TITLE) "" else cursor.text(field) }.toTypedArray())
+                    if (id in eligible) bounded.addRow(materialized.map { field -> if (!includeTitle && field == CalendarContract.Instances.TITLE) "" else cursor.text(field) }.toTypedArray())
                 }
                 if (truncated && includeTitle) throw ProviderReadLimitExceeded()
                 collect(bounded)
             }
-        }.distinctBy { it.ref }.sortedWith(compareBy<EventOccurrence> { it.ref.instanceStart }
-            .thenBy { it.ref.eventId }.thenBy { it.ref.calendarId.value })
-        return CalendarOccurrencePage(occurrences, scanned, truncated)
+        }
+        // Every authorized raw row contributes evidence before EventRef deduplication. A first
+        // answered or pending row must not hide contradictory or unknown duplicate evidence.
+        val coalesced = if (request.invitationFilter == InvitationFilter.PENDING_ONLY) {
+            occurrences.groupBy { it.ref }.values.map { rows ->
+                rows.first().copy(invitation = rows.map { it.invitation }.distinct().singleOrNull() ?: InvitationState.UNKNOWN)
+            }
+        } else occurrences.distinctBy { it.ref }
+        return CalendarOccurrencePage(coalesced.sortedWith(compareBy<EventOccurrence> { it.ref.instanceStart }
+            .thenBy { it.ref.eventId }.thenBy { it.ref.calendarId.value }), scanned, truncated)
     }
 
     suspend fun readDetails(ref: EventRef): CalendarReadState<EventDetails> = guarded(readBudgets.details) {
@@ -393,7 +409,7 @@ class CalendarReader(
         return result
     }
 
-    private fun Cursor.occurrence(calendar: CalendarInfo?, parents: Map<SyncParent, Long>): EventOccurrence {
+    private fun Cursor.occurrence(calendar: CalendarInfo?, parents: Map<SyncParent, Long>, includeInvitation: Boolean = false): EventOccurrence {
         val start = Instant.ofEpochMilli(requiredLong(CalendarContract.Instances.BEGIN))
         val end = Instant.ofEpochMilli(requiredLong(CalendarContract.Instances.END))
         val eventId = requiredLong(CalendarContract.Instances.EVENT_ID)
@@ -418,7 +434,17 @@ class CalendarReader(
             if (calendar?.capabilities?.readDetails == AccessDecision.ALLOWED)
                 number(CalendarContract.Instances.DISPLAY_COLOR)?.toInt() ?: calendar.color else calendar?.color ?: FallbackColor,
             calendar?.capabilities?.readDetails == AccessDecision.ALLOWED &&
-                number(CalendarContract.Instances.SELF_ATTENDEE_STATUS)?.toInt() == CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED)
+                (if (includeInvitation) invitationNumber(CalendarContract.Instances.SELF_ATTENDEE_STATUS) == CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED.toLong()
+                 else number(CalendarContract.Instances.SELF_ATTENDEE_STATUS)?.toInt() == CalendarContract.Attendees.ATTENDEE_STATUS_DECLINED),
+            if (includeInvitation && calendar?.capabilities?.readDetails == AccessDecision.ALLOWED) {
+                val organizer = when (invitationNumber(CalendarContract.Events.IS_ORGANIZER)) { 0L -> false; 1L -> true; else -> null }
+                classifyInvitation(organizer, invitationNumber(CalendarContract.Events.SELF_ATTENDEE_STATUS))
+            } else InvitationState.UNKNOWN)
+    }
+
+    private fun Cursor.invitationNumber(name: String): Long? {
+        val raw = text(name) ?: return null
+        return raw.toLongOrNull()?.takeIf { it.toString() == raw }
     }
 
     private fun Cursor.booleanFlag(name: String): Boolean? = when (number(name)) {

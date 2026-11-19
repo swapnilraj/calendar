@@ -37,15 +37,17 @@ data class EventOccurrence(
     val title: String,
     val color: Int,
     val declined: Boolean = false,
+    val invitation: InvitationState = InvitationState.UNKNOWN,
 )
 
 data class CalendarRequest(
     val range: CalendarDateRange,
     val displayZone: ZoneId,
     val selection: CalendarSelection = CalendarSelection.ProviderVisible,
+    val invitationFilter: InvitationFilter = InvitationFilter.ALL,
 )
 
-enum class CoverageReason { PROVIDER_HIDDEN, SYNC_DISABLED, MISSING_CALENDAR, INSUFFICIENT_ACCESS }
+enum class CoverageReason { PROVIDER_HIDDEN, SYNC_DISABLED, MISSING_CALENDAR, INSUFFICIENT_ACCESS, INVITATION_CLASSIFICATION_UNKNOWN }
 data class CalendarCoverage(val calendarId: CalendarId, val reason: CoverageReason)
 
 data class CalendarSnapshot(
