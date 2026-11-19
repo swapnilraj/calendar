@@ -834,6 +834,12 @@ unfiltered and use fresh Events authority for classification. This is read-only 
 RSVP/edit authority, and changes no provider visibility, reminder policy or account data. This packet
 does not activate a settings control or apply the filter in application views.
 
+The app-local invitation display choice persists independently under a named preference key. Missing,
+malformed or future values fall back to ALL without repair. A typed invitation choice changes only
+that field; unrelated legacy bulk saves preserve opaque future values. Existing settings drafts
+retain the filter through restoration, with older saved drafts defaulting to ALL. This storage
+contract adds no visible control or live-view filtering until the separate presentation integration.
+
 ## Phone Settings and General
 
 The drawer opens full-height Settings → General for existing supported preferences. Grouped
