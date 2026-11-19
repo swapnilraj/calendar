@@ -1,0 +1,197 @@
+{
+  "source": "28bb09870059fb51e25fb6339ef2d166a3b414c0",
+  "base": "c9dc7637d979fe5fe750e3882f9b54ca65bc70e5",
+  "focused": {
+    "source": "28bb09870059fb51e25fb6339ef2d166a3b414c0",
+    "status": "PASS",
+    "seconds": 70,
+    "counts": {
+      "tests": 200,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": [
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarMeetingCreateTest",
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarMeetingGeneratedResponseTest",
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarMeetingSeriesWriterTest",
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarMeetingWriterTest",
+        "tests": 22,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarOneOffMeetingReceiptTest",
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarOperationRetirementTest",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarOwnedMeetingWriterTest",
+        "tests": 18,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarRecurringCreateTest",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarRecurringMeetingCreateTest",
+        "tests": 24,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarWriterTest",
+        "tests": 39,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.MeetingPublicationSeamTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "command": "./gradlew :app:testDebugUnitTest --tests dev.swapnilraj.calendar.data.calendar.CalendarMeetingCreateTest --tests dev.swapnilraj.calendar.data.calendar.CalendarMeetingGeneratedResponseTest --tests dev.swapnilraj.calendar.data.calendar.CalendarMeetingSeriesWriterTest --tests dev.swapnilraj.calendar.data.calendar.CalendarMeetingWriterTest --tests dev.swapnilraj.calendar.data.calendar.CalendarOneOffMeetingReceiptTest --tests dev.swapnilraj.calendar.data.calendar.CalendarOperationRetirementTest --tests dev.swapnilraj.calendar.data.calendar.CalendarOwnedMeetingWriterTest --tests dev.swapnilraj.calendar.data.calendar.CalendarRecurringCreateTest --tests dev.swapnilraj.calendar.data.calendar.CalendarRecurringMeetingCreateTest --tests dev.swapnilraj.calendar.data.calendar.CalendarWriterTest --tests dev.swapnilraj.calendar.data.calendar.MeetingPublicationSeamTest -Proborazzi.test.verify=false -Proborazzi.test.record=false",
+    "log": "/tmp/daylight-meeting-backend-focus1-evidence/gradle.log",
+    "xml": "/tmp/daylight-meeting-backend-focus1-evidence/xml",
+    "productionFiles": [
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarMeetingWriter.kt",
+        "sha256": "eb95d32a2909ffbd690f38eee1025b209985f39907627df9d407dad3f6c017c3",
+        "byteIdenticalToVerified6d3148f": true
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarOwnedMeetingWriter.kt",
+        "sha256": "8001101e9938096dfeeed8edd2d5fd8c7978b0588486ab61c48fec4ec1a7f431",
+        "byteIdenticalToVerified6d3148f": true
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarOwnedMeetingSource.kt",
+        "sha256": "7171c8473b48f1a73c17a29b5df3e798ceac92fa951f97dfa804371259cfedbf",
+        "byteIdenticalToVerified6d3148f": true
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/OwnedMeetingCodec.kt",
+        "sha256": "2dad5d138ee6ac55174c6e6add0c0864c33c039c042b0d7395aaed4bdad372e6",
+        "byteIdenticalToVerified6d3148f": true
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarMeetingCreateWriter.kt",
+        "sha256": "c2772b5365dfae4c690240ca0afc8e4c71432f6b1e8903f9bdc726987cb517d4",
+        "byteIdenticalToVerified6d3148f": true
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarOneOffMeetingCreateWriterV2.kt",
+        "sha256": "71154349314116902b4d87f509d6396cf580734e0efff54c0038ba9087395277",
+        "byteIdenticalToVerified6d3148f": true
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/MeetingOneOffCreationReceipt.kt",
+        "sha256": "d849400c38a764bd127f6af259d3ed05cab65c425084aca66988e1918891fad9",
+        "byteIdenticalToVerified6d3148f": true
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarRecurringMeetingCreateWriter.kt",
+        "sha256": "398007034752a5982b62dc22d27c5777d8d56de0ec2583666ee6fa49a320ef9d",
+        "byteIdenticalToVerified6d3148f": true
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/MeetingRecurringCreationSource.kt",
+        "sha256": "13e982f05f70845331c37440f7d5a800d4d78916449ac3fcf1efc3906ac26f6a",
+        "byteIdenticalToVerified6d3148f": true
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarMeetingSeriesWriter.kt",
+        "sha256": "170e1d6cfa43ddc807c42bf268eef21e09bb217d301d0017d48e7d039ebedf0e",
+        "byteIdenticalToVerified6d3148f": true
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarMeetingSeriesReader.kt",
+        "sha256": "b0ad7d11d482dfd74f0a68bf0ff9b7b4dedb2be595f06a43d0ad17f615355edf",
+        "byteIdenticalToVerified6d3148f": true
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarMeetingGeneratedResponseWriter.kt",
+        "sha256": "43e5e48d0c874090895636f74b2768351b3abbc993284c881549231f7e8ca330",
+        "byteIdenticalToVerified6d3148f": true
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/MeetingGeneratedAuthority.kt",
+        "sha256": "781c965b89d5c879e988250d9f426376bd640fb66992d6b9c433b637580fbdb8",
+        "byteIdenticalToVerified6d3148f": true
+      }
+    ],
+    "preservedOrdinaryTests": [
+      {
+        "path": "app/src/test/kotlin/dev/swapnilraj/calendar/CalendarWriterTest.kt",
+        "sha256": "8c0591439db5c05f7f2bcaea3d3f570946aab676f879ea1ab216226e3cb49e12",
+        "unchangedFromPublishedBase": true
+      },
+      {
+        "path": "app/src/test/kotlin/dev/swapnilraj/calendar/CalendarRecurringCreateTest.kt",
+        "sha256": "4be9980c3f9c3f598e703ed4170a6a89fcc8a3057c33ebd087deaabb7cf70caf",
+        "unchangedFromPublishedBase": true
+      }
+    ],
+    "limitations": [
+      "Robolectric/SQL provider fixtures only.",
+      "No native/account/device execution.",
+      "No application wiring or production clone admission.",
+      "No assemble/lint/full gate executed in this packet."
+    ]
+  },
+  "independentReview": {
+    "source": "28bb09870059fb51e25fb6339ef2d166a3b414c0",
+    "agent": "meeting_presentation_review",
+    "blockingFindings": 0,
+    "checks": [
+      "13backendfilesbyte-identicalverifiedroot",
+      "ordinary39/14testfilesunchanged",
+      "7backendtestssameafterfixture-renaming",
+      "192lineProviderfixturebodyexact",
+      "originalordinaryvalidationandrecurringretirementguardsretained",
+      "fourmeaningfulseamtestsand200-passreportreviewed"
+    ]
+  },
+  "publicationCI": "PENDING",
+  "scope": "Unwired native meeting adapter publication; no provider-clone admission, CalendarApp routes, schema migration, ordinary receipt4 migration, Google/Workspace or physical-device acceptance."
+}
