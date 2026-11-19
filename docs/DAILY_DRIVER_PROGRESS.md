@@ -1,8 +1,60 @@
 # Daily-driver implementation progress
 
-Updated 18 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS.md](TASKS.md).
+Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS.md](TASKS.md).
 
 ## Latest local integration checkpoint
+
+At source checkpoint `6ee8f6e`, the required full gate **passed: 2,177 tests**
+(core257, app1,903, weather17), debug APK assembly and lint, with zero failures, errors or skipped
+tests. Command: `./gradlew test :app:assembleDebug :app:lintDebug`; log
+`/tmp/daylight-contact-picker-full-gate.log`. Completed in6m10s. Debug APK43,820,956 bytes, SHA-256:
+`3414f68d178bf29ae4cd41f5f3e7bc497a202833f08fa481985f59ae84ca6d5f`.
+This remains a debug-signed local build, not a stable release or daily-driver certification.
+
+The shared Add people picker is connected to meeting creation and owned one-off editing. Optional
+local DEFAULT-directory contact search requires an explicit opt-in on each opening; typing, opening
+an editor and an existing OS grant never enable it automatically. Manual email entry remains usable
+without contacts permission. Raw suggestions and existing guest rows retain their values and roles;
+selection and permission results do not save an event. Twenty adapter checks,24 picker/parent checks,
+five actual-app journeys and four new screenshot checks passed. The actual-app journeys cover late
+grants, recreation, owned guest preservation and zero calendar writes. Light/dark and large-font RTL
+picker images, affected parent images and the integrated meeting editor capture were inspected.
+Physical keyboard, contacts-provider and TalkBack behavior still need runtime acceptance.
+
+Incoming public EDIT review now supports an explicit proposed zone for eligible NULL-zone timed
+sources, including the displayed zone. Exact Apply/CAS and issued ZONE rights are required; absent-zone
+temporal changes stay under review and prepared/frozen records resume unchanged. Its92 combined
+checks passed. Details also scrub stale payload/links after writer-side READ denial and require exact
+fresh occurrence/calendar authority. These changes and numeric subtitle RTL corrections passed the
+prior2,124-test full checkpoint at `0a122bc` and remain covered by this gate.
+
+The guarded native API35 LOCAL experiment passed18 cases with verified fixture cleanup; the
+[report](audit/evidence/native-local-provider-api35-2026-11-18.json) and
+[runbook](NATIVE_PROVIDER_PROBE.md) preserve pins and limitations. This does not certify the complete
+Daylight series executor, physical-schema completeness or Google/Workspace round trips. Production
+clone admission remains NONE. Advanced exception-aware FOLLOWING execution remains source work.
+
+Google Calendar2026.44 launched in the emulator but stopped before the main calendar with a Google
+communication error and system freezes. Main navigation/editor/guest/repeat interactions and exact
+UX parity remain UNVERIFIED. [APK resource observations](GOOGLE_CALENDAR_UX_PARITY.md) are reference
+candidates, not live-flow evidence; no Google graphics are committed.
+
+[PR58](https://github.com/swapnilraj/calendar/pull/58) (signed draft-release pipeline) and
+[PR60](https://github.com/swapnilraj/calendar/pull/60) (ordinary phone editor/details) passed CI and
+merged into `codex/daily-driver`, following PR53–57. The CI-only default-branch workflow bootstrap
+[PR59](https://github.com/swapnilraj/calendar/pull/59) also passed and merged; GitHub reports manual
+release dispatch active. No release dispatch or production application merge into main occurred;
+PR3 remains draft. Owner-key provisioning is pending; fixture signing tests are mechanism evidence
+only. Stable signing, same-key upgrade and a durable published APK remain unfulfilled.
+
+The aggregate source remains ahead of bounded publication. PR55–60 artifact attachments are now confirmed in the task; earlier hanging calls were reconciled
+against the attachment inventory before retrying missing entries. Controlled personal/Workspace organizer-attendee,
+offline/conflict/recurrence tests, physical reminders/Doze/reboot/timezone/TalkBack/upgrade acceptance
+and the seven-day work/personal beta remain pending. Keyboard/accessibility refinements, advanced
+recurrence preservation and remaining publication are continuing source packets. The goal is active
+and is not marked complete.
+
+## Prior local checkpoint: 2,102 tests
 
 At code checkpoint `b2e4dd1` (subsequent changes are documentation only), the required full gate
 **passed: 2,102 tests** (core257, app1,828, weather17), debug APK assembly and lint, with zero
