@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="conflict_advisory_title">Availability</string>
+    <string name="conflict_advisory_clear">No overlapping local events on the selected calendars.</string>
+    <string name="conflict_advisory_partial">Availability is incomplete for some selected calendars.</string>
+    <string name="conflict_advisory_no_selection">Choose calendars in the sidebar to check for overlaps.</string>
+    <string name="conflict_advisory_selection_unavailable">The selected calendars are unavailable.</string>
+    <string name="conflict_advisory_unfinished">Finish entering the date and time to check for overlaps.</string>
+    <string name="conflict_advisory_permission">Calendar access is needed to check for overlaps.</string>
+    <string name="conflict_advisory_limit">There are too many local events to check this time range.</string>
+    <string name="conflict_advisory_unsupported">Availability is unavailable for this time range.</string>
+    <string name="conflict_advisory_unavailable">Availability could not be checked.</string>
+    <string name="conflict_advisory_loading">Checking selected calendars…</string>
+    <string name="conflict_advisory_first_only">Only the first occurrence is checked. Repeating events may have other overlaps.</string>
+    <string name="conflict_advisory_local_only">Based on events on this device. This does not check other people’s availability.</string>
+    <plurals name="conflict_advisory_known">
+        <item quantity="one">%d overlapping local event.</item>
+        <item quantity="other">%d overlapping local events.</item>
+    </plurals>
+    <plurals name="conflict_advisory_possible">
+        <item quantity="one">%d possible overlap with unknown availability.</item>
+        <item quantity="other">%d possible overlaps with unknown availability.</item>
+    </plurals>
+</resources>
