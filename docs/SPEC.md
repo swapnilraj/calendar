@@ -13,6 +13,9 @@ operations never replay. READ-only recovery requires exact native results and co
 Reserve journal space for both minimal and complete acknowledgement records before new or adopted
 writes, including maximum-width child IDs. Predictable overflow returns unavailable without writing.
 Retain historical receipt2/3 recovery, recurring retirement restrictions and existing command signatures.
+Unattempted legacy CREATE and explicit temporal UPDATE retries also apply current native-zone
+compatibility admission; Java-only zones unsupported by Android return ZONE without dispatch.
+Attempted/committed recovery and frozen legacy receipt bytes are not migrated or replayed.
 
 ### Authored recurring creation in the phone editor
 
