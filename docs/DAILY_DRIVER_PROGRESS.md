@@ -4,6 +4,20 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+The separate smoke APK pair at `2f02df9` builds and lints; 11 default, 12 opt-in JVM and 26 host
+checks pass. Fresh native metadata preflight passed at UID10215. Normal exact-alarm setup then
+started its guarded recovery receiver and left a cached process, so fresh-process admission blocked
+before any fixture event creation. Temporary runtime grants and exact-alarm access were restored;
+a second native preflight and original grant flags match the baseline. **Real alarm/snooze/dedup
+remain NOT RUN.** [Evidence](audit/evidence/native-reminder-smoke-preflight-2026-11-19.json).
+
+PR84/85/86 are merged after CI, publishing typed meeting drafts, real widget owners/routes and private
+incoming-review protocols. The lead's application meeting bridge passes 28 journeys and two recording
+methods (three unchanged inspected images); publication awaits its promotion prerequisite. P3 incoming
+read foundation passes 26 checks after a preserved missing-resource compilation failure; public intent
+activation remains separate.
+
+
 Google Android reference remains only partially observed: Settings/General are accessible, but account
 setup stops in GMS's ErrorActivity. A fresh observed Back press returned to the launcher rather than
 the calendar. The same SDK screenshot/input method works for both apps; main/event UX parity is

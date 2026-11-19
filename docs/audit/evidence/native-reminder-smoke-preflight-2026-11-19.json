@@ -1,0 +1,116 @@
+{
+  "scope": "Native metadata preflight/setup/restore only; not alarm delivery acceptance",
+  "source": "2f02df949c430fbd829b7004bf6a102036297e4d",
+  "buildTasks": [
+    ":app:assembleDebug",
+    ":app:assembleDebugAndroidTest",
+    ":app:lintDebug"
+  ],
+  "app": {
+    "path": "/tmp/daylight-reminder-smoke-pair-2f02df9/reminder-smoke-app.apk",
+    "bytes": 42885114,
+    "sha256": "da5e813f33d32155ef6f051d6ec45f10e3da1eee6b55b7eef34b986873c54bc7",
+    "package": "dev.swapnilraj.calendar.remindersmoke",
+    "application": "dev.swapnilraj.calendar.probe.smoke.ReminderSmokeApplication",
+    "versionCode": 1,
+    "certificateSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278",
+    "backup": false,
+    "debuggable": true,
+    "applicationDexDefined": true
+  },
+  "test": {
+    "path": "/tmp/daylight-reminder-smoke-pair-2f02df9/reminder-smoke-tests.apk",
+    "bytes": 339238,
+    "sha256": "9c3a606003c917da72f5543a42659b646d391990c77611e7ec3da9e7a6923b9e",
+    "package": "dev.swapnilraj.calendar.remindersmoke.tests",
+    "runner": "dev.swapnilraj.calendar.probe.smoke.NativeReminderSmokeProbe",
+    "targetPackage": "dev.swapnilraj.calendar.remindersmoke",
+    "runnerDexDefined": true,
+    "certificateSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278"
+  },
+  "counts": {
+    "defaultJvm": 11,
+    "smokeJvm": 12,
+    "host": 26
+  },
+  "nativePreflight": {
+    "appIdentity": {
+      "package": "dev.swapnilraj.calendar.remindersmoke",
+      "sha256": "da5e813f33d32155ef6f051d6ec45f10e3da1eee6b55b7eef34b986873c54bc7",
+      "signerSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278",
+      "versionCode": 1
+    },
+    "capabilities": {
+      "channelPresent": false,
+      "exactAlarmAccess": false,
+      "notificationsEnabled": false,
+      "ownJobCount": 0,
+      "ownNotificationCount": 0,
+      "postNotifications": false,
+      "readCalendar": false,
+      "writeCalendar": false
+    },
+    "captureId": "857add59-c93f-4f43-86c2-0048e65dffb3",
+    "componentCount": 18,
+    "elapsedMillis": 9507,
+    "enabledOverrides": 0,
+    "googleWorkspaceRoundTrip": "NOT_RUN",
+    "hostBootPin": "f14d0429-80d1-4b93-9eeb-da5f4f2046ac",
+    "mode": "preflight",
+    "physicalDoze": "NOT_RUN",
+    "pid": 11918,
+    "processDeathRecovery": "NOT_RUN",
+    "processStartElapsedRealtime": 36744475,
+    "providerIdentity": {
+      "package": "com.android.providers.calendar",
+      "sha256": "a1facdbec3de78c6817efe1aea40b804a66c8ccbcd23a72a426d8c21cfebd273",
+      "signerSha256": "6cecc50e34ae31bfb5678986d6d6d3736c571ded2f2459527793e1f054eb0c9b",
+      "versionCode": 35
+    },
+    "runId": "496f76c6-f8a5-48b1-8d88-d12ea6f9e761",
+    "runtimeHealth": "DEGRADED",
+    "schema": 1,
+    "scope": "SDK_LOCAL_FIXTURE_ALARM_SNOOZE_DEDUP",
+    "state": "UNBOUND_NO_DATA",
+    "status": "PASS",
+    "targetUid": 10215,
+    "testIdentity": {
+      "package": "dev.swapnilraj.calendar.remindersmoke.tests",
+      "sha256": "9c3a606003c917da72f5543a42659b646d391990c77611e7ec3da9e7a6923b9e",
+      "signerSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278",
+      "versionCode": 0
+    }
+  },
+  "cachedPermissionProcess": {
+    "status": "BLOCKED_BEFORE_FIXTURE_RUN",
+    "observedAt": "2026-11-19T13:08:29.268357+00:00",
+    "package": "dev.swapnilraj.calendar.remindersmoke",
+    "uid": 10215,
+    "pid": 12110,
+    "processStartTicks": "3706623",
+    "exactAccessSwitchObserved": "ON",
+    "preflightPreviousPid": 11918,
+    "priorPidAbsentWitness": "preflight report lifecycle.json",
+    "fixtureRunExecuted": false,
+    "calendarEventCreateAttempts": 0,
+    "reason": "Existing smoke PID fails fresh-process admission after normal exact-alarm permission setup",
+    "notificationAvailabilityAfterPOSTGrant": "NOT_RECHECKED",
+    "nextAction": "Restore temporary permissions; do not kill or replace process to force a run"
+  },
+  "restoration": {
+    "status": "RESTORED",
+    "beforeReport": "/tmp/daylight-reminder-smoke-preflight-07dd1b56-9b3d-4156-bb8f-fe6de3c4003e/report.json",
+    "beforeSha256": "0e5fc43b9518b2c4172021674df00e76375c3b7432dc06844e510b1c2ac071ba",
+    "afterReport": "/tmp/daylight-reminder-smoke-restoration-preflight-ece9c7bb-2d97-41f6-b46e-009dc8d78ab9/report.json",
+    "afterSha256": "a184142b30791573f73b81784c95baa0948309a0c026574913ecadea803ee20f",
+    "capabilitiesEqual": true,
+    "runtimeFlagsEqual": true,
+    "reportedPidsAbsent": true,
+    "fixtureRunExecuted": false,
+    "calendarEventCreateAttempts": 0,
+    "realAlarmSnoozeDedup": "NOT_RUN_CACHED_PREBIND_PROCESS_ADMISSION",
+    "packagesRetained": "Owned smoke app UID10215 and tests UID10216 remain installed; production and bf8 untouched"
+  },
+  "evidenceDirectory": "/tmp/daylight-reminder-smoke-install-c3b3425e-7ecc-41e7-a453-2ecfdc6443ec",
+  "sourceAcceptance": "Real alarm/snooze/dedup not run; lifecycle admission remains to resolve"
+}
