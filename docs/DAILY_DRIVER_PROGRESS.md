@@ -44,7 +44,7 @@ three inspected captures and full CI (6m44s). All captures match the aggregate a
 controlled Google/Workspace propagation, actual device reminder delivery/recovery, TalkBack/upgrade,
 seven-day work/personal beta and stable owner signing remain pending.
 
-The newest full attempt at `ee2a89d` ran2,383 tests with one failure (zero errors/skips) in5m2s:
+The earlier full attempt at `ee2a89d` ran2,383 tests with one failure (zero errors/skips) in5m2s:
 the recurring-meeting creation journey could not find its guest row immediately after Add person.
 That result is preserved; it does not replace the last passing full checkpoint. A narrow fixture
 readiness check at `bea2d36` now passes all four recurring-meeting journeys: it waits for an enabled
