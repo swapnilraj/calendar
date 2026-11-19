@@ -662,6 +662,18 @@ operation/fingerprint; unsupported families and unknown phases fail closed witho
 Synthetic provider tests are local evidence only, not installed-provider certification.
 
 
+## Connected filtered search
+
+The shared phone toolbar and drawer open literal, case-insensitive search through the published
+bounded reader/invalidation helpers. Search retains its raw query and explicit date range, applies
+app-local calendar selection, display zone and declined-event preference, and masks old rows
+synchronously when that context changes. Read limits, empty selection, unavailable/permission states
+and partial device coverage stay explicit. Load-more is deliberate and bounded; no provider visibility
+or synchronization setting is changed. Opening a result navigates to its date and exact occurrence
+reference without a write, while preserving calendar filters. Production enables the search port;
+embedded callers default to absent. This does not search cloud-only calendars or establish Google
+main-screen gesture/pixel parity.
+
 ## Phone Settings and General
 
 The drawer opens full-height Settings → General for existing supported preferences. Grouped

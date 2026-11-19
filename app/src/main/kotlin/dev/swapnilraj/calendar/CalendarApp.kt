@@ -36,6 +36,8 @@ class CalendarApp : Application(), ReminderRuntimeOwner {
         reminderRuntime.onProcessStarted()
     }
     val calendarReader by lazy { CalendarReader(contentResolver, calendarScope) }
+    val calendarSearch by lazy { dev.swapnilraj.calendar.data.calendar.CalendarSearchReader(contentResolver, calendarReader,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
     val calendarLocalStore by lazy { CalendarLocalStore(this) }
     val calendarWriter by lazy { CalendarWriter(contentResolver, calendarReader, calendarLocalStore,
         { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }

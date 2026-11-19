@@ -16,5 +16,6 @@ java {
 
 dependencies {
     implementation(libs.lib.recur)
+    implementation(libs.coroutines.core)
     testImplementation(libs.junit)
 }

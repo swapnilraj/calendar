@@ -224,3 +224,4 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 | 2026-11-17 | Pinned core-ktx, coroutines-android, lifecycle-runtime-compose in `:app` | Runtime permission checks, observer-driven data loading off the main thread, and lifecycle-aware collection |
 | 2026-11-17 | Pinned DataStore Preferences and BOM-managed Compose test manifest | Remember zoom across launches and render isolated calendar screens with synthetic data in JVM tests |
 | 2026-11-17 | Day grid uses rgb(25,25,25) in dark mode | Match the desktop weather substrate; keep dynamic color on the surrounding UI and event colors intact |
+| 2026-11-19 | Reuse pinned coroutines-core1.11.0 in `:calendar-core` | The pure CalendarSearch interface returns Flow; this matches the verified implementation without Android imports or another dependency version. |
