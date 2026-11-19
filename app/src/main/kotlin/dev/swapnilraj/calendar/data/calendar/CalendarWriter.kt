@@ -35,6 +35,38 @@ class CalendarWriter(
     private val readBudgets: ProviderReadBudgets = ProviderReadBudgets(),
 ) : CalendarMutations {
     private val mutex = Mutex()
+    // Initial authoring only; tests may make the current compiler unavailable after prepare.
+    internal var ordinaryCreateAuthoringProbe: () -> Unit = {}
+    private val ordinaryCreateV6 by lazy { CalendarOrdinaryCreateWriterV6(resolver, reader, store, hasPermission,
+        mutex, io, readBudgets, ::freezeOrdinaryCreate, { id -> try { calendar(id) } catch (_: Stale) { null } }) }
+
+    private fun freezeOrdinaryCreate(id: String, command: JSONObject, draft: EventDraft, uid: String): OrdinaryCreateReceipt {
+        try {
+            ordinaryCreateAuthoringProbe()
+            val target = draft.targetIdentity
+            if (target == null || target.calendarId != draft.calendarId || target.account.name.isBlank() || target.account.type.isBlank())
+                throw Invalid(setOf(InvalidEventField.CALENDAR))
+            val calendar = try { calendar(draft.calendarId) } catch (_: Stale) { throw Invalid(setOf(InvalidEventField.CALENDAR)) }
+            if (calendarIdentity(calendar) != target) throw Invalid(setOf(InvalidEventField.CALENDAR))
+            writable(calendar)
+            validate(draft, calendar, 0, initial = true)
+            // New receipt6 preparation authors a native zone once. Preserve historical
+            // recovery/retry and unrelated edit validation on their existing protocols.
+            if (draft.time is EventTime.Timed && !ProviderTimeZoneCompatibility.isCompatible(requireNotNull(draft.eventZone)))
+                throw Invalid(setOf(InvalidEventField.ZONE))
+            val recurring = compileRecurrence(draft)
+            val native = values(draft).apply { recurring?.let { plan ->
+                putNull(CalendarContract.Events.DTEND)
+                put(CalendarContract.Events.DURATION, plan.durationRaw)
+                put(CalendarContract.Events.RRULE, plan.ruleRaw)
+                put(CalendarContract.Events.EVENT_TIMEZONE, providerZone(plan))
+                put(CalendarContract.Events.EVENT_END_TIMEZONE, providerZone(plan))
+            } }
+            return OrdinaryCreateReceipt(id, command.toString(), calendar, OrdinaryCreatePlan.freeze(native, draft, recurring, uid))
+        } catch (invalid: Invalid) { throw OrdinaryCreateRejected(MutationResult.ValidationFailed(invalid.fields)) }
+        catch (denied: Denial) { throw OrdinaryCreateRejected(MutationResult.Denied(denied.reason)) }
+    }
+
     private class Denial(val reason: MutationDenial) : Exception()
     private class Invalid(val fields: Set<InvalidEventField>) : Exception()
     private class Stale : Exception()
@@ -76,6 +108,7 @@ class CalendarWriter(
         try { store.abandoned(operationId) { createFingerprint(draft, readBudgets.maxCanonicalBytes) }?.let { return@withContext it } }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { return@withContext MutationResult.Unavailable }
+        ordinaryCreateV6.createIfNew(operationId, draft)?.let { return@withContext it }
         val target = draft.targetIdentity
         if (target == null || target.calendarId != draft.calendarId || target.account.name.isBlank() || target.account.type.isBlank()) return@withContext MutationResult.ValidationFailed(setOf(InvalidEventField.CALENDAR))
         if (!permissions()) return@withContext MutationResult.PermissionRequired
@@ -270,7 +303,12 @@ class CalendarWriter(
         } }
 
     /** Recovery never submits provider operations, even if a matching create seems likely. */
-    override suspend fun recover(operationId: String): MutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) { mutex.withLock {
+    override suspend fun recover(operationId: String): MutationResult = withContext(io + readBudgetContext(readBudgets.mutation)) {
+        try { if (store.operationHeader(operationId)?.phase == "ABANDONED") return@withContext MutationResult.Retired(operationId) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { return@withContext MutationResult.Unavailable }
+        ordinaryCreateV6.recoverIfHandled(operationId)?.let { return@withContext it }
+        mutex.withLock {
         try { if (store.operationHeader(operationId)?.phase == "ABANDONED") return@withLock MutationResult.Retired(operationId) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { return@withLock MutationResult.Unavailable }
@@ -702,6 +740,7 @@ class CalendarWriter(
             return CalendarIdentity(CalendarId(json.getLong("calendar")), CalendarAccount(json.getString("name"), json.getString("type")),
                 if (json.isNull("owner")) null else json.getString("owner"), if (json.isNull("providerId")) null else json.getString("providerId"))
         }
+        internal fun frozenDraftJson(draft: EventDraft, maxBytes: Int) = draftJson(draft, maxBytes)
         internal fun createFingerprint(draft: EventDraft, maxBytes: Int): Pair<String, String> = "CREATE" to signature("CREATE", draftJson(draft, maxBytes))
         internal fun updateFingerprint(ref: EventRef, token: EditToken, patch: EventPatch, maxBytes: Int): Pair<String, String> =
             "UPDATE" to signature("UPDATE", patchJson(ref, token, patch, maxBytes))
