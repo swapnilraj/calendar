@@ -68,9 +68,11 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
     val preferencesUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_preferences_unavailable)
     val localSaved = stringResource(dev.swapnilraj.calendar.R.string.navigation_local_saved)
     val localDeleted = stringResource(dev.swapnilraj.calendar.R.string.navigation_local_deleted)
+    val localCancelled = stringResource(dev.swapnilraj.calendar.R.string.owned_meeting_cancelled)
     val draftUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_draft_unavailable)
     val scope = rememberCoroutineScope()
     var remindersOpen by rememberSaveable { mutableStateOf(false) }
+    var retainMaskedMeeting by remember { mutableStateOf(false) }
     var deviceNow by remember { mutableStateOf(ZonedDateTime.now()) }
     val now = when (val zone = options.displayZone) {
         DisplayZoneOption.Device -> deviceNow
@@ -87,6 +89,10 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
     val mutations = remember(app, context, writeRequest) { PermissionAwareMutations(app.calendarWriter,
         { ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED },
         { writeRequest.launch(Manifest.permission.WRITE_CALENDAR) }) }
+    var contactsAllowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) }
+    val contactsRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        contactsAllowed = granted
+    }
     val latestWeather by app.weather.state.collectAsStateWithLifecycle()
     val weather = latestWeather.takeIf { it.zone == deviceNow.zone } ?: WeatherState()
     var locationAllowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) }
@@ -102,6 +108,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
             if (event == Lifecycle.Event.ON_RESUME) {
                 deviceNow = ZonedDateTime.now()
                 app.calendarReader.refresh()
+                contactsAllowed = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
                 locationAllowed = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
             }
         }
@@ -110,7 +117,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
     }
     Surface(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
-        PermissionGate {
+        PermissionGate(retainMaskedWorkflow = retainMaskedMeeting) {
             LaunchedEffect(deviceNow.zone, locationAllowed, weatherVisible) {
                 if (!weatherVisible) return@LaunchedEffect
                 var changedPermission = lastWeatherPermission != null && lastWeatherPermission != locationAllowed
@@ -149,6 +156,17 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
                         search = app.calendarSearch,
                         widgetNavigation = widgetNavigation, onWidgetNavigationConsumed = onWidgetNavigationConsumed,
                         recurringCreationSupported = true,
+                        guestSuggestions = app.guestSuggestions,
+                        contactsPermissionGranted = contactsAllowed,
+                        requestContactsPermission = {
+                            contactsAllowed = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+                            if (!contactsAllowed) contactsRequest.launch(Manifest.permission.READ_CONTACTS)
+                        },
+                        meetings = app.calendarMeetings,
+                        requestMeetingWritePermission = {
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED) true
+                            else { writeRequest.launch(Manifest.permission.WRITE_CALENDAR); false }
+                        },
                         onOpenReminders = { remindersOpen = true },
                         drafts = app.calendarLocalStore,
                         retirement = app.operationRetirement,
@@ -159,6 +177,8 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
                         },
                         onLocalSaved = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localSaved) } },
                         onLocalDeleted = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localDeleted) } },
+                        onLocalCancelled = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localCancelled) } },
+                        onRetainedOwnedMeetingChanged = { retainMaskedMeeting = it },
                         onDraftFailure = { scope.launch { snackbar.showSnackbar(draftUnavailable) } },
                         onPreferenceFailure = { scope.launch { snackbar.showSnackbar(preferencesUnavailable) } },
                         background = { date ->

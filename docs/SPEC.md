@@ -6,6 +6,14 @@ the two disagree, this file wins, and it should be updated in the same change as
 ## Principles
 
 
+The application explicitly hosts meeting creation, invitation responses and organizer-owned changes.
+Calendar details freshly validate the exact occurrence and account namespace before exposing an
+eligible meeting action. Local outcomes refresh the shared reader and reminder runtime; they do not
+claim server sync or invitation delivery. WRITE permission grants require another explicit action.
+Contacts remain optional and require per-opening consent even with an existing Android grant.
+Widget Create preserves every mounted ordinary or meeting draft. An organizer workflow survives
+READ loss with its same controller while calendar content and semantics are masked, and imported-row
+cloning remains unverified. All meeting screens use the actual system clock preference.
 
 A grid preview that encounters a clock gap or overlap retains its snapped logical date/minute and
 display zone for explicit review. That target does not choose an offset or imply an instant. Review
