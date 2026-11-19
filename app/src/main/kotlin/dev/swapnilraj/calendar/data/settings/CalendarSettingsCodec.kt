@@ -20,6 +20,7 @@ object CalendarSettingsCodec {
     private val zoneId = stringPreferencesKey("display_zone_id")
     private val weather = booleanPreferencesKey("display_weather_visible")
     private val units = stringPreferencesKey("display_weather_units")
+    private val invitation = stringPreferencesKey("display_invitation_filter")
 
     /** [currentView] is the caller's view from this same snapshot, never a second preference read. */
     fun read(preferences: Preferences, currentView: String): CalendarSettingsOptions {
@@ -40,6 +41,7 @@ object CalendarSettingsCodec {
             displayZone = if (raw[zoneMode.name] == "FIXED" && fixedZone != null) DisplayZoneOption.Fixed(fixedZone) else DisplayZoneOption.Device,
             weatherVisible = raw[weather.name] as? Boolean ?: defaults.weatherVisible,
             weatherUnits = enumOrDefault(raw[units.name], defaults.weatherUnits),
+            invitationFilter = enumOrDefault(raw[invitation.name], defaults.invitationFilter),
         )
     }
 
@@ -60,6 +62,7 @@ object CalendarSettingsCodec {
         }
         preferences[weather] = options.weatherVisible
         preferences[units] = options.weatherUnits.name
+        preferences[invitation] = options.invitationFilter.name
     }
 
     fun valid(change: CalendarSettingChange): Boolean = when (change) {
@@ -89,6 +92,7 @@ object CalendarSettingsCodec {
             }
             is CalendarSettingChange.WeatherVisible -> preferences[weather] = change.value
             is CalendarSettingChange.WeatherUnits -> preferences[units] = change.value.name
+            is CalendarSettingChange.InvitationFilter -> preferences[invitation] = change.value.name
         }
     }
 
