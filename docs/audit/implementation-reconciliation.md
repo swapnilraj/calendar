@@ -27,6 +27,14 @@ Earlier attempts retain their original meaning:
 
 ## Latest integrated correction — 19 November 2026
 
+The later complete gate at `ea389cf` now passes2,406 tests, APK assembly, lint and release-manifest
+processing (zero failures/errors/skips). Normal `CalendarApp`/package/18debug and16release enabled
+components are independently checked; both probe flags together are rejected. See the
+[complete checkpoint](evidence/identity-precision-default-full-gate-2026-11-19.json). This supersedes
+only the pending-default-gate statements below, while retaining the older2,383-test failure and its
+four-journey fixture correction as historical evidence. Native identity remains a separate frozen
+APK proof; actual delivery, Google/Workspace, device/beta/signing and exact live UX acceptance remain pending.
+
 Later root imports `bb7e88a`/`4f9ebe5` add exact native-millisecond receipt4 admission and an isolated,
 reviewed SDK reminder identity harness. Bounded edit verification passes152 cases and the separate
 frozen probe pair passes native identity-only admission with zero delivery resources and exact PID exit.

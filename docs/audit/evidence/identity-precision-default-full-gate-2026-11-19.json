@@ -1,0 +1,255 @@
+{
+  "gate": {
+    "source": "ea389cf47d26b27f6c3298bd0843896dd98093a0",
+    "startedAt": "2026-11-19T10:38:48.417957+00:00",
+    "finishedAt": "2026-11-19T10:44:50.779496+00:00",
+    "seconds": 362.362,
+    "command": "./gradlew test :app:assembleDebug :app:lintDebug :app:processReleaseMainManifest",
+    "exitCode": 0,
+    "counts": {
+      "tests": 2406,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "modules": {
+      "app": {
+        "tests": 2132,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "calendar-core": {
+        "tests": 257,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "weather": {
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "log": "/tmp/daylight-identity-precision-default-full-gate1.log",
+    "xml": "/tmp/daylight-identity-precision-default-full-gate1-xml",
+    "headAfter": "ea389cf47d26b27f6c3298bd0843896dd98093a0",
+    "statusAfter": "",
+    "expectedDefaultCount": 2406,
+    "actualPackageOptInRegression": "EXCLUDED_DEFAULT_FLAG_FALSE"
+  },
+  "frozen": {
+    "source": "ea389cf47d26b27f6c3298bd0843896dd98093a0",
+    "folder": "/tmp/daylight-verified-2406-ea389cf",
+    "apkBytes": 48252332,
+    "apkSha256": "6cab46cb5ac551e249ec5ac8f4fc31d970fd0ba0591f0a8baa5c8af648c0e59d",
+    "zipBytes": 14574017,
+    "zipSha256": "c63b290768da784468f6b0391e55ac7358fc72fa51e91f0d8c3bfa6bd56959df",
+    "signerSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278",
+    "defaultDebugComponents": 18,
+    "defaultReleaseComponents": 16,
+    "application": "CalendarApp",
+    "counts": {
+      "tests": 2406,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "probeMutualExclusion": {
+      "command": "./gradlew :app:help -Pdaylight.providerProbe=true -Pdaylight.reminderProbe=true",
+      "status": "EXPECTED_CONFIGURATION_REFUSAL",
+      "exitCode": 1,
+      "log": "/tmp/daylight-probe-mutual-exclusion-check.log"
+    }
+  },
+  "normalManifests": {
+    "debug": {
+      "package": "dev.swapnilraj.calendar",
+      "application": "dev.swapnilraj.calendar.CalendarApp",
+      "components": [
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.MainActivity",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.android.navigation.CalendarEntryActivity",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.android.navigation.CalendarEditReviewActivity",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.android.navigation.CalendarSeedReviewActivity",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.ReminderOpenActivity",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.WidgetOpenActivity",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.android.widgets.AgendaWidgetConfigureActivity",
+          "enabled": true
+        },
+        {
+          "kind": "receiver",
+          "name": "dev.swapnilraj.calendar.android.widgets.AgendaWidgetProvider",
+          "enabled": true
+        },
+        {
+          "kind": "receiver",
+          "name": "dev.swapnilraj.calendar.android.widgets.AgendaWidgetRecoveryReceiver",
+          "enabled": true
+        },
+        {
+          "kind": "service",
+          "name": "dev.swapnilraj.calendar.android.widgets.AgendaWidgetJobService",
+          "enabled": true
+        },
+        {
+          "kind": "receiver",
+          "name": "dev.swapnilraj.calendar.android.reminders.ReminderAlarmReceiver",
+          "enabled": true
+        },
+        {
+          "kind": "receiver",
+          "name": "dev.swapnilraj.calendar.android.reminders.ReminderActionReceiver",
+          "enabled": true
+        },
+        {
+          "kind": "receiver",
+          "name": "dev.swapnilraj.calendar.android.reminders.ReminderRecoveryReceiver",
+          "enabled": true
+        },
+        {
+          "kind": "service",
+          "name": "dev.swapnilraj.calendar.android.reminders.ReminderJobService",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "androidx.compose.ui.tooling.PreviewActivity",
+          "enabled": true
+        },
+        {
+          "kind": "provider",
+          "name": "androidx.startup.InitializationProvider",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "androidx.activity.ComponentActivity",
+          "enabled": true
+        },
+        {
+          "kind": "receiver",
+          "name": "androidx.profileinstaller.ProfileInstallReceiver",
+          "enabled": true
+        }
+      ],
+      "probeOnlyQueries": false
+    },
+    "release": {
+      "package": "dev.swapnilraj.calendar",
+      "application": "dev.swapnilraj.calendar.CalendarApp",
+      "components": [
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.MainActivity",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.android.navigation.CalendarEntryActivity",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.android.navigation.CalendarEditReviewActivity",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.android.navigation.CalendarSeedReviewActivity",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.ReminderOpenActivity",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.WidgetOpenActivity",
+          "enabled": true
+        },
+        {
+          "kind": "activity",
+          "name": "dev.swapnilraj.calendar.android.widgets.AgendaWidgetConfigureActivity",
+          "enabled": true
+        },
+        {
+          "kind": "receiver",
+          "name": "dev.swapnilraj.calendar.android.widgets.AgendaWidgetProvider",
+          "enabled": true
+        },
+        {
+          "kind": "receiver",
+          "name": "dev.swapnilraj.calendar.android.widgets.AgendaWidgetRecoveryReceiver",
+          "enabled": true
+        },
+        {
+          "kind": "service",
+          "name": "dev.swapnilraj.calendar.android.widgets.AgendaWidgetJobService",
+          "enabled": true
+        },
+        {
+          "kind": "receiver",
+          "name": "dev.swapnilraj.calendar.android.reminders.ReminderAlarmReceiver",
+          "enabled": true
+        },
+        {
+          "kind": "receiver",
+          "name": "dev.swapnilraj.calendar.android.reminders.ReminderActionReceiver",
+          "enabled": true
+        },
+        {
+          "kind": "receiver",
+          "name": "dev.swapnilraj.calendar.android.reminders.ReminderRecoveryReceiver",
+          "enabled": true
+        },
+        {
+          "kind": "service",
+          "name": "dev.swapnilraj.calendar.android.reminders.ReminderJobService",
+          "enabled": true
+        },
+        {
+          "kind": "provider",
+          "name": "androidx.startup.InitializationProvider",
+          "enabled": true
+        },
+        {
+          "kind": "receiver",
+          "name": "androidx.profileinstaller.ProfileInstallReceiver",
+          "enabled": true
+        }
+      ],
+      "probeOnlyQueries": false
+    }
+  },
+  "backupBranch": "codex/verified-2406-20261119",
+  "backupSource": "ea389cf47d26b27f6c3298bd0843896dd98093a0",
+  "scope": "Complete default local test/build/lint/release-manifest gate. Developer debug APK; owner release/account/device/beta gates remain pending."
+}

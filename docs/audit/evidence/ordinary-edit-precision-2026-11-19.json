@@ -1323,6 +1323,17 @@
   },
   "rootCode": "bb7e88a",
   "publication": "https://github.com/swapnilraj/calendar/pull/82",
-  "publicationHead": "4128976",
-  "rootFullGate": "PENDING"
+  "publicationHead": "4550a79754b805c904edbff12f1cf31cfc0063f3",
+  "rootFullGate": {
+    "source": "ea389cf47d26b27f6c3298bd0843896dd98093a0",
+    "tests": 2406,
+    "status": "PASS",
+    "evidence": "identity-precision-default-full-gate-2026-11-19.json"
+  },
+  "publicationCI": {
+    "run": 44507930269,
+    "status": "SUCCESS",
+    "seconds": 508
+  },
+  "publicationMerge": "d0e3dc2700ae0e828d5c11b478da7a694c82e878"
 }

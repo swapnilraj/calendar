@@ -196,6 +196,15 @@
     "finishedAt": "2026-11-19T10:30:21.378805+00:00"
   },
   "rootHarnessImport": "4f9ebe5",
-  "rootDefaultGate": "PENDING",
+  "rootDefaultGate": {
+    "source": "ea389cf47d26b27f6c3298bd0843896dd98093a0",
+    "tests": 2406,
+    "status": "PASS",
+    "debugComponentsAllEnabled": 18,
+    "releaseComponentsAllEnabled": 16,
+    "application": "CalendarApp",
+    "probeFlagsTogether": "CONFIGURATION_REFUSED",
+    "evidence": "identity-precision-default-full-gate-2026-11-19.json"
+  },
   "earlierSchema1NativeFailure": "c1172e14 remains FAILED_NOT_RECOVERED; separate corrected schema2 proof does not relabel it."
 }

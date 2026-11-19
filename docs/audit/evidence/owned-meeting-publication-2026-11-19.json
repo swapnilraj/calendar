@@ -115,5 +115,6 @@
     "seconds": 404
   },
   "attachment": "CONFIRMED",
-  "scope": "Injectable organizer UI, component/private SQL evidence; production-route publication and account/device gates remain separate."
+  "scope": "Injectable organizer UI, component/private SQL evidence; production-route publication and account/device gates remain separate.",
+  "merge": "4e0ed50f0b1172489b87ad71c1ebef8bb38aad70"
 }
