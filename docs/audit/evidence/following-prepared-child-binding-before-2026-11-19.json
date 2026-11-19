@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-19",
+  "source": "0ed5ed4",
+  "testsOnlyCommit": "6de4b06",
+  "scope": "dedicated synthetic transactional provider; no native CalendarProvider/account run",
+  "tests": 3,
+  "failures": 2,
+  "errors": 0,
+  "skipped": 0,
+  "failureDetails": [
+    {
+      "test": "preparedAttendeeReplacementCannotReadForeignPayloadOrDispatch",
+      "message": "java.lang.AssertionError: Foreign child payload was read after replacement; query=path=attendees, projection=null, selection=event_id = ?, cells=[attendees.attendeeName, attendees.attendeeEmail, attendees.attendeeStatus, attendees.attendeeRelationship, attendees.attendeeType]"
+    },
+    {
+      "test": "preparedReminderReplacementCannotReadForeignPayloadOrDispatch",
+      "message": "java.lang.AssertionError: Foreign child payload was read after replacement; query=path=reminders, projection=null, selection=event_id = ?, cells=[reminders.minutes, reminders.method, reminders.minutes, reminders.method]"
+    }
+  ],
+  "observations": [
+    "Reminder and attendee pre-dispatch reads use full collection projection with event_id-only selection after a separate parent check",
+    "Controlled identity change exposes child payload cells before Conflict",
+    "Both failing cases verify zero provider batches, no tail and exact original PREPARED journal",
+    "Stable frozen retry control passes"
+  ],
+  "xmlSha256": "b4207f80c5e28df148b7360ddac2064ab667f1d4cd0614e9ab85face4876f3d9",
+  "xml": "/tmp/daylight-following-prepared-child-binding-before.xml",
+  "log": "/tmp/daylight-following-prepared-child-binding-before.log",
+  "correction": "PENDING guarded membership and exact known-child item reads",
+  "limitations": [
+    "No production profile admission",
+    "No native/account/Google delivery acceptance",
+    "Optional extra independent test turn did not execute and is not counted"
+  ]
+}
