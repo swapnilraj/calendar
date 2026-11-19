@@ -23,6 +23,8 @@ title/notes/token payload. These opaque draft documents add no storage schema, p
 automatic retry, or receipt4/6 migration. This packet supplies protocol prerequisites; services and UI
 acceptance remain separate.
 
+Incoming calendar read sessions resolve caller-provided references through bounded provider reads before displaying details. Sessions pin the original calendar namespace and event identity; restoration, asynchronous reads and permission or source changes never silently adopt a replacement or choose an arbitrary recurring occurrence. Raw caller fields remain untrusted review suggestions and never become a mutation command. The entry Activity and injectable review interfaces are supplied as an inactive foundation: exported intent filters, application ownership and date/create/edit review destinations require a separate integration step before public activation.
+
 ### Retained meeting-family drafts
 
 The draft browser identifies response, creation and organizer-owned meeting records before ordinary
