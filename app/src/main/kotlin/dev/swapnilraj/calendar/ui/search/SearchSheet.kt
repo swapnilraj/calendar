@@ -96,6 +96,7 @@ fun SearchSheet(
                                 CoverageReason.SYNC_DISABLED -> stringResource(R.string.search_coverage_sync, name)
                                 CoverageReason.MISSING_CALENDAR -> stringResource(R.string.search_coverage_missing)
                                 CoverageReason.INSUFFICIENT_ACCESS -> stringResource(R.string.search_coverage_access, name)
+                                CoverageReason.INVITATION_CLASSIFICATION_UNKNOWN -> stringResource(R.string.invitation_filter_unknown_coverage, name)
                             }
                             Text(label, style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                         }
