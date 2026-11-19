@@ -107,8 +107,8 @@ internal fun EventWriteWorkflow(
     retirement: OperationRetirement? = null,
     requestWritePermission: (suspend () -> Boolean)? = null,
     onReplacedLaunch: ((EditorDraftLaunch) -> Unit)? = null,
-    presentationVisible: Boolean = true,
     onPromotedMeeting: ((MeetingCreationLaunch) -> Unit)? = null,
+    presentationVisible: Boolean = true,
     onControllerPresence: (EventEditorController, Boolean) -> Unit = { _, _ -> },
 ) {
     var retry by remember(request) { mutableIntStateOf(0) }
