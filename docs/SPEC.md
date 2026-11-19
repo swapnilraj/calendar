@@ -814,6 +814,16 @@ reference without a write, while preserving calendar filters. Production enables
 embedded callers default to absent. This does not search cloud-only calendars or establish Google
 main-screen gesture/pixel parity.
 
+Explicit read/search requests may select `PENDING_ONLY`; omitted filters remain `ALL` with existing
+results and provider projections unchanged. Pending requires exact provider evidence that the user is
+not the organizer and their raw attendee status is INVITED. Missing, invalid or contradictory evidence
+is UNKNOWN: omit those rows from pending results and retain incomplete-classification coverage before
+filtering or result limits. Conflicting classifications for the same occurrence coalesce to UNKNOWN
+before deduplication; identical proven pending rows may deduplicate. Search candidate pages remain
+unfiltered and use fresh Events authority for classification. This is read-only metadata, grants no
+RSVP/edit authority, and changes no provider visibility, reminder policy or account data. This packet
+does not activate a settings control or apply the filter in application views.
+
 ## Phone Settings and General
 
 The drawer opens full-height Settings → General for existing supported preferences. Grouped
