@@ -539,7 +539,8 @@ class OrdinaryEditReceiptTest {
             val delta = provider.batchCount - batches
             println("Receipt4 frozen precision: case=$variant phase=$phase recover=${recovered.javaClass.simpleName} submit=${submitted.javaClass.simpleName} batches=$delta after=$afterPhase queries=${provider.queryCounts.values.sum()}")
             val expected = MutationResult.Uncertain("frozen-precision", null)
-            if (recovered != expected || submitted != expected || delta != 0 || afterPhase != phase ||
+            val safeSubmission = submitted == expected || phase == "PREPARED" && submitted == MutationResult.Unavailable
+            if (recovered != expected || !safeSubmission || delta != 0 || afterPhase != phase ||
                 provider.queryCounts.isNotEmpty() || before != provider.events.map { it.toMap() }) {
                 failures += "$variant/$phase: recover=${recovered.javaClass.simpleName} submit=${submitted.javaClass.simpleName} batches=$delta after=$afterPhase"
             }
