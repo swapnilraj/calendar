@@ -70,7 +70,7 @@ internal object FollowingNativePlan {
         if(!r.whole){
             val tail=requireNotNull(r.tail)
             val expected=tail+mapOf("deleted" to "0","isOrganizer" to "1","hasAlarm" to if(r.tailReminders.isEmpty())"0"else"1","hasExtendedProperties" to "0",
-                "selfAttendeeStatus" to (r.tailAttendees.singleOrNull()?.get("attendeeStatus")?:"0"),"_sync_id" to null,"rdate" to null,"exrule" to null,"exdate" to null,
+                "selfAttendeeStatus" to (r.tailAttendees.singleOrNull()?.get("attendeeStatus")?:"0"),"_sync_id" to null,"rdate" to null,"exrule" to null,"exdate" to if(r.version==4)tail["exdate"]else null,
                 "original_id" to null,"original_sync_id" to null,"originalInstanceTime" to null,"originalAllDay" to null)
             add(FollowingNativeStep("ASSERT","events",values=expected,selection="_id = ?",args=listOf("0"),expected=1,selectionBackref=tailIndex))
             for(table in listOf("reminders","attendees","extendedproperties"))assertChildren(null,tailIndex,table,when(table){"reminders"->r.tailReminders;"attendees"->r.tailAttendees;else->emptyList()})

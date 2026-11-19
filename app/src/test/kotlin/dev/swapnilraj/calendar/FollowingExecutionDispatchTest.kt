@@ -181,7 +181,9 @@ class FollowingExecutionDispatchTest {
         assertNull(f.store.operation("change"));assertEquals(0,f.p.base.batchCount);assertEquals(1,f.p.base.count("events"))
     }}
     private fun legacy(r:FollowingExecutionReceipt,phase:String,result:Long?=null):String {
-        val material=JSONObject().put("whole",r.whole).put("ordinal",r.ordinal).put("prefix",CreateSixJson.row(r.prefix)).put("tail",r.tail?.let(CreateSixJson::row)?:JSONObject.NULL)
+        require(r.master["exdate"].isNullOrEmpty())
+        val historicalTail=r.tail?.filterKeys{it!="exdate"}
+        val material=JSONObject().put("whole",r.whole).put("ordinal",r.ordinal).put("prefix",CreateSixJson.row(r.prefix)).put("tail",historicalTail?.let(CreateSixJson::row)?:JSONObject.NULL)
             .put("prefixReminders",FollowingJson.rows(r.prefixReminders)).put("tailReminders",FollowingJson.rows(r.tailReminders)).put("tailAttendees",FollowingJson.rows(r.tailAttendees))
         return JSONObject().put("version",2).put("feature","SERIES_FOLLOWING_EDIT_V2").put("kind",FollowingExecutionReceipt.Kind).put("signature",r.signature)
             .put("token",r.token).put("command",r.command).put("source",r.source).put("uid",r.uid?:JSONObject.NULL).put("material",material).put("stage",if(phase in setOf("PREPARED","FAILED","ATTEMPTED"))"prepared"else"committed")
