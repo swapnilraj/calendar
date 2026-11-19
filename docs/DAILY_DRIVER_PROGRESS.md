@@ -11,6 +11,13 @@ tests. Command: `./gradlew test :app:assembleDebug :app:lintDebug`; log
 `1fca3bfbeb9b1ceed348c1ddfcfb5c5d77688f2275f85a5ab76345254a2ef45a`.
 This remains a debug-signed local build, not a stable release or daily-driver certification.
 
+The subsequent integrated end-zone correction at `1a0fd3d` passed29 focused checks, but its
+complete aggregate attempt **failed1 of2,246 tests** in4m31s: an existing ALL-edit journey timed out
+waiting for its initial event title before any edit/write. No Following regression failed. The
+[failing attempt and focused correction evidence](audit/evidence/following-null-end-zone-fixed-2026-11-19.json)
+are retained; investigation and a complete passing rerun are pending. This does not supersede the
+older passing checkpoint as a successful full gate.
+
 Navigation fixture transition hardening from the already published PR62 is now selectively
 integrated as `f895cfb`: journeys wait for displayed controls and a closed drawer after preference
 commit, and explicitly verify Activity replacement. All8 navigation tests passed in17s
@@ -24,8 +31,8 @@ not implemented exclusion transfer or a production clone admission.
 Independent [Following metadata regression evidence](audit/evidence/following-null-end-zone-before-2026-11-19.json)
 subsequently exposed a title-only split changing an admitted SQL NULL end timezone to the start zone.
 The synthetic adapter returned LocalSaved with one batch while preserving the prefix except RRULE.
-Distinct nonblank end zones remain rejected before mutation. The corrective packet is pending;
-production clone admission remains disabled. The passing checkpoint above predates this new test.
+Distinct nonblank end zones remain rejected before mutation. The corrective source is integrated with29 focused checks passing; its complete aggregate rerun
+is pending as described above. Production clone admission remains disabled. The passing checkpoint above predates this new test.
 
 The shared Add people picker is connected to meeting creation and owned one-off editing. Optional
 local DEFAULT-directory contact search requires an explicit opt-in on each opening; typing, opening

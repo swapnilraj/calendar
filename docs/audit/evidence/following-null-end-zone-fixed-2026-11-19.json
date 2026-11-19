@@ -32,7 +32,20 @@
   ],
   "limitations": [
     "Synthetic clone policy only; production admission remains disabled",
-    "Full aggregate verification pending",
-    "No Google/Workspace, physical device or live UX acceptance"
-  ]
+    "No Google/Workspace, physical device or live UX acceptance",
+    "Latest aggregate attempt failed the initial event-loading journey; investigation and a complete passing rerun are required"
+  ],
+  "aggregateAttempt": {
+    "source": "1a0fd3d",
+    "status": "FAIL",
+    "tests": 2246,
+    "failures": 1,
+    "errors": 0,
+    "skipped": 0,
+    "elapsed": "4m31s",
+    "failedTest": "RecurringProviderJourneyTest.nativeAllEditCommitsThroughRealSeriesWriterAndReopenedSqlDeduplicates",
+    "failure": "15s timeout waiting for initial event title before details or mutation",
+    "preservedFailureXml": "/tmp/daylight-following-end-zone-full-gate-recurring-failure.xml",
+    "log": "/tmp/daylight-following-end-zone-full-gate.log"
+  }
 }
