@@ -50,7 +50,7 @@ internal fun PhoneEditorPanelContent(panel: PhoneEditorPanel, view: PhoneEventEd
                 }
             } }
         }
-        PhoneEditorPanel.ZONE -> PhoneEditorZonePanel(fields.zone, view.canEdit(EditableField.ZONE), onDismiss) { value -> controller.change { it.copy(zone = value) } }
+        PhoneEditorPanel.ZONE -> PhoneEditorZonePanel(fields.zone, view.canEdit(EditableField.ZONE), onDismiss,controller::authorZone)
         PhoneEditorPanel.LOCATION, PhoneEditorPanel.DESCRIPTION -> {
             val location = panel == PhoneEditorPanel.LOCATION
             PhoneEditorPanelFrame(stringResource(if (location) R.string.events_location else R.string.events_notes), onDismiss) {
