@@ -586,3 +586,17 @@ replay through recovery. Recurring UPDATE/DELETE, series and meeting retirement 
 by this publication. These are local provider guarantees, not Google/Workspace sync evidence,
 scoped-edit admission, provider-clone certification or physical-device acceptance. Live recurring-create
 UI activation is a separate packet and remains disabled by default here.
+
+## Complete series source reading
+
+The backend series source adapter reads the complete bounded master/exception/child graph
+independently of the visible date range. It validates the selected original occurrence and actual
+bounds, current calendar namespace, permission and write capability. Only repeated complete-source
+checks may issue an opaque private edit snapshot/token; incomplete coverage never produces a
+partial editable source. This performs no CalendarProvider mutation or visibility/sync change.
+
+Unsupported recurrence/date syntax remains raw and requires review. The source adapter itself
+issues no mutation scopes: scope capabilities remain empty/default UNKNOWN until a writer supplies
+its own fresh checks. Adding the adapter does not wire a new UI action, writer, provider clone
+profile or EXDATE transfer. Synthetic source tests do not establish native cache behavior or
+Google/Workspace propagation.
