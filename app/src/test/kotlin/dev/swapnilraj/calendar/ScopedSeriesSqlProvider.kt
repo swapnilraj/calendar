@@ -132,6 +132,12 @@ internal open class ScopedSeriesSqlProvider : ContentProvider() {
                         if (begin > endpoint) break
                     }
                     if (++emitted > count) break
+                    // EXDATE suppresses native rows, never nominal recurrence COUNT emission.
+                    val excluded=row["exdate"]?.removeSuffix("\n")?.split('\n')?.flatMap{it.removePrefix("UTC;").split(',')}?.any{token->
+                        val literal=if(row["allDay"]=="1")Instant.ofEpochMilli(begin).atOffset(ZoneOffset.UTC).toLocalDate().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE)else null
+                        token==literal||token==Instant.ofEpochMilli(begin).atOffset(ZoneOffset.UTC).format(java.time.format.DateTimeFormatter.ofPattern("uuuuMMdd'T'HHmmss'Z'"))
+                    }==true
+                    if(excluded)continue
                     val end = begin + row.getValue("native_duration_ms")!!.toLong() + endDelta
                     if (begin >= high) break
                     if (end <= low) continue

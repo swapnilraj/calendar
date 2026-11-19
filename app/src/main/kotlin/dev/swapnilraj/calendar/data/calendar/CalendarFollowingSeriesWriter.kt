@@ -48,9 +48,11 @@ internal class CalendarFollowingSeriesWriter(
         val raw=raw(source);val selected=requireNotNull(raw.snapshot.validatedSelection)
         val original=requireNotNull(selected.recurrence).originalStart
         val key=if(raw.snapshot.start is RecurrenceStart.AllDay)RecurrenceKey.Date(original.atOffset(ZoneOffset.UTC).toLocalDate())else RecurrenceKey.Timed(original)
-        val model=material(raw,SeriesCommand.FollowingEdit(RecurrenceEditIntent.FollowingSeriesEdit(key)),previewUid(raw))
+        val model=metadataMaterial(raw,SeriesCommand.FollowingEdit(RecurrenceEditIntent.FollowingSeriesEdit(key)),previewUid(raw)).first
         if(!model.whole)requireCloneProfile()
-        SeriesScopeCapabilities(AccessDecision.ALLOWED,series.allowedFields,AccessDecision.UNKNOWN,recurrence=AccessDecision.ALLOWED)
+        val exclusions=!raw.master["exdate"].isNullOrEmpty()
+        SeriesScopeCapabilities(AccessDecision.ALLOWED,if(exclusions)series.allowedFields-setOf(EditableField.TIME,EditableField.ZONE)else series.allowedFields,
+            AccessDecision.UNKNOWN,recurrence=if(exclusions)AccessDecision.UNKNOWN else AccessDecision.ALLOWED)
     }catch(limit:ProviderReadLimitExceeded){throw limit}
     catch(cancelled:CancellationException){throw cancelled}
     catch(_:Exception){null}
@@ -180,14 +182,17 @@ internal class CalendarFollowingSeriesWriter(
                 if(!permissions())return common(MutationResult.PermissionRequired)
                 val source=sourceReader.checkedSource(selected,token);val raw=raw(source)
                 val frozen=CalendarSeriesWriter.parseFollowingCommand(raw.snapshot,CalendarSeriesWriter.frozenCommandJson(command))
-                val preview=material(raw,frozen,previewUid(raw))
+                val metadata=FollowingExdateAuthority.eligible(frozen.intent)
+                val preview=if(metadata)metadataMaterial(raw,frozen,previewUid(raw)).first else material(raw,frozen,previewUid(raw))
                 if(!preview.whole){
                     requireCloneProfile()
                     if(raw.master["uid2445"].isNullOrBlank()&&raw.master["_sync_id"].isNullOrBlank())throw Review("The prefix has no issued identity for a safe independent split")
                 }
-                val model=material(raw,frozen,if(preview.whole)null else newUid(raw))
+                val generated=if(preview.whole)null else newUid(raw)
+                val prepared=if(metadata)metadataMaterial(raw,frozen,generated)else null
+                val model=prepared?.first?:material(raw,frozen,generated)
                 FollowingExecutionReceipt(id,CalendarSeriesWriter.frozenCommandJson(frozen).toString(),token.value,raw.encoded,model.whole,model.ordinal,
-                    prefixValues(raw,model),model.prefix,model.prefixReminders,model.tail,model.tailReminders,model.tailAttendees,templateStart(model.template.time),templateEnd(model.template.time)).also{it.validate();frozenCandidateReady()}
+                    prefixValues(raw,model)+(if(metadata)mapOf("exdate" to model.prefix["exdate"])else emptyMap()),model.prefix,model.prefixReminders,model.tail,model.tailReminders,model.tailAttendees,templateStart(model.template.time),templateEnd(model.template.time),prepared?.second).also{it.validate();frozenCandidateReady()}
             }
             if(!permissions())return common(MutationResult.PermissionRequired)
             if(!initial.whole)requireCloneProfile()
@@ -309,7 +314,7 @@ internal class CalendarFollowingSeriesWriter(
         return (row!=null&&row["_id"]==id.toString()&&row["calendar_id"]==calendar.toString()&&row["uid2445"]==uid&&(!guardSync||row["_sync_id"]==sync)) to row
     }
     private fun tailExpected(r:FollowingExecutionReceipt)=requireNotNull(r.tail)+mapOf("deleted" to "0","isOrganizer" to "1","hasAlarm" to if(r.tailReminders.isEmpty())"0"else"1","hasExtendedProperties" to "0",
-        "selfAttendeeStatus" to (r.tailAttendees.singleOrNull()?.get("attendeeStatus")?:"0"),"rdate" to null,"exrule" to null,"exdate" to null,"original_id" to null,"original_sync_id" to null,"originalInstanceTime" to null,"originalAllDay" to null)
+        "selfAttendeeStatus" to (r.tailAttendees.singleOrNull()?.get("attendeeStatus")?:"0"),"rdate" to null,"exrule" to null,"exdate" to if(r.version==4)r.tail?.get("exdate")else null,"original_id" to null,"original_sync_id" to null,"originalInstanceTime" to null,"originalAllDay" to null)
 
     private suspend fun recoverFrozen(operation:CalendarLocalStore.Operation,parsed:Pair<JSONObject,FollowingExecutionReceipt>,justAcknowledged:Boolean=false):SeriesMutationResult {
         ensureRead()
@@ -400,6 +405,39 @@ internal class CalendarFollowingSeriesWriter(
             }catch(failure:Exception){continuation.resumeWithException(failure)}}
         return cursor.use{c->val names=fields?.toList()?:c.columnNames.filterNot{uri.pathSegments.firstOrNull()=="attendees"&&SeriesAttendeeColumns.isJoinedAlias(it)}
             buildList{while(c.moveToNext()){currentCoroutineContext().ensureActive();ensureRead();add(names.associateWith{field->ensureRead();val column=c.getColumnIndexOrThrow(field);require(c.getType(column)!=Cursor.FIELD_TYPE_BLOB);if(c.isNull(column))null else c.getString(column)})};ensureRead()}}
+    }
+
+    private fun metadataMaterial(raw:Raw,command:SeriesCommand.FollowingEdit,uid:String?):Pair<Material,String> {
+        frozenPreparationProbe();owned(raw)
+        if(raw.master["dtend"]!=null||RecurrenceMasterTemplates.resolve(raw.snapshot) !is RecurrenceMasterTemplateResult.Ready)throw Review("The original recurring interval requires review")
+        if(!raw.snapshot.exDatesDecoded||raw.snapshot.coverage!=SeriesCoverage.COMPLETE||raw.snapshot.exceptions.isNotEmpty())throw Review("Complete exception-free exclusion coverage is required")
+        val selected=requireNotNull(raw.snapshot.validatedSelection)
+        val proof=RecurrenceFollowingMetadata.resolve(raw.snapshot,selected,command.intent,budget)
+        val id=raw.snapshot.identity.masterEventId
+        val prefix=raw.master.filterKeys{it !in Bookkeeping}.toMutableMap()
+        val changes=owner.followingChanges(raw.calendar,raw.reminders,raw.master,command.intent.fields)
+        val reminders=patchedReminders(raw,command.intent.fields)
+        val boundary=command.intent.expectedOriginalBoundary
+        when(proof){
+            is RecurrenceFollowingMetadataResult.Whole->{
+                val template=interval(raw.snapshot.start,RecurrenceDurationChange.KeepRaw,raw.snapshot.durationRaw)
+                if(templateStart(template.time)!=selected.instanceStart||templateEnd(template.time)!=selected.instanceEnd)throw Review("The native occurrence and duration disagree")
+                changes.keySet().forEach{prefix[it]=changes.get(it)?.toString()};prefix["exdate"]=proof.exDatesRaw
+                return Material(true,0,raw.snapshot.start,template,prefix,null,reminders,emptyList(),emptyList()) to FollowingExdateAuthority.create(raw.master["exdate"],boundary,null,proof.exDatesRaw,null)
+            }
+            is RecurrenceFollowingMetadataResult.Split->{
+                if(uid==null||!validUid(uid,raw.master["uid2445"]))throw Review("The independent tail identity is unavailable")
+                prefix["rrule"]=proof.prefixRuleRaw;prefix["exdate"]=proof.prefixExDatesRaw
+                val template=interval(proof.tailStart,RecurrenceDurationChange.KeepRaw,raw.snapshot.durationRaw)
+                if(templateStart(template.time)!=selected.instanceStart||templateEnd(template.time)!=selected.instanceEnd)throw Review("The native occurrence and duration disagree")
+                val tail=copyPublic(raw).apply{putAll(changes);putAll(nativeTime(raw,proof.tailStart,template,proof.tailRuleRaw));put("uid2445",uid);if(raw.master["eventEndTimezone"]==null)putNull("eventEndTimezone")else put("eventEndTimezone",raw.master["eventEndTimezone"]);if(proof.tailExDatesRaw==null)putNull("exdate")else put("exdate",proof.tailExDatesRaw)}
+                validatePublic(tail)
+                val tailReminders=reminders.map{it.filterKeys{k->k in ReminderCopy}}
+                val previous=if(raw.master["rrule"]!!.split(';').any{it.startsWith("COUNT=")})null else FollowingExdateAuthority.previous(proof.prefixRuleRaw,raw.master["allDay"]=="1")
+                return Material(false,proof.boundaryOrdinal,proof.tailStart,template,prefix,tail.keySet().associateWith{tail.get(it)?.toString()},raw.reminders[id].orEmpty(),tailReminders,copyChildren(raw,tailReminders)) to FollowingExdateAuthority.create(raw.master["exdate"],boundary,previous,proof.prefixExDatesRaw,proof.tailExDatesRaw)
+            }
+            is RecurrenceFollowingMetadataResult.NeedsReview->throw Review("The original boundary and native exclusions require review")
+        }
     }
 
     private fun material(raw:Raw,command:SeriesCommand.FollowingEdit,uid:String?,issuedEndZone:FieldChange<String?> = FieldChange.Keep):Material {

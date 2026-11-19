@@ -637,3 +637,18 @@ choice wins. Invalid values never enter storage; IO failure retains input for ex
 cancellation propagates. Loading/read failure masks all editor controls/system Back while retaining
 unfinished input. A Saved acknowledgement closes only its submitted editor. Cancel abandons the
 proposal; opening, typing, Back, dismissal and recreation never auto-save.
+
+
+## Exception-free Following EXDATE metadata bridge
+
+The [receipt4 contract](FOLLOWING_EXDATE_RECEIPT4.md) defines the bounded native adapter for changing
+metadata from a chosen occurrence when EXDATE is independently decoded and the exception graph is
+empty. New4 freezes exact lexical partitions/native writes, nominal COUNT/end limits and issued
+clock/zone/WHOLE context. Nonempty exclusions expose metadata capabilities only; unsupported syntax,
+excluded selection and temporal/rule changes remain unavailable or require review before dispatch.
+
+Existing2/3 operations retain issued protocol/bytes through every phase; recovery never replans or
+upgrades them. Namespace/ACK/child-binding/CAS/retirement and clone-profile checks remain in force.
+Default Unverified admits no new clone-dependent operation. The local195 checks and separate105
+provider/3 synthetic UI aggregate checks pass; fullCI, native Google/Workspace propagation, moved or
+cancelled exception graph transfer and external daily-driver acceptance remain separate gates.

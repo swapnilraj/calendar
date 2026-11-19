@@ -18,7 +18,10 @@ internal data class FollowingExecutionReceipt(
     val prefix: Map<String,String?>, val prefixReminders: List<Map<String,String?>>,
     val tail: Map<String,String?>?, val tailReminders: List<Map<String,String?>>,
     val tailAttendees: List<Map<String,String?>>, val firstStart: Instant, val firstEnd: Instant,
+    val exclusionsRaw:String?=null,
 ) {
+    val version get()=if(exclusionsRaw==null)3 else 4
+    private val feature get()=if(version==3)Feature else "SERIES_FOLLOWING_EDIT_V4"
     val source: JSONObject get() = JSONObject(sourceRaw)
     val calendar get() = CreateSixJson.row(source.getJSONObject("calendar"))
     val master get() = CreateSixJson.row(source.getJSONObject("master"))
@@ -34,13 +37,13 @@ internal data class FollowingExecutionReceipt(
         val groups=source.getJSONArray(key)
         return if(groups.length()==0)emptyList() else FollowingJson.rows(groups.getJSONObject(0).getJSONArray("rows"))
     }
-    fun plan()=JSONObject().put("version",1).put("whole",whole).put("ordinal",ordinal).put("prefixWrite",CreateSixJson.row(prefixWrite))
+    fun plan()=JSONObject().put("version",if(version==3)1 else 2).put("whole",whole).put("ordinal",ordinal).put("prefixWrite",CreateSixJson.row(prefixWrite))
         .put("prefix",CreateSixJson.row(prefix)).put("prefixReminders",FollowingJson.rows(prefixReminders))
         .put("tail",tail?.let(CreateSixJson::row)?:JSONObject.NULL).put("tailReminders",FollowingJson.rows(tailReminders))
-        .put("tailAttendees",FollowingJson.rows(tailAttendees)).put("firstStart",firstStart.toString()).put("firstEnd",firstEnd.toString())
-    private fun digest()=CreateSixJson.hash(Feature+"\n1\n"+operationId+"\n"+signature+"\n"+commandRaw+"\n"+token+"\n"+sourceRaw+"\n"+
+        .put("tailAttendees",FollowingJson.rows(tailAttendees)).put("firstStart",firstStart.toString()).put("firstEnd",firstEnd.toString()).apply{exclusionsRaw?.let{put("exclusions",JSONObject(it))}}
+    private fun digest()=CreateSixJson.hash(feature+"\n1\n"+operationId+"\n"+signature+"\n"+commandRaw+"\n"+token+"\n"+sourceRaw+"\n"+
         CreateSixJson.canonical(plan())+"\n"+CreateSixJson.canonical(FollowingAcknowledgments.layout(steps())))
-    fun prepared()=JSONObject().put("version",3).put("feature",Feature).put("kind",Kind).put("stage","prepared")
+    fun prepared()=JSONObject().put("version",version).put("feature",feature).put("kind",Kind).put("stage","prepared")
         .put("signature",signature).put("command",command).put("token",token).put("sourceRaw",sourceRaw)
         .put("plan",plan()).put("layout",FollowingAcknowledgments.layout(steps())).put("planDigestVersion",1).put("planDigest",digest())
     fun ref(result:Long)=EventRef(CalendarId(calendarId),result,firstStart,firstEnd,RecurrenceRef(result,firstStart))
@@ -55,7 +58,7 @@ internal data class FollowingExecutionReceipt(
         require(m.size<=128&&c.size<=128&&prefix.size<=128&&prefixWrite.size<=128&&(tail?.size?:0)<=128)
         require(masterId>0&&m["_id"]==masterId.toString()&&m["calendar_id"]==calendarId.toString()&&calendarId>=0&&c["_id"]==calendarId.toString()&&selection.calendarId.value==calendarId&&selection.eventId==masterId&&selection.recurrence?.masterEventId==masterId)
         require(m["deleted"]=="0"&&m["dtend"]==null&&m["allDay"] in setOf("0","1"))
-        require(listOf("rdate","exdate","exrule").all{m[it].isNullOrEmpty()}&&listOf("original_id","original_sync_id","originalInstanceTime","originalAllDay").all{m[it]==null})
+        require((if(version==3)listOf("rdate","exdate","exrule")else listOf("rdate","exrule")).all{m[it].isNullOrEmpty()}&&listOf("original_id","original_sync_id","originalInstanceTime","originalAllDay").all{m[it]==null})
         for(table in listOf("reminders","attendees","extendedproperties")) {
             val key=if(table=="extendedproperties")"extendedProperties"else table
             val groups=s.getJSONArray(key);require(groups.length()<=1)
@@ -64,7 +67,7 @@ internal data class FollowingExecutionReceipt(
             require(rows.map{it["_id"]}.distinct().size==rows.size)
         }
         require(whole==(ordinal==0)&&ordinal in 0..10000)
-        require(prefixWrite.keys.all{it in PrefixFields}&&prefixWrite["uid2445"]==null&&prefixWrite["_sync_id"]==null)
+        require(prefixWrite.keys.all{it in PrefixFields||(version==4&&it=="exdate")}&&prefixWrite["uid2445"]==null&&prefixWrite["_sync_id"]==null)
         val expected=m.filterKeys{it !in Bookkeeping}+prefixWrite
         require(prefix==expected)
         require(prefix["_id"]==masterId.toString()&&prefix["calendar_id"]==calendarId.toString()&&prefix["uid2445"]==m["uid2445"]&&prefix["_sync_id"]==m["_sync_id"])
@@ -72,8 +75,8 @@ internal data class FollowingExecutionReceipt(
         val output=if(whole){require(tail==null&&tailReminders.isEmpty()&&tailAttendees.isEmpty());prefix}else{
             require(!m["uid2445"].isNullOrBlank()||!m["_sync_id"].isNullOrBlank())
             require(prefixReminders==children("reminders")&&children("extendedproperties").isEmpty())
-            val context=Context.associateWith{m[it]};require(prefixWrite==context+mapOf("rrule" to prefix["rrule"]))
-            val t=requireNotNull(tail);require(t.keys.all{it in TailFields}&&t["calendar_id"]==calendarId.toString()&&t["dtend"]==null)
+            val context=Context.associateWith{m[it]};require(prefixWrite==context+mapOf("rrule" to prefix["rrule"])+(if(version==4)mapOf("exdate" to prefix["exdate"])else emptyMap()))
+            val t=requireNotNull(tail);require(t.keys.all{it in TailFields||(version==4&&it=="exdate")}&&t["calendar_id"]==calendarId.toString()&&t["dtend"]==null)
             val identity=requireNotNull(t["uid2445"]);require(UUID.fromString(identity).toString()==identity&&!identity.equals(m["uid2445"],true))
             t
         }
@@ -86,6 +89,7 @@ internal data class FollowingExecutionReceipt(
         tailAttendees.forEach{require(it.keys.all{k->k in AttendeeFields}&&it["attendeeEmail"]==c["ownerAccount"]&&it["attendeeRelationship"]=="2")}
         require(tailAttendees.size<=1)
         validateCommand()
+        if(version==4)FollowingExdateAuthority.validate(this)
         require(steps().size<=4002)
     }
     private fun validateCommand() {
@@ -111,7 +115,7 @@ internal data class FollowingExecutionReceipt(
         }
         val metadata=mapOf("title" to "title","location" to "eventLocation","description" to "description","availability" to "availability","privacy" to "accessLevel")
         for((input,native)in metadata)if(!patch.has(input))require(target[native]==master[native])
-        if(whole)require(prefixWrite.keys.all{it in Context+setOf("eventEndTimezone","calendar_id","rrule","hasAlarm")||metadata.any{(input,native)->patch.has(input)&&it==native}})
+        if(whole)require(prefixWrite.keys.all{it in Context+(if(version==4)setOf("exdate")else emptySet())+setOf("eventEndTimezone","calendar_id","rrule","hasAlarm")||metadata.any{(input,native)->patch.has(input)&&it==native}})
         if(whole) {
             val alarm=if(patch.has("alerts"))if(patchedReminders.isEmpty())"0"else"1" else master["hasAlarm"]
             require(prefix["hasAlarm"]==alarm)
@@ -120,7 +124,7 @@ internal data class FollowingExecutionReceipt(
             val t=requireNotNull(tail)
             val inputFields=metadata.filterKeys{patch.has(it)}.values.toSet()
             val copied=PublicFields.filterTo(linkedSetOf()){master.containsKey(it)}
-            val fields=copied+inputFields+TailTimeFields+"uid2445"+if(patch.has("alerts"))setOf("hasAlarm")else emptySet()
+            val fields=copied+inputFields+TailTimeFields+(if(version==4)setOf("exdate")else emptySet())+"uid2445"+if(patch.has("alerts"))setOf("hasAlarm")else emptySet()
             require(t.keys==fields)
             for(key in copied-inputFields)require(t[key]==master[key])
             if(patch.has("alerts"))require(t["hasAlarm"]==if(patchedReminders.isEmpty())"0"else"1")
@@ -145,22 +149,24 @@ internal data class FollowingExecutionReceipt(
         val TailTimeFields=setOf("calendar_id","dtstart","dtend","duration","allDay","eventTimezone","eventEndTimezone","rrule")
         val PublicFields=setOf("title","description","eventLocation","eventStatus","eventColor","availability","accessLevel","organizer","hasAttendeeData","guestsCanModify","guestsCanInviteOthers","guestsCanSeeGuests")
         val TailFields=PrefixFields+setOf("uid2445","eventStatus","eventColor","organizer","hasAttendeeData","guestsCanModify","guestsCanInviteOthers","guestsCanSeeGuests")
-        fun handles(op:CalendarLocalStore.Operation)=op.kind==Kind&&runCatching{JSONObject(op.resultRef?:"{}").optInt("version")==3}.getOrDefault(false)
+        fun handles(op:CalendarLocalStore.Operation)=op.kind==Kind&&runCatching{JSONObject(op.resultRef?:"{}").optInt("version") in setOf(3,4)}.getOrDefault(false)
         fun parse(op:CalendarLocalStore.Operation,maxBytes:Int):Pair<JSONObject,FollowingExecutionReceipt> {
             val raw=requireNotNull(op.resultRef);checkStoredJson(raw,maxBytes);val j=JSONObject(raw)
-            require(op.kind==Kind&&CreateSixJson.number(j,"version")==3L&&CreateSixJson.text(j,"feature")==Feature&&CreateSixJson.text(j,"kind")==Kind)
+            val version=CreateSixJson.number(j,"version");require(version in setOf(3L,4L))
+            require(op.kind==Kind&&CreateSixJson.text(j,"feature")== (if(version==3L)Feature else "SERIES_FOLLOWING_EDIT_V4"))
+            require(CreateSixJson.text(j,"kind")==Kind)
             val prepared=op.phase in setOf("PREPARED","FAILED","ATTEMPTED");require(prepared||op.phase in setOf("COMMITTED","VERIFIED"))
             val base=setOf("version","feature","kind","stage","signature","command","token","sourceRaw","plan","layout","planDigestVersion","planDigest")
             val needed=base+if(prepared)emptySet()else setOf("result","ackComplete")+if(op.phase=="VERIFIED")setOf("insertIds","ref")else emptySet()
             val keys=j.keys().asSequence().toSet();require(keys.containsAll(needed)&&keys.all{it in needed+if(prepared)emptySet()else setOf("ackFacts","tailSync")})
             require(CreateSixJson.text(j,"stage")==if(prepared)"prepared"else"committed")
-            val p=j.getJSONObject("plan");CreateSixJson.keys(p,"version","whole","ordinal","prefixWrite","prefix","prefixReminders","tail","tailReminders","tailAttendees","firstStart","firstEnd")
-            require(CreateSixJson.number(p,"version")==1L&&CreateSixJson.number(j,"planDigestVersion")==1L)
+            val p=j.getJSONObject("plan");CreateSixJson.keys(p,"version","whole","ordinal","prefixWrite","prefix","prefixReminders","tail","tailReminders","tailAttendees","firstStart","firstEnd",*(if(version==4L)arrayOf("exclusions")else emptyArray()))
+            require(CreateSixJson.number(p,"version")==(if(version==3L)1L else 2L)&&CreateSixJson.number(j,"planDigestVersion")==1L)
             val ordinal=CreateSixJson.number(p,"ordinal");require(ordinal in 0..10000)
             val r=FollowingExecutionReceipt(op.id,j.getJSONObject("command").toString(),CreateSixJson.text(j,"token"),CreateSixJson.text(j,"sourceRaw"),CreateSixJson.bool(p,"whole"),ordinal.toInt(),
                 CreateSixJson.row(p.getJSONObject("prefixWrite")),CreateSixJson.row(p.getJSONObject("prefix")),FollowingJson.rows(p.getJSONArray("prefixReminders")),
                 if(p.get("tail")===JSONObject.NULL)null else CreateSixJson.row(p.getJSONObject("tail")),FollowingJson.rows(p.getJSONArray("tailReminders")),FollowingJson.rows(p.getJSONArray("tailAttendees")),
-                CreateSixJson.instant(p,"firstStart"),CreateSixJson.instant(p,"firstEnd"))
+                CreateSixJson.instant(p,"firstStart"),CreateSixJson.instant(p,"firstEnd"),if(version==4L)p.getJSONObject("exclusions").toString()else null)
             r.validate();require(r.signature==op.signature&&CreateSixJson.text(j,"signature")==op.signature&&CreateSixJson.text(j,"planDigest")==r.digest())
             require(CreateSixJson.canonical(j.getJSONObject("layout"))==CreateSixJson.canonical(FollowingAcknowledgments.layout(r.steps())))
             if(!prepared){val result=CreateSixJson.number(j,"result");require(result>0&&if(r.whole)result==r.masterId else result!=r.masterId)

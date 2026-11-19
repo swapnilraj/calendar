@@ -68,7 +68,7 @@ class CalendarFollowingSeriesWriterTest {
         assertTrue(f.writer.mutate("raw-context",f.selected,edit.token,command(edit)) is SeriesMutationResult.LocalSaved)
         val sent=f.p.updatedEventValues.single{it.first==1L}.second
         val context=setOf("dtstart","dtend","duration","eventTimezone","allDay","originalInstanceTime","originalAllDay")
-        assertEquals(context+"rrule",sent.keySet())
+        assertEquals(context+setOf("rrule","exdate"),sent.keySet());assertTrue(sent.containsKey("exdate"));assertNull(sent.get("exdate"))
         context.forEach{key->assertEquals("Exact source field $key",before[key],sent.getAsString(key));assertTrue(sent.containsKey(key))}
         assertNull(sent.get("dtend"));assertNull(sent.get("originalInstanceTime"));assertNull(sent.get("originalAllDay"))
         assertEquals("PT1H",sent.getAsString("duration"));assertEquals("America/New_York",sent.getAsString("eventTimezone"))
@@ -164,6 +164,8 @@ class CalendarFollowingSeriesWriterTest {
         val material=issued.optJSONObject("material")?:issued.getJSONObject("plan").let{p->JSONObject().put("whole",p.get("whole")).put("ordinal",p.get("ordinal"))
             .put("prefix",p.get("prefix")).put("tail",p.get("tail")).put("prefixReminders",p.get("prefixReminders")).put("tailReminders",p.get("tailReminders")).put("tailAttendees",p.get("tailAttendees"))}
         val canonical=source.getJSONObject("master").getString("eventTimezone")
+        require(source.getJSONObject("master").isNull("exdate")||source.getJSONObject("master").getString("exdate").isEmpty())
+        material.getJSONObject("tail").remove("exdate") // Not present in historical2 native material.
         material.getJSONObject("tail").put("eventEndTimezone",canonical)
         val legacy=JSONObject().put("version",2).put("feature","SERIES_FOLLOWING_EDIT_V2").put("kind","SERIES_V1_FOLLOWING_EDIT").put("signature",issued.get("signature"))
             .put("token",issued.get("token")).put("command",issued.get("command")).put("source",source).put("uid",material.getJSONObject("tail").get("uid2445")).put("material",material).put("stage","prepared").toString()
@@ -309,7 +311,12 @@ class CalendarFollowingSeriesWriterTest {
     }}
 
     @Test fun dateSetsAndCompleteExistingExceptionGraphsKeepFollowingEditDisabled()=runBlocking{
-        listOf("exdate" to "20261118T090000Z","rdate" to "20261130T090000Z","exrule" to "FREQ=WEEKLY;BYDAY=SU").forEach{(key,value)->fixture{f->
+        fixture{f->f.p.db.execSQL("UPDATE events SET exdate='20261118T090000Z'");val edit=f.editable()
+            assertEquals(AccessDecision.ALLOWED,edit.scopes.getValue(RecurrenceScope.FOLLOWING).edit)
+            assertTrue(f.writer.mutate("exdate-metadata",f.selected,edit.token,command(edit)) is SeriesMutationResult.LocalSaved)
+            assertEquals(4,JSONObject(f.store.operation("exdate-metadata")!!.resultRef!!).getInt("version"));assertEquals(1,f.p.batchCount)
+        }
+        listOf("rdate" to "20261130T090000Z","exrule" to "FREQ=WEEKLY;BYDAY=SU").forEach{(key,value)->fixture{f->
             f.p.db.execSQL("UPDATE events SET $key = ?",arrayOf(value));val edit=f.editable()
             assertEquals(AccessDecision.DENIED,edit.scopes.getValue(RecurrenceScope.FOLLOWING).edit)
             assertTrue(f.writer.mutate("dateset",f.selected,edit.token,command(edit)) is SeriesMutationResult.PlanningReview);assertNull(f.store.operationHeader("dateset"));assertEquals(0,f.p.batchCount)
