@@ -1,0 +1,38 @@
+{
+  "date": "2026-11-19",
+  "scope": "actual adapters with synthetic transactional provider; not native CalendarProvider or Google sync",
+  "sourceBase": "97c3f3f",
+  "sourcePacket": "6a1a3ec",
+  "focusedCommand": "./gradlew :app:testDebugUnitTest --tests dev.swapnilraj.calendar.data.calendar.CalendarFollowingSeriesWriterTest --tests dev.swapnilraj.calendar.NativeFollowingJourneyTest",
+  "elapsed": "24s",
+  "reports": [
+    {
+      "suite": "dev.swapnilraj.calendar.NativeFollowingJourneyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "255de9a41fa3b9eb8ef07634c7a70d86f6880373742807764a04d2c678d9516a"
+    },
+    {
+      "suite": "dev.swapnilraj.calendar.data.calendar.CalendarFollowingSeriesWriterTest",
+      "tests": 26,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "2c2f6c12e85db0df79ce449a63441e8bc20a95f41d0418d5b5ce58cc6f896fb6"
+    }
+  ],
+  "verified": [
+    "Title-only split preserves NULL and empty end timezone",
+    "Rule-only edit with unchanged temporal/zone facts preserves NULL and empty end timezone",
+    "Distinct nonblank end timezone is rejected without writes",
+    "True legacy receipt2 prepared canonical end zone stays byte-identical at ATTEMPTED and replays its issued value",
+    "Existing Following writer and three actual-app SQLite host journeys pass"
+  ],
+  "limitations": [
+    "Synthetic clone policy only; production admission remains disabled",
+    "Full aggregate verification pending",
+    "No Google/Workspace, physical device or live UX acceptance"
+  ]
+}
