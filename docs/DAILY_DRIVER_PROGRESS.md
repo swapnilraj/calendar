@@ -6,8 +6,11 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 The newest full attempt at `ee2a89d` ran2,383 tests with one failure (zero errors/skips) in5m2s:
 the recurring-meeting creation journey could not find its guest row immediately after Add person.
-That result is preserved; it does not replace the last passing full checkpoint. A deterministic
-readiness check is under investigation. The integrated receipt4 budget correction passed66 focused
+That result is preserved; it does not replace the last passing full checkpoint. A narrow fixture
+readiness check at `bea2d36` now passes all four recurring-meeting journeys: it waits for an enabled
+Add Person action, persisted guest and enabled email field. No product behavior, timeout or provider
+assertion changed; this does not prove the historical disabled state. See
+[focused evidence](audit/evidence/recurring-meeting-guest-readiness-2026-11-19.json). The integrated receipt4 budget correction passed66 focused
 checks, including eight rejected overflow cases and four exact-fit positive controls. Its corrected
 before-fix fixture reproduced a provider write followed by ATTEMPTED/Uncertain in both new/adopted
 cases; the earlier ASCII fixture did not reproduce and remains recorded separately. See
@@ -26,7 +29,8 @@ The separate isolated reminder probe at `9221e27` passed15 focused checks, inclu
 actual-package/Application/recovery-receiver regression: zero framework jobs versus one retry job
 in its preserved before-fix run. Earlier14-test omissions and a configuration failure remain recorded.
 This is Robolectric evidence, not a new emulator run. Independent review also found a possible
-transient snapshot false refusal; its bounded settlement correction remains in progress. See
+transient snapshot false refusal; the reviewed bounded settlement correction at `e0ce17a` passes22
+focused checks. A new probe APK pair is building; no new native pass is claimed. See
 [regression evidence](audit/evidence/reminder-prebind-regression-2026-11-19.json).
 
 Subsequent bounded publication PR77–79 passed full CI and merged: injectable meeting creation/local

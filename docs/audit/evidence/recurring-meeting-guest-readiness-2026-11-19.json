@@ -1,0 +1,38 @@
+{
+  "source": "bea2d36",
+  "changedPath": "app/src/test/kotlin/dev/swapnilraj/calendar/NativeRecurringMeetingCreateJourneyTest.kt",
+  "changedScope": "enter helper only",
+  "historicalFailure": {
+    "xml": "/tmp/daylight-rsvp-budget-full-gate1-xml/app/TEST-dev.swapnilraj.calendar.NativeRecurringMeetingCreateJourneyTest.xml",
+    "sha256": "fba444a49bd91fa8099500c0d09854e263ba7b155425c6953969842cf8290fa7",
+    "counts": {
+      "tests": 4,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "observed": "No Person1 email semantics node immediately after AddPerson action; no historical enabled-state capture"
+  },
+  "sourceAnalysis": "Calendar-selection CAS readback may precede PhoneMeetingCreateActions.submit unlock. Helper now waits for enabled clickable AddPerson, clicks once, then requires persisted guest and enabled email semantics before typing.",
+  "unchanged": [
+    "Production code",
+    "Existing15000ms timeouts",
+    "No sleeps or action retries",
+    "All provider/journal/filter/draft assertions"
+  ],
+  "focused": {
+    "counts": {
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "class": "dev.swapnilraj.calendar.NativeRecurringMeetingCreateJourneyTest",
+    "seconds": 43,
+    "log": "/tmp/daylight-recurring-meeting-guest-readiness-focused1.log",
+    "xml": "/tmp/daylight-recurring-meeting-guest-readiness-focused1-xml",
+    "record": false,
+    "verify": false
+  },
+  "appAcceptance": "Synthetic MainActivity/SQL evidence only; no Google account/device acceptance"
+}
