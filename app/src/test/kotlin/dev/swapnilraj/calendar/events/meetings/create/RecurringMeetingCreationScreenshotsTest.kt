@@ -28,7 +28,7 @@ class RecurringMeetingCreationScreenshotsTest {
     private val f=MeetingCreationFixture()
     @After fun resetFontScale() {RuntimeEnvironment.setFontScale(1f)}
 
-    private fun show(review:Boolean,largeRtl:Boolean=false) {
+    private fun show(review:Boolean,largeRtl:Boolean=false,use24Hour:Boolean=true) {
         val controller=runBlocking {
             f.source=f.source.copy(recurringCreation=AccessDecision.ALLOWED)
             f.ready().also {
@@ -39,7 +39,7 @@ class RecurringMeetingCreationScreenshotsTest {
         RuntimeEnvironment.setFontScale(if(largeRtl) 2f else 1f)
         compose.setContent {
             CompositionLocalProvider(LocalLayoutDirection provides if(largeRtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-                DaylightTheme {PhoneMeetingCreateEditor(controller,listOf(f.calendar),{}, {})}
+                DaylightTheme {PhoneMeetingCreateEditor(controller,listOf(f.calendar),{}, {},use24Hour=use24Hour)}
             }
         }
         compose.waitForIdle()
@@ -57,6 +57,13 @@ class RecurringMeetingCreationScreenshotsTest {
         compose.onNodeWithText("Create recurring event").assertIsDisplayed()
         compose.onNode(isDialog() and hasAnyDescendant(hasText("Review recurring event")))
             .captureRoboImage("src/test/screenshots/phone_recurring_meeting_review_light.png")
+    }
+
+    @Test fun meetingHostCarriesTwelveHourChoiceIntoBoundsAndPreview() {
+        show(review=true,use24Hour=false)
+        val inReview=hasAnyAncestor(isDialog() and hasAnyDescendant(hasText("Review recurring event")))
+        compose.onAllNodes(hasText("AM",substring=true) and inReview).assertCountEquals(4)
+        compose.onAllNodes(hasText("09:00",substring=true) and inReview).assertCountEquals(0)
     }
 
     @Test fun recurringMeetingReviewLargeRtl() {

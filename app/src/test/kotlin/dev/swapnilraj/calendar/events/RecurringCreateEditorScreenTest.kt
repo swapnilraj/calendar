@@ -32,9 +32,9 @@ class RecurringCreateEditorScreenTest {
         ZoneOffset.UTC, "Recurring fixture", targetIdentity = eventTestIdentity())
     private fun editor(enabled: Boolean) = preparedEditor(initial, null, "recurring", writer, store, scope,
         Clock.fixed(Instant.parse("2026-11-18T00:00:00Z"), ZoneOffset.UTC), recurringCreationSupported = enabled)
-    private fun show(controller: EventEditorController) {
+    private fun show(controller: EventEditorController, use24Hour: Boolean = true) {
         compose.setContent { DaylightTheme { Surface(Modifier.fillMaxSize()) {
-            EventEditorContent(controller, listOf(eventTestCalendar()), {}, {}, {})
+            EventEditorContent(controller, listOf(eventTestCalendar()), {}, {}, {}, use24Hour = use24Hour)
         } } }
     }
     @After fun stop() { scope.cancel() }
@@ -67,6 +67,16 @@ class RecurringCreateEditorScreenTest {
         compose.onNodeWithText("Weekly on Thursday").assertIsDisplayed()
         compose.onNodeWithText("After 3 occurrences").assertIsDisplayed()
         compose.onNode(isDialog()).captureRoboImage("src/test/screenshots/events_create_recurrence_review_light.png")
+        assertEquals(0, writer.creates)
+    }
+
+    @Test fun legacyHostCarriesTwelveHourChoiceIntoBoundsAndPreview() {
+        val controller = editor(true)
+        controller.change { it.copy(recurrence = RecurrenceEditorFields(frequency = "DAILY")) }
+        controller.save(); show(controller, use24Hour = false)
+        val inReview = hasAnyAncestor(isDialog() and hasAnyDescendant(hasText("Review recurring event")))
+        compose.onAllNodes(hasText("AM", substring = true) and inReview).assertCountEquals(6)
+        compose.onAllNodes(hasText("09:00", substring = true) and inReview).assertCountEquals(0)
         assertEquals(0, writer.creates)
     }
 
