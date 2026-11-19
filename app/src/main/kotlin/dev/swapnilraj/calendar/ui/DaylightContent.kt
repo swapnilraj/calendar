@@ -89,6 +89,9 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
     val mutations = remember(app, context, writeRequest) { PermissionAwareMutations(app.calendarWriter,
         { ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED },
         { writeRequest.launch(Manifest.permission.WRITE_CALENDAR) }) }
+    val seriesMutations = remember(app, context, writeRequest) { PermissionAwareSeriesMutations(app.calendarSeriesWriter,
+        { ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED },
+        { writeRequest.launch(Manifest.permission.WRITE_CALENDAR) }) }
     var contactsAllowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) }
     val contactsRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         contactsAllowed = granted
@@ -153,6 +156,7 @@ private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState,
                         settings = app.settings,
                         preferenceOverride = preferences,
                         mutations = mutations,
+                        seriesMutations = seriesMutations,
                         search = app.calendarSearch,
                         widgetNavigation = widgetNavigation, onWidgetNavigationConsumed = onWidgetNavigationConsumed,
                         dateNavigation = dateNavigation, onDateNavigationConsumed = onDateNavigationConsumed,

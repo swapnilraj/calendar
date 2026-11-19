@@ -69,6 +69,11 @@ class CalendarApp : Application(), ReminderRuntimeOwner, dev.swapnilraj.calendar
     val calendarLocalStore by lazy { CalendarLocalStore(this) }
     val calendarWriter by lazy { CalendarWriter(contentResolver, calendarReader, calendarLocalStore,
         { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
+    val calendarSeriesReader by lazy { dev.swapnilraj.calendar.data.calendar.CalendarSeriesReader(contentResolver, calendarReader, calendarLocalStore,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
+    val calendarSeriesWriter by lazy { dev.swapnilraj.calendar.data.calendar.CalendarSeriesWriter(contentResolver, calendarSeriesReader, calendarLocalStore,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED },
+        providerClonePolicy = dev.swapnilraj.calendar.data.calendar.ProviderClonePolicy.Unverified) }
     val operationRetirement by lazy { CalendarOperationRetirement(calendarLocalStore) }
     val settings by lazy { Settings(this) }
     val weather by lazy {
