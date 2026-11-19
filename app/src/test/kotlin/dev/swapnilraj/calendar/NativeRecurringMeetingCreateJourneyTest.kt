@@ -166,11 +166,30 @@ class NativeRecurringMeetingCreateJourneyTest {
         compose.onNode(hasText("Synthetic calendar") and SemanticsMatcher.expectValue(SemanticsProperties.Role,Role.RadioButton) and hasAnyAncestor(isDialog())).performClick()
         compose.waitUntil(15_000) {document(f).authority!=null && document(f).authority!!.recurringCreation==AccessDecision.ALLOWED}
     }
-    private fun count(f:Fixture) {repeatPanel(f);compose.onNodeWithText("After a number of occurrences").performScrollTo().performClick();raw(hasSetTextAction() and hasText("Occurrences (1–10000)"),"3");compose.onNodeWithText("Done").performClick()}
-    private fun through(f:Fixture,date:String) {repeatPanel(f);compose.onNodeWithText("Through a date").performScrollTo().performClick();raw(hasSetTextAction() and hasText("Last eligible date (YYYY-MM-DD)"),date);compose.onNodeWithText("Done").performClick()}
+    private fun count(f:Fixture) {
+        repeatPanel(f);compose.onNodeWithText("After a number of occurrences").performScrollTo().performClick()
+        raw(hasSetTextAction() and hasText("Occurrences (1–10000)"),"3");compose.onNodeWithText("Done").performClick()
+        compose.waitUntil(15_000) {
+            compose.waitForIdle()
+            document(f).fields.event.recurrence.let {it.frequency=="DAILY" && it.endMode=="COUNT" && it.count=="3"}
+        }
+    }
+    private fun through(f:Fixture,date:String) {
+        repeatPanel(f);compose.onNodeWithText("Through a date").performScrollTo().performClick()
+        raw(hasSetTextAction() and hasText("Last eligible date (YYYY-MM-DD)"),date);compose.onNodeWithText("Done").performClick()
+        compose.waitUntil(15_000) {
+            compose.waitForIdle()
+            document(f).fields.event.recurrence.let {it.frequency=="DAILY" && it.endMode=="DATE" && it.throughDate==date}
+        }
+    }
     private fun repeatPanel(f:Fixture) {compose.onNodeWithText("Does not repeat").performScrollTo().performClick();compose.onNodeWithText("Daily").performScrollTo().performClick();compose.onNode(hasText("Daily") and isSelectable()).assertIsSelected()}
     private fun raw(matcher:SemanticsMatcher,value:String) {compose.onNode(matcher).performScrollTo().performClick();compose.waitUntil(15_000) {compose.onAllNodes(matcher and isFocused()).fetchSemanticsNodes().size==1};compose.onNode(matcher).performTextReplacement(value);compose.waitUntil(15_000) {compose.onAllNodes(matcher and SemanticsMatcher.expectValue(SemanticsProperties.EditableText,AnnotatedString(value))).fetchSemanticsNodes().size==1}}
-    private fun saveReview(f:Fixture) {compose.onNode(hasText("Save") and hasClickAction() and isEnabled()).performClick();shown(f.app.getString(R.string.recurrence_editor_review))}
+    private fun saveReview(f:Fixture) {
+        val save=hasText("Save") and hasClickAction() and isEnabled()
+        // Closing the repeat panel does not await the durable draft update or its ready frame.
+        compose.waitUntil(15_000) {compose.waitForIdle();compose.onAllNodes(save).fetchSemanticsNodes().size==1}
+        compose.onNode(save).performClick();shown(f.app.getString(R.string.recurrence_editor_review))
+    }
     private fun confirm(f:Fixture) {compose.onNodeWithText(f.app.getString(R.string.recurrence_editor_confirm)).performClick()}
     private fun done(f:Fixture) {compose.onNodeWithText(f.app.getString(R.string.phone_event_done)).performClick();awaitNoEditor(f)}
     private fun records(f:Fixture)=runBlocking {f.app.calendarLocalStore.list()}
