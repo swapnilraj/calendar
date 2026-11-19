@@ -36,8 +36,10 @@ internal fun PhoneSettingsHeader(title: String, enabled: Boolean, onBack: () -> 
             }
         }
         Spacer(Modifier.width(16.dp))
-        Text(title, style = MaterialTheme.typography.titleLarge.copy(textDirection = TextDirection.ContentOrLtr),
-            modifier = Modifier.weight(1f).padding(vertical = 12.dp).semantics { heading() })
+        Box(Modifier.weight(1f).padding(vertical = 12.dp), contentAlignment = Alignment.CenterStart) {
+            Text(title, style = MaterialTheme.typography.titleLarge.copy(textDirection = TextDirection.ContentOrLtr),
+                modifier = Modifier.semantics { heading() })
+        }
     }
 }
 
@@ -82,7 +84,9 @@ internal fun PhoneSettingsSwitch(title: String, checked: Boolean, tag: String, e
 
 @Composable
 internal fun PhoneSettingsSection(title: String) {
-    Text(title, Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 8.dp).semantics { heading() },
-        style = MaterialTheme.typography.titleSmall.copy(textDirection = TextDirection.ContentOrLtr),
-        color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Box(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 8.dp), contentAlignment = Alignment.CenterStart) {
+        Text(title, Modifier.semantics { heading() },
+            style = MaterialTheme.typography.titleSmall.copy(textDirection = TextDirection.ContentOrLtr),
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
