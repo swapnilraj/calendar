@@ -41,7 +41,8 @@ fun DayHeader(date: LocalDate, today: LocalDate, allDayEvents: List<CalEvent>, z
     dayEvents: List<CalEvent> = allDayEvents,
     stacked: Boolean = false,
     selected: Boolean = false,
-    onShowDateEvents: (() -> Unit)? = null) {
+    onShowDateEvents: (() -> Unit)? = null,
+    onBeforeShowEvents: (() -> Unit)? = null) {
     val locale = LocalLocale.current.platformLocale
     val dateLabel = date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale))
     val gutter = calendarGutter(date, use24Hour)
@@ -67,6 +68,7 @@ fun DayHeader(date: LocalDate, today: LocalDate, allDayEvents: List<CalEvent>, z
             .focusRequester(dateFocus).semantics { contentDescription = viewLabel; if (stacked) this.selected = selected }
             .then(if (stacked && selected) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)) else Modifier)
             .clickable(onClickLabel = viewLabel) {
+                onBeforeShowEvents?.invoke()
                 if (onShowDateEvents != null) onShowDateEvents() else { returnFocus = dateFocus; showEvents = true }
             }, horizontalAlignment = Alignment.CenterHorizontally) {
             Text(date.format(DateTimeFormatter.ofPattern("EEE", locale)), fontSize = 11.sp, lineHeight = 14.sp,
@@ -90,6 +92,7 @@ fun DayHeader(date: LocalDate, today: LocalDate, allDayEvents: List<CalEvent>, z
                     Modifier.fillMaxWidth().height(chipHeight + 2.dp).padding(bottom = 2.dp), onEventClick)
             }
             if (allDayEvents.size > previewCount) TextButton(onClick = {
+                onBeforeShowEvents?.invoke()
                 if (onShowDateEvents != null) onShowDateEvents() else { returnFocus = overflowFocus; showEvents = true }
             }, modifier = Modifier.focusRequester(overflowFocus)) {
                 Text(pluralStringResource(R.plurals.calendar_more_events, allDayEvents.size - previewCount, allDayEvents.size - previewCount),
