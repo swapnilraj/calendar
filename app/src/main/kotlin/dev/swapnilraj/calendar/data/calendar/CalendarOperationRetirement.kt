@@ -21,9 +21,10 @@ class CalendarOperationRetirement(
         withContext(io + readBudgetContext(readBudgets.mutation)) {
             try {
                 currentCoroutineContext().ensureActive()
-                // Only shipped ordinary encoders can bind a permanent tombstone. CREATE now
-                // includes authored recurrence; recurring edits and other families remain separate.
+                // Only shipped ordinary/scoped-series encoders can bind a permanent tombstone.
+                // Following edits, ordinary recurring edits and meeting families stay closed.
                 when (request) {
+                    is RetirableOperation.Series -> if (request.command is SeriesCommand.FollowingEdit) return@withContext OperationRetirementResult.Unsupported
                     is RetirableOperation.Create -> Unit
                     is RetirableOperation.Update -> if (request.ref.recurrence != null) return@withContext OperationRetirementResult.Unsupported
                     is RetirableOperation.Delete -> if (request.ref.recurrence != null) return@withContext OperationRetirementResult.Unsupported
@@ -45,7 +46,8 @@ class CalendarOperationRetirement(
                     is RetirableOperation.Create -> CalendarWriter.createFingerprint(request.draft, readBudgets.maxCanonicalBytes)
                     is RetirableOperation.Update -> CalendarWriter.updateFingerprint(request.ref, request.token, request.patch, readBudgets.maxCanonicalBytes)
                     is RetirableOperation.Delete -> CalendarWriter.deleteFingerprint(request.ref, request.token)
-                    else -> null // This publication packet contains no series or meeting backend.
+                    is RetirableOperation.Series -> CalendarSeriesWriter.retirementFingerprint(request.selected, request.token, request.command)
+                    else -> null // Meeting backends are outside this publication.
                 } ?: return@withContext OperationRetirementResult.Unsupported
                 val result = store.retirement(request.operationId, fingerprint.first, fingerprint.second, write)
                 currentCoroutineContext().ensureActive()
