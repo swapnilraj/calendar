@@ -502,4 +502,21 @@ class CalendarReaderTest {
             assertEquals(CalendarReadState.LimitExceeded, reader.readSnapshot(request.copy(invitationFilter = InvitationFilter.PENDING_ONLY)))
         }
     }
+
+    @Test fun pendingOnlyConflictingDuplicateEvidenceNeverSilentlyChoosesFirstRow() = runBlocking {
+        val observed = mutableListOf<Pair<List<InvitationState>, List<CalendarCoverage>>>()
+        val cases = listOf(listOf(1, null), listOf(3, 1), listOf(3, null), listOf(3, 3))
+        for (statuses in cases) fixture { p, reader, _ ->
+            for (status in statuses) p.events += event(1, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") +
+                mapOf("isOrganizer" to 0, "selfAttendeeStatus" to status)
+            val all = (reader.readSnapshot(request) as CalendarReadState.Ready).value
+            assertEquals(listOf(InvitationState.UNKNOWN), all.occurrences.map { it.invitation })
+            assertTrue(all.coverage.isEmpty())
+            val pending = (reader.readSnapshot(request.copy(invitationFilter = InvitationFilter.PENDING_ONLY)) as CalendarReadState.Ready).value
+            observed += pending.occurrences.map { it.invitation } to pending.coverage
+        }
+        val unknown = listOf(CalendarCoverage(CalendarId(2), CoverageReason.INVITATION_CLASSIFICATION_UNKNOWN))
+        assertEquals(listOf(emptyList<InvitationState>() to unknown, emptyList<InvitationState>() to unknown,
+            emptyList<InvitationState>() to unknown, listOf(InvitationState.PENDING) to emptyList<CalendarCoverage>()), observed)
+    }
 }
