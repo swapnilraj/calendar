@@ -106,9 +106,21 @@ class NativeOrdinaryRetirementJourneyTest {
         } finally { compose.runOnUiThread { activity.pause().stop().destroy() } }
     }
     private fun chooseCalendar(app: CalendarApp) {
-        compose.onNodeWithText(app.getString(R.string.phone_event_choose_calendar)).performScrollTo().performClick()
-        compose.onNode(hasText("Synthetic") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton) and hasAnyAncestor(isDialog())).performClick()
-        compose.waitForIdle()
+        val label = app.getString(R.string.phone_event_choose_calendar)
+        val chooser = hasText(label) and hasClickAction() and isEnabled()
+        compose.waitUntil(15_000) {
+            compose.waitForIdle()
+            compose.onAllNodes(chooser).fetchSemanticsNodes().size == 1
+        }
+        compose.onNode(chooser).performScrollTo().performClick()
+        val option = hasText("Synthetic") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton) and
+            hasAnyAncestor(isDialog()) and hasClickAction() and isEnabled()
+        compose.waitUntil(15_000) {
+            compose.waitForIdle()
+            compose.onAllNodes(option).fetchSemanticsNodes().size == 1
+        }
+        compose.onNode(option).performClick()
+        compose.waitUntil(15_000) { compose.onAllNodesWithText(label).fetchSemanticsNodes().isEmpty() }
     }
     private fun shown(text: String) = compose.waitUntil(15_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
 }
