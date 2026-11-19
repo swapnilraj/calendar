@@ -70,11 +70,24 @@
     "elapsedSeconds": 23,
     "log": "/tmp/daylight-following-exdate4-aggregate-focused1.log",
     "xml": "/tmp/daylight-following-exdate4-aggregate-focused1-xml",
-    "nativeFollowingJourneys": "NOT_RUN: filter NativeFollowingSeriesJourneyTest did not match actual NativeFollowingJourneyTest; counts above contain105 provider tests only",
+    "nativeFollowingJourneys": "Run separately after correcting the missed selector; see aggregateUiFocus",
     "missedFilter": "*NativeFollowingSeriesJourneyTest"
   },
   "completeGate": "PENDING",
   "nativeGoogleWorkspace": "NOT_RUN",
   "exceptionsGraphTransfer": "NOT_IMPLEMENTED",
-  "legacyCompatibility": "Issued2/3 phases retain original protocol/bytes; no retry/recovery reauthoring"
+  "legacyCompatibility": "Issued2/3 phases retain original protocol/bytes; no retry/recovery reauthoring",
+  "aggregateUiFocus": {
+    "source": "c28584d",
+    "class": "NativeFollowingJourneyTest",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsedSeconds": 31,
+    "log": "/tmp/daylight-following-exdate4-ui-focused1.log",
+    "xml": "/tmp/daylight-following-exdate4-ui-focused1-xml",
+    "kind": "Synthetic provider-backed UI journeys, not device execution"
+  },
+  "combinedDistinctFocusedTests": 108
 }

@@ -1,7 +1,8 @@
 # Following EXDATE receipt 4 — approved implementation contract
 
 Status: implemented in the local adapter;195 publication and105 aggregate provider checks pass.
-Complete aggregate/native/account acceptance remains pending.
+The three original synthetic UI journeys also pass separately; complete aggregate/native/account
+acceptance remains pending.
 This is the exception-free metadata bridge described in the aggregate FOLLOWING_EXDATE_ADAPTER.md.
 Moved/cancelled exception graph transfer remains separate. No new provider profile is admitted.
 
@@ -69,7 +70,7 @@ FollowingAcknowledgments.kt, new FollowingExdateAuthority.kt. Reader/core/store/
 provider policy, meeting and UI files remain unchanged. Bounded SQL fixture EXDATE filtering may be
 added without changing nominal COUNT emission. Focused acceptance:36 new authority/execution tests
 plus existing69 Following and90 scoped/retirement regressions (195 total). First194/1 fixture failure
-and corrected195 pass are retained;105 aggregate provider checks pass. Three UI journeys are queued
-separately after correcting a nonmatching test filter.
+and corrected195 pass are retained;105 aggregate provider checks pass. The three UI journeys passed31s
+separately after correcting a nonmatching test filter;108 distinct focused tests passed across both runs.
 Native Google/Workspace propagation and exception graph transfer remain unverified and unimplemented
 by this contract. See audit/evidence/following-exdate4-2026-11-19.json for the bounded execution evidence.
