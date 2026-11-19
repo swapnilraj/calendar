@@ -414,6 +414,12 @@ The injectable grid-editor preparer creates a distinct durable ordinary draft on
 
 ### M6 — Recurrence
 
+A pure semantic graph proof recomputes existing planners and conserves every known exception and
+exclusion mapping before future transfer execution. It rejects contradictory selected bounds,
+clock-uncertain ordinal mappings and excessive aggregate work. Raw date-set provenance and existing
+COUNT/end plans remain unchanged. This proof issues no provider authority, clone admission or new
+editing capability; unproved RDATE transformations and existing native restrictions remain closed.
+
 Offer daily/weekly/weekday/monthly/yearly presets, custom intervals/weekdays/monthly date or ordinal,
 and count/date/no-end limits. Preserve master/original occurrence identity and timezone/duration,
 RRULE/RDATE/EXDATE and explicit exceptions.
