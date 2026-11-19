@@ -67,8 +67,8 @@ CSV, failed attempts or external acceptance statuses.
   Material's existing date announcements remain intact. Focused packets passed 57 and 83 checks with
   unchanged screenshot verification. This is semantics evidence, not TalkBack spoken-order proof.
 - **Publication:** recurring-create PR61 passed corrected-head full CI and merged into the integration
-  branch. Navigation PR62 remains open after an initial CI-only timeout; its stronger visible/closed
-  drawer fixture synchronization passed 43 focused checks on the updated base, with fresh CI pending.
+  branch. Navigation PR62 also merged after an initial CI-only timeout; its stronger visible/closed
+  drawer fixture synchronization passed 43 focused checks and fresh full CI on the updated base.
   Neither result merges the application into main or satisfies stable signing/release acceptance.
 
 Google/Workspace organizer/attendee and offline round trips, physical reminders/Doze/reboot/timezone/

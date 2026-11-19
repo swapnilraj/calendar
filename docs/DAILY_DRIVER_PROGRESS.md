@@ -69,8 +69,9 @@ only. Stable signing, same-key upgrade and a durable published APK remain unfulf
 [PR61](https://github.com/swapnilraj/calendar/pull/61) passed corrected-head full CI and merged
 into the integration branch as `a9bdfc6`. [PR62](https://github.com/swapnilraj/calendar/pull/62)
 publishes shared phone navigation; its first full CI had one navigation-test timeout. A fixture-only
-visible/closed-drawer synchronization fix passed 43 focused checks on the current integration base;
-fresh full CI is running at `7dfefc8`. Assertions/timeouts were retained. It remains open and unmerged.
+visible/closed-drawer synchronization fix passed 43 focused checks on the current integration base
+and fresh full CI at `7dfefc8`. Assertions/timeouts were retained. PR62 merged as `af6b3b9`;
+the aggregate worktree was not overwritten with this older publication tree.
 
 The aggregate source remains ahead of bounded publication. PR55–62 artifact attachments are now
 confirmed in the task; earlier hanging calls were reconciled against the attachment inventory before
