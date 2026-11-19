@@ -556,3 +556,27 @@ occurrence and non-empty full calendar namespace as the fresh details read. Dayl
 glyphs and branding remain in use. Existing sheet fixtures are retained. This presentation does not
 activate repeat authoring, invitation responses or meeting creation. Exact Google Calendar Android
 visual and interaction parity remains **UNVERIFIED**, including the editor title bar.
+
+### Authored recurring CREATE backend
+
+The ordinary writer accepts supported authored daily, weekly, monthly and yearly CREATE rules. It
+stores a native recurring master with NULL DTEND, bounded RRULE/DURATION, UTC-date all-day semantics
+and linked alerts in one asserted non-yielding batch. New receipt5 operations freeze the expected
+result layout. A canonical positive master acknowledgement is committed with bounded raw result
+facts before child identities are interpreted or provider payload is read. Missing, contradictory or
+oversized child evidence retains that known commit as uncertain. Local success requires the exact
+acknowledged child IDs at their planned alert indices, complete membership/payload, authored master,
+actual first-instance bounds and unchanged calendar namespace. Lost or malformed master
+acknowledgement never permits a matching-field search or blind replay.
+Authored recurrence participates in exact CREATE fingerprints and permanent retirement fences;
+recurring UPDATE/DELETE, series and meeting retirement remain unsupported by this publication.
+
+Existing one-off JSON/signatures and receipt2 behavior remain unchanged; new one-off CREATEs also
+require a canonical positive master acknowledgement. Legacy receipt3 commits lack child ACK bindings
+and remain uncertain without reconstruction or replay. Only an explicit exact retry of a proven
+never-dispatched/rolled-back receipt3 operation may earn receipt5 after its new dispatch. Recurrence
+proof still compares the stored plan with current compilation, so a later timezone-rule or validator
+change can leave an operation uncertain. No stable event UID is generated. These are local provider
+guarantees, not
+Google/Workspace sync evidence, scoped-edit admission or production clone-profile certification.
+Live recurring-create UI activation is a separate packet and remains disabled by default here.
