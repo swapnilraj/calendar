@@ -62,6 +62,36 @@ object CalendarSettingsCodec {
         preferences[units] = options.weatherUnits.name
     }
 
+    fun valid(change: CalendarSettingChange): Boolean = when (change) {
+        is CalendarSettingChange.Duration -> change.value in 1..1440
+        is CalendarSettingChange.TimedReminder -> change.value == null || change.value in 0..40320
+        else -> true
+    }
+
+    /** Apply only this field, preserving even unknown or malformed unrelated stored values. */
+    fun patch(preferences: MutablePreferences, change: CalendarSettingChange) {
+        require(valid(change))
+        when (change) {
+            is CalendarSettingChange.View -> preferences[view] = change.value.name
+            is CalendarSettingChange.Duration -> preferences[duration] = change.value
+            is CalendarSettingChange.TimedReminder -> {
+                preferences[timedEnabled] = change.value != null
+                change.value?.let { preferences[timedMinutes] = it } ?: preferences.remove(timedMinutes)
+            }
+            is CalendarSettingChange.AllDayReminder -> preferences[allDay] = change.value.name
+            is CalendarSettingChange.FirstWeekday -> preferences[weekday] = change.value.name
+            is CalendarSettingChange.ShowWeekends -> preferences[weekends] = change.value
+            is CalendarSettingChange.ShowDeclined -> preferences[declined] = change.value
+            is CalendarSettingChange.Theme -> preferences[theme] = change.value.name
+            is CalendarSettingChange.DisplayZone -> when (val zone = change.value) {
+                DisplayZoneOption.Device -> { preferences[zoneMode] = "DEVICE"; preferences.remove(zoneId) }
+                is DisplayZoneOption.Fixed -> { preferences[zoneMode] = "FIXED"; preferences[zoneId] = zone.zone.id }
+            }
+            is CalendarSettingChange.WeatherVisible -> preferences[weather] = change.value
+            is CalendarSettingChange.WeatherUnits -> preferences[units] = change.value.name
+        }
+    }
+
     private inline fun <reified T : Enum<T>> enumOrDefault(raw: Any?, default: T): T =
         enumValues<T>().firstOrNull { it.name == raw } ?: default
 }

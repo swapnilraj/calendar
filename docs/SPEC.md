@@ -621,3 +621,19 @@ default remains unverified. Ordinal-zero in-place eligibility is unchanged. This
 EXDATE/exception transfer or Google/Workspace propagation. Permanent retirement fences bind exact
 operation/fingerprint; unsupported families and unknown phases fail closed without provider dispatch.
 Synthetic provider tests are local evidence only, not installed-provider certification.
+
+
+## Phone Settings and General
+
+The drawer opens full-height Settings → General for existing supported preferences. Grouped
+rows/switches and focused in-place choice/numeric/zone editors replace the production bulk sheet;
+legacy component fixtures retain their sheet API. Current persisted view is labelled View. Home
+exposes real default-calendar and optional reminder-setup callbacks; unsupported account controls
+are absent. Weather rules/constants and provider visibility/sync are unchanged.
+
+An explicit choice atomically changes only its owned field/key pair. Independent edits preserve
+unrelated raw values, filters, defaults, zoom and newer view choices. The latest explicit same-field
+choice wins. Invalid values never enter storage; IO failure retains input for explicit retry and
+cancellation propagates. Loading/read failure masks all editor controls/system Back while retaining
+unfinished input. A Saved acknowledgement closes only its submitted editor. Cancel abandons the
+proposal; opening, typing, Back, dismissal and recreation never auto-save.
