@@ -745,8 +745,9 @@ class CalendarWriter(
     // fields retain the one-argument path and their original raw values.
     private fun validateTime(draft: EventDraft, authored: Boolean) {
         validateTime(draft)
-        if (authored && draft.time is EventTime.Timed &&
-            (draft.time.start.nano % 1_000_000 != 0 || draft.time.end.nano % 1_000_000 != 0))
+        val time = draft.time
+        if (authored && time is EventTime.Timed &&
+            (time.start.nano % 1_000_000 != 0 || time.end.nano % 1_000_000 != 0))
             throw Invalid(setOf(InvalidEventField.TIME))
         if (authored && draft.time is EventTime.Timed &&
             !ProviderTimeZoneCompatibility.isCompatible(requireNotNull(draft.eventZone)))
