@@ -195,10 +195,17 @@ namespace proof allow read-only recovery, never retry. Copied calendar-default p
 bound to the complete destination identity. Local commit readback verifies namespace before reading
 private event details and before acknowledging the receipt.
 
-The drawer Settings screen now saves display preferences atomically with the existing calendar
-selection/default/view/zoom snapshot. First weekday, hidden weekend columns, declined-event filtering,
+The drawer opens full-height phone Settings, then General. Supported preferences use grouped rows,
+switches and focused in-place choice/numeric/zone editors, with independent default-calendar and
+reminder-setup actions. The current view is labelled View rather than implying a separate startup
+preference. Unsupported account/server settings are absent. Each explicit choice saves only its own
+field in the existing atomic calendar preference store. First weekday, hidden weekend columns, declined-event filtering,
 device/fixed display zone, system/light/dark theme and weather visibility/units apply to the live app.
-An unavailable save retains raw settings for retry; choosing a creation calendar remains independent.
+An unavailable save retains raw settings for explicit retry; choosing a creation calendar remains
+independent. Loading/unavailable preference reads mask all editor controls and system Back while
+keeping the owner and exact unfinished input. Successful save acknowledgement closes only its
+submitted editor, leaving Settings open. Cancel abandons a failed proposal without a hidden retry.
+Opening, dismissing, recreating and typing never save. Legacy bulk-sheet fixtures remain supported.
 Weather location resolution still uses device location/device-zone fallback; a display-zone preference
 only changes the calendar clock. Fahrenheit converts display values, leaving pure weather rules and
 Celsius forecast data unchanged. Theme overrides apply consistently to the grid and weather substrate.

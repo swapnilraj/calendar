@@ -606,27 +606,35 @@ class LiveCalendarDayTest {
             compose.onNodeWithText("Fixture meeting").assertDoesNotExist()
             compose.onNodeWithContentDescription("Open navigation menu").performClick()
             compose.onNodeWithText("Settings").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings_duration").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithTag("settings_duration").performTextReplacement("75")
-            compose.onNodeWithTag("settings_fields").performScrollToNode(hasContentDescription("Show declined events"))
-            compose.onNodeWithContentDescription("Show declined events").performClick()
+            compose.onNodeWithTag("phone_settings_open_general").performClick()
+            compose.onNodeWithTag("phone_settings_row_duration").performScrollTo().performClick()
+            compose.onNodeWithTag("phone_settings_editor_input").performTextReplacement("75")
             failWrites = true
-            compose.onNodeWithTag("settings_save").performClick()
+            compose.onNodeWithTag("phone_settings_editor_apply").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.navigation_preferences_unavailable)).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText(context.getString(R.string.navigation_preferences_unavailable)).assertIsDisplayed()
-            compose.onNodeWithTag("settings_duration").performScrollTo().assertTextContains("75")
+            compose.onNodeWithTag("phone_settings_editor_input").assertTextContains("75")
             assertEquals(options, runBlocking { settings.calendarPreferences.filterIsInstance<dev.swapnilraj.calendar.data.CalendarPreferenceState.Ready>().first().value.options })
-            compose.onNode(isRoot() and hasAnyDescendant(hasTestTag("settings_sheet")))
+            compose.onNode(isRoot() and hasAnyDescendant(hasTestTag("phone_settings_editor")))
                 .captureRoboImage("src/test/screenshots/integration_settings_retry.png")
             failWrites = false
-            compose.onNodeWithTag("settings_save").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings_sheet").fetchSemanticsNodes().isEmpty() }
+            // A newer independent choice must survive retrying this still-open duration editor.
+            runBlocking { assertTrue(settings.setCalendarView("MONTH")); settings.setHourHeight(92f) }
+            compose.onNodeWithTag("phone_settings_editor_input").assertTextContains("75")
+            compose.onNodeWithTag("phone_settings_editor_apply").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("phone_settings_editor").fetchSemanticsNodes().isEmpty() }
+            compose.onNodeWithTag("phone_settings_row_declined").performScrollTo().performClick()
+            compose.waitUntil(10_000) { runBlocking { settings.calendarPreferences.filterIsInstance<dev.swapnilraj.calendar.data.CalendarPreferenceState.Ready>().first().value.options.showDeclined } }
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.onNodeWithContentDescription("Back").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
             val saved = runBlocking { settings.calendarPreferences.filterIsInstance<dev.swapnilraj.calendar.data.CalendarPreferenceState.Ready>().first().value }
             assertEquals(75, saved.options.defaultDurationMinutes)
             assertTrue(saved.options.showDeclined)
             assertFalse(saved.options.showWeekends)
             assertEquals(CalendarSelection.Explicit(setOf(CalendarId(3))), saved.selection)
-            assertEquals("WEEK", saved.view)
+            assertEquals("MONTH", saved.view)
+            assertEquals(92f, saved.hourHeight, 0f)
         } finally { scope.cancel() }
     }
 

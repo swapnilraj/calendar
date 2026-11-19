@@ -129,13 +129,19 @@ internal fun LiveCalendarDay(
     var phoneZoomOpen by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showDefaultCalendar by rememberSaveable { mutableStateOf(false) }
-    var savingSettings by remember { mutableStateOf(false) }
-    var settingsSaveFailed by remember { mutableStateOf(false) }
     var scrollMinute by rememberSaveable { mutableDoubleStateOf(-1.0) }
     var dayNavigationRevision by rememberSaveable { mutableIntStateOf(0) }
     val preferencesFlow = remember(settings, preferenceOverride != null) { if (preferenceOverride != null) flowOf(CalendarPreferenceState.Loading) else settings?.calendarPreferences ?: flowOf(CalendarPreferenceState.Loading) }
     val observedPreferences by preferencesFlow.collectAsStateWithLifecycle(initialValue = CalendarPreferenceState.Loading)
     val preferenceState = preferenceOverride ?: observedPreferences
+    val availableViews = listOf(CalendarViewOption.DAY, CalendarViewOption.THREE_DAY, CalendarViewOption.WEEK, CalendarViewOption.MONTH, CalendarViewOption.AGENDA)
+    // This owner must remain before the readiness return: a refresh may mask an editor,
+    // but must not discard its raw input or re-submit its last explicit choice.
+    if (showSettings && settings != null) PhoneSettingsWorkflow(
+        preferences = preferenceState, availableViews = availableViews,
+        save = settings::saveCalendarSetting, onRetryPreferences = settings::refreshPreferences,
+        onClose = { showSettings = false }, onChooseDefaultCalendar = { showDefaultCalendar = true },
+        onOpenReminders = onOpenReminders)
     val preferences = if (settings == null) CalendarPreferences(selection, null, "DAY", hourHeight) else {
         when (val state = preferenceState) {
             is CalendarPreferenceState.Ready -> state.value
@@ -160,7 +166,6 @@ internal fun LiveCalendarDay(
     fun currentDate(): LocalDate = selectedDateState.value?.let(LocalDate::parse) ?: displayNow.toLocalDate()
     LaunchedEffect(Unit) { if (selectedDateState.value == null) selectedDateState.value = dateText }
     val effectiveSelection = preferences.selection
-    val availableViews = listOf(CalendarViewOption.DAY, CalendarViewOption.THREE_DAY, CalendarViewOption.WEEK, CalendarViewOption.MONTH, CalendarViewOption.AGENDA)
     val view = availableViews.firstOrNull { it.name == preferences.view } ?: CalendarViewOption.DAY
     var monthDayText by rememberSaveable(view, effectiveSelection, displayNow.zone) { mutableStateOf<String?>(null) }
     var agendaRangeText by rememberSaveable(view) {
@@ -841,19 +846,6 @@ internal fun LiveCalendarDay(
             TextButton(onClick = { meetingWriteText = null }) { Text(stringResource(R.string.events_close)) }
         }
     }
-    if (showSettings && settings != null) SettingsSheet(options, availableViews,
-        onSave = { updated ->
-            if (!savingSettings) scope.launch {
-                savingSettings = true
-                try {
-                    if (settings.setDisplaySettings(updated)) { showSettings = false; settingsSaveFailed = false }
-                    else settingsSaveFailed = true
-                } finally { savingSettings = false }
-            }
-        }, onDismiss = { showSettings = false; settingsSaveFailed = false },
-        onChooseDefaultCalendar = { showDefaultCalendar = true }, onOpenReminderSetup = null,
-        saving = savingSettings,
-        saveError = if (settingsSaveFailed) stringResource(R.string.navigation_preferences_unavailable) else null)
     if (showDefaultCalendar && settings != null) AlertDialog(onDismissRequest = { showDefaultCalendar = false },
         title = { Text(stringResource(R.string.calendars_creation_default)) },
         text = { LazyColumn {
