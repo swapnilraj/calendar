@@ -4,6 +4,30 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+The receipt4 precision correction is integrated at `bb7e88a`: authored non-millisecond times return
+TIME before dispatch, and invalid frozen original/result identities cannot authorize retry or acknowledgement.
+The corrected bounded publication passes152 checks, including25 precision subcases; the source-derived
+blocker was reproduced in13 cases before correction. The prior compile failure and the single recurrence
+error-classification fixture failure remain separate in the
+[evidence](audit/evidence/ordinary-edit-precision-2026-11-19.json). [PR82](https://github.com/swapnilraj/calendar/pull/82)
+is open. A new complete root gate is queued, not yet passing.
+
+The exact frozen `e0ce17a` reminder pair passed native SDK identity/capability admission on the owned
+API35 emulator: UID10213, all default component overrides,18 components (4 reminder entry points enabled),
+one attributed recovery callback settled with its retry refused, zero jobs/posts/channels and exact PID
+exit. The initial host attempt stopped before device access because adb was not on PATH; a fresh attempt
+used the explicit SDK path. Only the two freshly installed fixture packages were subsequently removed
+from user0 after fresh UID/hash/process checks. This is **identity-only**, with all calendar/notification/
+exact-alarm permissions still false and no provider/store data or delivery exercised. See
+[native proof](audit/evidence/native-reminder-identity-schema2-2026-11-19.json). The13 reviewed harness paths
+are integrated at `4f9ebe5`; its ordinary debug/release identity still needs the new default full gate.
+
+Organizer presentation [PR81](https://github.com/swapnilraj/calendar/pull/81) passed52 focused checks,
+three inspected captures and full CI (6m44s). All captures match the aggregate app. See
+[evidence](audit/evidence/owned-meeting-publication-2026-11-19.json). Production meeting/contact routing,
+controlled Google/Workspace propagation, actual device reminder delivery/recovery, TalkBack/upgrade,
+seven-day work/personal beta and stable owner signing remain pending.
+
 The newest full attempt at `ee2a89d` ran2,383 tests with one failure (zero errors/skips) in5m2s:
 the recurring-meeting creation journey could not find its guest row immediately after Add person.
 That result is preserved; it does not replace the last passing full checkpoint. A narrow fixture
@@ -30,7 +54,7 @@ actual-package/Application/recovery-receiver regression: zero framework jobs ver
 in its preserved before-fix run. Earlier14-test omissions and a configuration failure remain recorded.
 This is Robolectric evidence, not a new emulator run. Independent review also found a possible
 transient snapshot false refusal; the reviewed bounded settlement correction at `e0ce17a` passes22
-focused checks. A new probe APK pair is building; no new native pass is claimed. See
+focused checks. The frozen probe pair now has a separate identity-only native pass; it does not establish delivery. See
 [regression evidence](audit/evidence/reminder-prebind-regression-2026-11-19.json).
 
 Subsequent bounded publication PR77–79 passed full CI and merged: injectable meeting creation/local

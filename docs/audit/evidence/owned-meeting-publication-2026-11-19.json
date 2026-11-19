@@ -1,0 +1,119 @@
+{
+  "focused": {
+    "source": "d02fe7efca61899d5caa281452124ede3e88979e",
+    "sourcePacket": "d00f97e",
+    "integration": "b618cf9080b0f0d2ffbebb10f834546d3141b5a4",
+    "log": "/tmp/daylight-owned-meeting-publication-focused1.log",
+    "xml": "/tmp/daylight-owned-meeting-publication-focused1-xml",
+    "seconds": 76,
+    "counts": {
+      "tests": 52,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": [
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.owned.OwnedMeetingEditorControllerTest",
+        "tests": 29,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.owned.OwnedMeetingEditorScreenshotsTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.owned.OwnedMeetingEditorSqlTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.owned.PhoneOwnedMeetingEditorTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.people.GuestKeyboardAccessibilityTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.events.meetings.people.GuestPickerParentDraftTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "all14SourceHashesUnchanged": true,
+    "record": false,
+    "verify": false,
+    "scope": "Injected organizer controller/presentation, real private SQL with synthetic provider, shared picker draft/keyboard semantics; no production navigation/device/Google delivery claim."
+  },
+  "recording": {
+    "source": "d02fe7efca61899d5caa281452124ede3e88979e",
+    "counts": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "class": "dev.swapnilraj.calendar.events.meetings.owned.OwnedMeetingEditorScreenshotsTest",
+    "seconds": 12,
+    "log": "/tmp/daylight-owned-meeting-publication-record1.log",
+    "xml": "/tmp/daylight-owned-meeting-publication-record1-xml",
+    "images": [
+      {
+        "path": "app/src/test/screenshots/phone_owned_meeting_form_light.png",
+        "sha256": "40fd8956f61fb5471aacab2761dace28b5ad7adaaf39d2514b2a9bf48aa4dc66",
+        "rootSha256": "40fd8956f61fb5471aacab2761dace28b5ad7adaaf39d2514b2a9bf48aa4dc66",
+        "bytes": 31741,
+        "rootMatch": true,
+        "inspected": true
+      },
+      {
+        "path": "app/src/test/screenshots/phone_owned_meeting_form_dark.png",
+        "sha256": "a44deedbcef64cbeab82ac099d6a4254aafb39a4d14833ce45cda269ce87e31e",
+        "rootSha256": "a44deedbcef64cbeab82ac099d6a4254aafb39a4d14833ce45cda269ce87e31e",
+        "bytes": 31960,
+        "rootMatch": true,
+        "inspected": true
+      },
+      {
+        "path": "app/src/test/screenshots/phone_owned_meeting_form_rtl_large.png",
+        "sha256": "fba5f04e155f810465984a66cb2bde6fc5e329d97c5bfbd8d1d04c73b256d131",
+        "rootSha256": "fba5f04e155f810465984a66cb2bde6fc5e329d97c5bfbd8d1d04c73b256d131",
+        "bytes": 34569,
+        "rootMatch": true,
+        "inspected": true
+      }
+    ],
+    "observations": [
+      "Light/dark forms retain toolbar, unchanged disabled Save, explicit date/time/UTC zone and readable guest identity/response/role controls.",
+      "Large RTL wraps title and date/time, retains toolbar/overflow and scrollable lower guest content; no smaller text or truncation introduced.",
+      "All three captures match current root exactly; no product behavior or root image changed."
+    ],
+    "scope": "Injected synthetic organizer component captures; no actual Google/Workspace, physical accessibility or production navigation acceptance."
+  },
+  "leadInspectedAllThree": true,
+  "pullRequest": "https://github.com/swapnilraj/calendar/pull/81",
+  "source": "1197f62523fc7933e00da4a9d7143d66f76865ba",
+  "ci": {
+    "run": 44504166552,
+    "status": "SUCCESS",
+    "seconds": 404
+  },
+  "attachment": "CONFIRMED",
+  "scope": "Injectable organizer UI, component/private SQL evidence; production-route publication and account/device gates remain separate."
+}

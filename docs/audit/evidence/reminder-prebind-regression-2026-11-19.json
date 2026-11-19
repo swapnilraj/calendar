@@ -47,7 +47,7 @@
       "status": "ONLY_14_TESTS_KOTLIN_EXTENSION_MAPPING_UNUSED"
     }
   ],
-  "remaining": "Reviewed bounded settlement correction passes22 focused checks; new opt-in APK pair is building. Independent manifest/hash admission and native identity/delivery checks remain pending.",
+  "remaining": "Corrected schema2 native identity passed on the separately frozen e0ce17a pair; source imported at root4f9ebe5. New default root gate and actual reminder delivery/device/account/beta/signing gates remain pending.",
   "settlementFix": {
     "source": "e0ce17ab9325229f129177348ad9f35774d5a9e6",
     "status": "22_PASSED_GUARD_POLICY_SETTLEMENT_AND_UNCHANGED_ACTUAL_PACKAGE_REGRESSION",
@@ -84,5 +84,6 @@
     "actualTestSha256": "ecf9ade40969715327949d539436ff17ec469674096831ef0b46797331a42e99",
     "hostExisting26Pass": "/tmp/daylight-reminder-schema2-host2.log",
     "scope": "Robolectric/JVM only. No native schema2 run, default fullgate or new APK pair claimed."
-  }
+  },
+  "nativeIdentityEvidence": "native-reminder-identity-schema2-2026-11-19.json"
 }

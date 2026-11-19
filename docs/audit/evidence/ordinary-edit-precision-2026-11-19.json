@@ -1,0 +1,1328 @@
+{
+  "scope": "Synthetic ordinary edit precision regression and bounded root integration; no account/device delivery acceptance.",
+  "before": {
+    "source": "e9ea96504041c569b6e30b0d2bb374a16e9a65e8",
+    "status": "EXPECTED_FAILURE_REPRODUCED",
+    "seconds": 10,
+    "counts": {
+      "tests": 2,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": [
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryEditReceiptTest",
+        "tests": 2,
+        "failures": 2,
+        "errors": 0,
+        "skipped": 0,
+        "failureMessages": [
+          "java.lang.AssertionError: Non-native frozen identity was accepted: ORIGINAL_START/PREPARED: recover=SafeToRetry submit=LocalSaved batches=1 after=VERIFIED; ORIGINAL_START/COMMITTED: recover=LocalSaved submit=LocalSaved batches=0 after=VERIFIED; ORIGINAL_END/PREPARED: recover=SafeToRetry submit=LocalSaved batches=1 after=VERIFIED; ORIGINAL_END/COMMITTED: recover=LocalSaved submit=LocalSaved batches=0 after=VERIFIED; RESULT_START/PREPARED: recover=SafeToRetry submit=LocalSaved batches=1 after=VERIFIED; RESULT_START/COMMITTED: recover=LocalSaved submit=LocalSaved batches=0 after=VERIFIED; RESULT_END/PREPARED: recover=SafeToRetry submit=LocalSaved batches=1 after=VERIFIED; RESULT_END/COMMITTED: recover=LocalSaved submit=LocalSaved batches=0 after=VERIFIED; NEGATIVE_RESULT_START/PREPARED: recover=SafeToRetry submit=LocalSaved batches=1 after=VERIFIED; NEGATIVE_RESULT_START/COMMITTED: recover=LocalSaved submit=LocalSaved batches=0 after=VERIFIED",
+          "java.lang.AssertionError: Non-native precision crossed ordinary authoring: START_NANOS: result=LocalSaved batches=1 phase=VERIFIED nativeExact=false; END_NANOS: result=LocalSaved batches=1 phase=VERIFIED nativeExact=false; NEGATIVE_START_NANOS: result=LocalSaved batches=1 phase=VERIFIED nativeExact=false"
+        ]
+      }
+    ],
+    "subcases": [
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_START",
+        "phase": "PREPARED",
+        "recover": "SafeToRetry",
+        "submit": "LocalSaved",
+        "batches": "1",
+        "after": "VERIFIED",
+        "queries": "20"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_START",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_START",
+        "phase": "COMMITTED",
+        "recover": "LocalSaved",
+        "submit": "LocalSaved",
+        "batches": "0",
+        "after": "VERIFIED",
+        "queries": "22"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_END",
+        "phase": "PREPARED",
+        "recover": "SafeToRetry",
+        "submit": "LocalSaved",
+        "batches": "1",
+        "after": "VERIFIED",
+        "queries": "20"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_END",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_END",
+        "phase": "COMMITTED",
+        "recover": "LocalSaved",
+        "submit": "LocalSaved",
+        "batches": "0",
+        "after": "VERIFIED",
+        "queries": "22"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_START",
+        "phase": "PREPARED",
+        "recover": "SafeToRetry",
+        "submit": "LocalSaved",
+        "batches": "1",
+        "after": "VERIFIED",
+        "queries": "20"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_START",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_START",
+        "phase": "COMMITTED",
+        "recover": "LocalSaved",
+        "submit": "LocalSaved",
+        "batches": "0",
+        "after": "VERIFIED",
+        "queries": "22"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_END",
+        "phase": "PREPARED",
+        "recover": "SafeToRetry",
+        "submit": "LocalSaved",
+        "batches": "1",
+        "after": "VERIFIED",
+        "queries": "20"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_END",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_END",
+        "phase": "COMMITTED",
+        "recover": "LocalSaved",
+        "submit": "LocalSaved",
+        "batches": "0",
+        "after": "VERIFIED",
+        "queries": "22"
+      },
+      {
+        "scope": "frozen",
+        "case": "NEGATIVE_RESULT_START",
+        "phase": "PREPARED",
+        "recover": "SafeToRetry",
+        "submit": "LocalSaved",
+        "batches": "1",
+        "after": "VERIFIED",
+        "queries": "20"
+      },
+      {
+        "scope": "frozen",
+        "case": "NEGATIVE_RESULT_START",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "NEGATIVE_RESULT_START",
+        "phase": "COMMITTED",
+        "recover": "LocalSaved",
+        "submit": "LocalSaved",
+        "batches": "0",
+        "after": "VERIFIED",
+        "queries": "22"
+      },
+      {
+        "scope": "authoring",
+        "case": "START_NANOS",
+        "exact": "false",
+        "result": "LocalSaved",
+        "batches": "1",
+        "phase": "VERIFIED",
+        "nativeExact": "false"
+      },
+      {
+        "scope": "authoring",
+        "case": "END_NANOS",
+        "exact": "false",
+        "result": "LocalSaved",
+        "batches": "1",
+        "phase": "VERIFIED",
+        "nativeExact": "false"
+      },
+      {
+        "scope": "authoring",
+        "case": "NEGATIVE_START_NANOS",
+        "exact": "false",
+        "result": "LocalSaved",
+        "batches": "1",
+        "phase": "VERIFIED",
+        "nativeExact": "false"
+      },
+      {
+        "scope": "authoring",
+        "case": "EXACT_MILLIS",
+        "exact": "true",
+        "result": "LocalSaved",
+        "batches": "1",
+        "phase": "VERIFIED",
+        "nativeExact": "true"
+      },
+      {
+        "scope": "authoring",
+        "case": "NEGATIVE_EXACT_MILLIS",
+        "exact": "true",
+        "result": "LocalSaved",
+        "batches": "1",
+        "phase": "VERIFIED",
+        "nativeExact": "true"
+      }
+    ],
+    "productionChanged": false,
+    "files": [
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarWriter.kt",
+        "sha256": "a8e83c7decb5df708d4a9e3823ec7f6730987e6c087b55297f6262494ba59334"
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/OrdinaryEditReceipt.kt",
+        "sha256": "d8521ae775b8c6a22d0f13fbf72b2e045f076fa63eb8faae9980d51b5d4c4a18"
+      },
+      {
+        "path": "app/src/test/kotlin/dev/swapnilraj/calendar/OrdinaryEditReceiptTest.kt",
+        "sha256": "5143f57fa1cf155c2c6e807f229f55ab179a6d5d798583014534fd8e0befb66b"
+      }
+    ],
+    "previousPassingBaseline": "/tmp/daylight-ordinary-edit-publication-focus1-evidence/result.json",
+    "limitations": [
+      "Synthetic provider/real SQLite only; no native/account/device execution.",
+      "ATTEMPTED subcases already stay uncertain without dispatch; exact-millisecond controls already succeed."
+    ]
+  },
+  "compileFailure": {
+    "source": "124a8a438d491e084e9fbff4f2985e65424b73fb",
+    "status": "COMPILE_FAILED_NO_TESTS",
+    "seconds": 3,
+    "testsExecuted": 0,
+    "oldXmlNotReused": true,
+    "reason": "Cross-module EventDraft.time smart cast is unavailable; snapshot immutable time property locally.",
+    "writerSha256": "14004815a1e157d68a73fd9ddb56fbf6955e52e283e4ab806bd70303c494996c",
+    "previousPassingBaseline": "/tmp/daylight-ordinary-edit-publication-focus1-evidence/result.json",
+    "counterexample": "/tmp/daylight-ordinary-edit-precision-before1-evidence/result.json"
+  },
+  "classificationFailure": {
+    "source": "4ab9957a8dd0c0fbf26ec0950f5209ae9073b2fd",
+    "status": "FAILED_EXISTING_TYPED_CLASSIFICATION_EXPECTATION",
+    "seconds": 23,
+    "counts": {
+      "tests": 152,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": [
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarOperationRetirementTest",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "failureMessages": []
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarRecurringCreateTest",
+        "tests": 14,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "failureMessages": [
+          "java.lang.AssertionError: expected:<ValidationFailed(fields=[RECURRENCE])> but was:<ValidationFailed(fields=[TIME])>"
+        ]
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarWriterTest",
+        "tests": 39,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "failureMessages": []
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.MeetingPublicationSeamTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "failureMessages": []
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryCreateReceiptCodecTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "failureMessages": []
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryCreateReceiptDispatchTest",
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "failureMessages": []
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryCreateReceiptSixProofTest",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "failureMessages": []
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryEditReceiptBudgetTest",
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "failureMessages": []
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryEditReceiptTest",
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "failureMessages": []
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.RecurringCreateAcknowledgmentProofTest",
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "failureMessages": []
+      }
+    ],
+    "precisionCases": [
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_START",
+        "phase": "PREPARED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "PREPARED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_START",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_START",
+        "phase": "COMMITTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "COMMITTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_END",
+        "phase": "PREPARED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "PREPARED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_END",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_END",
+        "phase": "COMMITTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "COMMITTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_START",
+        "phase": "PREPARED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "PREPARED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_START",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_START",
+        "phase": "COMMITTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "COMMITTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_END",
+        "phase": "PREPARED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "PREPARED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_END",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_END",
+        "phase": "COMMITTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "COMMITTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "NEGATIVE_RESULT_START",
+        "phase": "PREPARED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "PREPARED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "NEGATIVE_RESULT_START",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "NEGATIVE_RESULT_START",
+        "phase": "COMMITTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "COMMITTED",
+        "queries": "0"
+      },
+      {
+        "scope": "authoring",
+        "kind": "UPDATE",
+        "case": "START_NANOS",
+        "exact": "false",
+        "result": "ValidationFailed",
+        "batches": "0",
+        "phase": "null",
+        "nativeExact": "null"
+      },
+      {
+        "scope": "authoring",
+        "kind": "UPDATE",
+        "case": "END_NANOS",
+        "exact": "false",
+        "result": "ValidationFailed",
+        "batches": "0",
+        "phase": "null",
+        "nativeExact": "null"
+      },
+      {
+        "scope": "authoring",
+        "kind": "UPDATE",
+        "case": "NEGATIVE_START_NANOS",
+        "exact": "false",
+        "result": "ValidationFailed",
+        "batches": "0",
+        "phase": "null",
+        "nativeExact": "null"
+      },
+      {
+        "scope": "authoring",
+        "kind": "UPDATE",
+        "case": "EXACT_MILLIS",
+        "exact": "true",
+        "result": "LocalSaved",
+        "batches": "1",
+        "phase": "VERIFIED",
+        "nativeExact": "true"
+      },
+      {
+        "scope": "authoring",
+        "kind": "UPDATE",
+        "case": "NEGATIVE_EXACT_MILLIS",
+        "exact": "true",
+        "result": "LocalSaved",
+        "batches": "1",
+        "phase": "VERIFIED",
+        "nativeExact": "true"
+      },
+      {
+        "scope": "authoring",
+        "kind": "CREATE",
+        "case": "START_NANOS",
+        "exact": "false",
+        "result": "ValidationFailed",
+        "batches": "0",
+        "phase": "null",
+        "nativeExact": "null"
+      },
+      {
+        "scope": "authoring",
+        "kind": "CREATE",
+        "case": "END_NANOS",
+        "exact": "false",
+        "result": "ValidationFailed",
+        "batches": "0",
+        "phase": "null",
+        "nativeExact": "null"
+      },
+      {
+        "scope": "authoring",
+        "kind": "CREATE",
+        "case": "NEGATIVE_START_NANOS",
+        "exact": "false",
+        "result": "ValidationFailed",
+        "batches": "0",
+        "phase": "null",
+        "nativeExact": "null"
+      },
+      {
+        "scope": "authoring",
+        "kind": "CREATE",
+        "case": "EXACT_MILLIS",
+        "exact": "true",
+        "result": "LocalSaved",
+        "batches": "1",
+        "phase": "VERIFIED",
+        "nativeExact": "true"
+      },
+      {
+        "scope": "authoring",
+        "kind": "CREATE",
+        "case": "NEGATIVE_EXACT_MILLIS",
+        "exact": "true",
+        "result": "LocalSaved",
+        "batches": "1",
+        "phase": "VERIFIED",
+        "nativeExact": "true"
+      }
+    ],
+    "budgetCases": [
+      {
+        "adopted": "false",
+        "kind": "UPDATE",
+        "case": "BELOW_MINIMAL",
+        "cap": "59390",
+        "minimal": "59503",
+        "worst": "59578",
+        "result": "Unavailable",
+        "phase": "null",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "false",
+        "kind": "UPDATE",
+        "case": "BETWEEN_MINIMAL_AND_FULL",
+        "cap": "59540",
+        "minimal": "59503",
+        "worst": "59578",
+        "result": "Unavailable",
+        "phase": "null",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "false",
+        "kind": "UPDATE",
+        "case": "EXACT_FULL",
+        "cap": "59578",
+        "minimal": "59503",
+        "worst": "59578",
+        "result": "LocalSaved",
+        "phase": "VERIFIED",
+        "phaseAtBatch": "ATTEMPTED",
+        "source": "54025",
+        "batches": "1"
+      },
+      {
+        "adopted": "false",
+        "kind": "DELETE",
+        "case": "BELOW_MINIMAL",
+        "cap": "59288",
+        "minimal": "59401",
+        "worst": "59417",
+        "result": "Unavailable",
+        "phase": "null",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "false",
+        "kind": "DELETE",
+        "case": "BETWEEN_MINIMAL_AND_FULL",
+        "cap": "59409",
+        "minimal": "59401",
+        "worst": "59417",
+        "result": "Unavailable",
+        "phase": "null",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "false",
+        "kind": "DELETE",
+        "case": "EXACT_FULL",
+        "cap": "59417",
+        "minimal": "59401",
+        "worst": "59417",
+        "result": "LocalDeleted",
+        "phase": "VERIFIED",
+        "phaseAtBatch": "ATTEMPTED",
+        "source": "54025",
+        "batches": "1"
+      },
+      {
+        "adopted": "true",
+        "kind": "UPDATE",
+        "case": "BELOW_MINIMAL",
+        "cap": "59390",
+        "minimal": "59503",
+        "worst": "59578",
+        "result": "Unavailable",
+        "phase": "PREPARED",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "true",
+        "kind": "UPDATE",
+        "case": "BETWEEN_MINIMAL_AND_FULL",
+        "cap": "59540",
+        "minimal": "59503",
+        "worst": "59578",
+        "result": "Unavailable",
+        "phase": "PREPARED",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "true",
+        "kind": "UPDATE",
+        "case": "EXACT_FULL",
+        "cap": "59578",
+        "minimal": "59503",
+        "worst": "59578",
+        "result": "LocalSaved",
+        "phase": "VERIFIED",
+        "phaseAtBatch": "ATTEMPTED",
+        "source": "54025",
+        "batches": "1"
+      },
+      {
+        "adopted": "true",
+        "kind": "DELETE",
+        "case": "BELOW_MINIMAL",
+        "cap": "59288",
+        "minimal": "59401",
+        "worst": "59417",
+        "result": "Unavailable",
+        "phase": "PREPARED",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "true",
+        "kind": "DELETE",
+        "case": "BETWEEN_MINIMAL_AND_FULL",
+        "cap": "59409",
+        "minimal": "59401",
+        "worst": "59417",
+        "result": "Unavailable",
+        "phase": "PREPARED",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "true",
+        "kind": "DELETE",
+        "case": "EXACT_FULL",
+        "cap": "59417",
+        "minimal": "59401",
+        "worst": "59417",
+        "result": "LocalDeleted",
+        "phase": "VERIFIED",
+        "phaseAtBatch": "ATTEMPTED",
+        "source": "54025",
+        "batches": "1"
+      }
+    ],
+    "failureInterpretation": "Existing recurring invalid-input table expects RECURRENCE for its nanos case; current shared native precision guard intentionally reports TIME first. All new precision cases and all twelve budget cases passed.",
+    "files": [
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarWriter.kt",
+        "sha256": "4c455a59b0e98dfb54b3875d10e5a901c2bbfe632d0fcd12b3b7f5bf2c77752e"
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/OrdinaryEditReceipt.kt",
+        "sha256": "ab4616f7d4f0d9effe30cc2ac267fedac1ffef0f417907248c112efdcf50bf65"
+      },
+      {
+        "path": "app/src/test/kotlin/dev/swapnilraj/calendar/OrdinaryEditReceiptTest.kt",
+        "sha256": "77193d74f451c40f1b91badbbc84b8d701f4fd4233b82d5e431b32604e324fbf"
+      }
+    ]
+  },
+  "after": {
+    "source": "fd762c01ff366c5f3118284d50b8928b93bf758e",
+    "status": "PASS",
+    "seconds": 24,
+    "counts": {
+      "tests": 152,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": [
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarOperationRetirementTest",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarRecurringCreateTest",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarWriterTest",
+        "tests": 39,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.MeetingPublicationSeamTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryCreateReceiptCodecTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryCreateReceiptDispatchTest",
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryCreateReceiptSixProofTest",
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryEditReceiptBudgetTest",
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.OrdinaryEditReceiptTest",
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.RecurringCreateAcknowledgmentProofTest",
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "precisionCases": [
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_START",
+        "phase": "PREPARED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "PREPARED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_START",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_START",
+        "phase": "COMMITTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "COMMITTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_END",
+        "phase": "PREPARED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "PREPARED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_END",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "ORIGINAL_END",
+        "phase": "COMMITTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "COMMITTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_START",
+        "phase": "PREPARED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "PREPARED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_START",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_START",
+        "phase": "COMMITTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "COMMITTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_END",
+        "phase": "PREPARED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "PREPARED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_END",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "RESULT_END",
+        "phase": "COMMITTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "COMMITTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "NEGATIVE_RESULT_START",
+        "phase": "PREPARED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "PREPARED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "NEGATIVE_RESULT_START",
+        "phase": "ATTEMPTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "ATTEMPTED",
+        "queries": "0"
+      },
+      {
+        "scope": "frozen",
+        "case": "NEGATIVE_RESULT_START",
+        "phase": "COMMITTED",
+        "recover": "Uncertain",
+        "submit": "Uncertain",
+        "batches": "0",
+        "after": "COMMITTED",
+        "queries": "0"
+      },
+      {
+        "scope": "authoring",
+        "kind": "UPDATE",
+        "case": "START_NANOS",
+        "exact": "false",
+        "result": "ValidationFailed",
+        "batches": "0",
+        "phase": "null",
+        "nativeExact": "null"
+      },
+      {
+        "scope": "authoring",
+        "kind": "UPDATE",
+        "case": "END_NANOS",
+        "exact": "false",
+        "result": "ValidationFailed",
+        "batches": "0",
+        "phase": "null",
+        "nativeExact": "null"
+      },
+      {
+        "scope": "authoring",
+        "kind": "UPDATE",
+        "case": "NEGATIVE_START_NANOS",
+        "exact": "false",
+        "result": "ValidationFailed",
+        "batches": "0",
+        "phase": "null",
+        "nativeExact": "null"
+      },
+      {
+        "scope": "authoring",
+        "kind": "UPDATE",
+        "case": "EXACT_MILLIS",
+        "exact": "true",
+        "result": "LocalSaved",
+        "batches": "1",
+        "phase": "VERIFIED",
+        "nativeExact": "true"
+      },
+      {
+        "scope": "authoring",
+        "kind": "UPDATE",
+        "case": "NEGATIVE_EXACT_MILLIS",
+        "exact": "true",
+        "result": "LocalSaved",
+        "batches": "1",
+        "phase": "VERIFIED",
+        "nativeExact": "true"
+      },
+      {
+        "scope": "authoring",
+        "kind": "CREATE",
+        "case": "START_NANOS",
+        "exact": "false",
+        "result": "ValidationFailed",
+        "batches": "0",
+        "phase": "null",
+        "nativeExact": "null"
+      },
+      {
+        "scope": "authoring",
+        "kind": "CREATE",
+        "case": "END_NANOS",
+        "exact": "false",
+        "result": "ValidationFailed",
+        "batches": "0",
+        "phase": "null",
+        "nativeExact": "null"
+      },
+      {
+        "scope": "authoring",
+        "kind": "CREATE",
+        "case": "NEGATIVE_START_NANOS",
+        "exact": "false",
+        "result": "ValidationFailed",
+        "batches": "0",
+        "phase": "null",
+        "nativeExact": "null"
+      },
+      {
+        "scope": "authoring",
+        "kind": "CREATE",
+        "case": "EXACT_MILLIS",
+        "exact": "true",
+        "result": "LocalSaved",
+        "batches": "1",
+        "phase": "VERIFIED",
+        "nativeExact": "true"
+      },
+      {
+        "scope": "authoring",
+        "kind": "CREATE",
+        "case": "NEGATIVE_EXACT_MILLIS",
+        "exact": "true",
+        "result": "LocalSaved",
+        "batches": "1",
+        "phase": "VERIFIED",
+        "nativeExact": "true"
+      }
+    ],
+    "budgetCases": [
+      {
+        "adopted": "false",
+        "kind": "UPDATE",
+        "case": "BELOW_MINIMAL",
+        "cap": "59390",
+        "minimal": "59503",
+        "worst": "59578",
+        "result": "Unavailable",
+        "phase": "null",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "false",
+        "kind": "UPDATE",
+        "case": "BETWEEN_MINIMAL_AND_FULL",
+        "cap": "59540",
+        "minimal": "59503",
+        "worst": "59578",
+        "result": "Unavailable",
+        "phase": "null",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "false",
+        "kind": "UPDATE",
+        "case": "EXACT_FULL",
+        "cap": "59578",
+        "minimal": "59503",
+        "worst": "59578",
+        "result": "LocalSaved",
+        "phase": "VERIFIED",
+        "phaseAtBatch": "ATTEMPTED",
+        "source": "54025",
+        "batches": "1"
+      },
+      {
+        "adopted": "false",
+        "kind": "DELETE",
+        "case": "BELOW_MINIMAL",
+        "cap": "59288",
+        "minimal": "59401",
+        "worst": "59417",
+        "result": "Unavailable",
+        "phase": "null",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "false",
+        "kind": "DELETE",
+        "case": "BETWEEN_MINIMAL_AND_FULL",
+        "cap": "59409",
+        "minimal": "59401",
+        "worst": "59417",
+        "result": "Unavailable",
+        "phase": "null",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "false",
+        "kind": "DELETE",
+        "case": "EXACT_FULL",
+        "cap": "59417",
+        "minimal": "59401",
+        "worst": "59417",
+        "result": "LocalDeleted",
+        "phase": "VERIFIED",
+        "phaseAtBatch": "ATTEMPTED",
+        "source": "54025",
+        "batches": "1"
+      },
+      {
+        "adopted": "true",
+        "kind": "UPDATE",
+        "case": "BELOW_MINIMAL",
+        "cap": "59390",
+        "minimal": "59503",
+        "worst": "59578",
+        "result": "Unavailable",
+        "phase": "PREPARED",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "true",
+        "kind": "UPDATE",
+        "case": "BETWEEN_MINIMAL_AND_FULL",
+        "cap": "59540",
+        "minimal": "59503",
+        "worst": "59578",
+        "result": "Unavailable",
+        "phase": "PREPARED",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "true",
+        "kind": "UPDATE",
+        "case": "EXACT_FULL",
+        "cap": "59578",
+        "minimal": "59503",
+        "worst": "59578",
+        "result": "LocalSaved",
+        "phase": "VERIFIED",
+        "phaseAtBatch": "ATTEMPTED",
+        "source": "54025",
+        "batches": "1"
+      },
+      {
+        "adopted": "true",
+        "kind": "DELETE",
+        "case": "BELOW_MINIMAL",
+        "cap": "59288",
+        "minimal": "59401",
+        "worst": "59417",
+        "result": "Unavailable",
+        "phase": "PREPARED",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "true",
+        "kind": "DELETE",
+        "case": "BETWEEN_MINIMAL_AND_FULL",
+        "cap": "59409",
+        "minimal": "59401",
+        "worst": "59417",
+        "result": "Unavailable",
+        "phase": "PREPARED",
+        "phaseAtBatch": "null",
+        "source": "54025",
+        "batches": "0"
+      },
+      {
+        "adopted": "true",
+        "kind": "DELETE",
+        "case": "EXACT_FULL",
+        "cap": "59417",
+        "minimal": "59401",
+        "worst": "59417",
+        "result": "LocalDeleted",
+        "phase": "VERIFIED",
+        "phaseAtBatch": "ATTEMPTED",
+        "source": "54025",
+        "batches": "1"
+      }
+    ],
+    "files": [
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarWriter.kt",
+        "sha256": "4c455a59b0e98dfb54b3875d10e5a901c2bbfe632d0fcd12b3b7f5bf2c77752e"
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/OrdinaryEditReceipt.kt",
+        "sha256": "ab4616f7d4f0d9effe30cc2ac267fedac1ffef0f417907248c112efdcf50bf65"
+      },
+      {
+        "path": "app/src/test/kotlin/dev/swapnilraj/calendar/OrdinaryEditReceiptTest.kt",
+        "sha256": "77193d74f451c40f1b91badbbc84b8d701f4fd4233b82d5e431b32604e324fbf"
+      },
+      {
+        "path": "app/src/test/kotlin/dev/swapnilraj/calendar/CalendarRecurringCreateTest.kt",
+        "sha256": "c5707cb81a351f80972634a262eb2427ae057cd27c29e4edc0451f9b143797c7"
+      }
+    ],
+    "counterexample": "/tmp/daylight-ordinary-edit-precision-before1-evidence/result.json",
+    "compileAttempt": "/tmp/daylight-ordinary-edit-precision-after1-compile-evidence/result.json",
+    "classificationAttempt": "/tmp/daylight-ordinary-edit-precision-after2-evidence/result.json",
+    "limitations": [
+      "Synthetic provider/real SQLite only; no native/account/device execution.",
+      "No full test/assemble/lint gate run by this grant."
+    ]
+  },
+  "rootPatch": {
+    "rootHead": "29504366bef1f24b934e16355d98c1474a1a66f4",
+    "publicationSource": "fd762c01ff366c5f3118284d50b8928b93bf758e",
+    "patch": "/tmp/daylight-ordinary-edit-precision-root.patch",
+    "paths": [
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/CalendarWriter.kt",
+        "beforeSha256": "f23070121350bac7119be3efbc9e0e7c7318de4830be8ae80093ac5691a29786",
+        "afterSha256": "a89d590d545d0343391794d573dc3198ab0552c9247a978b90529d448facf6dc"
+      },
+      {
+        "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/calendar/OrdinaryEditReceipt.kt",
+        "beforeSha256": "d8521ae775b8c6a22d0f13fbf72b2e045f076fa63eb8faae9980d51b5d4c4a18",
+        "afterSha256": "ab4616f7d4f0d9effe30cc2ac267fedac1ffef0f417907248c112efdcf50bf65"
+      },
+      {
+        "path": "app/src/test/kotlin/dev/swapnilraj/calendar/CalendarWriterTest.kt",
+        "beforeSha256": "b6f7ed7326f10a297e119668021ef038d2d4f9531b24af7f2f97a6651c9d7e37",
+        "afterSha256": "eff9fc8ebe24c56818c0624767503a826513577bbc323799f3cc64649e95de6e"
+      },
+      {
+        "path": "app/src/test/kotlin/dev/swapnilraj/calendar/CalendarRecurringCreateTest.kt",
+        "beforeSha256": "3a0db46d2cf89ae2706c0b6043a52b8e07be5f8c4e150a1937dc37bbfaa4b9ae",
+        "afterSha256": "7ffc5730ebd4e53b543b6d5672c345282d9303bc80e3bbdd78a3badae768e4f2"
+      }
+    ],
+    "scope": "Only local-snapshot precision guard, codec original/result bound guard, two new methods in existing root writer suite, and the nanos expected-field mapping; no duplicated17 tests or helper-overload replacement.",
+    "applied": false,
+    "applyCheckExitCode": 0,
+    "applyCheckOutput": ""
+  },
+  "rootCode": "bb7e88a",
+  "publication": "https://github.com/swapnilraj/calendar/pull/82",
+  "publicationHead": "4128976",
+  "rootFullGate": "PENDING"
+}

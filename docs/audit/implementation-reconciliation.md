@@ -27,6 +27,15 @@ Earlier attempts retain their original meaning:
 
 ## Latest integrated correction — 19 November 2026
 
+Later root imports `bb7e88a`/`4f9ebe5` add exact native-millisecond receipt4 admission and an isolated,
+reviewed SDK reminder identity harness. Bounded edit verification passes152 cases and the separate
+frozen probe pair passes native identity-only admission with zero delivery resources and exact PID exit.
+This does not make the newest full aggregate attempt pass: its preserved2,383-test run has one
+recurring-meeting guest-readiness failure; the narrow fixture correction passes4 journeys, with a new
+complete default gate queued. See the [precision](evidence/ordinary-edit-precision-2026-11-19.json) and
+[native identity](evidence/native-reminder-identity-schema2-2026-11-19.json) packets. Historical CSV rows,
+older failed probes and all account/device/delivery/beta/signing gates retain their original status.
+
 Publication at `73444f5` combines PR77–79: meeting creation/picker presentation, native meeting
 adapters, and connected filtered search. Focused92/200/74 checks and full publication/combined push
 CI passed. These source closures do not complete production meeting routing or native Google sync.

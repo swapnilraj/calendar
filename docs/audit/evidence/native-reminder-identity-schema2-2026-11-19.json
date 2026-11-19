@@ -1,0 +1,201 @@
+{
+  "scope": "Isolated SDK emulator identity/capabilities only. No calendar/store data, delivery, Doze/reboot/timezone, physical-device or account acceptance.",
+  "pair": "/tmp/daylight-native-reminder-schema2-pair-e0ce17a/pair.json",
+  "pairSha256": "6006d0c1e45ad6cc594d96872b92e699fd27e13588ed20350eb89d94c8b7d13d",
+  "leadReview": {
+    "source": "e0ce17ab9325229f129177348ad9f35774d5a9e6",
+    "pairSha256": "6006d0c1e45ad6cc594d96872b92e699fd27e13588ed20350eb89d94c8b7d13d",
+    "checks": [
+      {
+        "kind": "app",
+        "sha256": "8460f9c02573076a18129ee11426f50cea06c63eb91966c29bcbbcf381703e8d",
+        "signatureAndManifest": "PASS"
+      },
+      {
+        "kind": "test",
+        "sha256": "740295f99f8f7781edc9fbc4026c4c67298f7bf2a6f1c7223ca2310358081f85",
+        "signatureAndManifest": "PASS"
+      }
+    ],
+    "sourceHashesMatched": 13,
+    "application": "ProbeReminderApplication",
+    "componentCount": 18,
+    "enabledReminder": 4,
+    "disabledOther": 14,
+    "nativeSchema": 2,
+    "nativeScope": "UNBOUND_NO_DATA_OR_DELIVERY",
+    "status": "INDEPENDENT_HASH_SIGNATURE_MANIFEST_REVIEW_PASS",
+    "installationOrNativeExecution": "NOT_RUN",
+    "comparisonNotes": "Certificate digest independent of V2 signer label; exact query set compared without XML child order."
+  },
+  "installation": {
+    "runId": "daa4b08b-cec2-4e31-a307-9c7796d1c1bb",
+    "startedAt": "2026-11-19T10:22:18.354030+00:00",
+    "serial": "emulator-5554",
+    "avd": "daylight_google_reference_userdebug_api35",
+    "bootId": "f14d0429-80d1-4b93-9eeb-da5f4f2046ac",
+    "user": 0,
+    "pairSha256": "6006d0c1e45ad6cc594d96872b92e699fd27e13588ed20350eb89d94c8b7d13d",
+    "state": "PASS",
+    "steps": [
+      {
+        "kind": "app",
+        "package": "dev.swapnilraj.calendar.reminderprobe",
+        "apkSha256": "8460f9c02573076a18129ee11426f50cea06c63eb91966c29bcbbcf381703e8d",
+        "state": "INSTALLED_VERIFIED",
+        "exitCode": 0,
+        "output": "Performing Streamed Install\nSuccess",
+        "installedApkSha256": "8460f9c02573076a18129ee11426f50cea06c63eb91966c29bcbbcf381703e8d",
+        "uid": 10213
+      },
+      {
+        "kind": "test",
+        "package": "dev.swapnilraj.calendar.reminderprobe.tests",
+        "apkSha256": "740295f99f8f7781edc9fbc4026c4c67298f7bf2a6f1c7223ca2310358081f85",
+        "state": "INSTALLED_VERIFIED",
+        "exitCode": 0,
+        "output": "Performing Streamed Install\nSuccess",
+        "installedApkSha256": "740295f99f8f7781edc9fbc4026c4c67298f7bf2a6f1c7223ca2310358081f85",
+        "uid": 10214
+      }
+    ],
+    "permissionsOrInstrumentationOrProviderData": "NOT_TOUCHED",
+    "finishedAt": "2026-11-19T10:23:13.418442+00:00"
+  },
+  "hostSetupFailure": {
+    "runId": "08cd572c-791d-4488-b2b5-0ba7f115fc58",
+    "status": "FAILED_BEFORE_DEVICE_GUARD_ADB_NOT_ON_PATH",
+    "nativeLaunch": "NOT_RUN",
+    "report": "/tmp/daylight-reminder-schema2-identity-controller1.json"
+  },
+  "nativeProof": {
+    "source": "e0ce17ab9325229f129177348ad9f35774d5a9e6",
+    "pairSha256": "6006d0c1e45ad6cc594d96872b92e699fd27e13588ed20350eb89d94c8b7d13d",
+    "runId": "12cc91c2-dfbb-432f-b538-33a625980871",
+    "status": "PASS",
+    "scope": "UNBOUND_NO_DATA_OR_DELIVERY",
+    "targetUid": 10213,
+    "targetProcess": {
+      "name": "dev.swapnilraj.calendar.reminderprobe",
+      "pid": 10811,
+      "startElapsedRealtime": 27465609
+    },
+    "targetExit": {
+      "status": "EXACT_REPORTED_PID_ABSENT",
+      "targetProcess": {
+        "name": "dev.swapnilraj.calendar.reminderprobe",
+        "pid": 10811,
+        "startElapsedRealtime": 27465609
+      }
+    },
+    "startup": {
+      "callers": {
+        "ACTION": 0,
+        "ALARM": 0,
+        "JOB": 0,
+        "NATIVE": 2,
+        "RECOVERY": 1,
+        "UNKNOWN": 0
+      },
+      "cancellationAttempts": 0,
+      "configurationAttempts": 1,
+      "health": "DEGRADED",
+      "inFlight": 0,
+      "operationAttempts": 1,
+      "registrationAttempts": 0,
+      "retryAttempts": 1,
+      "retryRefusals": 1,
+      "runtimeGetterCalls": 3,
+      "state": "UNBOUND",
+      "suppressionRefusals": 1,
+      "unexpectedDeliveryAttempts": 0
+    },
+    "capabilities": {
+      "channelEnabled": null,
+      "channelPresent": false,
+      "exactAlarmAccess": false,
+      "notificationsEnabled": false,
+      "ownJobCount": 0,
+      "ownNotificationCount": 0,
+      "postNotifications": false,
+      "readCalendar": false,
+      "writeCalendar": false
+    },
+    "all18ComponentSettingsDefault": true,
+    "applicationSettingDefault": true,
+    "files": [
+      {
+        "name": "client-exit.json",
+        "bytes": 54,
+        "sha256": "e0fe3671d1140522510b8f96cbf0a95729564974535c0f931ff6a205d483a5e9"
+      },
+      {
+        "name": "client-process.json",
+        "bytes": 139,
+        "sha256": "a5e618028e56f17c6ed4320d7919e5783bd8e7c53cd3b5c750a57e7cf5cd372d"
+      },
+      {
+        "name": "controller.json",
+        "bytes": 387,
+        "sha256": "a526ef754d2f923f403cb5491d10d5f305f0a32da19fbdc14ed9bbaf4bd40592"
+      },
+      {
+        "name": "controller.log",
+        "bytes": 94,
+        "sha256": "7f2cc683e37f23471f9b77e8ed760ed58d3b41edfb423d4a3b45629b5cb197b9"
+      },
+      {
+        "name": "instrumentation.report.json",
+        "bytes": 8359,
+        "sha256": "e22802cb2e6957270a2a32f1d70c2d10164390cf18b9be97328af7ffe9170204"
+      },
+      {
+        "name": "instrumentation.stdout.txt",
+        "bytes": 6711,
+        "sha256": "0b33990968bf9b6f5ae116251a60023953840365fd0dfbf3fb0ff54c30401292"
+      },
+      {
+        "name": "metadata.json",
+        "bytes": 569,
+        "sha256": "9059f0d611f302241d7a76b492f33cd1339e958e8a27e8593c694785f90d519b"
+      },
+      {
+        "name": "result.json",
+        "bytes": 9891,
+        "sha256": "b7054fb86885aa5719469cd859867feca79e659c3434c3c89377ecea6ac79820"
+      }
+    ],
+    "limits": "Identity/capabilities only. No provider/store data access or alarm/notification delivery was exercised. Earlier c117 schema1 failure is preserved separately, not recovered or relabeled."
+  },
+  "proofSha256": "80c06d22ef0a0e7fcff8a527e1cd629b70c1de77df89d32adc12950dda7a2c2b",
+  "fixtureRemoval": {
+    "scope": "Only two fresh schema2 identity fixture packages, user0. No production package or CalendarProvider data targeted.",
+    "nativeIdentityRun": "12cc91c2-dfbb-432f-b538-33a625980871",
+    "bootId": "f14d0429-80d1-4b93-9eeb-da5f4f2046ac",
+    "state": "PASS",
+    "steps": [
+      {
+        "package": "dev.swapnilraj.calendar.reminderprobe.tests",
+        "uid": 10214,
+        "installedApkSha256": "740295f99f8f7781edc9fbc4026c4c67298f7bf2a6f1c7223ca2310358081f85",
+        "targetProcess": "ABSENT",
+        "state": "USER0_ABSENT",
+        "exitCode": 0,
+        "output": "Success"
+      },
+      {
+        "package": "dev.swapnilraj.calendar.reminderprobe",
+        "uid": 10213,
+        "installedApkSha256": "8460f9c02573076a18129ee11426f50cea06c63eb91966c29bcbbcf381703e8d",
+        "targetProcess": "ABSENT",
+        "state": "USER0_ABSENT",
+        "exitCode": 0,
+        "output": "Success"
+      }
+    ],
+    "finishedAt": "2026-11-19T10:30:21.378805+00:00"
+  },
+  "rootHarnessImport": "4f9ebe5",
+  "rootDefaultGate": "PENDING",
+  "earlierSchema1NativeFailure": "c1172e14 remains FAILED_NOT_RECOVERED; separate corrected schema2 proof does not relabel it."
+}
