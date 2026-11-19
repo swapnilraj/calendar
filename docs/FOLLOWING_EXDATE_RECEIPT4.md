@@ -1,6 +1,7 @@
 # Following EXDATE receipt 4 — approved implementation contract
 
-Status: target contract approved by the integration lead; implementation and acceptance pending.
+Status: implemented in the local adapter;195 publication and108 aggregate focused checks pass.
+Complete aggregate/native/account acceptance remains pending.
 This is the exception-free metadata bridge described in the aggregate FOLLOWING_EXDATE_ADAPTER.md.
 Moved/cancelled exception graph transfer remains separate. No new provider profile is admitted.
 
@@ -32,7 +33,9 @@ source RRULE/EXDATE, tailRaw null, no tail UID. SPLIT freezes prefix context/RRU
 partitions. Digest binds the full witness, native plan and indexed layout under Feature4/planVersion2.
 Strict decoding verifies schema/types, token grammar/key equality, order/duplicates/group prefixes/LF,
 partition/raw NULL-vs-empty, literal rule transformation and COUNT arithmetic from frozen ordinal and
-previous nominal key. It must not call ZoneId.of, current recurrence planner/compiler or DateCodec.
+previous nominal key. New4 also binds first bounds to the issued selected native instance, retains
+raw duration/allDay/start-zone/end-zone, and keeps every WHOLE context field unchanged. It must not
+call ZoneId.of, current recurrence planner/compiler or DateCodec.
 Nominal membership is established only during fresh initial RecurrenceFollowingMetadata.resolve;
 this private issued witness is not caller execution authority. Retry/recovery consumes the winning
 frozen 4 without reauthoring. Complete source/ACL/child/namespace assertions still fence dispatch.
@@ -64,7 +67,8 @@ ACK, identity drift, conflict, rollback or uncertain result never causes blind r
 Allowed production paths: CalendarFollowingSeriesWriter.kt, FollowingExecutionReceipt.kt,
 FollowingAcknowledgments.kt, new FollowingExdateAuthority.kt. Reader/core/store/schema/owner wiring,
 provider policy, meeting and UI files remain unchanged. Bounded SQL fixture EXDATE filtering may be
-added without changing nominal COUNT emission. Proposed acceptance: 32 new authority/execution tests
-plus existing69 Following and90 scoped/retirement regressions (191 total). Preserve first failures.
+added without changing nominal COUNT emission. Focused acceptance:36 new authority/execution tests
+plus existing69 Following and90 scoped/retirement regressions (195 total). First194/1 fixture failure
+and corrected195 pass are retained;108 aggregate checks including three synthetic UI journeys pass.
 Native Google/Workspace propagation and exception graph transfer remain unverified and unimplemented
-by this contract. These test counts are targets, not execution evidence.
+by this contract. See audit/evidence/following-exdate4-2026-11-19.json for the bounded execution evidence.

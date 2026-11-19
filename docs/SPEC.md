@@ -809,11 +809,11 @@ recreating settings does not itself save. This preference API does not change ev
 conflict rules; the legacy bulk settings API remains available to its existing callers.
 
 
-## Planned exception-free Following EXDATE metadata bridge
+## Exception-free Following EXDATE metadata bridge
 
-The approved [receipt4 contract](FOLLOWING_EXDATE_RECEIPT4.md) permits a bounded future implementation
+The approved [receipt4 contract](FOLLOWING_EXDATE_RECEIPT4.md) defines the bounded adapter implementation
 of metadata-only Following edits with independently decoded EXDATE and no exception graph. It freezes
 exact lexical partitions and native EXDATE writes, preserves nominal COUNT/end limits, and refuses
 unsupported syntax/excluded selection. Legacy2/3 operations retain their issued bytes and recovery;
-no clone/profile or account compatibility is inferred. This is an approved target, not implemented
-behavior or completed recurrence acceptance.
+no clone/profile or account compatibility is inferred. Focused source/provider checks pass; the
+complete aggregate gate, native/account acceptance and exception-graph transfer remain pending.

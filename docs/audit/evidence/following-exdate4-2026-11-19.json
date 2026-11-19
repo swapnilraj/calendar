@@ -1,0 +1,79 @@
+{
+  "date": "2026-11-19",
+  "source": "789896b",
+  "protocol": 4,
+  "scope": "Exception-free metadata-only Following EXDATE bridge; no new clone profile",
+  "publicationSource": "739ab86",
+  "testOnlyCorrection": "5ec6f28",
+  "publicationFocus": {
+    "tests": 195,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsedSeconds": 20,
+    "log": "/tmp/daylight-following-exdate4-focused2.log",
+    "xml": "/tmp/daylight-following-exdate4-focused2-xml"
+  },
+  "firstAttempt": {
+    "tests": 195,
+    "passed": 194,
+    "failures": 1,
+    "log": "/tmp/daylight-following-exdate4-focused1.log",
+    "xml": "/tmp/daylight-following-exdate4-focused1-xml",
+    "cause": "New fixture cast required Ready for an excluded native selection; actual Unavailable correctly issued no authority",
+    "correction": "Assert exact Unavailable plus zero journal/batch; nonmetadata refusal and authority controls retained"
+  },
+  "leadSourceCorrections": [
+    "New4 clock/bounds/zone/WHOLE-context values cannot change under metadata authority",
+    "Nonempty EXDATE Following capabilities expose metadata only; temporal/rule authoring remains unavailable"
+  ],
+  "aggregateFocus": {
+    "tests": 105,
+    "counts": {
+      "dev.swapnilraj.calendar.data.calendar.CalendarFollowingSeriesWriterTest": {
+        "tests": 26,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "dev.swapnilraj.calendar.data.calendar.FollowingExecutionReceiptTest": {
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "dev.swapnilraj.calendar.data.calendar.FollowingExdateExecutionTest": {
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "dev.swapnilraj.calendar.data.calendar.FollowingExecutionDispatchTest": {
+        "tests": 29,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "dev.swapnilraj.calendar.data.calendar.FollowingPreparedChildBindingProofTest": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "dev.swapnilraj.calendar.data.calendar.FollowingExdateAuthorityTest": {
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "elapsedSeconds": 23,
+    "log": "/tmp/daylight-following-exdate4-aggregate-focused1.log",
+    "xml": "/tmp/daylight-following-exdate4-aggregate-focused1-xml",
+    "nativeFollowingJourneys": "Three synthetic provider-backed UI journeys, not device execution"
+  },
+  "completeGate": "PENDING",
+  "nativeGoogleWorkspace": "NOT_RUN",
+  "exceptionsGraphTransfer": "NOT_IMPLEMENTED",
+  "legacyCompatibility": "Issued2/3 phases retain original protocol/bytes; no retry/recovery reauthoring"
+}

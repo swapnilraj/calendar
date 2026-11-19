@@ -645,8 +645,8 @@ publication is prepared on merged `8ccdf74`, with selective Live wiring/test cha
 copying the aggregate tree; its own52-check publication run passed53s at `39c17b5` with existing PNGs
 verified and all12 original Live tests retained. Two zero-test environment failures (incomplete system
 JDK, then missing SDK environment) are preserved; complete JDK helper plus explicit ANDROID_HOME fixed
-them without code changes. Draft [PR71](https://github.com/swapnilraj/calendar/pull/71) is open with CI
-running. Its attachment request is unconfirmed because the artifact endpoint did not respond.
+them without code changes. [PR71](https://github.com/swapnilraj/calendar/pull/71) passed full CI6m49 at `39c17b5`, including
+opt-in probe compilation, and merged as `ae5bb38`. Its attachment request is unconfirmed because the artifact endpoint did not respond.
 
 
 ### Retained native fixture read-only capture passed
@@ -661,7 +661,8 @@ No permission commands, event writes, cleanup, replay, adoption or kill occurred
 retained. PASS means completed read-only capture, not six-case app-writer, Google/Workspace or release
 acceptance. A fresh identity/six-case protocol is being planned with new fixture/operation IDs.
 
-Receipt4 EXDATE bridge source is isolated at `739ab86` on its approved lead contract, not integrated.
+Receipt4 EXDATE bridge source is integrated as `789896b` on its approved lead contract.
 Lead review added strict metadata clock/zone/WHOLE-context invariants and metadata-only capabilities
-for nonempty exclusions. Its195-check focus is in progress; no implementation/native acceptance is
-claimed from that pending run. Moved/cancelled exception graph transfer remains separate.
+for nonempty exclusions. Its195-check focus passed20s after a retained194/1 fixture setup failure;108 aggregate checks
+including the three original synthetic Following UI journeys passed23s. The complete gate and
+native/account acceptance remain pending; see audit/evidence/following-exdate4-2026-11-19.json. Moved/cancelled exception graph transfer remains separate.
