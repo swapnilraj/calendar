@@ -5,6 +5,15 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+For a modern, unsubmitted ordinary edit of an imported event with a genuinely NULL source zone,
+an explicit permitted zone-picker/manual selection records authored zone intent even when the
+selected zone equals the renderer's displayed fallback. The next explicit Save freezes ZONE.Set
+while unchanged times remain Keep; generic repeated callbacks, opening, travel, restoration and
+permission return do not author a zone. Optional strict zoneAuthored evidence stays outside raw-field
+and frozen-command fingerprints, is omitted when false, survives exact CAS restoration, and cannot
+reauthor legacy/frozen requests or adopt foreign generations. Existing writer admission, receipt4/6
+bytes, source authority and recovery rules remain unchanged.
+
 An explicit Add people action may convert an eligible, current ordinary new-event draft into a
 dedicated meeting-creation draft using one exact-record compare-and-set. Raw fields and authored
 recurrence remain intact; conversion never reads meeting authority, requests calendar permission or
