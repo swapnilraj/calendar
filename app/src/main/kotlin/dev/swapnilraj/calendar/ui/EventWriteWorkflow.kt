@@ -8,6 +8,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.android.navigation.isCalendarSeedNativeHandoffVerified
 import dev.swapnilraj.calendar.ui.events.*
 import dev.swapnilraj.calendar.ui.events.meetings.create.MeetingCreationLaunch
 import kotlinx.coroutines.CancellationException
@@ -107,6 +108,8 @@ internal fun EventWriteWorkflow(
     requestWritePermission: (suspend () -> Boolean)? = null,
     onReplacedLaunch: ((EditorDraftLaunch) -> Unit)? = null,
     onPromotedMeeting: ((MeetingCreationLaunch) -> Unit)? = null,
+    presentationVisible: Boolean = true,
+    onControllerPresence: (EventEditorController, Boolean) -> Unit = { _, _ -> },
 ) {
     var retry by remember(request) { mutableIntStateOf(0) }
     val latestPermission by rememberUpdatedState(requestWritePermission)
@@ -116,6 +119,8 @@ internal fun EventWriteWorkflow(
         value = try {
             val document = withContext(Dispatchers.IO) {
                 drafts.load(request.draftId)?.let { record ->
+                    if (record.id.startsWith("incoming:")) require(isCalendarSeedNativeHandoffVerified(record,
+                        drafts.load("incoming-review:${record.id.removePrefix("incoming:")}")))
                     OrdinaryDraftDocument.decode(record)
                 }
             }
@@ -174,6 +179,11 @@ internal fun EventWriteWorkflow(
             retirement = retirement, requestWritePermission = if (requestWritePermission != null) ({ latestPermission?.invoke() == true }) else null,
             allowMeetingPromotion = onPromotedMeeting != null)
     }
+    val controllerPresence by rememberUpdatedState(onControllerPresence)
+    DisposableEffect(controller) {
+        controllerPresence(controller, true)
+        onDispose { controllerPresence(controller, false) }
+    }
     LaunchedEffect(controller.state.loading) {
         val state = controller.state
         if (!state.loading && state.problem == null && !state.recoveryRequired && !state.reviewRequired && !state.draftReadFailed && request.delete)
@@ -182,5 +192,8 @@ internal fun EventWriteWorkflow(
     PhoneEventEditor(controller, calendars, onDismiss, onSaved, onDeleted,
         use24Hour = use24Hour,
         onReplacedLaunch = if (onReplacedLaunch != null) ({ value -> latestReplacement?.invoke(value) }) else null,
-        onDiscarded = onDismiss, onPromotedMeeting = onPromotedMeeting)
+        onDiscarded = onDismiss, contentVisible = presentationVisible, onPromotedMeeting = onPromotedMeeting)
 }
+
+/** Ownership observation only: a host must not cancel an accepted write or its cleanup. */
+internal fun EventEditorController.ownsPendingNativeOutcome(): Boolean = state.saving || state.localOutcome != null
