@@ -5,6 +5,7 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+
 The application explicitly hosts meeting creation, invitation responses and organizer-owned changes.
 Calendar details freshly validate the exact occurrence and account namespace before exposing an
 eligible meeting action. Local outcomes refresh the shared reader and reminder runtime; they do not
@@ -758,6 +759,18 @@ EXDATE/exception transfer or Google/Workspace propagation. Permanent retirement 
 operation/fingerprint; unsupported families and unknown phases fail closed without provider dispatch.
 Synthetic provider tests are local evidence only, not installed-provider certification.
 
+
+### Scoped-series presentation
+
+The injectable scoped-series editor retains the exact selected occurrence, master/calendar identity,
+source token, scope and draft generation. THIS, FOLLOWING and ALL actions require explicit allowed
+scope rights; following edits remain unavailable without complete supported tail proof. Raw
+recurrence/exception metadata and incomplete fields are retained, whole/following changes require
+their existing review, and permission grant or draft restoration never submits automatically.
+Exact-record compare-and-set and frozen commands govern recovery; submitted series operations are
+never retired or reissued through ordinary event retirement. The draft browser opens a scoped draft
+only through its matching host callback and retains corrupt or unknown records. Application routing
+remains separate.
 
 ## Connected filtered search
 

@@ -42,7 +42,7 @@ data class DraftBrowserItem(val recordId: String, val updatedAt: Instant,
     val launch: EditorDraftLaunch?, val issue: DraftReadIssue?,
     val meetingPreview: MeetingResponseDraftPreview? = null,
     val meetingCreation: MeetingCreationLaunch? = null, val meetingCreationTitle: String = "",
-    val ownedMeeting: OwnedMeetingDraftPreview? = null)
+    val ownedMeeting: OwnedMeetingDraftPreview? = null, val seriesLaunch: SeriesEditorLaunch? = null)
 
 /** Reads the feature's versioned opaque payload without normalizing or saving incomplete fields. */
 object DraftBrowserCodec {
@@ -64,6 +64,11 @@ object DraftBrowserCodec {
             val preview = meetingResponseDraftPreview(record)
             return DraftBrowserItem(record.id, record.updatedAt, null,
                 if (preview == null) DraftReadIssue.UNREADABLE else null, meetingPreview = preview)
+        }
+        if (record.version == SeriesDraftCodec.VERSION) {
+            val launch = SeriesDraftCodec.describe(record)
+            return DraftBrowserItem(record.id, record.updatedAt, null,
+                if (launch == null) DraftReadIssue.UNREADABLE else null, seriesLaunch = launch)
         }
         if (record.version in setOf(EventEditorController.LEGACY_VERSION, EventEditorController.PREVIOUS_VERSION) &&
             feature != "ordinary-editor" && try { JSONObject(record.payload).has("feature") } catch (_: Exception) { false })

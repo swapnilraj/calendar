@@ -1,0 +1,16 @@
+<resources>
+    <string name="series_tail_origin">Changes start at the selected occurrence’s original time in the series time zone.</string>
+    <string name="series_tail_time_heading">Selected and following event times</string>
+    <string name="series_before_tail">Original selected occurrence</string>
+    <string name="series_after_tail">Resulting first event in this part of the series</string>
+    <string name="series_review_following">Review this and following events</string>
+    <string name="series_review_following_scope">These changes affect this original occurrence and every following occurrence. Earlier events keep their existing schedule and details.</string>
+    <string name="series_review_following_first">This is the first occurrence, so these changes affect the whole series.</string>
+    <string name="series_confirm_following_changes">Confirm following changes</string>
+    <string name="series_following_keep_help">Keep existing limit preserves the series ending. The review shows the remaining number of events or the exact end time for this part of the series.</string>
+    <string name="series_following_limits">The ending shown applies to this occurrence and those that follow. Earlier events are counted separately.</string>
+    <plurals name="series_following_earlier">
+        <item quantity="one">%1$d earlier occurrence stays unchanged.</item>
+        <item quantity="other">%1$d earlier occurrences stay unchanged.</item>
+    </plurals>
+</resources>
