@@ -146,6 +146,16 @@ class PhoneEventEditorScreenTest {
         compose.onNodeWithText("Done").performClick()
         compose.onNodeWithText("1 day before").assertExists(); compose.onNodeWithText("Save").assertIsDisplayed()
     }
+    @Test fun repeatSummaryOpensFocusedTypedSettingsAndRetainsUnfinishedValues() {
+        val controller = preparedEditor(draft, null, "repeat-partial", writer, store, scope, recurringCreationSupported = true); show(controller)
+        compose.onNodeWithText("Does not repeat").performScrollTo().performClick()
+        compose.onNodeWithText("Weekly").performClick()
+        compose.onNodeWithText("Repeat every (1–1000)").performScrollTo().performTextReplacement("")
+        compose.onNodeWithText("Done").performClick()
+        compose.onNodeWithText("Finish repeat settings").performScrollTo().assertIsDisplayed()
+        assertEquals("", controller.state.fields.recurrence.interval); assertEquals(0, writer.creates)
+        controller.save(); assertNull(controller.state.recurrenceReview); assertEquals(0, writer.creates)
+    }
     @Test fun frozenRecoveryUsesUserFacingActionsAndNeverEnablesTopSave() {
         writer.next = MutationResult.PermissionRequired; val controller = editor(); controller.save(); show(controller)
         compose.onNodeWithText("Check save result").assertIsDisplayed()

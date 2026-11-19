@@ -26,7 +26,7 @@ import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
 import java.time.*
 
-internal enum class PhoneEditorPanel { CALENDAR, START_DATE, END_DATE, START_TIME, END_TIME, ZONE, LOCATION, DESCRIPTION, ALERTS, PRIVACY, AVAILABILITY }
+internal enum class PhoneEditorPanel { CALENDAR, START_DATE, END_DATE, START_TIME, END_TIME, ZONE, LOCATION, DESCRIPTION, ALERTS, REPEAT, PRIVACY, AVAILABILITY }
 
 @Composable
 internal fun PhoneEditorPanelContent(panel: PhoneEditorPanel, view: PhoneEventEditorPresentation, use24Hour: Boolean, onDismiss: () -> Unit) {
@@ -57,6 +57,11 @@ internal fun PhoneEditorPanelContent(panel: PhoneEditorPanel, view: PhoneEventEd
                 OutlinedTextField(if (location) fields.location else fields.description, { value -> controller.change { if (location) it.copy(location = value) else it.copy(description = value) } },
                     label = { Text(stringResource(if (location) R.string.events_location else R.string.events_notes)) }, enabled = view.canEdit(if (location) EditableField.LOCATION else EditableField.DESCRIPTION),
                     modifier = Modifier.fillMaxWidth().padding(24.dp), minLines = if (location) 1 else 5)
+            }
+        }
+        PhoneEditorPanel.REPEAT -> PhoneEditorPanelFrame(stringResource(R.string.recurrence_editor_repeat), onDismiss) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
+                RecurrenceEditorControls(fields.recurrence, fields.startDate, !view.blocked) { value -> controller.change { it.copy(recurrence = value) } }
             }
         }
         PhoneEditorPanel.ALERTS -> PhoneEditorAlertPanel(fields.alerts, view.canEdit(EditableField.ALERTS), onDismiss) { value -> controller.change { it.copy(alerts = value) } }
