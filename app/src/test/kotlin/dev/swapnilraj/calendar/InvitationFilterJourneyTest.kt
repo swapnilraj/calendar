@@ -3,10 +3,13 @@ package dev.swapnilraj.calendar
 import android.Manifest
 import android.content.ContentValues
 import android.provider.CalendarContract
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.data.CalendarPreferenceState
+import dev.swapnilraj.calendar.data.Settings
 import dev.swapnilraj.calendar.data.settings.CalendarSettingChange
 import dev.swapnilraj.calendar.data.settings.CalendarSettingSave
 import dev.swapnilraj.calendar.data.reminders.SavedReminderSettings
@@ -90,6 +93,52 @@ class InvitationFilterJourneyTest {
         compose.onAllNodesWithTag("search_hit_2_9").assertCountEquals(0)
         assertLocalOnly(f)
     }
+
+    @Test fun successfulJourneyRestoresExactOriginalRawPreferences() = restorationWitness(false)
+
+    @Test fun failedJourneyRestoresExactOriginalRawPreferencesAndPreservesBodyFailure() = restorationWitness(true)
+
+    private fun restorationWitness(failBody: Boolean) {
+        val app = RuntimeEnvironment.getApplication() as CalendarApp
+        val store = rawStore(app.settings)
+        val original = io { store.data.first() }
+        val before = original.toMutablePreferences().apply {
+            this[stringPreferencesKey("display_invitation_filter")] = "FUTURE_FILTER"
+            this[stringPreferencesKey("display_default_duration_minutes")] = "future-duration"
+            this[stringPreferencesKey("display_zone_mode")] = "FIXED"
+            this[stringPreferencesKey("display_zone_id")] = "Asia/Tokyo"
+            this[stringPreferencesKey("calendar_view")] = "WEEK"
+            this[stringSetPreferencesKey("selected_calendar_ids")] = setOf("999")
+            this[stringSetPreferencesKey("known_calendar_accounts")] = setOf("synthetic-before")
+            this[stringPreferencesKey("synthetic_cleanup_opaque")] = "preserve"
+        }.toPreferences()
+        val bodyFailure = IllegalStateException("Synthetic invitation journey body failure")
+        try {
+            io { store.updateData { before } }
+            var caught: Throwable? = null
+            try {
+                fixture { f ->
+                    io { assertEquals(CalendarSettingSave.Saved,
+                        f.app.settings.saveCalendarSetting(CalendarSettingChange.InvitationFilter(InvitationFilter.PENDING_ONLY))) }
+                    if (failBody) throw bodyFailure
+                }
+            } catch (error: Throwable) { caught = error }
+            if (failBody) assertSame(bodyFailure, caught) else caught?.let { throw it }
+            // A fresh Settings owner must see the exact prior bytes, including unknown typed keys.
+            val restored = io { rawStore(Settings(app)).data.first() }
+            assertEquals(before.asMap(), restored.asMap())
+        } finally {
+            io {
+                store.updateData { original }
+                assertEquals(original.asMap(), store.data.first().asMap())
+            }
+        }
+    }
+
+    /** Synthetic QA only: preserve unknown keys without adding a production storage/reset API. */
+    @Suppress("UNCHECKED_CAST")
+    private fun rawStore(settings: Settings): DataStore<Preferences> =
+        Settings::class.java.getDeclaredField("store").apply { isAccessible = true }.get(settings) as DataStore<Preferences>
 
     private fun assertPendingMain(f: Fixture) {
         shown(pending)
