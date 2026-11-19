@@ -81,8 +81,9 @@ and fresh full CI at `7dfefc8`. Assertions/timeouts were retained. PR62 merged a
 the aggregate worktree was not overwritten with this older publication tree.
 
 [PR63](https://github.com/swapnilraj/calendar/pull/63) preserves JUnit, HTML, Roborazzi and lint
-diagnostics after CI failure, with attempt-specific artifact names. YAML/path validation passed;
-full CI is pending at `d71b4b6`. It changes no application code and is not yet merged.
+diagnostics after CI failure, with attempt-specific artifact names. YAML/path validation and full CI
+passed at `d71b4b6`; GitHub created both diagnostics and debug APK artifacts. PR63 merged as `a2d48dc`.
+It changes no application code.
 
 The aggregate source remains ahead of bounded publication. PR55–62 artifact attachments are now
 confirmed in the task; earlier hanging calls were reconciled against the attachment inventory before

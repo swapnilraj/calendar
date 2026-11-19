@@ -203,7 +203,10 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 - `./gradlew test` runs every test, including screenshot verification.
 - `./gradlew :app:assembleDebug` builds the APK. `:app:installDebug` installs it over adb.
 - **CI** (`.github/workflows/ci.yml`) runs `test`, `assembleDebug` and Android lint on pushes and
-  PRs, and uploads the debug APK as an artifact.
+  PRs, and uploads the debug APK as an artifact. JUnit/HTML test reports, Roborazzi diagnostics and
+  lint reports are also uploaded after failures, when available, for 14 days. Their artifact name
+  includes the run attempt so retries retain the earlier failure evidence. CI fixtures are synthetic;
+  real calendar data must never be introduced into automated captures/reports.
 - **Signing:**
   - Debug builds use the default debug key.
   - A stable release key is a later decision. Don't commit any keystore.

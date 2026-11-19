@@ -32,6 +32,22 @@ jobs:
         run: scripts/setup-android-sdk.sh
       - name: Test and build
         run: ./gradlew test :app:assembleDebug :app:lintDebug
+      - name: Preserve test and lint diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: daylight-diagnostics-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            app/build/test-results/**/TEST-*.xml
+            app/build/reports/tests/
+            app/build/outputs/roborazzi/
+            app/build/reports/lint-results-debug.*
+            calendar-core/build/test-results/**/TEST-*.xml
+            calendar-core/build/reports/tests/
+            weather/build/test-results/**/TEST-*.xml
+            weather/build/reports/tests/
       - uses: actions/upload-artifact@v4
         with:
           name: daylight-debug
