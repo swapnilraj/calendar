@@ -1,0 +1,20 @@
+<resources>
+    <string name="widget_agenda_name">Daylight agenda</string>
+    <string name="widget_agenda_description">Upcoming events with private display options</string>
+    <string name="widget_today">Today</string>
+    <string name="widget_create">Create</string>
+    <string name="widget_settings">Set up</string>
+    <string name="widget_more">More</string>
+    <string name="widget_busy">Busy</string>
+    <string name="widget_untitled">Untitled event</string>
+    <string name="widget_all_day">All day</string>
+    <string name="widget_loading">Updating agenda…</string>
+    <string name="widget_setup">Choose calendars and privacy in Daylight.</string>
+    <string name="widget_permission">Open Daylight to allow calendar access.</string>
+    <string name="widget_unavailable">Agenda unavailable. Open Daylight to retry.</string>
+    <string name="widget_empty">No upcoming events in the next 7 days.</string>
+    <string name="widget_no_calendars">No calendars selected.</string>
+    <string name="widget_partial">Some calendars are unavailable.</string>
+    <string name="widget_row_time">%1$s · %2$s</string>
+    <string name="widget_time_range">%1$s–%2$s</string>
+</resources>
