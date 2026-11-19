@@ -751,3 +751,13 @@ unavailable; a presentation must not infer admission from a writable calendar. T
 does not connect production meeting routes, supply a native meeting writer or request contacts access;
 those require separate composition and adapter verification. Local outcomes never claim invitations
 were delivered or a server accepted the meeting.
+
+## Injectable attendee response presentation
+
+Attendee responses retain exact occurrence/calendar identity, explicit desired response and recurrence
+scope, durable drafts, fresh authority checks and frozen uncertain outcomes. Opening, permission return
+or restoration never submits a response. The presentation accepts an explicit 12/24-hour convention
+for its timed summary, alongside display zone; this formatting does not change native event time.
+This packet supplies injected presentation only. Production details/browser routes and Google/Workspace
+response delivery need separate integration and acceptance. Unwired browser cases are retained for
+that integration rather than skipped as successful presentation tests.
