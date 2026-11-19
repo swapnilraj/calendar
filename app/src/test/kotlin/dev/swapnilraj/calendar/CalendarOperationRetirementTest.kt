@@ -81,21 +81,27 @@ class CalendarOperationRetirementTest {
         assertEquals(OperationRetirementResult.Conflict("same"),b.inspect(RetirableOperation.Delete("same",ref,token)))
         val unknown=RetirableOperation.Create("unknown",draft);one.prepare(unknown);one.forceOperationForTest("unknown","FUTURE_PHASE")
         assertEquals(OperationRetirementResult.Unavailable,a.retire(unknown));assertEquals("FUTURE_PHASE",one.operationHeader("unknown")!!.phase)
-        assertEquals(OperationRetirementResult.Unsupported,a.retire(RetirableOperation.MeetingCreate("future",token,draft,listOf(MeetingGuestInput("guest@example.invalid",MeetingGuestType.REQUIRED)))))
+        assertEquals(OperationRetirementResult.Unsupported,a.retire(RetirableOperation.Meeting("future",ref,token,MeetingCommand.CancelOwned(RecurrenceScope.THIS))))
         assertNull(one.operationHeader("future"))
     } }
 
-    @Test fun unshippedFamiliesAndRecurringEditsCannotAliasTheOrdinaryEncoderOrTouchTheJournal() = runBlocking { stores {one,_,a,b ->
+    @Test fun recurringEditsStayClosedWhilePublishedMeetingEncodersRemainDistinct() = runBlocking { stores {one,_,a,b ->
         val recurring=ref.copy(recurrence=RecurrenceRef(ref.eventId,start))
         val requests=listOf<RetirableOperation>(
             RetirableOperation.Update("recurring-update",recurring,token,EventPatch(title=FieldChange.Set("Changed"))),
-            RetirableOperation.Delete("recurring-delete",recurring,token),
-            RetirableOperation.Meeting("meeting",ref,token,MeetingCommand.Respond(RecurrenceScope.THIS,MeetingResponse.YES)),
-            RetirableOperation.MeetingCreate("meeting-create",token,draft,listOf(MeetingGuestInput("guest@example.invalid",MeetingGuestType.REQUIRED))))
+            RetirableOperation.Delete("recurring-delete",recurring,token))
         requests.forEach{request->
             assertEquals(OperationRetirementResult.Unsupported,a.retire(request))
             assertEquals(OperationRetirementResult.Unsupported,b.inspect(request))
             assertNull(one.operationHeader(request.operationId))
+        }
+        val meetings=listOf<RetirableOperation>(
+            RetirableOperation.Meeting("meeting",ref,token,MeetingCommand.Respond(RecurrenceScope.THIS,MeetingResponse.YES)),
+            RetirableOperation.MeetingCreate("meeting-create",token,draft,listOf(MeetingGuestInput("guest@example.invalid",MeetingGuestType.REQUIRED))))
+        meetings.forEach { request ->
+            assertEquals(OperationRetirementResult.Retired(request.operationId),a.retire(request))
+            assertEquals(OperationRetirementResult.Retired(request.operationId),b.inspect(request))
+            assertNotEquals("CREATE",one.operationHeader(request.operationId)!!.kind)
         }
         val plain=RetirableOperation.Create("plain",draft)
         assertEquals(OperationRetirementResult.Retired("plain"),a.retire(plain));val before=one.operationHeader("plain")

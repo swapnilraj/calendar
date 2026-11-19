@@ -68,7 +68,7 @@ class CalendarWriter(
     }
 
     private class Denial(val reason: MutationDenial) : Exception()
-    private class Invalid(val fields: Set<InvalidEventField>) : Exception()
+    internal class Invalid(val fields: Set<InvalidEventField>) : Exception()
     private class Stale : Exception()
     private data class Source(val event: Map<String, String?>, val calendar: Map<String, String?>,
         val alerts: List<Map<String, String?>>, val attendees: List<Map<String, String?>>, val maxCanonicalBytes: Int = 1024 * 1024) {
@@ -573,6 +573,14 @@ class CalendarWriter(
     private fun validateTime(draft: EventDraft) {
         if (draft.time is EventTime.Timed && draft.eventZone == null) throw Invalid(setOf(InvalidEventField.ZONE))
     }
+    // Meeting authoring alone adds the native string-dialect check. Existing ordinary callers
+    // retain their published one-argument validation and exact error precedence.
+    private fun validateTime(draft: EventDraft, authored: Boolean) {
+        validateTime(draft)
+        if (authored && draft.time is EventTime.Timed &&
+            !ProviderTimeZoneCompatibility.isCompatible(requireNotNull(draft.eventZone)))
+            throw Invalid(setOf(InvalidEventField.ZONE))
+    }
     private fun validate(draft: EventDraft, calendar: Map<String, String?>, preservedReminderCount: Int, initial: Boolean = false) {
         validateTime(draft)
         validateMetadata(draft.availability, draft.privacy, calendar)
@@ -606,6 +614,48 @@ class CalendarWriter(
             invalid += InvalidEventField.AVAILABILITY
         if (privacy != null && privacy !in 0..3) invalid += InvalidEventField.PRIVACY
         if (invalid.isNotEmpty()) throw Invalid(invalid)
+    }
+
+    internal fun meetingRecurrencePlan(draft: EventDraft): RecurrenceCreationPlan = requireNotNull(compileRecurrence(draft))
+
+    /** Shared authored-field validation/encoding only; meeting creation owns its own provider transaction. */
+    internal fun meetingOneOffValues(draft: EventDraft, calendar: Map<String, String?>): ContentValues {
+        if (draft.recurrence != null) throw Invalid(setOf(InvalidEventField.RECURRENCE))
+        validateTime(draft, authored = true)
+        validate(draft, calendar, 0, initial = true)
+        return values(draft).apply { remove(CalendarContract.Events.HAS_ALARM) }
+    }
+    /** Pure sparse authoring for an owned meeting. No guest-free permission/token/provider path
+     * is reused. Unchanged NULL/unknown fields are never reconstructed into provider defaults. */
+    internal fun meetingOneOffPatchValues(calendarId: CalendarId, oldTime: EventTime, oldZone: java.time.ZoneId?,
+        event: Map<String, String?>, calendar: Map<String, String?>, reminders: List<Map<String, String?>>, patch: EventPatch): ContentValues {
+        val values = ContentValues()
+        (patch.title as? FieldChange.Set)?.let { values.put("title", it.value) }
+        (patch.location as? FieldChange.Set)?.let { values.put("eventLocation", it.value) }
+        (patch.description as? FieldChange.Set)?.let { values.put("description", it.value) }
+        val availability = (patch.availability as? FieldChange.Set)?.let { it.value ?: 0 }
+        val privacy = (patch.privacy as? FieldChange.Set)?.let { it.value ?: 0 }
+        validateMetadata(availability, privacy, calendar)
+        availability?.let { values.put("availability", it) }; privacy?.let { values.put("accessLevel", it) }
+        if (patch.time is FieldChange.Set || patch.eventZone is FieldChange.Set) {
+            val draft = EventDraft(calendarId, patch.time.resolve(oldTime), patch.eventZone.resolve(oldZone), "")
+            validateTime(draft, authored = true)
+            if (draft.time is EventTime.AllDay && patch.eventZone is FieldChange.Set && draft.eventZone?.let {
+                    !it.rules.isFixedOffset || it.rules.getOffset(java.time.Instant.EPOCH) != java.time.ZoneOffset.UTC
+                } == true) throw Invalid(setOf(InvalidEventField.ZONE))
+            val authoredZone = if (draft.time is EventTime.AllDay) "UTC" else draft.eventZone!!.id
+            if (authoredZone != event["eventTimezone"] && calendar["canModifyTimeZone"] != "1") throw Invalid(setOf(InvalidEventField.ZONE))
+            val ref = reference(calendarId, 0, draft.time)
+            if (ref.instanceStart != java.time.Instant.ofEpochMilli(ref.instanceStart.toEpochMilli()) ||
+                ref.instanceEnd != java.time.Instant.ofEpochMilli(ref.instanceEnd.toEpochMilli())) throw Invalid(setOf(InvalidEventField.TIME))
+            values.putAll(timeValues(draft))
+            if (authoredZone == event["eventTimezone"]) values.remove("eventEndTimezone")
+        }
+        (patch.alertMinutes as? FieldChange.Set)?.let {
+            if (it.value.any { minutes -> minutes < 0 }) throw Invalid(setOf(InvalidEventField.ALERTS))
+            validateAlerts(it.value, calendar, reminders.count { row -> row["method"] != "1" })
+        }
+        return values
     }
 
     private fun values(draft: EventDraft) = timeValues(draft).apply {
@@ -740,6 +790,8 @@ class CalendarWriter(
             return CalendarIdentity(CalendarId(json.getLong("calendar")), CalendarAccount(json.getString("name"), json.getString("type")),
                 if (json.isNull("owner")) null else json.getString("owner"), if (json.isNull("providerId")) null else json.getString("providerId"))
         }
+        internal fun frozenDraftRecurrence(json: JSONObject) = parseSpec(json)
+        internal fun frozenDraftIdentity(json: JSONObject) = parseIdentity(json)
         internal fun frozenDraftJson(draft: EventDraft, maxBytes: Int) = draftJson(draft, maxBytes)
         internal fun createFingerprint(draft: EventDraft, maxBytes: Int): Pair<String, String> = "CREATE" to signature("CREATE", draftJson(draft, maxBytes))
         internal fun updateFingerprint(ref: EventRef, token: EditToken, patch: EventPatch, maxBytes: Int): Pair<String, String> =

@@ -21,14 +21,15 @@ class CalendarOperationRetirement(
         withContext(io + readBudgetContext(readBudgets.mutation)) {
             try {
                 currentCoroutineContext().ensureActive()
-                // Only shipped ordinary/scoped-series encoders can bind a permanent tombstone.
-                // Ordinary recurring edits and meeting families stay closed.
+                // Only published encoders can bind a permanent tombstone.
+                // Ordinary recurring UPDATE/DELETE retain their existing closed boundary.
                 when (request) {
                     is RetirableOperation.Series -> Unit
                     is RetirableOperation.Create -> Unit
                     is RetirableOperation.Update -> if (request.ref.recurrence != null) return@withContext OperationRetirementResult.Unsupported
                     is RetirableOperation.Delete -> if (request.ref.recurrence != null) return@withContext OperationRetirementResult.Unsupported
-                    else -> return@withContext OperationRetirementResult.Unsupported
+                    is RetirableOperation.Meeting -> Unit
+                    is RetirableOperation.MeetingCreate -> Unit
                 }
                 if (request.operationId.isBlank() || request.operationId.length > readBudgets.mutation.maxCellUnits)
                     return@withContext OperationRetirementResult.Unavailable
@@ -47,7 +48,8 @@ class CalendarOperationRetirement(
                     is RetirableOperation.Update -> CalendarWriter.updateFingerprint(request.ref, request.token, request.patch, readBudgets.maxCanonicalBytes)
                     is RetirableOperation.Delete -> CalendarWriter.deleteFingerprint(request.ref, request.token)
                     is RetirableOperation.Series -> CalendarSeriesWriter.retirementFingerprint(request.selected, request.token, request.command)
-                    else -> null // Meeting backends are outside this publication.
+                    is RetirableOperation.Meeting -> CalendarMeetingWriter.retirementFingerprint(request.selected, request.token, request.command)
+                    is RetirableOperation.MeetingCreate -> CalendarMeetingCreateWriter.fingerprint(request.token, request.draft, request.guests, readBudgets.maxCanonicalBytes)
                 } ?: return@withContext OperationRetirementResult.Unsupported
                 val result = store.retirement(request.operationId, fingerprint.first, fingerprint.second, write)
                 currentCoroutineContext().ensureActive()
