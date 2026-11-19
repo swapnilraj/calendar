@@ -895,3 +895,18 @@ review, PR97 series workflows and PR98 durable grid preparation. Public entry ac
 lead grid bridge remain separately staged. Pending-invitation contracts and semantic recurrence
 graph proof are bounded candidates, not enabled/completed features. The full aggregate gate remains
 the earlier2,408 checkpoint; a new combined gate is required after the recent source changes.
+
+
+### Combined gate interrupted in reminder fixture cleanup — 19 November
+
+The attempted default gate at8dc65a9 was interrupted after14m49s: two JVM samples104s apart
+showed the same reminder-settings fixture-finally blocking coroutine. This is not an aggregate
+PASS or proof of a production deadlock. The wrapper's2,441 XML inventory includes stale app output
+and must not be counted as current execution. The last accepted full checkpoint remains2,408.
+[Evidence](audit/evidence/reminder-fixture-cleanup-interruption-2026-11-19.json).
+
+The test-only bounded scheduler-driven cleanup fix preserves every journey assertion and the
+original failure while independently closing resources. All four cases passed with screenshot
+verification. A fresh full gate is still required. Separately, PR100 failed one reminder-opening
+capture in CI; the exact unchanged method passed locally with verification, so its historical cause
+remains unestablished. No screenshots were rebaselined to hide that failure.
