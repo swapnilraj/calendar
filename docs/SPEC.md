@@ -14,6 +14,8 @@ remains closed even if readback is unavailable; retained browser recovery decide
 survived. The action is exposed only by a host supplying the meeting callback; application routing
 remains separate.
 
+Incoming CREATE suggestions remain a durable private review before native editing. Raw missing dates, recurrence and guests are retained for explicit correction rather than silently defaulted or discarded. A native editor opens only after the matching completion revision and handoff receipt are persisted and read back. Permission or lifecycle changes hide unauthorized presentation while preserving any accepted write and its cleanup owner; returning from permission never submits automatically. This private review foundation does not activate public intent filters, application routing or meeting promotion.
+
 Private incoming CREATE completion (draft version7) and EDIT review (version8) retain raw caller
 suggestions separately from provider source authority. Unknown fields, duplicate fields, future versions,
 mismatched identities and malformed proof fail closed without normalizing or applying suggestions.
