@@ -945,3 +945,28 @@ The corrected pure selected-calendar conflict algorithm separately passed34 chec
 actual DATE-semantics regressions were reproduced and fixed. Independent source review found no
 remaining blocker; the two new files are integrated, but no native conflict adapter or editor UI
 is activated. A new combined gate remains required. The last accepted full checkpoint stays2,446.
+
+### Invitation filter accepted in the aggregate — 19 November
+
+The fresh gate at `b45a89d` passed all2,526 checks (app2,179/core330/weather17), debug assembly,
+lint and release-manifest processing in8m30s, with zero test failures/errors/skips. Screenshot
+verification was enabled, including the two inspected public-entry captures now exercised in root.
+The prior five-failure gate remains retained. Exact raw preference restoration has two actual red
+witnesses followed by20 passing invitation/live checks; public cleanup also waits for its exact
+runtime jobs before releasing the provider. The widget retry test now uses controlled virtual time,
+with an independent real policy deadline/late-ACK quarantine witness; its100ms deadline is unchanged.
+[Evidence and artifact metadata](audit/evidence/aggregate-2526-checkpoint-2026-11-19.json).
+
+The frozen developer APK is44,940,540 bytes, SHA256
+`91aa3998e65254e81801c0c70cc46650639e8ccc3b2c66d82d16d9a20ab4e56b`;
+its ZIP is14,612,968 bytes. All15 required implementation definitions are present across22DEX files.
+The only four removed descriptors are generated search-item lambdas, with four corresponding
+renumbered definitions present after the search-layout change. The actual manifest is byte-identical
+to the previous accepted checkpoint (18 components, normal CalendarApp, no probe queries). The
+developer certificate is unchanged. Source is backed up at `codex/verified-2526-20261119`; owner
+stable signing, physical upgrade and accepted durable-release gates remain pending.
+
+PR100 now passed current-head CI44584283592 and merged as402f09ab. Both earlier CI failures remain
+documented without an exact attribution claim. Reader103, storage105 and pure-conflict104 are also
+published; the final invitation UI/workflow publication packet is being prepared. The aggregate
+filter implementation is accepted, while six other feature families and external acceptance remain.

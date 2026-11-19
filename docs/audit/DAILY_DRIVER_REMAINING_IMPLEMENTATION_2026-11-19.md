@@ -10,7 +10,33 @@ The accepted contract is [SPEC](../SPEC.md), M0–M9 at the line anchors below. 
 Its counts and phrases such as “backend only” must not be presented as the current aggregate status.
 This report changes neither that historical CSV nor the release scope.
 
-## Result
+## Follow-up at the accepted b45a89d aggregate
+
+The pending-invitation display/filter implementation is now integrated: General selection persists,
+main views and search use the same choice, UNKNOWN classifications retain qualified coverage, and
+reminder/widget/direct-link reads remain independent. The full2,526-test/debug/lint gate passed with
+inspected screenshot verification. Exact fixture restoration regressions were reproduced and fixed;
+the earlier five-failure aggregate is retained, not counted as a pass. See
+[accepted checkpoint evidence](evidence/aggregate-2526-checkpoint-2026-11-19.json).
+
+Six feature families therefore remain beyond publication: selected-calendar editor conflict
+advisories, event colours, organizer guest permissions, verified calendar moves, full exception/date-set
+recurrence transformations, and recurring organizer edits/cancellation. The pure conflict calculation
+is in the accepted aggregate; its separately tested native reader and editor bindings do not yet
+activate an advisory. The new duration-graph contract/receipt has19 focused checks passing but no
+native executor in this checkpoint; current graph/rule/profile guards still apply.
+
+Additional malformed-provider-input hardening is tracked separately: the shared calendar reader's
+access-level Long-to-Int narrowing can wrap unknown values. The staged conflict adapter independently
+attests raw policy and does not rely on that narrowing; global reader hardening still needs its own
+bounded regression and fix. The retained native reminder failure is unchanged. New isolated v2
+verification foundations are source work, not a new device attempt or reminder-delivery pass.
+
+Google/Workspace, physical accessibility/upgrade/reminder recovery, seven-day beta, stable owner
+signing and accepted durable release remain pending. The following table retains its original
+5aac1b1 source references and is historical where this follow-up supersedes it.
+
+## Original source audit result
 
 Finishing publication is necessary but does not finish the agreed daily-driver implementation.
 Concrete remaining source work includes exception-aware recurrence transformations, verified

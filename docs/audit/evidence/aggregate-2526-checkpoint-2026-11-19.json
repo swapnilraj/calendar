@@ -1,0 +1,225 @@
+{
+  "gate": {
+    "source": "b45a89dca4b9295f03de5165c4c035c3b7fd9419",
+    "command": [
+      "./gradlew",
+      "test",
+      ":app:assembleDebug",
+      ":app:lintDebug",
+      ":app:processReleaseMainManifest"
+    ],
+    "startedAt": "2026-11-19T18:03:57.783994+00:00",
+    "scope": "Invitation integration, pure scheduling conflicts, reviewed exact fixture restoration and virtual widget deadline; prior failed gate retained",
+    "record": false,
+    "verify": true,
+    "exitCode": 0,
+    "elapsedSeconds": 510.581,
+    "finishedAt": "2026-11-19T18:12:28.365495+00:00",
+    "headAfter": "b45a89dca4b9295f03de5165c4c035c3b7fd9419",
+    "treeAfter": "",
+    "modules": [
+      {
+        "module": "app",
+        "tests": 2179,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "module": "calendar-core",
+        "tests": 330,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "module": "weather",
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "totals": {
+      "tests": 2526,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "status": "PASS"
+  },
+  "artifact": {
+    "source": "b45a89dca4b9295f03de5165c4c035c3b7fd9419",
+    "scope": "Developer checkpoint; no owner-signed release or daily-driver acceptance claim",
+    "gate": {
+      "source": "b45a89dca4b9295f03de5165c4c035c3b7fd9419",
+      "command": [
+        "./gradlew",
+        "test",
+        ":app:assembleDebug",
+        ":app:lintDebug",
+        ":app:processReleaseMainManifest"
+      ],
+      "startedAt": "2026-11-19T18:03:57.783994+00:00",
+      "scope": "Invitation integration, pure scheduling conflicts, reviewed exact fixture restoration and virtual widget deadline; prior failed gate retained",
+      "record": false,
+      "verify": true,
+      "exitCode": 0,
+      "elapsedSeconds": 510.581,
+      "finishedAt": "2026-11-19T18:12:28.365495+00:00",
+      "headAfter": "b45a89dca4b9295f03de5165c4c035c3b7fd9419",
+      "treeAfter": "",
+      "modules": [
+        {
+          "module": "app",
+          "tests": 2179,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "module": "calendar-core",
+          "tests": 330,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "module": "weather",
+          "tests": 17,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ],
+      "totals": {
+        "tests": 2526,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "status": "PASS"
+    },
+    "apkBytes": 44940540,
+    "apkSha256": "91aa3998e65254e81801c0c70cc46650639e8ccc3b2c66d82d16d9a20ab4e56b",
+    "developerSignerSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278",
+    "actualManifest": {
+      "package": "dev.swapnilraj.calendar",
+      "application": "dev.swapnilraj.calendar.CalendarApp",
+      "manifestIdenticalTo2446": true,
+      "manifestSha256": "1c3c667b81715fc3d909506d990fe59f16841c14130996d11cec0097c72535eb",
+      "components": 18,
+      "queriesPresent": false
+    },
+    "actualDexRequiredClasses": [
+      "Ldev/swapnilraj/calendar/CalendarApp;",
+      "Ldev/swapnilraj/calendar/ui/LiveCalendarDayKt;",
+      "Ldev/swapnilraj/calendar/ui/SeriesWriteWorkflowKt;",
+      "Ldev/swapnilraj/calendar/ui/grid/TimedGridGestureInputKt;",
+      "Ldev/swapnilraj/calendar/android/navigation/CalendarEntryActivity;",
+      "Ldev/swapnilraj/calendar/android/navigation/CalendarSeedReviewActivity;",
+      "Ldev/swapnilraj/calendar/android/navigation/CalendarEditReviewActivity;",
+      "Ldev/swapnilraj/calendar/data/calendar/CalendarOperationRetirement;",
+      "Ldev/swapnilraj/calendar/core/RecurrenceGraphProof;",
+      "Ldev/swapnilraj/calendar/core/RecurrenceGraphProofValue;",
+      "Ldev/swapnilraj/calendar/core/CalendarInvitationKt;",
+      "Ldev/swapnilraj/calendar/core/InvitationFilter;",
+      "Ldev/swapnilraj/calendar/core/InvitationState;",
+      "Ldev/swapnilraj/calendar/core/SchedulingConflicts;",
+      "Ldev/swapnilraj/calendar/core/ConflictContext;"
+    ],
+    "dexFileCount": 22,
+    "classConservation": {
+      "oldClasses": 22104,
+      "newClasses": 22132,
+      "addedCount": 32,
+      "removedCount": 4
+    },
+    "pending": [
+      "Remaining feature integration and implementation, including editor conflicts, colours, guest permissions, moves, full recurrence and recurring organizer operations",
+      "Controlled Google/Workspace organizer/attendee and offline/conflict verification",
+      "Real reminder/Doze/reboot/timezone/device acceptance",
+      "Physical TalkBack and upgrade checks",
+      "Seven-day beta",
+      "Owner stable signing and durable accepted release"
+    ],
+    "folder": "/tmp/daylight-verified-2526-b45a89d",
+    "zipBytes": 14612968,
+    "zipSha256": "ea7f9a62660238101283a95c0afc09d1e048c2b8366d4ad32a4c738f12224731"
+  },
+  "dexInspection": {
+    "oldClasses": 22104,
+    "newClasses": 22132,
+    "addedCount": 32,
+    "removedCount": 4,
+    "removed": [
+      "Ldev/swapnilraj/calendar/ui/search/SearchSheetKt$SearchSheet$lambda$5$0$0$2$0$$inlined$items$default$1;",
+      "Ldev/swapnilraj/calendar/ui/search/SearchSheetKt$SearchSheet$lambda$5$0$0$2$0$$inlined$items$default$2;",
+      "Ldev/swapnilraj/calendar/ui/search/SearchSheetKt$SearchSheet$lambda$5$0$0$2$0$$inlined$items$default$3;",
+      "Ldev/swapnilraj/calendar/ui/search/SearchSheetKt$SearchSheet$lambda$5$0$0$2$0$$inlined$items$default$4;"
+    ],
+    "requiredPresent": [
+      "Ldev/swapnilraj/calendar/CalendarApp;",
+      "Ldev/swapnilraj/calendar/ui/LiveCalendarDayKt;",
+      "Ldev/swapnilraj/calendar/ui/SeriesWriteWorkflowKt;",
+      "Ldev/swapnilraj/calendar/ui/grid/TimedGridGestureInputKt;",
+      "Ldev/swapnilraj/calendar/android/navigation/CalendarEntryActivity;",
+      "Ldev/swapnilraj/calendar/android/navigation/CalendarSeedReviewActivity;",
+      "Ldev/swapnilraj/calendar/android/navigation/CalendarEditReviewActivity;",
+      "Ldev/swapnilraj/calendar/data/calendar/CalendarOperationRetirement;",
+      "Ldev/swapnilraj/calendar/core/RecurrenceGraphProof;",
+      "Ldev/swapnilraj/calendar/core/RecurrenceGraphProofValue;",
+      "Ldev/swapnilraj/calendar/core/CalendarInvitationKt;",
+      "Ldev/swapnilraj/calendar/core/InvitationFilter;",
+      "Ldev/swapnilraj/calendar/core/InvitationState;",
+      "Ldev/swapnilraj/calendar/core/SchedulingConflicts;",
+      "Ldev/swapnilraj/calendar/core/ConflictContext;"
+    ],
+    "dexFiles": [
+      "classes.dex",
+      "classes13.dex",
+      "classes14.dex",
+      "classes15.dex",
+      "classes18.dex",
+      "classes19.dex",
+      "classes2.dex",
+      "classes20.dex",
+      "classes21.dex",
+      "classes22.dex",
+      "classes5.dex",
+      "classes6.dex",
+      "classes7.dex",
+      "classes10.dex",
+      "classes11.dex",
+      "classes12.dex",
+      "classes16.dex",
+      "classes17.dex",
+      "classes4.dex",
+      "classes8.dex",
+      "classes9.dex",
+      "classes3.dex"
+    ],
+    "replacementSearchRows": [
+      "Ldev/swapnilraj/calendar/ui/search/SearchSheetKt$SearchSheet$lambda$6$0$0$2$0$$inlined$items$default$1;",
+      "Ldev/swapnilraj/calendar/ui/search/SearchSheetKt$SearchSheet$lambda$6$0$0$2$0$$inlined$items$default$2;",
+      "Ldev/swapnilraj/calendar/ui/search/SearchSheetKt$SearchSheet$lambda$6$0$0$2$0$$inlined$items$default$3;",
+      "Ldev/swapnilraj/calendar/ui/search/SearchSheetKt$SearchSheet$lambda$6$0$0$2$0$$inlined$items$default$4;"
+    ],
+    "interpretation": "Only four generated inlined SearchSheet item lambda descriptors changed after invitation-filter row restructuring; four corresponding item lambdas remain defined. All15 required implementation definitions verified. No source implementation class removal."
+  },
+  "sourceBackupBranch": "codex/verified-2526-20261119",
+  "previousFailedGate": "invitation-aggregate-failed-gate-2026-11-19.json",
+  "fixEvidence": {
+    "invitationRawRestoration": "/tmp/daylight-invitation-journey-cleanup-green20-evidence/result.json",
+    "publicRawRestorationAndRuntimeCompletion": "/tmp/daylight-public-entry-fixture-cleanup/completion-verify11-results.json",
+    "widgetDeadline": "/tmp/daylight-widget-virtual-deadline-focus1-evidence/report.json"
+  },
+  "publication": {
+    "publicEntryPR": 100,
+    "head": "5e583da621ea5ae68f7f03851976051557d093a3",
+    "passingCI": "44584283592",
+    "merge": "402f09ab380494acbafaab9d2150560e1c3a5412",
+    "history": "Both preceding CI failures remain retained; no rebaseline or exact historical-cause claim."
+  },
+  "acceptance": "Local aggregate PASS; six feature families plus account/device/beta/signing/release gates remain open."
+}
