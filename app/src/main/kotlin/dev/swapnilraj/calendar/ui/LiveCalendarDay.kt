@@ -334,7 +334,7 @@ internal fun LiveCalendarDay(
                         if (!phoneMonthExpanded) phoneMonthText = YearMonth.from(visibleDate).toString()
                         phoneMonthExpanded = !phoneMonthExpanded
                     }, onToday = { navigatePhoneDate(displayNow.toLocalDate()) },
-                    onSearch = if (search != null) ({ dayNavigationRevision++; phoneMonthExpanded = false; showSearch = true }) else null)
+                    onSearch = if (search != null) ({ phoneMonthExpanded = false; showSearch = true }) else null)
                 if (phoneMonthExpanded) CalendarMonthNavigator(
                     displayedMonth = phoneMonthText?.let(YearMonth::parse) ?: YearMonth.from(visibleDate),
                     selectedDate = visibleDate, today = displayNow.toLocalDate(), firstDayOfWeek = firstWeekday,
