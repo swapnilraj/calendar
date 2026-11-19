@@ -141,18 +141,38 @@ behavior. This preflight performs no calendar query or mutation.
 establish target-process termination. For the optional identity witness and each app phase, the
 host validates the native positive PID and exact `dev.swapnilraj.calendar` name before issuing only
 `ps -p <reported-pid> -o PID,NAME`, bracketed by the existing owned serial/AVD/boot/user guards. At most
-10 reads, with0.1-second delays between still-present observations, are allowed. Only a successful
-read containing exactly the PID/NAME header and no row confirms `TARGET_PID_ABSENT`; a matching row
-remains running, and a changed name, malformed output, permission failure or nonzero command exit is
-unproven. There is no alternate command, arbitrary process enumeration, kill or force-stop fallback.
-Each phase has a separate exclusive `.target-exit.json` artifact. Target absence is required before
+10 reads, with 0.1-second delays between still-present observations, are allowed. A dedicated
+exact-reported-PID read preserves bounded returncode/stdout/stderr/timing facts. Only exit **0 or 1**,
+with empty stderr and exactly the PID/NAME header and no row, confirms `TARGET_PID_ABSENT`.
+A matching owned row counts as still-running only with exit 0. Any other exit code, any stderr,
+malformed/extra rows, output overflow, invalid UTF8, timeout or changed guard is unproven. General
+`Adb.read` remains strict: every nonzero exit is still refused outside this dedicated PID query.
+There is no alternate command, arbitrary process enumeration, kill or force-stop fallback.
+Each phase has a separate exclusive `.target-exit.json` artifact containing command-specific PID read
+facts, strict guard command/timing/failure records and failure stage even when unproven. Target absence is required before
 WRITE revoke and cleanup-only WRITE regrant, independently of complete instrumentation/adb exit.
 
-The owned API35 build's absent-process `ps` exit behavior has **not** yet been exercised by this
-source-only packet. Some implementations may return nonzero when no PID matches; the host does not
-reinterpret that failure as absence. The nonmutating identity/PID preflight checks the strict
-supported behavior on the current pinned boot **before any fixture or calendar permission grant**;
-unsupported behavior stops there. A still-running or unproven target never authorizes continuation.
+The owned API35 diagnostic now records header-only exit 1 with empty stderr for the exact prior
+native-reported PID 4316 on reviewed boot `f14d0429-80d1-4b93-9eeb-da5f4f2046ac`. This is documented
+Android 15 toybox behavior: [ps.c at android-15.0.0_r1, line 1415](https://android.googlesource.com/platform/external/toybox/+/refs/tags/android-15.0.0_r1/toys/posix/ps.c#1415)
+sets `toys.exitval = 1` when `TT.kcount` is zero. This is a narrowly specified no-selected-process
+result, not a general allowance for nonzero commands. The nonmutating identity/PID preflight still
+checks the supported exact response on the current pinned boot **before any fixture or calendar
+permission grant**; unsupported/unreadable behavior stops there. A still-running or unproven target
+never authorizes continuation.
+
+Provenance: lead-reviewed source was downloaded to `/tmp/daylight-toybox-ps-android15-source.c`;
+its SHA256 is `bd336531cc5d663ec11cb83a6b13facdefae0d4505c02548303cc6fdaee8352f`.
+The bounded current diagnostic is
+`/tmp/daylight-native-pid4316-readonly-diagnostic-361c6a57-6ecf-4bc1-a898-4119f1796ba8/summary.json`:
+all six guards passed before/after; exact PS returned 1, 34 stdout bytes (padded header plus newline),
+empty stderr and 1154ms. The earlier app-protocol run
+`cf21909f-024d-4ccd-b4df-69b2cbabc057` stopped before its grant loop/fixtures with only a generic
+ADB error and UNPROVEN target-exit artifact. The current finding is consistent with that failure;
+it does **not** prove which historical read failed. Original pair, identity and failed-run artifacts
+remain unchanged. This host-only correction requires separate source review and any future host
+artifact/run record; it does not authorize resuming or rerunning the failed run. No corrected-host
+native execution or app-writer acceptance is claimed here.
 
 Native phase records also bind PID, SDK start-elapsed time and exact app name into the strict
 same-run manifest. RECOVER and CLEANUP retain both available prior phase tuples and require a new,

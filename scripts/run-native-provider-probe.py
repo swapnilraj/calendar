@@ -107,6 +107,36 @@ class Adb:
             raise Refusal("ADB read/guard failed")
         return result.stdout.decode("utf-8", errors="strict").strip()
 
+    def read_reported_target_pid(self, process):
+        """Dedicated exact-PID query. Its exit1 exception never applies to general reads."""
+        process = validate_target_process(process)
+        tokens = ["ps", "-p", str(process["pid"]), "-o", "PID,NAME"]
+        argv = self.prefix + ["shell", shlex.join(tokens)]
+        began = time.monotonic()
+        facts = {"command": argv, "returncode": None, "stdout": "", "stderr": "", "failure": None,
+                 "stdoutBytes": 0, "stderrBytes": 0, "outputTruncated": False, "timedOut": False}
+        stdout, stderr = b"", b""
+        try:
+            result = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
+            facts["returncode"] = result.returncode
+            stdout, stderr = result.stdout, result.stderr
+        except subprocess.TimeoutExpired as error:
+            stdout, stderr = error.stdout or b"", error.stderr or b""
+            facts.update(failure="READ_TIMEOUT", timedOut=True)
+        except OSError as error:
+            facts.update(failure="LOCAL_READ_ERROR", errorClass=type(error).__name__)
+        facts.update(milliseconds=round((time.monotonic() - began) * 1000), stdoutBytes=len(stdout), stderrBytes=len(stderr))
+        facts["outputTruncated"] = len(stdout) > 16384 or len(stderr) > 16384
+        if facts["outputTruncated"]:
+            facts["failure"] = facts["failure"] or "OUTPUT_LIMIT"
+        try:
+            facts["stdout"] = stdout[:16384].decode("utf-8", errors="strict")
+            facts["stderr"] = stderr[:16384].decode("utf-8", errors="strict")
+        except UnicodeError:
+            facts["failure"] = facts["failure"] or "UTF8_ERROR"
+            facts.update(stdoutHex=stdout[:16384].hex(), stderrHex=stderr[:16384].hex())
+        return facts
+
     def mutation(self, tokens, shell=False):
         argv = self.prefix + (["shell", shlex.join(tokens)] if shell else tokens)
         # No automatic timeout/kill/retry of an install or permission operation.
@@ -235,18 +265,48 @@ def validate_target_process(value):
 def confirm_target_exit(adb, args, process, output, label):
     """Observe only the native-reported owned PID; adb-client exit is not target exit."""
     process = validate_target_process(process)
-    proof = {"targetProcess": process, "method": "ps-exact-owned-pid", "status": "UNPROVEN", "observations": []}
+    proof = {"targetProcess": process, "method": "ps-exact-owned-pid", "status": "UNPROVEN", "observations": [],
+             "pidReads": [], "guardReads": [], "failureStage": None}
+
+    def guarded(stage):
+        proof["failureStage"] = stage
+        class RecordedStrictReads:
+            def read(self, tokens, shell=False):
+                began = time.monotonic()
+                record = {"tokens": tokens, "shell": shell, "stage": stage, "successfulRead": False}
+                try:
+                    value = adb.read(tokens, shell)
+                    record.update(successfulRead=True, stdout=value)
+                    return value
+                except Exception as error:
+                    record.update(failureClass=type(error).__name__)
+                    raise
+                finally:
+                    record["milliseconds"] = round((time.monotonic() - began) * 1000)
+                    proof["guardReads"].append(record)
+        return guard_device(RecordedStrictReads(), args)
+
     try:
         for attempt in range(10):
-            guard_device(adb, args)
-            raw = adb.read(["ps", "-p", str(process["pid"]), "-o", "PID,NAME"], shell=True)
-            guard_device(adb, args)
-            lines = [line.split() for line in raw.splitlines() if line.strip()]
+            guarded("GUARD_BEFORE_PID_READ")
+            proof["failureStage"] = "EXACT_PID_READ"
+            facts = adb.read_reported_target_pid(process)
+            proof["pidReads"].append(facts)
+            guarded("GUARD_AFTER_PID_READ")
+            proof["failureStage"] = "EXACT_PID_RESULT"
+            if (facts.get("failure") is not None or facts.get("timedOut") is not False or facts.get("outputTruncated") is not False or
+                    type(facts.get("returncode")) is not int or facts["returncode"] not in (0, 1) or facts.get("stderr") != "" or
+                    not isinstance(facts.get("stdout"), str)):
+                raise Refusal("exact owned PID read failed; permission continuation withheld")
+            lines = [line.split() for line in facts["stdout"].splitlines()]
+            # Android15 toybox ps.c: no selected processes sets exitval=1. Accept only
+            # this documented header-only shape; exit1 is never a generic read exemption.
             if lines == [["PID", "NAME"]]:
                 proof["observations"].append("REPORTED_PID_ABSENT")
                 proof["status"] = "TARGET_PID_ABSENT"
+                proof["failureStage"] = None
                 return proof
-            if lines != [["PID", "NAME"], [str(process["pid"]), APP]]:
+            if facts["returncode"] != 0 or lines != [["PID", "NAME"], [str(process["pid"]), APP]]:
                 # Do not inspect a replacement process, infer a stopped target from a new name,
                 # enumerate other PIDs, or try another command when visibility is uncertain.
                 raise Refusal("owned target PID lifecycle read is ambiguous; permission continuation withheld")
@@ -254,6 +314,9 @@ def confirm_target_exit(adb, args, process, output, label):
             if attempt < 9:
                 time.sleep(0.1)
         raise Refusal("owned target process remains running; permission continuation withheld")
+    except Exception as error:
+        proof["failureClass"] = type(error).__name__
+        raise
     finally:
         exclusive_json(output / (label + ".target-exit.json"), proof)
 
