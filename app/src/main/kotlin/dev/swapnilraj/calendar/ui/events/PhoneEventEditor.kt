@@ -15,6 +15,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -185,8 +187,12 @@ private fun PhoneEditorStatus(controller: EventEditorController, onReview: (() -
     val state = controller.state
     val attention = state.legacy || state.reviewRequired || state.recoveryRequired || controller.hasFrozenSubmission || state.draftReadFailed || state.localOutcome != null
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        state.problem?.let { Text(stringResource(if (it == EditorProblem.PERMISSION && controller.hasFrozenSubmission) R.string.phone_event_pending_permission else phoneEditorProblem(it)), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }
-        state.localOutcome?.let { Text(stringResource(if (it is MutationResult.LocalDeleted) R.string.phone_event_local_deleted else R.string.phone_event_local_saved), style = MaterialTheme.typography.bodyMedium) }
+        state.problem?.let { Text(stringResource(if (it == EditorProblem.PERMISSION && controller.hasFrozenSubmission) R.string.phone_event_pending_permission else phoneEditorProblem(it)), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp).semantics {
+            // Autosave clears/recreates this warning while typing; keep it traversable without
+            // repeatedly announcing until an authoritative persistence-episode seam exists.
+            if (it != EditorProblem.DRAFT_UNAVAILABLE) liveRegion = LiveRegionMode.Polite
+        }) }
+        state.localOutcome?.let { Text(stringResource(if (it is MutationResult.LocalDeleted) R.string.phone_event_local_deleted else R.string.phone_event_local_saved), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
         state.reviewLatest?.let { PhoneLatestEventReview(it, use24Hour) }
         state.notices.forEach { Text(stringResource(phoneEditorNotice(it)), style = MaterialTheme.typography.bodyMedium) }
         if (state.recoveryRequired && !state.draftReadFailed) TextButton(onClick = controller::recover, enabled = !state.saving) { Text(stringResource(if (controller.pendingOperationKind == "delete") R.string.phone_event_check_delete else R.string.phone_event_check_save)) }

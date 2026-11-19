@@ -79,7 +79,7 @@ internal fun PhoneMeetingCreateStatus(c:MeetingCreationController, actions:Phone
     val state=c.state
     Column(Modifier.fillMaxWidth().padding(horizontal=24.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
         if(state.localSaved!=null) {
-            Text(stringResource(R.string.phone_meeting_create_saved),style=MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.phone_meeting_create_saved),style=MaterialTheme.typography.titleLarge,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
             Text(stringResource(R.string.phone_meeting_create_saved_help))
             TextButton(onClick={actions.submit { c.acknowledgeLocalSave() }},enabled=!state.busy) {Text(stringResource(R.string.phone_event_done))}
         } else if(c.frozen) {
@@ -88,7 +88,7 @@ internal fun PhoneMeetingCreateStatus(c:MeetingCreationController, actions:Phone
             if(state.retryReady) TextButton(onClick={actions.submit {c.retryOriginal()}},enabled=!state.busy) {Text(stringResource(R.string.phone_meeting_create_retry))}
         }
         state.problem?.let { problem ->
-            Text(stringResource(if(problem==MeetingCreationProblem.PERMISSION && c.frozen) R.string.phone_meeting_create_pending_permission else if(problem==MeetingCreationProblem.DRAFT_UNAVAILABLE && !c.hasPendingRawInput) R.string.phone_meeting_create_draft_unavailable else phoneMeetingCreateProblem(problem)),color=MaterialTheme.colorScheme.error)
+            Text(stringResource(if(problem==MeetingCreationProblem.PERMISSION && c.frozen) R.string.phone_meeting_create_pending_permission else if(problem==MeetingCreationProblem.DRAFT_UNAVAILABLE && !c.hasPendingRawInput) R.string.phone_meeting_create_draft_unavailable else phoneMeetingCreateProblem(problem)),color=MaterialTheme.colorScheme.error,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
             if(problem==MeetingCreationProblem.DRAFT_UNAVAILABLE && c.hasPendingRawInput) TextButton(onClick={actions.submit {c.flushDraft()}},enabled=!state.busy) {Text(stringResource(R.string.phone_meeting_create_save_draft))}
         }
     }

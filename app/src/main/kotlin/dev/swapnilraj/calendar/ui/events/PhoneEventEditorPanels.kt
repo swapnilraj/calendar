@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -88,12 +90,12 @@ internal fun PhoneEditorPanelContent(panel: PhoneEditorPanel, view: PhoneEventEd
 @Composable
 internal fun PhoneEditorPanelFrame(title: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
-        Surface(Modifier.fillMaxSize()) {
+        Surface(Modifier.fillMaxSize().semantics { paneTitle = title }) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     val closeLabel = stringResource(R.string.phone_event_close)
                     IconButton(onClick = onDismiss, modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = closeLabel }) { PhoneEventIcon(PhoneEventGlyph.CLOSE) }
-                    Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+                    Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(horizontal = 8.dp).semantics { heading() })
                     TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.phone_event_done)) }
                 }
                 Box(Modifier.weight(1f)) { content() }
@@ -108,13 +110,13 @@ internal fun PhoneEditorDatePicker(raw: String, title: String, enabled: Boolean,
     var manual by remember { mutableStateOf(false) }
     val date = runCatching { LocalDate.parse(raw) }.getOrNull()?.takeIf { it.year in 1..9999 }
     val picker = key(raw) { rememberDatePickerState(initialSelectedDateMillis = date?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli(), yearRange = 1..9999) }
-    DatePickerDialog(onDismissRequest = onDismiss,
+    DatePickerDialog(onDismissRequest = onDismiss, modifier = Modifier.semantics { paneTitle = title },
         confirmButton = { TextButton(enabled = manual || enabled && picker.selectedDateMillis != null, onClick = {
             if (!manual && enabled) picker.selectedDateMillis?.let { onChange(Instant.ofEpochMilli(it).atOffset(ZoneOffset.UTC).toLocalDate().toString()) }; onDismiss()
         }) { Text(stringResource(R.string.phone_event_done)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.events_editor_cancel)) } }) {
         Column {
-            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp).semantics { heading() })
             TextButton(onClick = { manual = !manual }, modifier = Modifier.padding(horizontal = 12.dp)) { Text(stringResource(if (manual) R.string.phone_event_use_picker else R.string.phone_event_enter_text)) }
             if (manual) OutlinedTextField(raw, onChange, enabled = enabled, label = { Text(stringResource(R.string.phone_event_date_input)) }, modifier = Modifier.fillMaxWidth().padding(24.dp))
             else DatePicker(picker)
@@ -135,7 +137,7 @@ internal fun PhoneEditorTimePicker(raw: String, title: String, use24Hour: Boolea
             Text(label, style = MaterialTheme.typography.labelLarge)
             OutlinedTextField(raw, onChange, enabled = enabled, singleLine = true, modifier = Modifier.fillMaxWidth().semantics { contentDescription = label })
         }
-    } else AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { Column {
+    } else AlertDialog(onDismissRequest = onDismiss, modifier = Modifier.semantics { paneTitle = title }, title = { Text(title, modifier = Modifier.semantics { heading() }) }, text = { Column {
         TextButton(onClick = { manual = true }) { Text(stringResource(R.string.phone_event_enter_text)) }
         TimePicker(picker)
     } }, confirmButton = { TextButton(enabled = enabled, onClick = { onChange(PhoneEventEditorText.acceptedMinuteTime(raw, picker.hour, picker.minute)); onDismiss() }) { Text(stringResource(R.string.phone_event_done)) } },

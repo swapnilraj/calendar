@@ -739,3 +739,12 @@ only clears focus and hides the keyboard: it does not append the query, finish t
 contacts access or save the event. Raw partial or invalid addresses remain in the existing draft path.
 The picker exposes a named accessibility pane and heading. Native IME-first Back and TalkBack
 spoken behavior still require device verification.
+
+Existing fixed phone-editor save/conflict outcomes and stable create/owned draft errors expose
+polite live-region semantics. Raw fields and private review payloads do not become announcement
+regions. Shared focused picker panels expose named panes and headings; authority masking removes
+their messages, private fields and open child panes while retaining the backing draft. Ordinary
+DRAFT_UNAVAILABLE remains visible and traversable but is intentionally non-live: failed debounced
+autosaves can clear/recreate that warning while the user types. No guessed announcement history or
+new persistence seam is introduced. Material date-picker announcements remain intact, and actual
+TalkBack spoken order/repetition still requires device acceptance.

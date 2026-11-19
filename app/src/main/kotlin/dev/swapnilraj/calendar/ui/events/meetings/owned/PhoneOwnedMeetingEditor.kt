@@ -161,7 +161,7 @@ private fun OwnedMeetingStatus(c:OwnedMeetingEditorController,a:OwnedPhoneAction
     val state=c.state
     Column(Modifier.fillMaxWidth().padding(horizontal=24.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
         state.localOutcome?.let {outcome->
-            Text(stringResource(if(outcome is MeetingMutationResult.LocalCancelled) R.string.owned_meeting_cancelled else R.string.owned_meeting_saved),style=MaterialTheme.typography.titleLarge)
+            Text(stringResource(if(outcome is MeetingMutationResult.LocalCancelled) R.string.owned_meeting_cancelled else R.string.owned_meeting_saved),style=MaterialTheme.typography.titleLarge,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})
             Text(stringResource(R.string.owned_meeting_delivery))
             TextButton(onClick={a.submit {c.acknowledgeLocalOutcome()}},enabled=!a.locked) {Text(stringResource(R.string.phone_event_done))}
         }
@@ -182,7 +182,7 @@ private fun OwnedMeetingStatus(c:OwnedMeetingEditorController,a:OwnedPhoneAction
             OwnedMeetingProblem.RETIRE_BLOCKED -> R.string.owned_meeting_retire_blocked
             OwnedMeetingProblem.RETIRE_UNAVAILABLE -> R.string.owned_meeting_retire_unavailable
             OwnedMeetingProblem.UNAVAILABLE,OwnedMeetingProblem.UNCERTAIN -> R.string.owned_meeting_uncertain
-        }),color=MaterialTheme.colorScheme.error)}
+        }),color=MaterialTheme.colorScheme.error,modifier=Modifier.semantics {liveRegion=LiveRegionMode.Polite})}
         if(c.hasPendingRawInput) TextButton(onClick={a.submit {c.flushDraft()}},enabled=!a.locked) {Text(stringResource(R.string.owned_meeting_flush))}
     }
 }
