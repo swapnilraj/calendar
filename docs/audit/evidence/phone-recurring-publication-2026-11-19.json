@@ -78,5 +78,5 @@
   "branchScope": "codex/dd-recurring-phone-ready on c669ce5; existing ordinary baselines belong to this publication branch",
   "leadInspectedNewReviewImage": true,
   "rootIntegration": "Only clock-format correction, four new workflow tests and review image selected; no aggregate gate claimed yet",
-  "aggregateGate": "PENDING"
+  "aggregateGate": "PASSED_2369_AT_6d3148f"
 }

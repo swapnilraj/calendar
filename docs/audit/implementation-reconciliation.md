@@ -27,6 +27,14 @@ Earlier attempts retain their original meaning:
 
 ## Latest integrated correction — 19 November 2026
 
+The later complete checkpoint `6d3148f` passed2,369 tests (app2,095/core257/weather17), APK assembly
+and lint with zero failures/errors/skips in5m55s. Explicit Schedule endpoints/cards and selected
+clock formatting across recurring creation hosts are integrated. The
+[before/after record](evidence/schedule-recurring-full-gate-2026-11-19.json) retains the first three
+screenshot mismatches and the corrected full pass. PR74–76 passed full publication CI and merged;
+the contact source publication is intentionally unwired. This supersedes earlier source-gap claims
+only for these bounded surfaces; the historical151-row CSV and external acceptance remain unchanged.
+
 At `57fe2ad`, the complete test/debug APK/lint gate passed2,246 tests (app1,972/core257/weather17),
 with zero failures/errors/skips. Fresh eligible Following title-only and rule-only splits now preserve
 raw NULL/empty end timezones; legacy prepared material retains its exact issued value. The

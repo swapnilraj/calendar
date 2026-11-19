@@ -1,0 +1,138 @@
+{
+  "firstAggregate": {
+    "source": "d8f28a6141c01dcbca06fc59da29acf9f0a8f58f",
+    "command": "./gradlew test :app:assembleDebug :app:lintDebug",
+    "startedAt": "2026-11-19T07:11:23.406857+00:00",
+    "finishedAt": "2026-11-19T07:18:08.515138+00:00",
+    "seconds": 405.108,
+    "exitCode": 1,
+    "counts": {
+      "tests": 2367,
+      "failures": 3,
+      "errors": 0,
+      "skipped": 0
+    },
+    "modules": {
+      "app": {
+        "tests": 2093,
+        "failures": 3,
+        "errors": 0,
+        "skipped": 0
+      },
+      "calendar-core": {
+        "tests": 257,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "weather": {
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "log": "/tmp/daylight-schedule-recurring-full-gate.log",
+    "xml": "/tmp/daylight-schedule-recurring-full-gate-xml"
+  },
+  "firstFailures": [
+    "RecurringCreateEditorScreenTest.recurringReviewShowsAuthoredRuleAndExpectedPrefix",
+    "RecurringMeetingCreationScreenshotsTest.recurringMeetingReviewLight",
+    "RecurringMeetingCreationScreenshotsTest.recurringMeetingReviewLargeRtl"
+  ],
+  "correction": {
+    "source": "a16d845",
+    "testsSource": "3306155",
+    "description": "Pass selected clock convention from legacy and meeting hosts; add two parent-wiring checks. Record intended 24-hour preview change in three existing baselines.",
+    "focused": {
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 24,
+      "log": "/tmp/daylight-recurrence-clock-hosts-functional1.log",
+      "xml": "/tmp/daylight-recurrence-clock-hosts-functional1-xml"
+    },
+    "recording": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 11,
+      "log": "/tmp/daylight-recurrence-clock-hosts-record1.log",
+      "xml": "/tmp/daylight-recurrence-clock-hosts-record1-xml"
+    },
+    "images": [
+      {
+        "path": "app/src/test/screenshots/events_create_recurrence_review_light.png",
+        "sha256": "474821441045adde386b12094954cae38d3f67e356e14ca3fdfe1682dc0081fa",
+        "leadInspected": true
+      },
+      {
+        "path": "app/src/test/screenshots/phone_recurring_meeting_review_light.png",
+        "sha256": "aceaf116b9a32b8bfdc4fa60fb447a38e68957c18e1e15c2a5471fa1ffbd7c10",
+        "leadInspected": true
+      },
+      {
+        "path": "app/src/test/screenshots/phone_recurring_meeting_review_rtl_large.png",
+        "sha256": "dac46919803ac22c7904a40e7ec5c00b00ad607669f0a693533cfb361b8925f6",
+        "leadInspected": true
+      }
+    ]
+  },
+  "completeGate": {
+    "source": "6d3148fb64d2e48d3b59934c54a95f16e9aa636c",
+    "command": "./gradlew test :app:assembleDebug :app:lintDebug",
+    "startedAt": "2026-11-19T07:22:11.848743+00:00",
+    "finishedAt": "2026-11-19T07:28:07.858570+00:00",
+    "seconds": 356.01,
+    "exitCode": 0,
+    "counts": {
+      "tests": 2369,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "modules": {
+      "app": {
+        "tests": 2095,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "calendar-core": {
+        "tests": 257,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "weather": {
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "log": "/tmp/daylight-schedule-recurring-full-gate2.log",
+    "xml": "/tmp/daylight-schedule-recurring-full-gate2-xml",
+    "kind": "DEBUG_PREVIEW_NOT_STABLE_RELEASE",
+    "signerSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278",
+    "files": [
+      {
+        "path": "/tmp/daylight-verified-2369-6d3148f/app-debug.apk",
+        "bytes": 46108176,
+        "sha256": "f470bd89caefa78ad3c83afae45267776181aae82088173c62fe25e89cc8f117"
+      },
+      {
+        "path": "/tmp/daylight-verified-2369-6d3148f/daylight-debug-2369.zip",
+        "bytes": 14552425,
+        "sha256": "58e6ce259d6ce03d8591b322a87e94e9df502073bd4c1581e0ec5719e15b6630"
+      }
+    ]
+  },
+  "sourceBackup": "https://github.com/swapnilraj/calendar/tree/codex/verified-2369-20261119",
+  "limitations": [
+    "Debug preview, not stable owner release.",
+    "No new Google/Workspace, native reminder delivery, physical-device or beta acceptance."
+  ]
+}

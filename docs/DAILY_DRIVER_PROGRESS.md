@@ -4,15 +4,28 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
-Subsequent source integrates explicit Schedule loaded-range endpoints and accessible grouped cards:
-36 focused tests passed, and six affected/new images were recorded and inspected. Phone recurring
-creation publication passed86 focused checks after correcting three new test-fixture failures; one
-review image was recorded/inspected and three existing ordinary editor baselines verified unchanged
-on that publication branch. The root selects its clock-format correction and four phone workflow
-tests. See [Schedule evidence](audit/evidence/schedule-endpoints-2026-11-19.json) and
-[bounded recurring-editor evidence](audit/evidence/phone-recurring-publication-2026-11-19.json).
-The combined full gate for these subsequent changes is pending; the passing aggregate below is
-still the last complete checkpoint. No new Google/Workspace or physical acceptance is claimed.
+At source `6d3148fb64d2e48d3b59934c54a95f16e9aa636c`, the complete required gate passed **2,369 tests**
+(app2,095/core257/weather17), debug assembly and lint with zero failures/errors/skips in5m55s.
+Schedule retains loaded-range navigation under the phone header and presents accessible date/card
+groups. All recurring-create review hosts now honor their selected clock convention. The
+[evidence](audit/evidence/schedule-recurring-full-gate-2026-11-19.json) preserves the earlier2,367-test
+attempt's three intended clock-format screenshot mismatches,13 passing host checks, three inspected
+baseline updates and the successful full rerun. Six Schedule and one new phone review images were
+also inspected; the publication's ordinary editor baselines remained unchanged.
+
+[Verified source](https://github.com/swapnilraj/calendar/tree/codex/verified-2369-20261119) is backed up
+separately from publication. Frozen APK46,108,176 bytes, SHA-256
+`f470bd89caefa78ad3c83afae45267776181aae82088173c62fe25e89cc8f117`;
+ZIP14,552,425 bytes, SHA-256 `58e6ce259d6ce03d8591b322a87e94e9df502073bd4c1581e0ec5719e15b6630`.
+Files `/tmp/daylight-verified-2369-6d3148f/`; debug signer verified. This is not a stable owner release.
+
+Bounded publication PR74 (Schedule), PR75 (authored phone recurrence), and PR76 (unwired local contact
+source) all passed full CI and merged as `307781e`, `a9e8a98`, and `c9dc763` respectively. CI runs
+44477885979/44479149066/44479500133 passed in7m6s/7m9s/5m19s. PR75 retained its first83/86 fixture run,
+corrected86/86, one new inspected capture and three unchanged ordinary baselines. PR76 preserves the
+existing20 adapter checks and adds no picker or permission prompt. Artifact attachment calls were
+attempted for all three but timed out without confirmation. Native Google/Workspace, physical/beta
+and stable signing gates remain pending; the goal is active.
 
 At source `31c003915cffc8ccfe324f1fd6e94e09b8bdbf04`, the complete gate **passed all 2,359 tests**
 (app 2,085 + core257 + weather17), debug APK assembly and lint, zero failures/errors/skips, in6m11s.
