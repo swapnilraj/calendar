@@ -21,7 +21,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
-class CalendarApp : Application(), ReminderRuntimeOwner {
+class CalendarApp : Application(), ReminderRuntimeOwner, dev.swapnilraj.calendar.android.widgets.AgendaWidgetApplicationOwner {
+    private val widgetScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
+    override val agendaWidgetServices by lazy { createWidgetServices(widgetScope) }
+    override val agendaWidgetRuntime get() = agendaWidgetServices.runtime
+    override val agendaWidgetFramework get() = agendaWidgetServices.framework
     private val calendarScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
     private val reminderScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
     override val reminderRuntime: ReminderRuntime by lazy { createReminderRuntime(reminderScope) }
@@ -34,6 +38,7 @@ class CalendarApp : Application(), ReminderRuntimeOwner {
     override fun onCreate() {
         super.onCreate()
         reminderRuntime.onProcessStarted()
+        agendaWidgetServices
     }
     val calendarReader by lazy { CalendarReader(contentResolver, calendarScope) }
     val calendarSearch by lazy { dev.swapnilraj.calendar.data.calendar.CalendarSearchReader(contentResolver, calendarReader,
