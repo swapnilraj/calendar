@@ -281,9 +281,16 @@ class CalendarReader(
                 if (truncated && includeTitle) throw ProviderReadLimitExceeded()
                 collect(bounded)
             }
-        }.distinctBy { it.ref }.sortedWith(compareBy<EventOccurrence> { it.ref.instanceStart }
-            .thenBy { it.ref.eventId }.thenBy { it.ref.calendarId.value })
-        return CalendarOccurrencePage(occurrences, scanned, truncated)
+        }
+        // Every authorized raw row contributes evidence before EventRef deduplication. A first
+        // answered or pending row must not hide contradictory or unknown duplicate evidence.
+        val coalesced = if (request.invitationFilter == InvitationFilter.PENDING_ONLY) {
+            occurrences.groupBy { it.ref }.values.map { rows ->
+                rows.first().copy(invitation = rows.map { it.invitation }.distinct().singleOrNull() ?: InvitationState.UNKNOWN)
+            }
+        } else occurrences.distinctBy { it.ref }
+        return CalendarOccurrencePage(coalesced.sortedWith(compareBy<EventOccurrence> { it.ref.instanceStart }
+            .thenBy { it.ref.eventId }.thenBy { it.ref.calendarId.value }), scanned, truncated)
     }
 
     suspend fun readDetails(ref: EventRef): CalendarReadState<EventDetails> = guarded(readBudgets.details) {
