@@ -23,8 +23,9 @@ data class MeetingScopeAccess(
     val allowedGuestTypes: Set<MeetingGuestType> = emptySet(),
     val guests: List<MeetingGuestRow> = emptyList(),
 )
+/** Source eligibility only; the backend validates the actual draft/guests before preparation. */
 data class MeetingCreation(val calendar: CalendarInfo, val token: EditToken,
-    val allowedGuestTypes: Set<MeetingGuestType>)
+    val allowedGuestTypes: Set<MeetingGuestType>, val recurringCreation: AccessDecision = AccessDecision.UNKNOWN)
 data class MeetingMasterTemplate(val start: RecurrenceStart, val time: EventTime?, val eventZone: ZoneId?,
     val fields: SeriesMasterFields)
 data class EditableMeeting(val details: EventDetails, val token: EditToken,
