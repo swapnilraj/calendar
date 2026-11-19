@@ -4,11 +4,11 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
-At source checkpoint `6ee8f6e`, the required full gate **passed: 2,177 tests**
-(core 257, app 1,903, weather 17), debug APK assembly and lint, with zero failures, errors or skipped
+At source checkpoint `12917f1`, the required full gate **passed: 2,211 tests**
+(core 257, app 1,937, weather 17), debug APK assembly and lint, with zero failures, errors or skipped
 tests. Command: `./gradlew test :app:assembleDebug :app:lintDebug`; log
-`/tmp/daylight-contact-picker-full-gate.log`. Completed in 6m10s. Debug APK 43,820,956 bytes, SHA-256:
-`3414f68d178bf29ae4cd41f5f3e7bc497a202833f08fa481985f59ae84ca6d5f`.
+`/tmp/daylight-ack-and-accessibility-full-gate.log`. Completed in 5m55s. Debug APK 43,278,760 bytes, SHA-256:
+`5a59b37b653e3b6093a0417c629775977be734b35992ce5dee0b08d6276ec2a8`.
 This remains a debug-signed local build, not a stable release or daily-driver certification.
 
 The shared Add people picker is connected to meeting creation and owned one-off editing. Optional
@@ -20,6 +20,25 @@ five actual-app journeys and four new screenshot checks passed. The actual-app j
 grants, recreation, owned guest preservation and zero calendar writes. Light/dark and large-font RTL
 picker images, affected parent images and the integrated meeting editor capture were inspected.
 Physical keyboard, contacts-provider and TalkBack behavior still need runtime acceptance.
+
+Guest-entry email keyboards and non-submitting IME Done passed 57 focused checks. Stable
+editor errors/outcomes now announce politely and focused pickers expose named panes/headings;
+83 focused checks passed, including unchanged screenshot verification and masked payload removal.
+Ordinary autosave DRAFT_UNAVAILABLE stays readable but non-live to prevent repeated announcements
+while typing. These packets add 16 tests and are included in this complete aggregate gate. Native
+keyboard and TalkBack spoken behavior remain unverified.
+
+Independent review reproduced ten false local-save results from hostile create acknowledgements.
+The [before/after evidence](audit/evidence/create-acknowledgement-regressions-2026-11-19.json)
+records those failures and 15 passing ACK controls after correction. New recurring receipt5 stores
+the canonical known master before interpreting bounded raw child ACK facts, then requires exact
+child IDs at their authored alert indices and complete row/instance proof. Incomplete child evidence
+stays known-ID uncertainty; malformed master evidence never supplies a guessed ID or retry.
+Legacy receipt3 commits remain conservative; explicit proven retries retain old prepared bytes.
+The correction passed 99 publication-focused checks, an independent 84-check aggregate verification,
+and this full gate, including the updated actual-app recurring journey. Receipt4 edit recovery and
+its exact native-plan helpers are retained. Source-free immutable CREATE plans and stable generated
+UID binding remain the next bounded protocol packet; recovery still recompiles recurrence today.
 
 Incoming public EDIT review now supports an explicit proposed zone for eligible NULL-zone timed
 sources, including the displayed zone. Exact Apply/CAS and issued ZONE rights are required; absent-zone
@@ -47,19 +66,23 @@ release dispatch active. No release dispatch or production application merge int
 PR3 remains draft. Owner-key provisioning is pending; fixture signing tests are mechanism evidence
 only. Stable signing, same-key upgrade and a durable published APK remain unfulfilled.
 
-The aggregate source remains ahead of bounded publication. PR55–60 artifact attachments are now
+[PR61](https://github.com/swapnilraj/calendar/pull/61) passed corrected-head full CI and merged
+into the integration branch as `a9bdfc6`. [PR62](https://github.com/swapnilraj/calendar/pull/62)
+publishes shared phone navigation; its first full CI had one navigation-test timeout. A fixture-only
+visible/closed-drawer synchronization fix passed 43 focused checks on the current integration base;
+fresh full CI is running at `7dfefc8`. Assertions/timeouts were retained. It remains open and unmerged.
+
+The aggregate source remains ahead of bounded publication. PR55–62 artifact attachments are now
 confirmed in the task; earlier hanging calls were reconciled against the attachment inventory before
 retrying missing entries. Controlled personal/Workspace organizer-attendee,
 offline/conflict/recurrence tests, physical reminders/Doze/reboot/timezone/TalkBack/upgrade acceptance
-and the seven-day work/personal beta remain pending. Keyboard/accessibility refinements, advanced
-recurrence preservation and remaining publication are continuing source packets. The goal is active
-and is not marked complete.
+and the seven-day work/personal beta remain pending. Immutable CREATE recovery, advanced recurrence
+preservation and remaining publication are continuing source packets. The goal is active and is not
+marked complete.
 
-After this full checkpoint, the guest keyboard/accessibility packet was integrated at `8a02170`:
-email keyboard hints, non-submitting IME Done and picker pane semantics. Its57 focused checks and
-unchanged screenshot verification passed; the next aggregate gate is pending. Independent publication
-review also identified incomplete ordinary recurring-create acknowledgements; correction and
-failing-before regressions are in progress. PR61 is draft while that issue is addressed.
+The prior `6ee8f6e` full checkpoint passed 2,177 tests with debug assembly and lint in 6m10s;
+its log is `/tmp/daylight-contact-picker-full-gate.log`. Its debug APK SHA-256 was
+`3414f68d178bf29ae4cd41f5f3e7bc497a202833f08fa481985f59ae84ca6d5f`.
 
 ## Prior local checkpoint: 2,102 tests
 

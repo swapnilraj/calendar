@@ -41,6 +41,40 @@ SQL and synthetic provider transactions. `live-synthetic` may use injected mutat
 app action is discoverable or enabled. Read each row's remaining acceptance; test totals are not a
 completion measure. A SQLite reopen or Activity recreation is not an actual process-kill test.
 
+## Subsequent acknowledgement and accessibility review — 19 November 2026
+
+At source `12917f1`, the full `./gradlew test :app:assembleDebug :app:lintDebug` gate passed
+2,211 tests (app 1,937, core 257, weather 17), debug assembly and lint, with zero failures/errors/skips.
+The following bounded updates supersede older source descriptions without changing the historical
+CSV, failed attempts or external acceptance statuses.
+
+- **Create verification:** independent synthetic tests exposed ten false local-save outcomes from
+  malformed master/reminder acknowledgements. The [before/after report](evidence/create-acknowledgement-regressions-2026-11-19.json)
+  preserves the original failures and 15 passing controls after correction. `CalendarCreateAcknowledgments.kt`
+  binds new recurring receipt5 to canonical positive IDs and a frozen result layout. Known masters
+  become COMMITTED before raw child facts are interpreted; incomplete proof remains uncertain with
+  no replay. Recovery requires exact child IDs at their authored alert indices and guarded native
+  payload/membership/first-instance checks. Legacy receipt3 commits never acquire invented ACK proof;
+  explicit undispatched retries preserve old prepared bytes. Receipt4 edit helpers remain unchanged.
+  The correction passed 99 publication-focused checks and 84 independent aggregate checks, and the
+  actual recurring-create journey now asserts receipt5. Immutable source-free CREATE plans and
+  stable UID binding remain source work; current recurring proof still recompiles the stored plan.
+- **Phone keyboard and accessibility:** `GuestKeyboardAccessibilityTest.kt` and
+  `PhoneEditorStatusAccessibilityTest.kt` add 16 checks. IME Done dismisses email input without adding
+  people, requesting permission or saving. Stable fixed statuses announce politely, picker panels
+  expose named panes/headings and authority masks remove status/private child content. Ordinary
+  autosave DRAFT_UNAVAILABLE remains readable but non-live to avoid keystroke-driven repetition;
+  Material's existing date announcements remain intact. Focused packets passed 57 and 83 checks with
+  unchanged screenshot verification. This is semantics evidence, not TalkBack spoken-order proof.
+- **Publication:** recurring-create PR61 passed corrected-head full CI and merged into the integration
+  branch. Navigation PR62 remains open after an initial CI-only timeout; its stronger visible/closed
+  drawer fixture synchronization passed 43 focused checks on the updated base, with fresh CI pending.
+  Neither result merges the application into main or satisfies stable signing/release acceptance.
+
+Google/Workspace organizer/attendee and offline round trips, physical reminders/Doze/reboot/timezone/
+TalkBack/upgrade checks, production clone admission, exact Google live UX, the seven-day beta and
+stable owner signing/downloadable release remain pending. The goal is not complete.
+
 ## Additional source review — 19 November 2026, at 6ee8f6e
 
 This additive review preserves the historical CSV, inventory IDs and earlier failed attempts. Its
