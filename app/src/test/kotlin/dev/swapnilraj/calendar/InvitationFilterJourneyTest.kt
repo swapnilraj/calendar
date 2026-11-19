@@ -63,7 +63,7 @@ class InvitationFilterJourneyTest {
         io {
             val request = CalendarRequest(CalendarDateRange.day(f.today), ZoneOffset.UTC,
                 CalendarSelection.Explicit(setOf(CalendarId(2))))
-            val snapshot = f.app.calendarReader.observe(request).first { it is CalendarReadState.Ready } as CalendarReadState.Ready
+            val snapshot = f.app.calendarReader.readSnapshot(request) as CalendarReadState.Ready
             assertEquals(3, snapshot.value.occurrences.size)
         }
         assertLocalOnly(f)
