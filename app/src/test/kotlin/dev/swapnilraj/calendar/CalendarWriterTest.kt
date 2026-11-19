@@ -53,7 +53,9 @@ class CalendarWriterTest {
             uri.pathSegments.lastOrNull()?.toLongOrNull()?.let { if (row["_id"] != it.toString()) return false }
             if (selection == null) return true
             val columns = Regex("([A-Za-z_][A-Za-z_0-9]*)\\s*=\\s*\\?").findAll(selection).map { it.groupValues[1] }.toList()
-            return columns.withIndex().all { (index, key) -> row[key] == args?.get(index) }
+            // Native known-item Reminder queries join their parent for calendar/UID guards.
+            val parent = row["event_id"]?.let { id -> events.singleOrNull { it["_id"] == id } }
+            return columns.withIndex().all { (index, key) -> (if (row.containsKey(key)) row[key] else parent?.get(key)) == args?.get(index) }
         }
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor {
             if (failReadsAfterCommit && committed) error("Synthetic post-commit provider unavailable")
@@ -656,7 +658,7 @@ class CalendarWriterTest {
             assertEquals(MutationResult.SafeToRetry("failed"), writer.recover("failed"))
             provider.calendar["account_name"] = "other@example.invalid"
             provider.failReminder = false
-            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.CALENDAR)), writer.create("failed", draft))
+            assertEquals(MutationResult.Conflict(null), writer.create("failed", draft))
             assertEquals(before, store.operation("failed"))
             assertEquals(1, provider.batchCount)
             assertTrue(provider.events.isEmpty())
@@ -690,7 +692,7 @@ class CalendarWriterTest {
             val ref = (writer.create("created", draft) as MutationResult.LocalSaved).ref
             val receipt = org.json.JSONObject(store.operation("created")!!.resultRef!!)
             store.prepare("legacy", "old-signature", "CREATE")
-            store.forceOperationForTest("legacy", "COMMITTED", receipt.getJSONObject("ref").toString())
+            store.forceOperationForTest("legacy", "COMMITTED", receipt.getJSONObject("firstRef").toString())
             val reopened = CalendarLocalStore(RuntimeEnvironment.getApplication(), store.databaseName)
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             try {
@@ -712,7 +714,9 @@ class CalendarWriterTest {
             assertTrue(provider.events.isEmpty())
             assertTrue(provider.reminders.isEmpty())
             assertEquals(1, provider.batchCount)
-            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.CALENDAR)), writer.create("race", draft))
+            val frozen = store.operation("race")!!
+            assertEquals(MutationResult.Conflict(null), writer.create("race", draft))
+            assertEquals(frozen, store.operation("race"))
             assertEquals(1, provider.batchCount)
         }
     }

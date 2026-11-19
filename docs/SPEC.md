@@ -557,26 +557,32 @@ glyphs and branding remain in use. Existing sheet fixtures are retained. This pr
 activate repeat authoring, invitation responses or meeting creation. Exact Google Calendar Android
 visual and interaction parity remains **UNVERIFIED**, including the editor title bar.
 
-### Authored recurring CREATE backend
+### Ordinary CREATE backend and immutable recovery
 
-The ordinary writer accepts supported authored daily, weekly, monthly and yearly CREATE rules. It
-stores a native recurring master with NULL DTEND, bounded RRULE/DURATION, UTC-date all-day semantics
-and linked alerts in one asserted non-yielding batch. New receipt5 operations freeze the expected
-result layout. A canonical positive master acknowledgement is committed with bounded raw result
-facts before child identities are interpreted or provider payload is read. Missing, contradictory or
-oversized child evidence retains that known commit as uncertain. Local success requires the exact
-acknowledged child IDs at their planned alert indices, complete membership/payload, authored master,
-actual first-instance bounds and unchanged calendar namespace. Lost or malformed master
-acknowledgement never permits a matching-field search or blind replay.
-Authored recurrence participates in exact CREATE fingerprints and permanent retirement fences;
-recurring UPDATE/DELETE, series and meeting retirement remain unsupported by this publication.
+The ordinary writer accepts one-off events and supported authored daily, weekly, monthly and yearly
+CREATE rules. A recurring master uses NULL DTEND, bounded RRULE/DURATION and UTC-date all-day values;
+linked alerts are inserted in the same asserted non-yielding batch. New one-off and recurring
+operations use receipt6: initial validation freezes exact native values, first-instance bounds,
+an operation-bound plan digest and a generated UID. New timed preparation rejects provider-incompatible
+timezone spellings without normalizing accepted names. Concurrent writers adopt the durable prepare
+winner; exact retries reuse its UID/plan rather than current authoring rules. READ-only recovery
+needs no edit snapshot, current recurrence compiler or stored-zone lookup. Fresh namespace, ACL and
+capability checks fence dispatch. Existing command JSON/fingerprints and permanent retirement fences
+remain unchanged. See [the private protocol and acceptance contract](ORDINARY_CREATE_RECEIPT6.md).
 
-Existing one-off JSON/signatures and receipt2 behavior remain unchanged; new one-off CREATEs also
-require a canonical positive master acknowledgement. Legacy receipt3 commits lack child ACK bindings
-and remain uncertain without reconstruction or replay. Only an explicit exact retry of a proven
-never-dispatched/rolled-back receipt3 operation may earn receipt5 after its new dispatch. Recurrence
-proof still compares the stored plan with current compilation, so a later timezone-rule or validator
-change can leave an operation uncertain. No stable event UID is generated. These are local provider
-guarantees, not
-Google/Workspace sync evidence, scoped-edit admission or production clone-profile certification.
-Live recurring-create UI activation is a separate packet and remains disabled by default here.
+A canonical positive master acknowledgement and bounded raw result facts become COMMITTED before
+child acknowledgement interpretation or payload reads. Both create modes require exact unique child
+IDs at authored alert indices, complete membership/payload and actual first-instance bounds. A minimal
+known-ID/calendar/UID binding precedes private reads and is rechecked before verification. Observed
+identity drift stays uncertain without private readback. Missing/oversized child evidence retains the
+known commit; invalid/lost master acknowledgement never supplies a guessed ID, UID search or replay.
+Predictably unrecordable ACK/storage/query budgets block dispatch before a provider batch.
+
+Legacy receipt2/3/5 operations retain their original wire/protocol and gain no invented UID or child
+proof. Receipt2 remains weaker; receipt3 commits stay conservative, with exact undispatched retry
+preserving prepared bytes and earning receipt5 only after its new dispatch. Receipt5 retains exact
+ACK bindings and its current-compilation limitation. Legacy attempted/known commits never migrate or
+replay through recovery. Recurring UPDATE/DELETE, series and meeting retirement remain unsupported
+by this publication. These are local provider guarantees, not Google/Workspace sync evidence,
+scoped-edit admission, provider-clone certification or physical-device acceptance. Live recurring-create
+UI activation is a separate packet and remains disabled by default here.
