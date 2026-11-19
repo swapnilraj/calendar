@@ -369,3 +369,13 @@ Google service APIs, conference generation, rooms/coworker availability, sharing
 specified desktop/cloud-only workflows. Existing exposed meeting links remain supported. Historical
 optional inventory rows stay explicit in the CSV. The original audit's narrower widget/notification
 scope does not override their inclusion in the accepted daily-driver goal.
+
+
+### 19 November: complete Following3 aggregate and native test limits
+
+Source `289727d` passes 2,289 tests, debug assembly and lint; see
+[the retained failed attempt, fixture correction and complete passing rerun](evidence/following3-aggregate-checks-2026-11-19.json).
+This verifies the integrated source, including guarded pre-dispatch child reads, without changing
+native/account acceptance. The owned API-35 app-create probe failed its first create case and withheld
+cleanup; its test calendar remains pending diagnosis. Google Settings/General were observed live, but
+main/editor parity, Google/Workspace propagation, physical-device gates, beta and stable signing remain pending.

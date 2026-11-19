@@ -231,3 +231,30 @@ Acceptance evidence for this packet:
 Obtain an authorized current Google Calendar installation/reference capture, record versionName/versionCode, device/Android/build, window/density/insets, locale, time format, font/display scale, theme, account type and enabled features. Use only synthetic calendar data. Capture toolbar expanded/collapsed, all five views, dense/all-day cases, date navigation, drawer, FAB/slot creation, details, editor, repeat custom/scope, RSVP and settings. Exercise tap, swipe, back, rotation, keyboard, TalkBack, drag, resize and interrupted workflows. Record actual outcomes instead of deriving them from APK strings or screenshots.
 
 A legitimately available APK may help inspect resources and screen assets, but no APK was available for this audit. Do not use unverified third-party downloads as proof of the current phone UI. Keep Google images/assets outside the Daylight application; AGENTS branding rules still apply. Functional arrangement and navigation can align while retaining original Daylight branding and its weather layer. Exact visuals, gestures and DST behavior remain **unverified** by the current reference set.
+
+
+## Live Settings reference — 19 November 2026
+
+A subsequent live emulator observation verified Google's Settings and General screens, independently
+of the earlier onboarding failure. Reference: 2026.44.0-1016863050-release, versionCode 2018381752;
+API 35, owned user 0, 720×1280 at 320 dpi (360×640 dp), en-US/LTR, font scale 1, light theme.
+Installed APK SHA-256 `46fcded5edececc7a35fa8bd06e3127aa0ed2ef52728a11491f1ed2e45ea41e7`.
+The exported public preference activity opened Settings after one observed System UI ANR was dismissed
+with Wait. A later read-only capture established the screen; immediate launch timing was not measured.
+
+Settings contains General and Manage accounts. General is a full-height grouped list with a persistent
+header, subtitles and trailing switches. Observed controls, in order: start of week; device timezone;
+disabled timezone row; alternate calendar; week numbers; declined events; short-entry sizing; event
+illustrations; default event duration; adding invitations; theme; calendar notifications; task
+notifications; overdue tasks; quick responses; calendar-data sharing with other apps. The duration row
+opened an informational page describing a one-hour default for non-Google accounts; no duration
+choice or persistence behavior was demonstrated. No setting, account or system permission was changed.
+Back from Settings returned to the launcher. No main calendar, editor, gestures, RTL, large-font or
+account-dependent meeting flow was verified by these observations.
+
+Eight reference images and the detailed observation report remain outside Git in
+`/tmp/daylight-google-general-reference-20261119-m8bfzett/`. The post-load Settings capture is under
+`/tmp/daylight-google-postload-observation-20261119-wy2l65mm/`. These observations supersede the
+historical statement that no installed APK was available, solely for the surfaces actually inspected.
+Daylight should use the observed hierarchy for supported settings and keep its own working defaults,
+reminders and weather controls. Unsupported Google controls must not become inert UI affordances.

@@ -4,12 +4,23 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+At source `289727df1bc870ec4719b6b813703cfc0eb87a18`, the complete rerun **passed all 2,289 tests**
+(app 2,015 + core 257 + weather 17), debug APK assembly and lint, with zero failures/errors/skips.
+`./gradlew test :app:assembleDebug :app:lintDebug` completed in 3m58s. The
+[exact checkpoint](https://github.com/swapnilraj/calendar/tree/codex/verified-2289-20261119)
+is backed up independently of the bounded publication branch. The frozen debug APK is 45,386,828 bytes,
+SHA-256 `26e06ef3a24aa7c91c945b1292fb12328c646ccb0bfce32d83db74cb1bb84460`;
+the ZIP is 14,526,036 bytes, SHA-256
+`8d1f4593bd0e380c5aae232178555a76e3cee2eddff559cb4cb1369914f47d1c`.
+Both are retained under `/tmp/daylight-verified-2289-289727d/`; this is debug signing, not an owner
+release. Existing screenshots are unchanged. The failed attempt below remains in the evidence.
+
+
 The subsequent Following3 aggregate at `8ef9258` ran2,289 tests and failed one existing meeting
 journey at its immediate Save lookup after repeat input closed. All Following3/guarded-read tests
 passed. Test-only durable-repeat/UI-ready waits are integrated at `f8f88d1`; the same4 meeting
 journeys pass without product changes, retries or longer timeouts. The [attempt and focused
-hardening](audit/evidence/following3-aggregate-checks-2026-11-19.json) are retained; a complete rerun
-is pending. The independent worker did not execute that extra task due tool screening, so this
+hardening](audit/evidence/following3-aggregate-checks-2026-11-19.json) are retained; the complete rerun above passed. The independent worker did not execute that extra task due tool screening, so this
 fixture hardening is lead-verified only.
 
 The complete verified source checkpoint `57fe2ad` is also preserved on the separate
@@ -45,7 +56,7 @@ Following receipt3 source is integrated after the passing checkpoint as `408857b
 isolated focused checks passing. Independent review found a
 pre-dispatch raw child-collection read race. The [guarded correction](audit/evidence/following-prepared-child-binding-fixed-2026-11-19.json)
 is integrated as `97cccf7`, with72 focused checks passing, including the unchanged3-case independent
-before/after proof. The next complete gate is pending. Recovery ACK/identity controls and this source status do not
+before/after proof. The complete 2,289-test gate above includes this correction. Recovery ACK/identity controls and this source status do not
 establish installed-provider or Google acceptance.
 
 [PR66](https://github.com/swapnilraj/calendar/pull/66) publishes the already integrated pure
@@ -65,10 +76,15 @@ base APK `a1facdbe…`, no splits, same signer/history/build/patch. The one capt
 in386.5s, with no calendar grants or fixtures. A verified zombie-PID lock was moved intact to its
 startup record before the unchanged owned AVD could boot; config bytes were unchanged.
 
-One app-create/recovery protocol is now authorized and monitored as run
-`cf21909f-024d-4ccd-b4df-69b2cbabc057`, using the same immutable pair/boot/pins and a mandatory
-nonmutating target-PID absence preflight before any grants/fixtures. No app-mode success is claimed
-while it runs; there is no retry, forced cleanup or production profile admission.
+The first app-create/recovery protocol `cf21909f-024d-4ccd-b4df-69b2cbabc057` stopped before
+permissions/fixtures because the host rejected Toybox's documented exit 1 for an absent exact PID.
+The host-only correction `a9044b9` retains strict general command handling and passes 27 host tests.
+A new run `bf8af411-bef6-4a2d-a923-0e5a98bb44df` passed that preflight, created its dedicated local
+calendar, then failed the first app-create case with a platform IllegalArgumentException. Cleanup was
+withheld; no recovery stage ran. Read-only copies of its exact private state show CREATING, calendar 1,
+five queries, zero batch assertions/cases and no exact operation journal row; WAL/SHM were absent and
+the rollback journal empty. This metadata alone is not reported as a provider outcome. Source-based
+diagnosis and safe fixture cleanup remain pending; no blind replay, adoption or production admission.
 
 The [native app-writer harness](audit/evidence/native-app-writer-source-review-2026-11-19.json)
 is now integrated with19 passing host checks, successful AndroidTest compilation/pair assembly,

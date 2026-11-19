@@ -33,7 +33,48 @@
     "xml": "/tmp/daylight-recurring-meeting-review-readiness-focused.xml",
     "independentWorker": "Did not execute due tool screening; lead implemented/verified this fixture-only hardening"
   },
-  "completeRerun": "PENDING",
+  "completeRerun": {
+    "source": "289727df1bc870ec4719b6b813703cfc0eb87a18",
+    "command": "./gradlew test :app:assembleDebug :app:lintDebug",
+    "status": "PASS",
+    "counts": {
+      "app": [
+        2015,
+        0,
+        0,
+        0
+      ],
+      "calendar-core": [
+        257,
+        0,
+        0,
+        0
+      ],
+      "weather": [
+        17,
+        0,
+        0,
+        0
+      ]
+    },
+    "result": "/tmp/daylight-following3-meeting-readiness-full-gate-result.json",
+    "apkBytes": 45386828,
+    "apkSha256": "26e06ef3a24aa7c91c945b1292fb12328c646ccb0bfce32d83db74cb1bb84460",
+    "zipBytes": 14526036,
+    "zipSha256": "8d1f4593bd0e380c5aae232178555a76e3cee2eddff559cb4cb1369914f47d1c",
+    "signing": "DEBUG_ONLY_NOT_OWNER_RELEASE",
+    "nativeAccountBetaRelease": "PENDING",
+    "tests": 2289,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsed": "3m58s",
+    "startedUtc": "2026-11-19T03:28:24.438777+00:00",
+    "finishedUtc": "2026-11-19T03:32:22.829514+00:00",
+    "log": "/tmp/daylight-following3-meeting-readiness-full-gate.log",
+    "frozenArtifacts": "/tmp/daylight-verified-2289-289727d/",
+    "sourceBackup": "https://github.com/swapnilraj/calendar/tree/codex/verified-2289-20261119"
+  },
   "limitations": [
     "Historical transient UI state and causal contribution of load were not captured",
     "No native/account/Google delivery or stable release acceptance"
