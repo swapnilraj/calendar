@@ -70,7 +70,8 @@
     "elapsedSeconds": 23,
     "log": "/tmp/daylight-following-exdate4-aggregate-focused1.log",
     "xml": "/tmp/daylight-following-exdate4-aggregate-focused1-xml",
-    "nativeFollowingJourneys": "Three synthetic provider-backed UI journeys, not device execution"
+    "nativeFollowingJourneys": "NOT_RUN: filter NativeFollowingSeriesJourneyTest did not match actual NativeFollowingJourneyTest; counts above contain105 provider tests only",
+    "missedFilter": "*NativeFollowingSeriesJourneyTest"
   },
   "completeGate": "PENDING",
   "nativeGoogleWorkspace": "NOT_RUN",

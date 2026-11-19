@@ -663,6 +663,6 @@ acceptance. A fresh identity/six-case protocol is being planned with new fixture
 
 Receipt4 EXDATE bridge source is integrated as `789896b` on its approved lead contract.
 Lead review added strict metadata clock/zone/WHOLE-context invariants and metadata-only capabilities
-for nonempty exclusions. Its195-check focus passed20s after a retained194/1 fixture setup failure;108 aggregate checks
-including the three original synthetic Following UI journeys passed23s. The complete gate and
+for nonempty exclusions. Its195-check focus passed20s after a retained194/1 fixture setup failure;105 aggregate provider checks passed23s. A nonmatching UI class filter omitted three original
+Following journeys; they are queued separately and not included in that count. The complete gate and
 native/account acceptance remain pending; see audit/evidence/following-exdate4-2026-11-19.json. Moved/cancelled exception graph transfer remains separate.
