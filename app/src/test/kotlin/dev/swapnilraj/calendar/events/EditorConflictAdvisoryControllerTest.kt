@@ -55,6 +55,23 @@ class EditorConflictAdvisoryControllerTest {
     }
     private fun shown(c:EditorConflictAdvisoryController,i:EditorConflictAdvisoryInput)=c.presentation(i)
 
+    @Test fun oldControllerClearCannotRenderOnNewControllerWithSameInputAndEpoch()=runBlocking {
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
+        val oldFeed=ConflictAdvisoryFeed();val newFeed=ConflictAdvisoryFeed()
+        val old=EditorConflictAdvisoryController(oldFeed,scope);val current=EditorConflictAdvisoryController(newFeed,scope)
+        try {
+            val sameInput=ConflictAdvisoryFixture.input()
+            old.update(sameInput)
+            oldFeed.emit(0,CalendarReadState.Ready(oldFeed.snapshot(0,namespace="old-source")))
+            val heldClear=old.state.value
+            assertTrue(old.presentation(sameInput,heldClear).canReportNoConflict)
+            current.update(sameInput)
+            newFeed.emit(0,CalendarReadState.Ready(newFeed.snapshot(0,namespace="new-source",candidates=listOf(ConflictAdvisoryFixture.candidate()))))
+            assertEquals(heldClear.epoch,current.state.value.epoch)
+            assertEquals(1,current.presentation(sameInput).knownConflicts)
+            assertFalse("A retained old-controller clear observation must be masked before any effect",current.presentation(sameInput,heldClear).canReportNoConflict)
+        } finally {old.close();current.close();scope.cancel()}
+    }
     @Test fun renderMasksChangedTimeBeforeUpdateOrEffectCanRun()=runBlocking {fixture {f,c->
         val a=ConflictAdvisoryFixture.input();c.update(a)
         f.emit(0,CalendarReadState.Ready(f.snapshot(0,candidates=listOf(ConflictAdvisoryFixture.candidate()))))
