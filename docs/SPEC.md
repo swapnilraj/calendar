@@ -680,3 +680,14 @@ day list and each exact event. No tiny independent event target is introduced. D
 or constrained layouts keep reachable scrolling and existing shortcuts. Four captures were inspected;
 39 functional aggregate checks and the complete2,359-test/debug/lint gate pass. Google main-screen
 interaction/row-count/pixel parity remains unverified; this publication makes no cloud/provider claim.
+
+## Optional local contact suggestion source
+
+An injected contact source returns bounded raw email/display-name tuples from the device's default
+contacts directory. It reads only after explicit opt-in and READ_CONTACTS authority, preserves raw
+addresses and names, and reports permission loss, cancellation, unavailable data and limits without
+substituting successful empty results. It never enumerates account directories, writes contacts,
+uses network services or logs contact payloads. This source-only packet does not connect a picker,
+request a runtime permission or enable guest changes; those application routes require separate
+composition and retained-draft verification.
+
