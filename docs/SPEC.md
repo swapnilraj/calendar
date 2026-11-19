@@ -356,6 +356,12 @@ Read calendar identity, account name/type, display name/colour, owner, timezone,
 access constraints. Keep provider-local IDs distinct from cloud IDs and conservative capabilities
 separate from runtime permissions and event restrictions. Unknown access is not permission to write.
 
+Calendar access is parsed as a canonical raw integer and must fit Int before narrowing. Representable
+unknown access levels remain observations with UNKNOWN capabilities; noncanonical or wider values
+remain unknown without wrapping into known rights. Range and detail reads require admission at a
+known FREEBUSY-or-higher level before querying private rows. Known FREEBUSY details retain Busy
+scrubbing; known-level membership, default ALL projections and ARGB colour narrowing remain unchanged.
+
 Use one shared observed invalidation source and cancellable IO range queries. Bounds cover local
 appointments and UTC all-day dates; exact half-open filtering follows the query. Include zero-length
 events starting inside the range, exclude starts at its exclusive end, and return a multi-day
