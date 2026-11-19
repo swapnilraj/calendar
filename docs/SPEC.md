@@ -902,3 +902,25 @@ introduced. Summary text remains merged/discoverable under that date action. The
 exact event. Detailed/wide/large-text or constrained layouts retain reachable scrolling and existing
 shortcuts. Four affected/new captures were recorded/inspected; functional checks and the combined
 2,359-test/debug/lint gate pass. Exact current Google main-screen gesture/row-count/pixel parity remains unverified.
+
+
+## Isolated whole-series graph duration receipt contract
+
+The independent `SERIES_GRAPH_DURATION_V1` family uses receipt version 1 and the fingerprint
+prefix `series-graph-duration-v1:`. Its explicit command contains only the selected recurring
+reference, exact source token and a positive whole-second timed duration or positive whole-day
+all-day duration. Issued execution capability defaults to UNKNOWN; readable source and a complete
+semantic graph proof do not grant write authority.
+
+The strict codec binds the exact unchanged canonical sourceV1 bytes, command, complete calendar
+namespace including provider ID, all live membership, moved/cancelled exception identities and
+actual bounds, unchanged child sets and raw exclusions. It recomputes the bounded recurrence graph
+proof and derives an expected postimage changing only the existing master DURATION. Every exception
+and all other raw fields remain exact. Native all-day boundaries and year limits, original-selected
+source-duration bounds, strict phase/acknowledgement evidence and worst committed-envelope limits
+are validated before a receipt can be created or adopted. RDATE/EXRULE temporal changes remain closed.
+
+This is an inert command/port and receipt codec only. No provider executor, editor/frozen-submission
+activation, retirement branch, native authority, clone profile or schema change is enabled. Existing
+WholeEdit guards, sourceV1 bytes, legacy fingerprints and numeric/frozen/receipt families are not
+reinterpreted or migrated. Provider, account and device acceptance remain separate gates.
