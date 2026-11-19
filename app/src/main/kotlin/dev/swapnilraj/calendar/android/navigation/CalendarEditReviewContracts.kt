@@ -41,4 +41,3 @@ sealed interface CalendarEditReviewResult {
     data object Consumed : CalendarEditReviewResult
     data object Unavailable : CalendarEditReviewResult
 }
-
