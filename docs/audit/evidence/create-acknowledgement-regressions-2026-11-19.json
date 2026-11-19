@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "date": "2026-11-19",
+  "scope": "JVM actual adapters with dedicated synthetic SQLite CalendarContract provider; no Google/Workspace/device operations",
+  "before": {
+    "testCheckout": "f095ec4",
+    "sourceBase": "a32efb7",
+    "tests": 10,
+    "failures": 10,
+    "errors": 0,
+    "skipped": 0,
+    "finding": "Each original hostile-ACK case returned LocalSaved where Uncertain was required.",
+    "xmlSha256": "320f50103616aa3f7324776355fb4bdc6e3fb464a5b3e51323b782d347a85713",
+    "cases": [
+      "duplicateReminderAcknowledgmentsCannotBecomeDistinctLinkedChildren",
+      "recurringZeroMasterAcknowledgmentCannotBecomeKnownSaveEvenWhenSuchARowExists",
+      "wrongParentReminderAcknowledgmentCannotBeReplacedByMatchingPayloadReadback",
+      "ordinaryOneOffForeignAuthorityAcknowledgmentCannotBorrowItsNumericEventId",
+      "reorderedReminderAcknowledgmentsCannotBeAcceptedAsTheIssuedInsertOrder",
+      "recurringQueriedMasterAcknowledgmentCannotBecomeKnownSave",
+      "recurringWrongSchemeMasterAcknowledgmentCannotBecomeKnownSave",
+      "recurringFragmentedMasterAcknowledgmentCannotBecomeKnownSave",
+      "malformedReminderAcknowledgmentRetainsKnownCommitWithoutGuessingChildIdentity",
+      "missingReminderAcknowledgmentRetainsKnownCommitWithoutGuessingChildIdentity"
+    ]
+  },
+  "after": {
+    "sourceCheckout": "6403c25",
+    "ackTests": 15,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "xmlSha256": "b519f187f6a778c9ce53e1b45250d1dec6ae0c7e51881356056b6c4e9a956381",
+    "combinedVerification": {
+      "ack": 15,
+      "recurringCreate": 15,
+      "ordinaryWriter": 54,
+      "total": 84
+    },
+    "cases": [
+      "unexpectedExtraBatchResultCannotBecomeCompleteAcknowledgment",
+      "duplicateReminderAcknowledgmentsCannotBecomeDistinctLinkedChildren",
+      "recurringZeroMasterAcknowledgmentCannotBecomeKnownSaveEvenWhenSuchARowExists",
+      "wrongParentReminderAcknowledgmentCannotBeReplacedByMatchingPayloadReadback",
+      "ordinaryOneOffForeignAuthorityAcknowledgmentCannotBorrowItsNumericEventId",
+      "contradictoryCalendarAssertionCountRetainsKnownMasterButCannotAcknowledgeSave",
+      "reorderedReminderAcknowledgmentsCannotBeAcceptedAsTheIssuedInsertOrder",
+      "recurringQueriedMasterAcknowledgmentCannotBecomeKnownSave",
+      "zeroAlertCreateStillVerifiesReadOnlyFromItsCanonicalTwoResultBatch",
+      "recurringWrongSchemeMasterAcknowledgmentCannotBecomeKnownSave",
+      "calendarAssertionUriInsteadOfCountRetainsKnownMasterButCannotAcknowledgeSave",
+      "recurringFragmentedMasterAcknowledgmentCannotBecomeKnownSave",
+      "masterCountInsteadOfInsertUriCannotBecomeKnownSave",
+      "malformedReminderAcknowledgmentRetainsKnownCommitWithoutGuessingChildIdentity",
+      "missingReminderAcknowledgmentRetainsKnownCommitWithoutGuessingChildIdentity"
+    ]
+  },
+  "limitations": [
+    "Full aggregate gate recorded separately.",
+    "No Google/Workspace synchronization or invitation delivery verified.",
+    "No native device, physical accessibility or stable upgrade evidence.",
+    "Recurring-create recovery still recompiles its plan and does not generate a stable UID.",
+    "Legacy receipt3 commits remain uncertain without invented ACK proof or replay."
+  ]
+}
