@@ -166,15 +166,16 @@ class CalendarRecurringCreateTest {
     }
 
     @Test fun patternMismatchDstPreviewAndDurationOverflowRefuseBeforeJournalOrNativeInsert() = runBlocking {
-        val invalid = listOf(draft.copy(recurrence = RecurrenceSpec(RecurrencePattern.Weekly(setOf(DayOfWeek.MONDAY)))),
-            draft.copy(recurrence = RecurrenceSpec(RecurrencePattern.Daily, interval = 1001)),
-            draft.copy(recurrence = RecurrenceSpec(RecurrencePattern.Daily, end = RecurrenceEnd.Count(10001))),
-            draft.copy(time = EventTime.Timed(start, start.plusSeconds(Int.MAX_VALUE.toLong() + 1))),
-            draft.copy(time = EventTime.Timed(start.plusNanos(1), start.plusSeconds(3600))),
+        val invalid = listOf(
+            draft.copy(recurrence = RecurrenceSpec(RecurrencePattern.Weekly(setOf(DayOfWeek.MONDAY)))) to InvalidEventField.RECURRENCE,
+            draft.copy(recurrence = RecurrenceSpec(RecurrencePattern.Daily, interval = 1001)) to InvalidEventField.RECURRENCE,
+            draft.copy(recurrence = RecurrenceSpec(RecurrencePattern.Daily, end = RecurrenceEnd.Count(10001))) to InvalidEventField.RECURRENCE,
+            draft.copy(time = EventTime.Timed(start, start.plusSeconds(Int.MAX_VALUE.toLong() + 1))) to InvalidEventField.RECURRENCE,
+            draft.copy(time = EventTime.Timed(start.plusNanos(1), start.plusSeconds(3600))) to InvalidEventField.TIME,
             draft.copy(time = EventTime.Timed(Instant.parse("2026-03-28T01:30:00Z"), Instant.parse("2026-03-28T02:30:00Z")),
-                recurrence = RecurrenceSpec(RecurrencePattern.Daily, end = RecurrenceEnd.Count(3))))
-        invalid.forEach { input -> fixture { f ->
-            assertEquals(MutationResult.ValidationFailed(setOf(InvalidEventField.RECURRENCE)), f.writer.create("invalid", input))
+                recurrence = RecurrenceSpec(RecurrencePattern.Daily, end = RecurrenceEnd.Count(3))) to InvalidEventField.RECURRENCE)
+        invalid.forEach { (input, expectedField) -> fixture { f ->
+            assertEquals(MutationResult.ValidationFailed(setOf(expectedField)), f.writer.create("invalid", input))
             assertNull(f.store.operation("invalid")); assertEquals(0, f.p.batchCount); assertEquals(0, f.p.count("events"))
         } }
     }
