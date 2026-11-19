@@ -121,10 +121,11 @@ class EditorConflictBindingTest {
         assertNull(stale.conflictBinding(true));assertTrue(g.calls.isEmpty())
     }
     @Test fun ownedRetainsBaselinePrecisionAndMasksPermissionAndUnacknowledgedPersistence()=runBlocking {
-        val f=OwnedFixture();val point=f.start.plusMillis(321);val ref=f.ref.copy(instanceStart=point,instanceEnd=point)
-        f.source=f.source.copy(details=f.source.details.copy(occurrence=f.source.details.occurrence.copy(ref=ref,time=EventTime.Timed(point,point))))
-        val c=f.open();val before=c.conflictBinding(true)!!
-        assertEquals(EventTime.Timed(point,point),before.normalizedTime());assertEquals(ref,before.editedRef)
+        val f=OwnedFixture();val point=f.start.plusMillis(321);val end=point.plusMillis(789)
+        val ref=f.ref.copy(instanceStart=point,instanceEnd=end)
+        f.source=f.source.copy(details=f.source.details.copy(occurrence=f.source.details.occurrence.copy(ref=ref,time=EventTime.Timed(point,end))))
+        val c=f.open();assertNull(c.state.problem);val before=c.conflictBinding(true)!!
+        assertEquals(EventTime.Timed(point,end),before.normalizedTime());assertEquals(ref,before.editedRef)
         val entered=CompletableDeferred<Unit>();val release=CompletableDeferred<Unit>()
         f.store.afterCas={entered.complete(Unit);release.await()}
         val change=launch(start=CoroutineStart.UNDISPATCHED) {c.changeFields(c.state.fields!!.let {it.copy(event=it.event.copy(title="Changed"))})}
