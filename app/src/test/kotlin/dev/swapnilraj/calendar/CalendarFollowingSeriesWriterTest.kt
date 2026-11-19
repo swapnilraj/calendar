@@ -131,12 +131,12 @@ class CalendarFollowingSeriesWriterTest {
         assertEquals("VERIFIED",f.store.operation("split")!!.phase)
     }}
 
-    @Test fun titleOnlyFollowingSplitPreservesDistinctAndNullEndZones()=runBlocking {
+    @Test fun titleOnlyFollowingSplitPreservesDistinctNullAndEmptyEndZones()=runBlocking {
         val losses=mutableListOf<String>()
-        for(endZone in listOf("America/New_York",null))fixture(providerClonePolicy=SyntheticCloneProviderPolicy){f->
+        for(endZone in listOf("America/New_York",null,""))fixture(providerClonePolicy=SyntheticCloneProviderPolicy){f->
             f.p.db.execSQL("UPDATE events SET eventEndTimezone=? WHERE _id=1",arrayOf(endZone))
             val before=event(f.p,1)
-            if(endZone!=null){
+            if(!endZone.isNullOrBlank()){
                 assertEquals("Distinct end zones are explicitly unsupported before editing",SeriesReadResult.Denied(MutationDenial.UNSUPPORTED_EVENT),f.writer.loadForEdit(f.selected))
                 assertEquals(before,event(f.p,1));assertEquals(0,f.p.batchCount)
                 return@fixture
@@ -153,6 +153,39 @@ class CalendarFollowingSeriesWriterTest {
             assertEquals(1,f.p.batchCount)
         }
         assertTrue("Metadata-only split must preserve raw end zone: $losses",losses.isEmpty())
+    }
+
+    @Test fun legacyPreparedCanonicalEndZoneIsNotRebasedOntoFreshMetadataPreservation()=runBlocking{fixture{f->
+        f.p.db.execSQL("UPDATE events SET eventEndTimezone=NULL WHERE _id=1")
+        val edit=f.editable();val frozen=command(edit,EventPatch(title=FieldChange.Set("Legacy issued tail")))
+        f.p.failReminder=true;assertEquals(common(MutationResult.Unavailable),f.writer.mutate("legacy-zone",f.selected,edit.token,frozen))
+        val issued=JSONObject(f.store.operation("legacy-zone")!!.resultRef!!)
+        val source=issued.optJSONObject("source")?:JSONObject(issued.getString("sourceRaw"))
+        val material=issued.optJSONObject("material")?:issued.getJSONObject("plan").let{p->JSONObject().put("whole",p.get("whole")).put("ordinal",p.get("ordinal"))
+            .put("prefix",p.get("prefix")).put("tail",p.get("tail")).put("prefixReminders",p.get("prefixReminders")).put("tailReminders",p.get("tailReminders")).put("tailAttendees",p.get("tailAttendees"))}
+        val canonical=source.getJSONObject("master").getString("eventTimezone")
+        material.getJSONObject("tail").put("eventEndTimezone",canonical)
+        val legacy=JSONObject().put("version",2).put("feature","SERIES_FOLLOWING_EDIT_V2").put("kind","SERIES_V1_FOLLOWING_EDIT").put("signature",issued.get("signature"))
+            .put("token",issued.get("token")).put("command",issued.get("command")).put("source",source).put("uid",material.getJSONObject("tail").get("uid2445")).put("material",material).put("stage","prepared").toString()
+        f.store.forceOperationForTest("legacy-zone","FAILED",legacy)
+        f.p.failReminder=false
+        f.p.beforeBatch={assertEquals("ATTEMPTED",f.store.operation("legacy-zone")!!.phase);assertEquals(legacy,f.store.operation("legacy-zone")!!.resultRef)}
+        val saved=f.writer.mutate("legacy-zone",f.selected,edit.token,frozen) as SeriesMutationResult.LocalSaved
+        assertEquals(canonical,event(f.p,saved.identity.masterEventId)["eventEndTimezone"]);assertNull(event(f.p,1)["eventEndTimezone"])
+        assertEquals(2,f.p.batchCount);assertEquals(2,JSONObject(f.store.operation("legacy-zone")!!.resultRef!!).getInt("version"))
+    }}
+
+    @Test fun ruleOnlyFollowingKeepsRawNullAndEmptyEndZoneWhenTemporalFactsAreKept()=runBlocking {
+        for(endZone in listOf(null,""))fixture{f->
+            f.p.db.execSQL("UPDATE events SET eventEndTimezone=? WHERE _id=1",arrayOf(endZone))
+            val before=event(f.p,1);val edit=f.editable()
+            val frozen=command(edit,rule=RecurrenceRuleChanges(end=FieldChange.Set(RecurrenceEnd.Count(3))))
+            val saved=f.writer.mutate("rule-zone",f.selected,edit.token,frozen) as SeriesMutationResult.LocalSaved
+            val prefix=event(f.p,1);val tail=event(f.p,saved.identity.masterEventId)
+            assertEquals(before.filterKeys{it!="rrule"},prefix.filterKeys{it!="rrule"})
+            assertEquals(endZone,tail["eventEndTimezone"]);assertEquals(before["eventTimezone"],tail["eventTimezone"])
+            assertTrue(tail["rrule"]!!.contains("COUNT=3"));assertEquals(1,f.p.batchCount)
+        }
     }
 
     @Test fun literalUntilAndIndependentChangedLimitRemainExact()=runBlocking{fixture{f->

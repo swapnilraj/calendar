@@ -74,7 +74,7 @@ internal class CalendarFollowingSeriesWriter(
             val initial=material(raw,frozenCommand,previewUid(raw))
             if(!initial.whole)requireCloneProfile()
             val uid=if(initial.whole)null else if(existing==null)newUid(raw) else proof(existing)?.first?.nullable("uid")?:return@withLock common(MutationResult.Uncertain(id,null))
-            var model=material(raw,frozenCommand,uid)
+            var model=material(raw,frozenCommand,uid,existing?.let{proof(it)?.first?.let(::issuedTailEndZone)?:return@withLock common(MutationResult.Uncertain(id,null))}?:FieldChange.Keep)
             var ops=operations(source,raw,model)
             checkParcel(ops.first)
             // The source+materialized UUID are durable independently of the immutable command.
@@ -95,7 +95,7 @@ internal class CalendarFollowingSeriesWriter(
             if(winner.second.encoded!=raw.encoded)return@withLock common(MutationResult.Conflict(null))
             // Another helper can win prepare. Its one persisted UID always wins, never our proposal.
             val stored=winner.first
-            model=material(raw,frozenCommand,stored.nullable("uid"));ops=operations(source,raw,model);checkParcel(ops.first)
+            model=material(raw,frozenCommand,stored.nullable("uid"),issuedTailEndZone(stored));ops=operations(source,raw,model);checkParcel(ops.first)
             if(!permissions())return@withLock common(MutationResult.PermissionRequired)
             currentCoroutineContext().ensureActive()
             if(!model.whole)requireCloneProfile()
@@ -134,7 +134,7 @@ internal class CalendarFollowingSeriesWriter(
         if(operation.phase in setOf("PREPARED","FAILED"))return common(if(retry)MutationResult.SafeToRetry(operation.id)else MutationResult.Unavailable)
         val result=receipt.getLong("result");fun uncertain()=common(MutationResult.Uncertain(operation.id,result))
         return try {
-        val command=CalendarSeriesWriter.parseFollowingCommand(raw.snapshot,receipt.getJSONObject("command"));val model=material(raw,command,receipt.nullable("uid"))
+        val command=CalendarSeriesWriter.parseFollowingCommand(raw.snapshot,receipt.getJSONObject("command"));val model=material(raw,command,receipt.nullable("uid"),issuedTailEndZone(receipt))
         val calendar=calendar(raw.snapshot.identity.calendarId)
         if(!sameCalendar(raw.calendar,calendar))return uncertain()
         if(!verifyRow(raw.snapshot.identity.masterEventId,model.prefix))return uncertain()
@@ -172,7 +172,7 @@ internal class CalendarFollowingSeriesWriter(
         catch (_: Exception) { uncertain() }
     }
 
-    private fun material(raw:Raw,command:SeriesCommand.FollowingEdit,uid:String?):Material {
+    private fun material(raw:Raw,command:SeriesCommand.FollowingEdit,uid:String?,issuedEndZone:FieldChange<String?> = FieldChange.Keep):Material {
         owned(raw)
         if(raw.master["dtend"]!=null||RecurrenceMasterTemplates.resolve(raw.snapshot) !is RecurrenceMasterTemplateResult.Ready)throw Review("The original recurring interval requires review")
         val selected=requireNotNull(raw.snapshot.validatedSelection)
@@ -215,6 +215,14 @@ internal class CalendarFollowingSeriesWriter(
                 prefix["rrule"]=rules.prefixRuleRaw
                 val template=interval(rules.tailStart,action.duration,raw.snapshot.durationRaw)
                 val tail=copyPublic(raw).apply{putAll(owner.followingChanges(raw.calendar,raw.reminders,raw.master,action.patch));putAll(nativeTime(raw,rules.tailStart,template,rules.tailRuleRaw));put("uid2445",uid)}
+                val metadataOnly=command.intent.newTailStart==FieldChange.Keep&&command.intent.duration==RecurrenceDurationChange.KeepRaw&&
+                    command.intent.fields.time==FieldChange.Keep&&command.intent.fields.eventZone==FieldChange.Keep
+                val canonicalEndZone=tail.getAsString("eventEndTimezone")
+                val preserved=if(issuedEndZone is FieldChange.Set)issuedEndZone.value else if(metadataOnly)raw.master["eventEndTimezone"] else canonicalEndZone
+                // Legacy prepared material is already issued native authority: accept its exact
+                // original/canonical spelling, never silently rebase it onto the new preservation.
+                require(if(metadataOnly)preserved==raw.master["eventEndTimezone"]||preserved==canonicalEndZone else preserved==canonicalEndZone)
+                if(preserved==null)tail.putNull("eventEndTimezone")else tail.put("eventEndTimezone",preserved)
                 validatePublic(tail)
                 val reminders=patchedReminders(raw,action.patch).map{it.filterKeys{key->key in ReminderCopy}}
                 val attendees=copyChildren(raw,reminders)
@@ -223,6 +231,14 @@ internal class CalendarFollowingSeriesWriter(
             is RecurrenceFollowingRuleResult.NeedsReview->throw Review("The original boundary and raw repeat limits require review")
         }
     }
+    private fun issuedTailEndZone(receipt:JSONObject):FieldChange<String?> {
+        val material=receipt.getJSONObject("material")
+        if(material.getBoolean("whole"))return FieldChange.Keep
+        val tail=material.getJSONObject("tail")
+        require(tail.has("eventEndTimezone"))
+        return FieldChange.Set(if(tail.isNull("eventEndTimezone"))null else tail.get("eventEndTimezone") as? String?:error("Invalid frozen end zone"))
+    }
+
     private fun interval(start:RecurrenceStart,change:RecurrenceDurationChange,raw:String?):RecurrenceMasterTemplate {
         val duration=when(change){RecurrenceDurationChange.KeepRaw->raw;is RecurrenceDurationChange.TimedElapsed->"PT${change.duration.seconds}S";is RecurrenceDurationChange.AllDayDays->"P${change.days}D"}
         return (RecurrenceMasterTemplates.resolve(start,duration) as? RecurrenceMasterTemplateResult.Ready)?.template?:throw Review("The new interval is not compatible with native recurrence storage")
@@ -348,7 +364,7 @@ internal class CalendarFollowingSeriesWriter(
         require(meetingHash("SERIES_EDIT_V1"+raw.encoded)==token.value)
         val selected=requireNotNull(raw.snapshot.validatedSelection);val command=CalendarSeriesWriter.parseFollowingCommand(raw.snapshot,receipt.getJSONObject("command"))
         require(CalendarSeriesWriter.retirementFingerprint(selected,token,command)==(Kind to operation.signature))
-        val model=material(raw,command,receipt.nullable("uid"));require(model.json().toString()==receipt.getJSONObject("material").toString())
+        val model=material(raw,command,receipt.nullable("uid"),issuedTailEndZone(receipt));require(model.json().toString()==receipt.getJSONObject("material").toString())
         if(model.whole)require(receipt.isNull("uid"))
         if(operation.phase in setOf("PREPARED","FAILED"))require(receipt.getString("stage")=="prepared"&&!receipt.has("result"))
         else{require(operation.phase in setOf("COMMITTED","VERIFIED")&&receipt.getString("stage")=="committed");val result=receipt.getLong("result");require(result>0&&if(model.whole)result==raw.snapshot.identity.masterEventId else result!=raw.snapshot.identity.masterEventId)}

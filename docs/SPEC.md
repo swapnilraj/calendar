@@ -522,7 +522,10 @@ identity, actual bounds, untouched metadata and selected dirty-field merge/confl
 output is semantic planning only. Nonzero prefix writes repeat exact unchanged original start,
 explicit NULL end, raw duration/zone/all-day/original context alongside the new RRULE so native
 instance/raw-time refresh can run; unrelated end-zone metadata stays untouched. Synthetic cache
-checks do not prove installed-provider behavior. Native exception transfer, installed-provider warm
+Metadata-only and rule-only independent tails retain the original raw end-timezone, including NULL
+and empty string, when appointment/zone/duration are kept. Explicit temporal edits retain their
+existing encoding. Already prepared legacy material keeps its exact issued end-timezone rather
+than being rebased onto fresh preservation. These checks do not prove installed-provider behavior. Native exception transfer, installed-provider warm
 cache acceptance and independently admitted profiles remain separate gates; this helper enables no
 new capability.
 
