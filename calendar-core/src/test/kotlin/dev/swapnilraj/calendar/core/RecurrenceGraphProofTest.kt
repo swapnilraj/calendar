@@ -261,6 +261,97 @@ class RecurrenceGraphProofTest {
         assertNull(a.rawDates.exDatesRaw); assertEquals("", b.rawDates.exDatesRaw)
     }
 
+    @Test fun contradictorySelectedExceptionActualBoundsRequireReview() {
+        val selected = moved.ref.copy(instanceStart = moved.ref.instanceStart.plusSeconds(3_600),
+            instanceEnd = moved.ref.instanceEnd.plusSeconds(3_600))
+        val s = source(selected)
+        val r = RecurrenceGraphRequest.Scoped(RecurrenceScope.ALL,
+            RecurrenceMutation.Edit(EventPatch(title = FieldChange.Set("Metadata only"))))
+        review(RecurrenceGraphProblem.INVALID_SELECTION, result(s, r))
+    }
+
+    @Test fun validSelectedMovedExceptionKeepsItsActualBoundsRatherThanItsNominalDate() {
+        val s = source(moved.ref)
+        val r = RecurrenceGraphRequest.Scoped(RecurrenceScope.ALL, RecurrenceMutation.Edit(EventPatch()))
+        val proof = complete(s, r)
+        assertEquals(moved.ref, proof.selected)
+        assertEquals(seed, proof.selected.instanceStart)
+        assertNotEquals(proof.selected.recurrence!!.originalStart, proof.selected.instanceStart)
+        assertEquals(moved, proof.exceptions.single { it.source == moved }.source)
+    }
+
+    @Test fun exclusionMappingCannotCertifyTraversalThroughAnAmbiguousClock() {
+        val london = RecurrenceStart.Timed(LocalDateTime.parse("2026-10-24T01:15:00"), java.time.ZoneId.of("Europe/London"))
+        val original = RecurrenceKey.Timed(Instant.parse("2026-10-26T01:15:00Z"))
+        val selected = EventRef(identity.calendarId, 10, london.instant, london.instant.plusSeconds(3_600), RecurrenceRef(10, london.instant))
+        val s = RecurrenceSeriesSnapshot(identity, london, "FREQ=DAILY;COUNT=3", "PT1H",
+            exDatesRaw = "20261026T011500Z", exDates = setOf(original), exDatesDecoded = true,
+            coverage = SeriesCoverage.COMPLETE, validatedSelection = selected)
+        val r = RecurrenceGraphRequest.Edited(RecurrenceEditIntent.WholeSeriesEdit(london,
+            duration = RecurrenceDurationChange.TimedElapsed(java.time.Duration.ofHours(2))))
+        assertEquals(RecurrenceOrdinalResult.NeedsReview(RecurrenceOrdinalProblem.CLOCK_UNCERTAINTY),
+            RecurrenceOrdinalMapping.map(s.ruleRaw!!, london, original, s.ruleRaw, london))
+        review(RecurrenceGraphProblem.EXCLUSION_MAPPING_UNPROVED, result(s, r))
+    }
+
+    @Test fun aggregateCopyBudgetRejectsSharedLargeListsBeforeTraversingTheirContents() {
+        var reads = 0
+        val guarded = object : AbstractList<Int>() {
+            override val size = 100_000
+            override fun get(index: Int): Int {
+                reads++
+                error("Budget admission must precede nested traversal")
+            }
+        }
+        val repeated = RecurrencePlanAction.UpdateMaster(patch = EventPatch(alertMinutes = FieldChange.Set(guarded)))
+        val p = RecurrencePlanningResult.Ready(identity, List(10_002) { repeated })
+        val r = RecurrenceGraphRequest.Scoped(RecurrenceScope.ALL, RecurrenceMutation.Edit(EventPatch()))
+        val observed = result(source(), r, p, RecurrencePlanningBudget(maxInstances = 100_000, maxExceptions = 10_000))
+        assertEquals("Nested input was traversed before aggregate admission", 0, reads)
+        review(RecurrenceGraphProblem.INPUT_BUDGET, observed)
+    }
+
+    @Test fun exceptionReanchorCannotCertifyTraversalThroughAnAmbiguousClock() {
+        val london = RecurrenceStart.Timed(LocalDateTime.parse("2026-10-24T01:15:00"), java.time.ZoneId.of("Europe/London"))
+        val original = Instant.parse("2026-10-26T01:15:00Z")
+        val selected = EventRef(identity.calendarId, 10, london.instant, london.instant.plusSeconds(3_600), RecurrenceRef(10, london.instant))
+        val movedCancelled = SeriesException(EventRef(identity.calendarId, 22, london.instant.plusSeconds(7_200),
+            london.instant.plusSeconds(10_800), RecurrenceRef(10, original)), RecurrenceKey.Timed(original), true)
+        val s = RecurrenceSeriesSnapshot(identity, london, "FREQ=DAILY;COUNT=3", "PT1H",
+            exceptions = listOf(movedCancelled), coverage = SeriesCoverage.COMPLETE, validatedSelection = selected)
+        val r = RecurrenceGraphRequest.Edited(RecurrenceEditIntent.WholeSeriesEdit(london,
+            duration = RecurrenceDurationChange.TimedElapsed(java.time.Duration.ofHours(2))))
+        val observed = result(s, r)
+        assertEquals("EXCEPTION_MAPPING_UNPROVED", (observed as? RecurrenceGraphProofResult.NeedsReview)?.problem?.name)
+    }
+
+    @Test fun unchangedAllMetadataRetainsOverridesAcrossAFoldWithoutReinterpretingTheirSchedule() {
+        val london = RecurrenceStart.Timed(LocalDateTime.parse("2026-10-24T01:15:00"), java.time.ZoneId.of("Europe/London"))
+        val original = Instant.parse("2026-10-26T01:15:00Z")
+        val selected = EventRef(identity.calendarId, 10, london.instant, london.instant.plusSeconds(3_600), RecurrenceRef(10, london.instant))
+        val override = SeriesException(EventRef(identity.calendarId, 22, london.instant.plusSeconds(7_200),
+            london.instant.plusSeconds(10_800), RecurrenceRef(10, original)), RecurrenceKey.Timed(original), true)
+        val s = RecurrenceSeriesSnapshot(identity, london, "FREQ=DAILY;COUNT=3", "PT1H",
+            exceptions = listOf(override), coverage = SeriesCoverage.COMPLETE, validatedSelection = selected)
+        val r = RecurrenceGraphRequest.Scoped(RecurrenceScope.ALL,
+            RecurrenceMutation.Edit(EventPatch(title = FieldChange.Set("Metadata only"))))
+        val proof = complete(s, r)
+        assertEquals(listOf(RecurrenceExceptionDisposition.Retain(override)), proof.exceptions)
+        assertEquals(computed(s, r), proof.plan)
+    }
+
+    @Test fun followingRebindAlsoRequiresClockCertainOriginalTraversal() {
+        val london = RecurrenceStart.Timed(LocalDateTime.parse("2026-10-24T01:15:00"), java.time.ZoneId.of("Europe/London"))
+        val boundary = Instant.parse("2026-10-26T01:15:00Z")
+        val original = Instant.parse("2026-10-27T01:15:00Z")
+        val selected = EventRef(identity.calendarId, 10, boundary, boundary.plusSeconds(3_600), RecurrenceRef(10, boundary))
+        val override = SeriesException(EventRef(identity.calendarId, 22, london.instant.plusSeconds(7_200),
+            london.instant.plusSeconds(10_800), RecurrenceRef(10, original)), RecurrenceKey.Timed(original))
+        val s = RecurrenceSeriesSnapshot(identity, london, "FREQ=DAILY;COUNT=4", "PT1H",
+            exceptions = listOf(override), coverage = SeriesCoverage.COMPLETE, validatedSelection = selected)
+        review(RecurrenceGraphProblem.EXCEPTION_MAPPING_UNPROVED, result(s, following()))
+    }
+
     @Test fun allDayTransferUsesDateOriginalsAndRejectsNonMidnightIdentity() {
         val day = java.time.LocalDate.of(2026, 11, 17)
         fun at(index: Int) = day.plusDays(index.toLong()).atStartOfDay(ZoneOffset.UTC).toInstant()

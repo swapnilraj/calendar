@@ -12,7 +12,7 @@ enum class RecurrenceGraphProblem {
     INCOMPLETE_SOURCE, INVALID_SELECTION, SOURCE_GRAPH_INVALID, INPUT_BUDGET,
     PLANNING_NOT_READY, PLAN_MISMATCH, FOREIGN_EXCEPTION, DUPLICATE_EXCEPTION_ACTION,
     MISSING_EXCEPTION_ACTION, TARGET_PARENT_MISSING, TARGET_ORIGINAL_COLLISION,
-    EXCLUSION_MAPPING_UNPROVED, RDATE_MAPPING_UNPROVED,
+    EXCLUSION_MAPPING_UNPROVED, EXCEPTION_MAPPING_UNPROVED, RDATE_MAPPING_UNPROVED,
 }
 
 sealed interface RecurrenceGraphProofResult {
@@ -56,6 +56,8 @@ class RecurrenceGraphProofValue internal constructor(
  * preservation, clone admission, a receipt, or a capability. Existing production guards stay intact.
  */
 object RecurrenceGraphProof {
+    /** Aggregate input cells, including repeated aliases; defensive copies have bounded overhead. */
+    internal const val MAX_COPIED_ELEMENTS = 100_000
     fun prove(snapshot: RecurrenceSeriesSnapshot, selected: EventRef, request: RecurrenceGraphRequest,
         plan: RecurrencePlanningResult.Ready, budget: RecurrencePlanningBudget = RecurrencePlanningBudget()): RecurrenceGraphProofResult = try {
         if (snapshot.coverage != SeriesCoverage.COMPLETE) fail(RecurrenceGraphProblem.INCOMPLETE_SOURCE)
@@ -65,9 +67,13 @@ object RecurrenceGraphProof {
             plan.actions.size > budget.maxExceptions + 2 ||
             listOfNotNull(snapshot.ruleRaw, snapshot.rDatesRaw, snapshot.exDatesRaw, snapshot.exRuleRaw).any { it.length > 1_000_000 })
             fail(RecurrenceGraphProblem.INPUT_BUDGET)
+        admitCopyWork(snapshot, request, plan)
         // Copies include nested mutable patch reminder lists and weekly weekday sets, not just the
         // outer action list. Neither mutation of the caller nor a cast of our output can alter proof.
         val source = snapshot.copy(exceptions = frozenList(snapshot.exceptions), exDates = frozenSet(snapshot.exDates))
+        source.exceptions.firstOrNull { it.ref.eventId == selected.eventId }?.let {
+            if (it.ref != selected) fail(RecurrenceGraphProblem.INVALID_SELECTION)
+        }
         val command = copyRequest(request, budget)
         val supplied = copyPlan(plan, budget)
         if (source.exceptions.map { it.ref.eventId }.toSet().size != source.exceptions.size ||
@@ -141,7 +147,15 @@ object RecurrenceGraphProof {
             if (id !in dispositions) fail(RecurrenceGraphProblem.MISSING_EXCEPTION_ACTION)
         }
         if (supplied != computed) fail(RecurrenceGraphProblem.PLAN_MISMATCH)
-        val exclusions = exclusions(source, selected, supplied, command, budget)
+        val ordinals = OrdinalProof(source, selected, supplied, budget)
+        all.forEach { value -> when (value) {
+            is RecurrenceExceptionDisposition.Rebind -> ordinals.verify(value.source.original, value.parent, value.original,
+                RecurrenceGraphProblem.EXCEPTION_MAPPING_UNPROVED)
+            is RecurrenceExceptionDisposition.Remap -> ordinals.verify(value.source.original, value.parent, value.original,
+                RecurrenceGraphProblem.EXCEPTION_MAPPING_UNPROVED)
+            else -> Unit // Untouched ALL metadata does not reinterpret the original schedule.
+        } }
+        val exclusions = exclusions(source, selected, supplied, command, budget, ordinals)
         RecurrenceGraphProofResult.Complete(RecurrenceGraphProofValue(source.identity, selected, supplied,
             frozenList(all), frozenList(inserted), exclusions,
             RecurrenceRawDateProvenance(source.rDatesRaw, source.exDatesRaw, source.exRuleRaw)))
@@ -150,7 +164,7 @@ object RecurrenceGraphProof {
 
     private fun exclusions(source: RecurrenceSeriesSnapshot, selected: EventRef,
         plan: RecurrencePlanningResult.Ready, request: RecurrenceGraphRequest,
-        budget: RecurrencePlanningBudget): RecurrenceExclusionProof {
+        budget: RecurrencePlanningBudget, ordinals: OrdinalProof): RecurrenceExclusionProof {
         val updates = plan.actions.filterIsInstance<RecurrencePlanAction.UpdateMaster>()
         if (updates.size > 1) fail(RecurrenceGraphProblem.PLAN_MISMATCH)
         val tail = plan.actions.filterIsInstance<RecurrencePlanAction.InsertTail>().singleOrNull()
@@ -171,8 +185,8 @@ object RecurrenceGraphProof {
         else {
             val existing = (change as? FieldChange.Set)?.value ?: source.exDates
             val boundary = original(source.start, requireNotNull(selected.recurrence).originalStart)
-            // The recomputed planner is the ordinal authority. Its monotonic one-to-one target
-            // sets allow materializing the ordered association WITHOUT another recurrence engine.
+            // Order only proposes an association. The existing strict ordinal mapper must also
+            // prove it, including clock certainty while traversing intervening candidates.
             if (tail != null) {
                 val past = source.exDates.filter { keyOrder.compare(it, boundary) < 0 }.toSet()
                 if (existing != past) fail(RecurrenceGraphProblem.EXCLUSION_MAPPING_UNPROVED)
@@ -190,7 +204,61 @@ object RecurrenceGraphProof {
         }
         if (result.map { it.source }.toSet() != source.exDates || result.size != source.exDates.size)
             fail(RecurrenceGraphProblem.EXCLUSION_MAPPING_UNPROVED)
+        result.forEach {
+            if (it.targetParent != null && it.targetOriginal != null)
+                ordinals.verify(it.source, it.targetParent, it.targetOriginal)
+            else if (!removed) ordinals.sourceOrdinal(it.source)
+        }
         return RecurrenceExclusionProof.Transform(source.exDatesRaw, frozenList(result))
+    }
+
+    /** Shared strict mapper, bounded across the graph, not an independent recurrence engine. */
+    private class OrdinalProof(val source: RecurrenceSeriesSnapshot, val selected: EventRef,
+        val plan: RecurrencePlanningResult.Ready, val budget: RecurrencePlanningBudget) {
+        private data class Key(val raw: String, val start: RecurrenceStart, val original: RecurrenceKey)
+        private val cache = mutableMapOf<Key, Int>()
+        private var remaining = 100_000
+        private fun ordinal(raw: String, start: RecurrenceStart, original: RecurrenceKey, problem: RecurrenceGraphProblem): Int {
+            val key = Key(raw, start, original)
+            cache[key]?.let { return it }
+            val limit = minOf(budget.maxInstances, RecurrenceOrdinalMapping.MAX_CANDIDATES_PER_SIDE, remaining / 2)
+            if (limit < 1) fail(problem)
+            val mapped = RecurrenceOrdinalMapping.map(raw, start, original, raw, start, limit)
+                as? RecurrenceOrdinalResult.Ready ?: fail(problem)
+            val occurrence = when (val value = mapped.occurrence) {
+                is RecurrenceOccurrence.AllDay -> RecurrenceKey.Date(value.date)
+                is RecurrenceOccurrence.Timed -> RecurrenceKey.Timed(value.instant)
+                null -> fail(problem)
+            }
+            if (occurrence != original) fail(problem)
+            remaining -= 2 * (mapped.ordinal + 1)
+            cache[key] = mapped.ordinal
+            return mapped.ordinal
+        }
+        fun sourceOrdinal(original: RecurrenceKey,
+            problem: RecurrenceGraphProblem = RecurrenceGraphProblem.EXCLUSION_MAPPING_UNPROVED): Int = ordinal(
+            source.ruleRaw ?: fail(problem), source.start, original, problem)
+        fun verify(before: RecurrenceKey, parent: SeriesTarget, after: RecurrenceKey,
+            problem: RecurrenceGraphProblem = RecurrenceGraphProblem.EXCLUSION_MAPPING_UNPROVED) {
+            val old = sourceOrdinal(before, problem)
+            val update = plan.actions.filterIsInstance<RecurrencePlanAction.UpdateMaster>().singleOrNull()
+            val targetStart: RecurrenceStart
+            val targetRule: String
+            val cut: Int
+            if (parent == SeriesTarget.TAIL) {
+                val tail = plan.actions.filterIsInstance<RecurrencePlanAction.InsertTail>().singleOrNull()
+                    ?: fail(problem)
+                targetStart = tail.start; targetRule = tail.rule
+                cut = sourceOrdinal(original(source.start, requireNotNull(selected.recurrence).originalStart), problem)
+            } else {
+                targetStart = (update?.anchor as? FieldChange.Set)?.value ?: source.start
+                targetRule = (update?.rule as? FieldChange.Set)?.value ?: source.ruleRaw
+                    ?: fail(problem)
+                cut = 0
+            }
+            if (old < cut || ordinal(targetRule, targetStart, after, problem) != old - cut)
+                fail(problem)
+        }
     }
 
     private fun associate(old: Set<RecurrenceKey>, new: Set<RecurrenceKey>, parent: SeriesTarget,
@@ -229,6 +297,42 @@ object RecurrenceGraphProof {
     private fun fail(problem: RecurrenceGraphProblem): Nothing = throw ProofFailure(problem)
     private fun <T> frozenList(values: Collection<T>): List<T> = Collections.unmodifiableList(ArrayList(values))
     private fun <T> frozenSet(values: Collection<T>): Set<T> = Collections.unmodifiableSet(LinkedHashSet(values))
+    /** Inspect nested sizes before copying ANY contents, so shared lists cannot amplify allocation. */
+    private fun admitCopyWork(source: RecurrenceSeriesSnapshot, request: RecurrenceGraphRequest,
+        plan: RecurrencePlanningResult.Ready) {
+        var remaining = MAX_COPIED_ELEMENTS.toLong()
+        fun cells(count: Int) {
+            if (count < 0 || count.toLong() > remaining) fail(RecurrenceGraphProblem.INPUT_BUDGET)
+            remaining -= count
+        }
+        fun patchSize(value: EventPatch) { (value.alertMinutes as? FieldChange.Set)?.let { cells(it.value.size) } }
+        fun patternSize(value: RecurrencePattern) { if (value is RecurrencePattern.Weekly) cells(value.days.size) }
+        fun ruleSize(value: RecurrenceRuleChanges) { (value.pattern as? FieldChange.Set)?.let { patternSize(it.value) } }
+        cells(source.exceptions.size); cells(source.exDates.size); cells(plan.actions.size)
+        when (request) {
+            is RecurrenceGraphRequest.Scoped -> (request.mutation as? RecurrenceMutation.Edit)?.let {
+                patchSize(it.patch)
+                (it.replacement as? FieldChange.Set)?.value?.let { spec -> patternSize(spec.pattern) }
+            }
+            is RecurrenceGraphRequest.Edited -> when (val intent = request.intent) {
+                is RecurrenceEditIntent.WholeSeriesEdit -> { patchSize(intent.fields); ruleSize(intent.rule) }
+                is RecurrenceEditIntent.FollowingSeriesEdit -> {
+                    patchSize(intent.fields); patchSize(intent.selectedExceptionPatch); ruleSize(intent.rule)
+                }
+            }
+        }
+        plan.actions.forEach { action -> when (action) {
+            is RecurrencePlanAction.UpdateMaster -> {
+                patchSize(action.patch); (action.exclusions as? FieldChange.Set)?.let { cells(it.value.size) }
+            }
+            is RecurrencePlanAction.InsertTail -> { patchSize(action.patch); cells(action.exclusions.size) }
+            is RecurrencePlanAction.UpsertException -> patchSize(action.patch)
+            is RecurrencePlanAction.RebindExceptionToTail -> patchSize(action.selectedPatch)
+            is RecurrencePlanAction.RemapException -> patchSize(action.selectedPatch)
+            is RecurrencePlanAction.DeleteSeries -> cells(action.exceptions.size)
+            is RecurrencePlanAction.RemoveException -> Unit
+        } }
+    }
     private fun patch(value: EventPatch, budget: RecurrencePlanningBudget): EventPatch = value.copy(alertMinutes = when (val alerts = value.alertMinutes) {
         FieldChange.Keep -> FieldChange.Keep
         is FieldChange.Set -> {
