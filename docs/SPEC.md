@@ -540,6 +540,9 @@ identity; SPLIT requires an issued prefix UID or sync identity. Default Unverifi
 independent tails. Existing receipt2 retries retain their exact old bytes/protocol, while historical
 known commits remain uncertain rather than gaining invented complete ACK evidence. This backend
 change activates no EXDATE/exception transfer, clone profile, Google delivery or physical acceptance.
+Pre-dispatch frozen source checks read child membership as IDs, then compare known reminder/attendee
+items under issued calendar/UID guards with parent checks around payload reads. Empty property sets
+are checked without property payloads; nonempty WHOLE properties retain the existing in-place policy.
 See [the private Following protocol](FOLLOWING_EXECUTION_RECEIPT3.md).
 
 ### M8 — Search, preferences and Android entry points

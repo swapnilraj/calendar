@@ -4,6 +4,11 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+The complete verified source checkpoint `57fe2ad` is also preserved on the separate
+[GitHub checkpoint branch](https://github.com/swapnilraj/calendar/tree/codex/verified-2246-20261119).
+This preserves the tested aggregate source without overwriting the bounded publication branch; it
+is not a signed release or approval of subsequent source changes.
+
 At source checkpoint `57fe2ad`, the required complete gate **passed: 2,246 tests**
 (app1,972 + core257 + weather17), debug APK assembly and lint, with zero failures/errors/skips.
 Command: `./gradlew test :app:assembleDebug :app:lintDebug`; elapsed3m50s, log
@@ -29,15 +34,15 @@ without changing assertions or timeouts; the two focused journeys passed and the
 rerun above passed. The historical timeout cause remains unproven.
 
 Following receipt3 source is integrated after the passing checkpoint as `408857b`, with69
-isolated focused checks passing. Its next complete gate is pending: independent review found a
-pre-dispatch raw child-collection read race, and a guarded-read correction plus failing-before
-regressions are being prepared. Recovery ACK/identity controls and this source status do not
+isolated focused checks passing. Independent review found a
+pre-dispatch raw child-collection read race. The [guarded correction](audit/evidence/following-prepared-child-binding-fixed-2026-11-19.json)
+is integrated as `97cccf7`, with72 focused checks passing, including the unchanged3-case independent
+before/after proof. The next complete gate is pending. Recovery ACK/identity controls and this source status do not
 establish installed-provider or Google acceptance.
 
 [PR66](https://github.com/swapnilraj/calendar/pull/66) publishes the already integrated pure
 Following ordinal/rule/metadata helpers and explicit UNKNOWN-default rule capability from remote
-`53017c2`. All44 focused helper tests passed6s; full CI is pending at `336c77f`, and the PR remains
-draft. The task attachment is confirmed. This adds no Android adapter or provider admission.
+`53017c2`. All44 focused helper tests passed6s; full CI passed at `336c77f`, and PR66 merged as `6ea48fe`. The task attachment is confirmed. This adds no Android adapter or provider admission.
 
 [PR65](https://github.com/swapnilraj/calendar/pull/65) publishes the bounded native-tooling closure
 from remote `e536d54`, including opt-in runner wiring and19 host guards. Its local opt-in

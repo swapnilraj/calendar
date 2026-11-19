@@ -1,0 +1,65 @@
+{
+  "date": "2026-11-19",
+  "sourcePacket": "a1b21de",
+  "integratedSource": "97cccf7",
+  "independentTestsOnly": "6de4b06",
+  "scope": "actual adapters with dedicated synthetic transactional provider; not native CalendarProvider/account run",
+  "beforeEvidence": "following-prepared-child-binding-before-2026-11-19.json",
+  "focusedLog": "/tmp/daylight-following-prepared-child-binding-fixed2.log",
+  "elapsed": "33s",
+  "reports": [
+    {
+      "suite": "dev.swapnilraj.calendar.NativeFollowingJourneyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "70c019181f5d124ff46cee60aca852331340b65d8f8d9e653d1e6cfa253f490f"
+    },
+    {
+      "suite": "dev.swapnilraj.calendar.data.calendar.CalendarFollowingSeriesWriterTest",
+      "tests": 26,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "7fe14a9df6e69f5c2cd70543152c8e6d70e343b73608018348cd3c20c71cf9db"
+    },
+    {
+      "suite": "dev.swapnilraj.calendar.data.calendar.FollowingExecutionDispatchTest",
+      "tests": 29,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "ce503c06b5760b2c669ac6197812d5eba0544f2a09b0c448b63a7b8dc45da85b"
+    },
+    {
+      "suite": "dev.swapnilraj.calendar.data.calendar.FollowingExecutionReceiptTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "d2749631cc3519993818e15845218e9d1359a60847ee637a2f60ac26c2ef180b"
+    },
+    {
+      "suite": "dev.swapnilraj.calendar.data.calendar.FollowingPreparedChildBindingProofTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "1638813519f45e6e2cc946bd25725be3b403984b8943e1caadefb2f0d4f61905"
+    }
+  ],
+  "verified": [
+    "Unchanged reminder/attendee race controls pass with zero batches, exact PREPARED journal and no foreign private cells",
+    "Stable frozen retry still commits once and recovers the same ref",
+    "Known Reminder/Attendee item reads include event/calendar/issued UID predicates and before/after binding checks",
+    "Empty properties use only ID/event_id projections; existing nonempty WHOLE policy retained",
+    "Static query budget forecast includes actual child widths and repeated guards"
+  ],
+  "aggregate": "PENDING",
+  "limitations": [
+    "No new production clone admission",
+    "No native Following/EXDATE/account/Google delivery acceptance",
+    "Optional extra independent test turn did not execute and is not counted"
+  ]
+}
