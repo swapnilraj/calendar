@@ -1,0 +1,23 @@
+<resources>
+    <string name="phone_settings_general">General</string>
+    <string name="phone_settings_view">View</string>
+    <string name="phone_settings_back">Back</string>
+    <string name="phone_settings_default_calendar">Default calendar for new events</string>
+    <string name="phone_settings_reminders">Reminders</string>
+    <string name="phone_settings_week_start">Start of the week</string>
+    <string name="phone_settings_device_zone">Use device time zone</string>
+    <string name="phone_settings_time_zone">Time zone</string>
+    <string name="phone_settings_duration">Default event duration</string>
+    <string name="phone_settings_duration_help">This applies to new events created in Daylight.</string>
+    <string name="phone_settings_system_default">System default</string>
+    <string name="phone_settings_display_section">Daylight display</string>
+    <string name="phone_settings_reminder_defaults">New event reminders</string>
+    <string name="phone_settings_apply">Apply</string>
+    <string name="phone_settings_retry">Try again</string>
+    <string name="phone_settings_saving">Saving preference</string>
+    <string name="phone_settings_no_reminder">Set a default reminder</string>
+    <plurals name="phone_settings_minutes_before">
+        <item quantity="one">%d minute before</item>
+        <item quantity="other">%d minutes before</item>
+    </plurals>
+</resources>
