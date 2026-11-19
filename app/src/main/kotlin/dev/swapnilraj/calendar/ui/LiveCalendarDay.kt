@@ -7,6 +7,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -31,6 +32,8 @@ import dev.swapnilraj.calendar.ui.multiday.MultiDayMaxDate
 import dev.swapnilraj.calendar.ui.events.SeriesEditorAction
 import dev.swapnilraj.calendar.ui.events.canPrepareSeriesScope
 import dev.swapnilraj.calendar.ui.events.PhoneEventDetails
+import dev.swapnilraj.calendar.android.navigation.CalendarSeedReviewActivity
+import dev.swapnilraj.calendar.android.navigation.CalendarEditReviewActivity
 import dev.swapnilraj.calendar.ui.events.DraftBrowserSheet
 import dev.swapnilraj.calendar.ui.events.DraftPreparationResult
 import dev.swapnilraj.calendar.ui.events.prepareNewDraft
@@ -98,7 +101,10 @@ internal fun LiveCalendarDay(
     contactsPermissionGranted: Boolean = false,
     requestContactsPermission: () -> Unit = {},
     seriesMutations: CalendarSeriesMutations? = null,
+    dateNavigation: CalendarDateNavigation? = null,
+    onDateNavigationConsumed: (String) -> Unit = {},
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val selectedDateState = rememberSaveable { mutableStateOf<String?>(null) }
     var writeRequestText by rememberSaveable { mutableStateOf<String?>(null) }
@@ -147,7 +153,12 @@ internal fun LiveCalendarDay(
         DisplayZoneOption.Device -> now
         is DisplayZoneOption.Fixed -> now.withZoneSameInstant(zone.zone)
     }
-    val visibleDate = selectedDateState.value?.let(LocalDate::parse) ?: displayNow.toLocalDate()
+    // On a cold external date launch the first pager must already use that date. Otherwise its
+    // initial visible-date callback can race the navigation effect and restore today's anchor.
+    val initialRequestedDate = dateNavigation?.instant?.let { instant ->
+        runCatching { instant.atZone(displayNow.zone).toLocalDate() }.getOrNull()
+    }?.takeIf { it in MultiDayMinDate..MultiDayMaxDate }
+    val visibleDate = selectedDateState.value?.let(LocalDate::parse) ?: initialRequestedDate ?: displayNow.toLocalDate()
     val dateText = visibleDate.toString()
     fun currentDate(): LocalDate = selectedDateState.value?.let(LocalDate::parse) ?: displayNow.toLocalDate()
     LaunchedEffect(Unit) { if (selectedDateState.value == null) selectedDateState.value = dateText }
@@ -381,6 +392,17 @@ internal fun LiveCalendarDay(
         if (view == CalendarViewOption.AGENDA) agendaWindow(selectedDate, 31).let { agendaRangeText = "${it.start}/${it.endExclusive}" }
         if (view == CalendarViewOption.THREE_DAY || view == CalendarViewOption.WEEK)
             planningMultiDayRange(selectedDate, multiDays, firstWeekday).let { multiDayRangeText = "${it.start}/${it.endExclusive}" }
+    }
+    var handledDateNavigation by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(dateNavigation, displayNow.zone) {
+        val navigation = dateNavigation ?: return@LaunchedEffect
+        if (handledDateNavigation != navigation.id) {
+            val date = runCatching { navigation.instant.atZone(displayNow.zone).toLocalDate() }.getOrNull()
+            if (date != null && date in MultiDayMinDate..MultiDayMaxDate) navigatePhoneDate(date)
+            else onDraftFailure()
+            handledDateNavigation = navigation.id
+        }
+        onDateNavigationConsumed(navigation.id)
     }
     BackHandler(enabled = phoneMonthExpanded || phoneDatePicker || phoneZoomOpen) {
         phoneMonthExpanded = false; phoneDatePicker = false; phoneZoomOpen = false
@@ -755,7 +777,21 @@ internal fun LiveCalendarDay(
         }) else null, onOpenSeries = if (seriesWritable) ({ launch ->
             showDrafts = false
             seriesWriteText = SeriesWriteRequest.from(launch).encode()
-        }) else null)
+        }) else null, onOpenSeedReview = { record ->
+            val intent = CalendarSeedReviewActivity.intentFromDraft(context, record)
+            if (intent != null) {
+                showDrafts = false
+                context.startActivity(intent)
+            } else onDraftFailure()
+        }, onOpenEditReview = { record, companion ->
+            val intent = if (record.id.startsWith("incoming-edit:"))
+                CalendarEditReviewActivity.intentForNative(context, record, companion)
+            else CalendarEditReviewActivity.intentFromReview(context, record)
+            if (intent != null) {
+                showDrafts = false
+                context.startActivity(intent)
+            } else onDraftFailure()
+        })
 }
 
 /** Locale week alignment is a navigation policy, independent of event/recurrence expansion. */

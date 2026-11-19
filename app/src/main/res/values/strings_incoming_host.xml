@@ -1,0 +1,5 @@
+<resources>
+    <string name="incoming_draft_review">Event requested by another app</string>
+    <string name="incoming_draft_guests_pending">Guests are retained. A meeting editor is required before saving.</string>
+    <string name="incoming_edit_pending">These proposed changes have not been applied. Editing events from another app is not available yet.</string>
+</resources>

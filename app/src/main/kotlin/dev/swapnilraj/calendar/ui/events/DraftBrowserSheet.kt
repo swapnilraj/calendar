@@ -6,11 +6,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.DraftStore
+import dev.swapnilraj.calendar.core.DraftRecord
+import dev.swapnilraj.calendar.android.navigation.*
 import dev.swapnilraj.calendar.core.EventTime
 import dev.swapnilraj.calendar.ui.events.meetings.MeetingResponseLaunch
 import dev.swapnilraj.calendar.ui.events.meetings.create.MeetingCreationLaunch
@@ -37,14 +40,37 @@ fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorD
     displayZone: ZoneId = ZoneId.systemDefault(), onOpenMeeting: ((MeetingResponseLaunch) -> Unit)? = null,
     onOpenMeetingCreation: ((MeetingCreationLaunch) -> Unit)? = null,
     onOpenOwnedMeeting: ((OwnedMeetingLaunch) -> Unit)? = null,
-    onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null) {
+    onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null,
+    onOpenSeedReview: ((DraftRecord) -> Unit)? = null,
+    onOpenEditReview: ((DraftRecord, DraftRecord?) -> Unit)? = null) {
+    val context = LocalContext.current
     var revision by remember { mutableIntStateOf(0) }
     val state by produceState<DraftBrowserState>(DraftBrowserState.Loading, store, revision) {
         value = DraftBrowserState.Loading
         try {
             val items = withContext(Dispatchers.IO) {
-                store.list().sortedWith(compareByDescending<dev.swapnilraj.calendar.core.DraftRecord> { it.updatedAt }.thenBy { it.id })
-                    .map(DraftBrowserCodec::read)
+                val records = store.list()
+                val byId = records.associateBy { it.id }
+                records.sortedWith(compareByDescending<DraftRecord> { it.updatedAt }.thenBy { it.id }).mapNotNull { record ->
+                    if (isCalendarEditHandoffReceipt(record)) null
+                    else if (record.id.startsWith("incoming-edit:")) {
+                        val companion = byId["incoming-edit-review:${record.id.removePrefix("incoming-edit:")}"]
+                        val item = DraftBrowserCodec.read(record)
+                        if (item.launch != null && CalendarEditReviewActivity.intentForNative(context, record, companion) != null)
+                            item.copy(launch = null, editRecord = record, editCompanion = companion, editLaunch = item.launch)
+                        else DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNREADABLE)
+                    } else if (record.id.startsWith("incoming-edit-review:") && calendarEditReviewPreview(record) != null &&
+                        byId["incoming-edit:${record.id.removePrefix("incoming-edit-review:")}"]?.let {
+                            CalendarEditReviewActivity.intentForNative(context, it, record) != null
+                        } == true) null
+                    else if (isCalendarSeedHandoffReceipt(record)) null
+                    else if (record.id.startsWith("incoming:")) {
+                        val companion = byId["incoming-review:${record.id.removePrefix("incoming:")}"]
+                        if (isCalendarSeedNativeHandoffVerified(record, companion)) DraftBrowserCodec.read(record)
+                        else if (companion != null && calendarSeedReviewPreview(companion) != null) null
+                        else DraftBrowserItem(record.id, record.updatedAt, null, DraftReadIssue.UNREADABLE)
+                    } else DraftBrowserCodec.read(record)
+                }
             }
             currentCoroutineContext().ensureActive()
             value = DraftBrowserState.Ready(items)
@@ -52,7 +78,7 @@ fun DraftBrowserSheet(store: DraftStore, onDismiss: () -> Unit, onOpen: (EditorD
         catch (_: Exception) { value = DraftBrowserState.Unavailable }
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone, onOpenMeeting, onOpenMeetingCreation, onOpenOwnedMeeting, onOpenSeries = onOpenSeries)
+        DraftBrowserContent(state, onDismiss, onOpen, { revision++ }, displayZone, onOpenMeeting, onOpenMeetingCreation, onOpenOwnedMeeting, onOpenSeries = onOpenSeries, onOpenSeedReview = onOpenSeedReview, onOpenEditReview = onOpenEditReview)
     }
 }
 
@@ -61,7 +87,9 @@ fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen:
     onRefresh: () -> Unit, displayZone: ZoneId = ZoneId.systemDefault(), onOpenMeeting: ((MeetingResponseLaunch) -> Unit)? = null,
     onOpenMeetingCreation: ((MeetingCreationLaunch) -> Unit)? = null,
     onOpenOwnedMeeting: ((OwnedMeetingLaunch) -> Unit)? = null,
-    onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null) {
+    onOpenSeries: ((SeriesEditorLaunch) -> Unit)? = null,
+    onOpenSeedReview: ((DraftRecord) -> Unit)? = null,
+    onOpenEditReview: ((DraftRecord, DraftRecord?) -> Unit)? = null) {
     val locale = LocalLocale.current.platformLocale
     val formatter = remember(locale, displayZone) { DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
         .withLocale(locale).withZone(displayZone) }
@@ -84,8 +112,18 @@ fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen:
                             val owned = item.ownedMeeting
                             val creation = item.meetingCreation
                             val meeting = item.meetingPreview
+                            val seed = item.seedReview
+                            val edit = item.editReview
+                            val editLaunch = item.editLaunch
                             val series = item.seriesLaunch
-                            if (owned != null) {
+                            if (item.editRecord != null && (edit != null || editLaunch != null)) {
+                                Text((edit?.title ?: editLaunch?.title).orEmpty().ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.incoming_edit_review_title))
+                                if (editLaunch?.needsRecovery == true) Text(stringResource(R.string.events_drafts_needs_recovery))
+                                if (onOpenEditReview != null) TextButton(onClick = { onOpenEditReview(item.editRecord, item.editCompanion) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                                    Text(stringResource(if (editLaunch?.needsRecovery == true) R.string.events_drafts_recover else R.string.events_drafts_open))
+                                }
+                            } else if (owned != null) {
                                 Text(owned.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
                                 Text(stringResource(R.string.owned_meeting_edit))
                                 if (owned.launch.needsRecovery) Text(stringResource(R.string.events_drafts_needs_recovery))
@@ -98,6 +136,15 @@ fun DraftBrowserContent(state: DraftBrowserState, onDismiss: () -> Unit, onOpen:
                                 if (creation.needsRecovery) Text(stringResource(R.string.events_drafts_needs_recovery))
                                 if (onOpenMeetingCreation != null) TextButton(onClick = { onOpenMeetingCreation(creation) }, modifier = Modifier.heightIn(min = 48.dp)) {
                                     Text(stringResource(if (creation.needsRecovery) R.string.events_drafts_recover else R.string.events_drafts_open))
+                                }
+                            } else if (seed != null && item.seedRecord != null) {
+                                Text(seed.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.incoming_draft_review))
+                                Text(if (seed.rawDate.isBlank()) stringResource(R.string.events_drafts_date_unfinished)
+                                    else stringResource(R.string.events_drafts_raw_date, seed.rawDate))
+                                if (seed.hasGuests) Text(stringResource(R.string.incoming_draft_guests_pending))
+                                if (onOpenSeedReview != null) TextButton(onClick = { onOpenSeedReview(item.seedRecord) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                                    Text(stringResource(R.string.events_drafts_open))
                                 }
                             } else if (meeting != null) {
                                 Text(meeting.title.ifBlank { stringResource(R.string.events_no_title) }, style = MaterialTheme.typography.titleMedium)

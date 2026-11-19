@@ -25,6 +25,49 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".android.navigation.CalendarEntryActivity" android:exported="true" android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:host="com.android.calendar" android:pathPrefix="/events" />
+                <data android:scheme="content" android:host="com.android.calendar" android:pathPrefix="/time" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:host="com.android.calendar" android:pathPrefix="/events" />
+                <data android:scheme="content" android:host="com.android.calendar" android:pathPrefix="/time" />
+                <data android:mimeType="vnd.android.cursor.item/event" />
+                <data android:mimeType="vnd.android.cursor.dir/event" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.EDIT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:host="com.android.calendar" android:pathPrefix="/events" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.EDIT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:host="com.android.calendar" android:pathPrefix="/events" />
+                <data android:mimeType="vnd.android.cursor.item/event" />
+                <data android:mimeType="vnd.android.cursor.dir/event" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.INSERT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:host="com.android.calendar" android:path="/events" />
+                <data android:mimeType="vnd.android.cursor.dir/event" />
+                <data android:mimeType="vnd.android.cursor.item/event" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.INSERT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="vnd.android.cursor.item/event" />
+                <data android:mimeType="vnd.android.cursor.dir/event" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".android.navigation.CalendarEditReviewActivity" android:exported="false" />
+        <activity android:name=".android.navigation.CalendarSeedReviewActivity" android:exported="false" />
         <activity android:name=".ReminderOpenActivity" android:exported="false" android:launchMode="singleTop" />
         <activity android:name=".WidgetOpenActivity" android:exported="false" android:launchMode="singleTop" />
         <activity android:name=".android.widgets.AgendaWidgetConfigureActivity" android:exported="true">

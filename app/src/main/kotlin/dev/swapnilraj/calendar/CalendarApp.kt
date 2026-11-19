@@ -21,7 +21,23 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
-class CalendarApp : Application(), ReminderRuntimeOwner, dev.swapnilraj.calendar.android.widgets.AgendaWidgetApplicationOwner {
+class CalendarApp : Application(), ReminderRuntimeOwner, dev.swapnilraj.calendar.android.widgets.AgendaWidgetApplicationOwner,
+    dev.swapnilraj.calendar.android.navigation.CalendarEntryOwner,
+    dev.swapnilraj.calendar.android.navigation.CalendarSeedReviewOwner,
+    dev.swapnilraj.calendar.android.navigation.CalendarEditReviewOwner {
+    override val calendarEntryServices by lazy { createCalendarEntryServices() }
+    override val calendarEntryContent by lazy { calendarEntryRenderer() }
+    override val calendarEntryReviewHandler by lazy { calendarEntryReviewer() }
+    override val calendarSeedReviewServices by lazy { createCalendarSeedReviewServices() }
+    override val calendarEditReviewServices by lazy { createCalendarEditReviewServices() }
+    @androidx.compose.runtime.Composable
+    override fun CalendarSeedReviewTheme(content: @androidx.compose.runtime.Composable () -> Unit) {
+        calendarSeedReviewRendererTheme(content)
+    }
+    @androidx.compose.runtime.Composable
+    override fun CalendarEditReviewTheme(content: @androidx.compose.runtime.Composable () -> Unit) {
+        calendarSeedReviewRendererTheme(content)
+    }
     val guestSuggestions: dev.swapnilraj.calendar.contacts.DeviceContactSuggestionSource by lazy {
         dev.swapnilraj.calendar.data.contacts.AndroidDeviceContactSuggestionSource(contentResolver,
             { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED })
