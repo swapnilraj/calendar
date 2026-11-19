@@ -57,7 +57,51 @@
     "Detailed/wide/large-font mode preserves scrolling and event shortcuts",
     "Date algorithms/provider filters/selected weekends/continuation/DST unchanged"
   ],
-  "completeGate": "PENDING",
-  "unchangedRtlBaselineVerification": "PENDING_COMPLETE_GATE",
+  "completeGate": {
+    "source": "31c003915cffc8ccfe324f1fd6e94e09b8bdbf04",
+    "startedUtc": "2026-11-19T05:45:59.713349+00:00",
+    "status": "PASS",
+    "command": "./gradlew test :app:assembleDebug :app:lintDebug",
+    "exitCode": 0,
+    "finishedUtc": "2026-11-19T05:52:11.318476+00:00",
+    "counts": {
+      "app": [
+        2085,
+        0,
+        0,
+        0
+      ],
+      "calendar-core": [
+        257,
+        0,
+        0,
+        0
+      ],
+      "weather": [
+        17,
+        0,
+        0,
+        0
+      ]
+    },
+    "failedTests": [],
+    "apkBytes": 44482972,
+    "apkSha256": "f033bfd3297b0faa52f225e2702247d378d5211935ea43c184108e52bfb535c3",
+    "signing": "DEBUG_ONLY_NOT_OWNER_RELEASE",
+    "zipBytes": 14540174,
+    "zipSha256": "6f80a06d4268a487779413190d98ad14473c8ba2d5bb58a29ce269edce24f075",
+    "frozenArtifacts": "/tmp/daylight-verified-2359-31c0039",
+    "nativeAccountBetaRelease": "PENDING",
+    "tests": 2359,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsed": "6m11s",
+    "log": "/tmp/daylight-exdate4-month-full-gate.log",
+    "xml": "/tmp/daylight-exdate4-month-full-gate-xml",
+    "sourceBackup": "https://github.com/swapnilraj/calendar/tree/codex/verified-2359-20261119",
+    "debugSignerSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278"
+  },
+  "unchangedRtlBaselineVerification": "PASS_DEFAULT_VERIFY_FULL_GATE_NO_RERECORD",
   "googleMainGesturePixelParity": "UNVERIFIED"
 }

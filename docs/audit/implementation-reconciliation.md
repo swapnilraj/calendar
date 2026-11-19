@@ -391,3 +391,14 @@ were observed, while exact selectors/main/editor/device/account parity remains u
 publication PR70 is merged after fullCI; EXDATE metadata bridge/exception transfer and external daily-driver
 acceptance are still pending. The native create probe's harness sort defect is corrected in source;
 its retained fixture has no replay or cleanup acceptance.
+
+
+### 19 November: complete2359 and real local OS-adapter proof
+
+Source31c0039 passes2,359 tests/debug/lint, including fitted Month/unchanged large RTL and EXDATE metadata
+source/host journeys. The separate reviewed native671dfea pair passed six ordinary create/recovery
+cases on API35: READ-only recovery twice each, zero replay and successful new-fixture cleanup. See
+[native evidence](evidence/native-app-writer-six-case-api35-2026-11-19.json). This does not admit cloned-tail
+profiles, prove Google/Workspace delivery or replace required physical/reminder/beta/stable-signing gates.
+Google MAIN currently showed a Play-services communication error after splash; Settings/General remain
+the only live interaction reference. Exact main/editor parity is still unverified.

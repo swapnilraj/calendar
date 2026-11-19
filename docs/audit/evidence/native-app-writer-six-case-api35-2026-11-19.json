@@ -1,0 +1,428 @@
+{
+  "apks": {
+    "app": {
+      "bytes": 42499774,
+      "name": "app-debug.apk",
+      "sha256": "820517167a45894d2d0f0d6ef9063d54139e089095ae9333a240bada8879debb"
+    },
+    "test": {
+      "bytes": 261368,
+      "name": "app-debug-androidTest.apk",
+      "sha256": "19e87739c1a8ab05cc88cc88cd5f438b58cc966b26f0c54884549567e78d8490"
+    }
+  },
+  "cases": [
+    {
+      "alertCount": 2,
+      "allDay": false,
+      "fault": "NONE",
+      "label": "one-off-timed-alerts",
+      "mode": "ONE_OFF",
+      "phase": "VERIFIED",
+      "planStable": true,
+      "recoveries": 2,
+      "uidStable": true
+    },
+    {
+      "alertCount": 0,
+      "allDay": true,
+      "fault": "NONE",
+      "label": "one-off-all-day-zero",
+      "mode": "ONE_OFF",
+      "phase": "VERIFIED",
+      "planStable": true,
+      "recoveries": 2,
+      "uidStable": true
+    },
+    {
+      "alertCount": 2,
+      "allDay": false,
+      "fault": "NONE",
+      "label": "recurring-timed-alerts",
+      "mode": "RECURRING",
+      "phase": "VERIFIED",
+      "planStable": true,
+      "recoveries": 2,
+      "uidStable": true
+    },
+    {
+      "alertCount": 0,
+      "allDay": true,
+      "fault": "NONE",
+      "label": "recurring-all-day-zero",
+      "mode": "RECURRING",
+      "phase": "VERIFIED",
+      "planStable": true,
+      "recoveries": 2,
+      "uidStable": true
+    },
+    {
+      "alertCount": 2,
+      "allDay": false,
+      "fault": "INJECTED_POST_ACK_QUERY_FAILURE",
+      "label": "one-off-known-commit",
+      "mode": "ONE_OFF",
+      "phase": "VERIFIED",
+      "planStable": true,
+      "recoveries": 2,
+      "uidStable": true
+    },
+    {
+      "alertCount": 2,
+      "allDay": false,
+      "fault": "INJECTED_POST_ACK_QUERY_FAILURE",
+      "label": "recurring-known-commit",
+      "mode": "RECURRING",
+      "phase": "VERIFIED",
+      "planStable": true,
+      "recoveries": 2,
+      "uidStable": true
+    }
+  ],
+  "cleanup": {
+    "batchAssertionCount": 7,
+    "deleteAcknowledged": true,
+    "directQueryCount": 206,
+    "localFiles": "VERIFIED_EXACT_RUN_FILES_ABSENT",
+    "status": "VERIFIED_CALENDAR_AND_TRACKED_IDS_ABSENT",
+    "trackedEventCount": 6,
+    "trackedIdCheckScope": "GLOBAL_TRACKED_IDS"
+  },
+  "durationSeconds": 248.982,
+  "exactHistoricalDescriptorMatch": true,
+  "googleWorkspaceRoundTrip": "NOT_RUN",
+  "hostExitCode": 0,
+  "identityArtifactSha256": "685da23352d7ad811d95f2d503e03d144a8412b85ae30cb1494d16f4158b3b25",
+  "oldBf8Fixture": "NOT_TARGETED_RETAINED_NO_NEW_ABSENCE_CLAIM",
+  "outerGuards": {
+    "after.guard.json": {
+      "guard": {
+        "androidUser": 0,
+        "avd": "daylight_google_reference_userdebug_api35",
+        "bootId": "f14d0429-80d1-4b93-9eeb-da5f4f2046ac",
+        "buildFingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys",
+        "qemu": "1",
+        "serial": "emulator-5554"
+      },
+      "milliseconds": 1579,
+      "status": "PASS"
+    },
+    "before.guard.json": {
+      "guard": {
+        "androidUser": 0,
+        "avd": "daylight_google_reference_userdebug_api35",
+        "bootId": "f14d0429-80d1-4b93-9eeb-da5f4f2046ac",
+        "buildFingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys",
+        "qemu": "1",
+        "serial": "emulator-5554"
+      },
+      "milliseconds": 1750,
+      "status": "PASS"
+    }
+  },
+  "pairJsonSha256": "8ec5b88ba9a1c05badb45522bf3db1cef2195fd1a7a94593a4719f7e057a1cd1",
+  "processLineage": {
+    "CLEANUP": {
+      "name": "dev.swapnilraj.calendar",
+      "pid": 8569,
+      "startElapsedRealtime": 11551864
+    },
+    "CREATE_STAGE": {
+      "name": "dev.swapnilraj.calendar",
+      "pid": 8317,
+      "startElapsedRealtime": 11425277
+    },
+    "RECOVER_READ_ONLY": {
+      "name": "dev.swapnilraj.calendar",
+      "pid": 8449,
+      "startElapsedRealtime": 11487147
+    }
+  },
+  "productionProfileActivation": "NONE",
+  "providerIdentity": {
+    "baseSha256": "a1facdbec3de78c6817efe1aea40b804a66c8ccbcd23a72a426d8c21cfebd273",
+    "buildFingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys",
+    "package": "com.android.providers.calendar",
+    "sdk": 35,
+    "securityPatch": "2024-09-05",
+    "signers": [
+      "6cecc50e34ae31bfb5678986d6d6d3736c571ded2f2459527793e1f054eb0c9b"
+    ],
+    "signingHistory": [
+      "6cecc50e34ae31bfb5678986d6d6d3736c571ded2f2459527793e1f054eb0c9b"
+    ],
+    "splits": [],
+    "versionCode": 35
+  },
+  "recovery": {
+    "assertions": 6,
+    "cases": [
+      {
+        "alertCount": 2,
+        "allDay": false,
+        "fault": "NONE",
+        "label": "one-off-timed-alerts",
+        "mode": "ONE_OFF",
+        "phase": "VERIFIED",
+        "planStable": true,
+        "recoveries": 2,
+        "uidStable": true
+      },
+      {
+        "alertCount": 0,
+        "allDay": true,
+        "fault": "NONE",
+        "label": "one-off-all-day-zero",
+        "mode": "ONE_OFF",
+        "phase": "VERIFIED",
+        "planStable": true,
+        "recoveries": 2,
+        "uidStable": true
+      },
+      {
+        "alertCount": 2,
+        "allDay": false,
+        "fault": "NONE",
+        "label": "recurring-timed-alerts",
+        "mode": "RECURRING",
+        "phase": "VERIFIED",
+        "planStable": true,
+        "recoveries": 2,
+        "uidStable": true
+      },
+      {
+        "alertCount": 0,
+        "allDay": true,
+        "fault": "NONE",
+        "label": "recurring-all-day-zero",
+        "mode": "RECURRING",
+        "phase": "VERIFIED",
+        "planStable": true,
+        "recoveries": 2,
+        "uidStable": true
+      },
+      {
+        "alertCount": 2,
+        "allDay": false,
+        "fault": "INJECTED_POST_ACK_QUERY_FAILURE",
+        "label": "one-off-known-commit",
+        "mode": "ONE_OFF",
+        "phase": "VERIFIED",
+        "planStable": true,
+        "recoveries": 2,
+        "uidStable": true
+      },
+      {
+        "alertCount": 2,
+        "allDay": false,
+        "fault": "INJECTED_POST_ACK_QUERY_FAILURE",
+        "label": "recurring-known-commit",
+        "mode": "RECURRING",
+        "phase": "VERIFIED",
+        "planStable": true,
+        "recoveries": 2,
+        "uidStable": true
+      }
+    ],
+    "diagnostics": {
+      "mutation": {
+        "kind": "LOCAL_SAVED"
+      }
+    },
+    "proof": {
+      "authoringTrapInstalled": true,
+      "forbiddenWriteAttempts": 0,
+      "guardedChildQueries": 16,
+      "membershipQueries": 24,
+      "minimalBindingQueries": 24,
+      "nativeWriteCalls": 0,
+      "readGranted": true,
+      "writeDenied": true
+    },
+    "queries": 201,
+    "status": "RECOVERED"
+  },
+  "replayAdoptionKillExtraCleanup": "NOT_RUN",
+  "resultSha256": "245caa30201cf14086215eecac45094343c7b8574cd0cdcda9b864463f5a8e42",
+  "runId": "0201b63e-2c69-47d6-9504-f094ec2f847c",
+  "scopeLimitation": "Owned API35 LOCAL OS-adapter evidence; not physical/OEM/Google compatibility certification",
+  "scriptSha256": "26b7bd9ec42fef054e4a565316fb292cb75d6506e7930bbe4737a24888b9143d",
+  "sourceCommit": "671dfea7e13fc90f9accc1e944e13621289bd78b",
+  "stage": {
+    "assertions": 6,
+    "cases": [
+      {
+        "alertCount": 2,
+        "allDay": false,
+        "fault": "NONE",
+        "label": "one-off-timed-alerts",
+        "mode": "ONE_OFF",
+        "phase": "VERIFIED",
+        "planStable": true,
+        "recoveries": 0,
+        "uidStable": true
+      },
+      {
+        "alertCount": 0,
+        "allDay": true,
+        "fault": "NONE",
+        "label": "one-off-all-day-zero",
+        "mode": "ONE_OFF",
+        "phase": "VERIFIED",
+        "planStable": true,
+        "recoveries": 0,
+        "uidStable": true
+      },
+      {
+        "alertCount": 2,
+        "allDay": false,
+        "fault": "NONE",
+        "label": "recurring-timed-alerts",
+        "mode": "RECURRING",
+        "phase": "VERIFIED",
+        "planStable": true,
+        "recoveries": 0,
+        "uidStable": true
+      },
+      {
+        "alertCount": 0,
+        "allDay": true,
+        "fault": "NONE",
+        "label": "recurring-all-day-zero",
+        "mode": "RECURRING",
+        "phase": "VERIFIED",
+        "planStable": true,
+        "recoveries": 0,
+        "uidStable": true
+      },
+      {
+        "alertCount": 2,
+        "allDay": false,
+        "fault": "INJECTED_POST_ACK_QUERY_FAILURE",
+        "label": "one-off-known-commit",
+        "mode": "ONE_OFF",
+        "phase": "COMMITTED",
+        "planStable": true,
+        "recoveries": 0,
+        "uidStable": false
+      },
+      {
+        "alertCount": 2,
+        "allDay": false,
+        "fault": "INJECTED_POST_ACK_QUERY_FAILURE",
+        "label": "recurring-known-commit",
+        "mode": "RECURRING",
+        "phase": "COMMITTED",
+        "planStable": true,
+        "recoveries": 0,
+        "uidStable": false
+      }
+    ],
+    "diagnostics": {
+      "mutation": {
+        "kind": "UNCERTAIN"
+      },
+      "queryFailure": {
+        "kind": "INJECTED_POST_ACK_READ",
+        "stage": "REQUEST_GUARD"
+      }
+    },
+    "queries": 69,
+    "status": "STAGED"
+  },
+  "status": "PASS_NATIVE_LOCAL_APP_RECEIPT6_SIX_CASE_PROTOCOL",
+  "targetExitProofs": {
+    "app-cleanup.target-exit.json": {
+      "observations": [
+        "REPORTED_PID_ABSENT"
+      ],
+      "returncodes": [
+        1
+      ],
+      "status": "TARGET_PID_ABSENT",
+      "targetProcess": {
+        "name": "dev.swapnilraj.calendar",
+        "pid": 8569,
+        "startElapsedRealtime": 11551864
+      }
+    },
+    "app-create-stage.target-exit.json": {
+      "observations": [
+        "REPORTED_PID_ABSENT"
+      ],
+      "returncodes": [
+        1
+      ],
+      "status": "TARGET_PID_ABSENT",
+      "targetProcess": {
+        "name": "dev.swapnilraj.calendar",
+        "pid": 8317,
+        "startElapsedRealtime": 11425277
+      }
+    },
+    "app-recover-read-only.target-exit.json": {
+      "observations": [
+        "REPORTED_PID_ABSENT"
+      ],
+      "returncodes": [
+        1
+      ],
+      "status": "TARGET_PID_ABSENT",
+      "targetProcess": {
+        "name": "dev.swapnilraj.calendar",
+        "pid": 8449,
+        "startElapsedRealtime": 11487147
+      }
+    },
+    "identity-preflight.target-exit.json": {
+      "observations": [
+        "REPORTED_PID_ABSENT"
+      ],
+      "returncodes": [
+        1
+      ],
+      "status": "TARGET_PID_ABSENT",
+      "targetProcess": {
+        "name": "dev.swapnilraj.calendar",
+        "pid": 8174,
+        "startElapsedRealtime": 11386346
+      }
+    }
+  },
+  "leadReview": {
+    "resultSha256Recomputed": "245caa30201cf14086215eecac45094343c7b8574cd0cdcda9b864463f5a8e42",
+    "summarySha256": "ee9a5e59c6114a36def2d252e71d4dfc994bbb3aaa5b2a0efe9e9b23c8b911c2",
+    "threePhaseValidators": "PASS_REEXECUTED_LOCALLY_NO_DEVICE_CALLS",
+    "ordinarySourceIdentity": {
+      "CalendarWriter.kt": {
+        "sha256": "5fcf8e5b12c7ce932df97d3c95374b6d15283be1770910243176485366dbea23",
+        "identicalToNativePairSource": true
+      },
+      "CalendarOrdinaryCreateWriterV6.kt": {
+        "sha256": "5474cc66d1759c657e2ab6c2212753eaecaee5464cb9d9d0aa0cd3d08befbb45",
+        "identicalToNativePairSource": true
+      },
+      "OrdinaryCreateReceipt.kt": {
+        "sha256": "6a28ffdf4356d146390ea61aba2150ecbc8b9820d90b10da1f75a2a44b0ed15e",
+        "identicalToNativePairSource": true
+      },
+      "CalendarCreateAcknowledgments.kt": {
+        "sha256": "18c6b30077ef512eed59a1d3f04910f5b5c9e974db733e60677e23d9b3177da5",
+        "identicalToNativePairSource": true
+      },
+      "CalendarLocalStore.kt": {
+        "sha256": "fa2d202e4e2b6259a147c0b58f2f33ce3a4f2ed01b3c70ce4fd68952dd2f70fa",
+        "identicalToNativePairSource": true
+      },
+      "ProviderReadBudget.kt": {
+        "sha256": "21778608b0d378e8d1f01403e9cb787159e0904ae2c1f5dabae13314fb4e71c4",
+        "identicalToNativePairSource": true
+      },
+      "CalendarReader.kt": {
+        "sha256": "a2507ff8ddc65a9380813b2e59f4623648120759aebe5e2376b252b436c7ff4e",
+        "identicalToNativePairSource": true
+      }
+    },
+    "scope": "Local SDK35 OS-adapter create/recovery evidence only; no clone/Google/Workspace/physical certification"
+  }
+}

@@ -1,8 +1,8 @@
 # Following EXDATE receipt 4 — approved implementation contract
 
 Status: implemented in the local adapter;195 publication and105 aggregate provider checks pass.
-The three original synthetic UI journeys also pass separately; complete aggregate/native/account
-acceptance remains pending.
+The three original synthetic UI journeys also pass separately; the complete2,359 aggregate gate
+passes. Native/account acceptance remains pending.
 This is the exception-free metadata bridge described in the aggregate FOLLOWING_EXDATE_ADAPTER.md.
 Moved/cancelled exception graph transfer remains separate. No new provider profile is admitted.
 

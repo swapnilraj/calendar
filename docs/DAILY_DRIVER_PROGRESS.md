@@ -4,6 +4,17 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+At source `31c003915cffc8ccfe324f1fd6e94e09b8bdbf04`, the complete gate **passed all 2,359 tests**
+(app 2,085 + core257 + weather17), debug APK assembly and lint, zero failures/errors/skips, in6m11s.
+This includes the adaptive Month overview and receipt4 EXDATE metadata bridge, all original Following
+UI journeys and unchanged large-font RTL baselines. [Tested source](https://github.com/swapnilraj/calendar/tree/codex/verified-2359-20261119)
+is preserved independently from the publication branch. Frozen APK44,482,972 bytes, SHA-256
+`f033bfd3297b0faa52f225e2702247d378d5211935ea43c184108e52bfb535c3`;
+ZIP14,540,174 bytes, SHA-256 `6f80a06d4268a487779413190d98ad14473c8ba2d5bb58a29ce269edce24f075`.
+Files `/tmp/daylight-verified-2359-31c0039/`; Android debug signer verified. This remains a debug preview,
+not stable owner signing or completed Google/Workspace/physical/beta acceptance.
+
+
 At source `f0018fbe47379944c6c041145fd2dfba9eaa59f8`, the complete gate **passed all 2,320 tests**
 (app 2,046 + core 257 + weather 17), debug APK assembly and lint, zero failures/errors/skips, in6m47s.
 The [tested source checkpoint](https://github.com/swapnilraj/calendar/tree/codex/verified-2320-20261119)
@@ -665,11 +676,11 @@ Receipt4 EXDATE bridge source is integrated as `789896b` on its approved lead co
 Lead review added strict metadata clock/zone/WHOLE-context invariants and metadata-only capabilities
 for nonempty exclusions. Its195-check focus passed20s after a retained194/1 fixture setup failure;105 aggregate provider checks passed23s. A nonmatching UI class filter omitted three original
 Following journeys; all three subsequently passed31s in their own exact-class run. There are108
-distinct focused checks across the two runs, not a single108-test run. The complete gate and
-native/account acceptance remain pending; see audit/evidence/following-exdate4-2026-11-19.json. Moved/cancelled exception graph transfer remains separate.
+distinct focused checks across the two runs, not a single108-test run. The complete2,359 gate passed; native/account acceptance of this EXDATE bridge remains pending.
+See audit/evidence/following-exdate4-2026-11-19.json. Moved/cancelled exception graph transfer remains separate.
 
 
-### Adaptive Month overview integrated — combined gate pending
+### Adaptive Month overview integrated — combined gate passed
 
 Source `8ed8a8e` fits all six weeks/seven columns into normal360×640 and393×851 phone viewports using
 measured line/space budgets and at least48dp date targets. Crowded dates keep fixed row height;
@@ -677,5 +688,27 @@ plain summaries/counts belong to a single date action that opens every exact eve
 list. Detailed/wide/large-font scrolling remains. Source date/provider/weather/DST algorithms are
 unchanged. [Evidence](audit/evidence/month-overview-2026-11-19.json):39 functional checks pass35s;
 first37/2 title-semantics failure is retained and corrected without dropping assertions. Four recording
-checks pass25s; all four images inspected. Full combined test/debug/lint and unchanged RTL baseline
-verification are queued. The last complete passing/frozen APK remains the2,320 checkpoint until then.
+checks pass25s; all four images inspected. Full combined test/debug/lint and unchanged RTL baseline verification passed at the2,359 checkpoint
+above. The prior2,320 snapshot remains preserved.
+
+
+### Native ordinary create/READ-only recovery passed — local SDK35 only
+
+The fresh [six-case protocol](audit/evidence/native-app-writer-six-case-api35-2026-11-19.json) passed
+in248.982s on reviewed source/pair `671dfea`, run `0201b63e-2c69-47d6-9504-f094ec2f847c`. Four ordinary
+one-off/COUNT3 timed/all-day cases verified; two deliberate post-ACK read faults retained known commits.
+All six then recovered twice with READ granted, WRITE denied, stable UID/frozen plans, authoring trap
+intact and zero native/forbidden write calls. Successful-new-run cleanup acknowledged deletion and
+verified all six tracked IDs globally absent plus exact new private files absent. Four target-process
+exit proofs passed. Totals206 queries/7 assertions. The oldbf8 empty fixture was not targeted and remains
+retained; no adoption, replay or timeout kill occurred.
+
+Lead re-executed all three pure phase validators and verified seven ordinary writer/receipt/store/read
+source files are byte-identical to the current aggregate. This is actual local OS-adapter evidence,
+not Google/Workspace sync/invitation, physical-device, cloned-tail or release certification. Production
+clone admission remains NONE. Fresh identity artifact685da233… binds the exact pair and unchanged full
+provider descriptor. Required dedicated signed-in account/device setup is requested asynchronously.
+
+[PR72](https://github.com/swapnilraj/calendar/pull/72) publishes the EXDATE metadata bridge: full CI
+passed5m8 at `48920ea`, merged as `d9452e4`. Attachment request remains unconfirmed because the task
+artifact endpoint did not respond. Month publication is the next bounded UI packet.

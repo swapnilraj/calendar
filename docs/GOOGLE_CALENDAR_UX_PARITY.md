@@ -281,3 +281,15 @@ text/constrained/wide layouts preserve the detailed scrolling mode. Four synthet
 inspected at360×640 and393×851, including dark theme and crowded dates. The39 functional checks pass;
 full baseline verification is queued. This matches documented overview intent without claiming live
 Google event-tap gestures, variable row-count behavior or exact pixel/accessibility parity.
+
+
+### Latest MAIN observation — 19 November 2026
+
+At idle, the same pinned Google APK/owned API35 emulator received one ordinary MAIN/LAUNCHER launch.
+The first capture showed only splash; a later read-only capture showed “There was a problem
+communicating with Google servers. Try again later.” The visible window was Google Play services'
+account-flow ErrorActivity; Calendar AllInOne remained obscured without a visible surface. No account,
+permission, setting or calendar was changed. This observes a communication wall, not its cause or an
+account-mandatory rule. Main/editor parity remains unverified. Reports/images remain outside Git:
+`/tmp/daylight-google-main-once-20261119-klc9iek1/` and
+`/tmp/daylight-google-main-postload-20261119-0j9gjpd0/`.
