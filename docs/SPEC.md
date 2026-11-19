@@ -5,7 +5,7 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
-Day, three-day and week grids may expose optional timed gesture ports. Long presses and drags produce snapped proposals after a read-only eligibility check; they never request write permission, choose a gap/overlap offset or mutate provider data. Moves retain the complete original occurrence and grab offset; only the segment containing its true end exposes resizing. Physical visible date-column bounds resolve cross-column targets in RTL and hidden-weekend layouts, and bounded vertical edge scrolling stops on release. Changed source, range, geometry, permissions or navigation cancels pending interaction without turning its release into a details tap. Accessible date/create and event-editor actions remain alternatives. With no gesture ports, existing read-only navigation, all-day access, DST segmentation and weather rendering remain unchanged. Durable draft preparation and application routes are separate integration work.
+
 
 A grid preview that encounters a clock gap or overlap retains its snapped logical date/minute and
 display zone for explicit review. That target does not choose an offset or imply an instant. Review
@@ -396,6 +396,10 @@ Support confirmed deletion, duplicate-as-draft (guests omitted by default), and 
 moves for guest-free non-recurring events. Cross-account moves of meetings/series are excluded. Timed
 grid drag/resize previews snap to 15 minutes and use the same validation/save path; editor is the
 accessible alternative.
+
+#### Timed gesture preview ports
+
+Day, three-day and week grids may expose optional timed gesture ports. Long presses and drags produce snapped proposals after a read-only eligibility check; they never request write permission, choose a gap/overlap offset or mutate provider data. Moves retain the complete original occurrence and grab offset; only the segment containing its true end exposes resizing. Physical visible date-column bounds resolve cross-column targets in RTL and hidden-weekend layouts, and bounded vertical edge scrolling stops on release. Changed source, range, geometry, permissions or navigation cancels pending interaction without turning its release into a details tap. Accessible date/create and event-editor actions remain alternatives. With no gesture ports, existing read-only navigation, all-day access, DST segmentation and weather rendering remain unchanged. Durable draft preparation and application routes are separate integration work.
 
 ### M6 — Recurrence
 
