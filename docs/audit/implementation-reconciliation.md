@@ -59,8 +59,8 @@ Independent one-off probes first reproduced three false-save child ACK cases. Th
 [before/after evidence](evidence/oneoff-create-ack-before-receipt6-2026-11-19.json) records those failures,
 the nine passing ACK/UID/privacy controls, independent 127-check backend verification, 20 actual-app
 synthetic journeys and the complete aggregate gate. The publication closure passed 117 focused checks
-and independent source review; PR64 is draft while full CI runs. PR63 diagnostic uploads passed CI
-and merged. These are bounded local/provider-fixture results, not server delivery or native-device proof.
+and independent source review; full CI passed at `8b4e103` and PR64 merged as `e536d54`.
+PR63 diagnostic uploads passed CI and merged. These are bounded local/provider-fixture results, not server delivery or native-device proof.
 
 A guarded owned-emulator writer harness is being prepared separately; no new native receipt6 run is
 claimed. Following immutable execution, EXDATE/exception transfer, production clone admission, actual

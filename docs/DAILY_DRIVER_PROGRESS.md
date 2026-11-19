@@ -91,8 +91,8 @@ passed at `d71b4b6`; GitHub created both diagnostics and debug APK artifacts. PR
 It changes no application code.
 
 [PR64](https://github.com/swapnilraj/calendar/pull/64) publishes the bounded receipt6 backend closure.
-Its 117 focused checks and independent source review passed; full CI is running at `8b4e103`.
-It remains draft/unmerged. The publication preserves initial timed-zone compatibility without
+Its 117 focused checks, independent source review and full CI passed at `8b4e103`.
+It merged as `e536d54` on 19 November 2026. The publication preserves initial timed-zone compatibility without
 importing receipt4 or changing legacy mutation bodies. All four PR61–64 attachments are confirmed.
 
 The aggregate source remains ahead of bounded publication. PR55–62 artifact attachments are now
@@ -154,7 +154,10 @@ and the final full gate pass. Logs preserve both failed attempts.
 The guarded native API35 LOCAL experiment **passed all18 cases**. All six RRULE-only controls
 reproduced stale prefix8+tail5=13 instances with5 duplicates; six exact-context cases produced
 prefix3+tail5=8 with0 duplicates; six final-assertion rollbacks retained the original8. The owned
-synthetic calendar and all30 event IDs were verified absent after cleanup. The complete bounded
+synthetic calendar was verified absent after cleanup. The original report checked all30 tracked
+event IDs within that calendar; it did not establish global absence of those IDs if moved or reused.
+The historical report remains unchanged. The new app-writer harness requires a bounded global
+tracked-ID absence check before cleanup can pass. The complete bounded
 [report](audit/evidence/native-local-provider-api35-2026-11-18.json) and
 [runbook](NATIVE_PROVIDER_PROBE.md) record exact pins/guards. This direct SDK experiment does not
 certify Daylight's complete series writer, Google sync, hidden metadata or a production clone profile.
