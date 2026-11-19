@@ -29,7 +29,7 @@ class CalendarRecurringCreateTest {
         recurrence = RecurrenceSpec(RecurrencePattern.Daily, end = RecurrenceEnd.Count(4)))
     /** SQLite enforces the native recurring master shape. First-instance bounds use AOSP's
      * fixed elapsed Duration arithmetic; this fixture does not claim cloud or full-rule expansion. */
-    private class Provider : ContentProvider() {
+    internal class Provider : ContentProvider() {
         val db = SQLiteDatabase.create(null)
         data class Query(val path: String, val fields: List<String>?, val selection: String?)
         val queries = mutableListOf<Query>()
@@ -76,7 +76,13 @@ class CalendarRecurringCreateTest {
                 "begin" -> "(begin+$beginDelta) AS begin"; "end" -> "(end+$endDelta) AS end"; else -> it
             } }?.toTypedArray() else fields
             if (path == "instances") { where += "(begin+$beginDelta) < CAST(? AS INTEGER) AND (end+$endDelta) > CAST(? AS INTEGER)"; bind += uri.pathSegments[3]; bind += uri.pathSegments[2] }
-            return db.query(if (path == "instances") "instance_view" else path, projected, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
+            val table = when {
+                path == "instances" -> "instance_view"
+                path == "reminders" && uri.pathSegments.size == 2 ->
+                    "(SELECT reminders.*, events.calendar_id FROM reminders JOIN events ON reminders.event_id = events._id)"
+                else -> path
+            }
+            return db.query(table, projected, where.joinToString(" AND ").takeIf { it.isNotEmpty() }, bind.toTypedArray(), null, null, sort)
         }
         override fun insert(uri: Uri, values: ContentValues?): Uri {
             val path = uri.pathSegments.first()
@@ -139,7 +145,7 @@ class CalendarRecurringCreateTest {
             val operation = f.store.operation("new-series")!!
             assertEquals("VERIFIED", operation.phase)
             val receipt = JSONObject(operation.resultRef!!)
-            assertEquals(3, receipt.getInt("version")); assertEquals(saved.ref.eventId, receipt.getLong("master"))
+            assertEquals(5, receipt.getInt("version")); assertEquals(saved.ref.eventId, receipt.getLong("master"))
             assertTrue(receipt.has("firstRef")); assertFalse(receipt.has("ref"))
             assertEquals(2, f.p.count("reminders"))
             f.p.db.rawQuery("SELECT COUNT(*) FROM reminders WHERE event_id = ?", arrayOf(saved.ref.eventId.toString())).use { it.moveToFirst(); assertEquals(2, it.getInt(0)) }
@@ -288,4 +294,66 @@ class CalendarRecurringCreateTest {
             assertEquals(payload.toString(), receipt.getJSONObject("command").toString())
         }
     }
+    @Test fun legacyPreparedAndFailedReceiptsOfferOnlyExactExplicitRetryAndEarnNewAcknowledgmentProof() = runBlocking {
+        for (phase in listOf("PREPARED", "FAILED")) fixture { f ->
+            f.store.writableDatabase.execSQL("""CREATE TRIGGER interrupt_dispatch BEFORE UPDATE OF phase ON mutation_journal
+                WHEN NEW.phase = 'ATTEMPTED' BEGIN SELECT RAISE(FAIL, 'Synthetic pre-dispatch interruption'); END""")
+            assertEquals(MutationResult.Unavailable, f.writer.create("legacy", draft))
+            val initial = requireNotNull(f.store.operation("legacy"))
+            val old = JSONObject(initial.resultRef!!).put("version", 3).apply { remove("layout") }.toString()
+            f.store.forceOperationForTest("legacy", phase, old)
+            assertEquals(MutationResult.SafeToRetry("legacy"), f.writer.recover("legacy"))
+            assertEquals(MutationResult.Conflict(null), f.writer.create("legacy", draft.copy(recurrence = RecurrenceSpec(RecurrencePattern.Daily, end = RecurrenceEnd.Count(8)))))
+            f.permissions.remove(Manifest.permission.WRITE_CALENDAR)
+            assertEquals(MutationResult.PermissionRequired, f.writer.create("legacy", draft))
+            assertEquals(old, f.store.operation("legacy")!!.resultRef); assertEquals(0, f.p.batchCount)
+            f.permissions += Manifest.permission.WRITE_CALENDAR
+            f.store.writableDatabase.execSQL("DROP TRIGGER interrupt_dispatch")
+            val saved = f.writer.create("legacy", draft) as MutationResult.LocalSaved
+            val committed = requireNotNull(f.store.operation("legacy"))
+            val proof = JSONObject(committed.resultRef!!)
+            assertEquals(5, proof.getInt("version")); assertTrue(proof.getBoolean("ackComplete"))
+            assertEquals(initial.signature, committed.signature)
+            assertEquals(JSONObject(old).getJSONObject("command").toString(), proof.getJSONObject("command").toString())
+            assertEquals(2, proof.getJSONArray("reminderIds").length())
+            assertEquals(1, f.p.batchCount); assertEquals(1, f.p.count("events"))
+            assertEquals(saved, f.writer.recover("legacy")); assertEquals(1, f.p.batchCount)
+        }
+    }
+
+    @Test fun legacyAttemptedAndCommittedReceiptsNeverUpgradeReplayOrInventChildAcknowledgments() = runBlocking {
+        for (phase in listOf("ATTEMPTED", "COMMITTED", "VERIFIED")) fixture { f ->
+            val original = f.writer.create("legacy", draft) as MutationResult.LocalSaved
+            val op = requireNotNull(f.store.operation("legacy"))
+            val old = JSONObject(op.resultRef!!).put("version", 3).apply {
+                remove("layout"); remove("ackFacts"); remove("ackComplete"); remove("reminderIds")
+                if (phase != "VERIFIED") remove("firstRef")
+                if (phase == "ATTEMPTED") { put("stage", "prepared"); remove("master") }
+            }.toString()
+            f.store.forceOperationForTest("legacy", phase, old)
+            val expected = MutationResult.Uncertain("legacy", if (phase == "ATTEMPTED") null else original.ref.eventId)
+            f.p.queries.clear()
+            assertEquals(expected, f.writer.recover("legacy")); assertEquals(expected, f.writer.create("legacy", draft))
+            assertEquals(old, f.store.operation("legacy")!!.resultRef); assertEquals(phase, f.store.operation("legacy")!!.phase)
+            assertEquals(1, f.p.batchCount); assertTrue(f.p.queries.all { it.path == "calendars" })
+        }
+    }
+
+    @Test fun contradictoryReceiptFivePhaseAndStageNeverOfferRetryOrProviderDispatch() = runBlocking {
+        fixture { f ->
+            f.writer.create("paired", draft) as MutationResult.LocalSaved
+            val raw = requireNotNull(f.store.operation("paired")).resultRef!!
+            for (phase in listOf("PREPARED", "FAILED", "COMMITTED", "VERIFIED")) {
+                val malformed = JSONObject(raw).apply {
+                    if (phase in setOf("PREPARED", "FAILED")) { put("ackComplete", false); remove("firstRef"); remove("reminderIds") }
+                    else { put("stage", "prepared"); remove("master"); remove("ackComplete"); remove("ackFacts"); remove("reminderIds"); remove("firstRef") }
+                }.toString()
+                f.store.forceOperationForTest("paired", phase, malformed)
+                assertEquals(MutationResult.Uncertain("paired", null), f.writer.recover("paired"))
+                assertEquals(MutationResult.Uncertain("paired", null), f.writer.create("paired", draft))
+                assertEquals(malformed, f.store.operation("paired")!!.resultRef); assertEquals(1, f.p.batchCount)
+            }
+        }
+    }
+
 }
