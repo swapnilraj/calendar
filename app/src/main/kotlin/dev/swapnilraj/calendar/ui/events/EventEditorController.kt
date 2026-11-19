@@ -70,7 +70,8 @@ class EventEditorController(
         val doc = document ?: return null
         if (!presentationVisible || writesBlocked() || state.recoveryRequired || state.localOutcome != null || state.result != null ||
             conflictPersistenceActive || conflictRawEpoch != conflictPersistedEpoch || doc.fields != state.fields || doc.zoneAuthored != state.zoneAuthored ||
-            state.problem in setOf(EditorProblem.PERMISSION, EditorProblem.DENIED, EditorProblem.UNAVAILABLE, EditorProblem.CONFLICT)) return null
+            state.problem in setOf(EditorProblem.PERMISSION, EditorProblem.DENIED, EditorProblem.UNAVAILABLE, EditorProblem.CONFLICT,
+                EditorProblem.DRAFT_UNAVAILABLE, EditorProblem.DRAFT_RETIRED, EditorProblem.DRAFT_VERSION)) return null
         val generation = doc.generation ?: return null
         val revision = doc.revision ?: return null
         return EditorConflictBinding(generation, revision, EditorTemporalInput.from(state.fields), boundCalendarIdentity,

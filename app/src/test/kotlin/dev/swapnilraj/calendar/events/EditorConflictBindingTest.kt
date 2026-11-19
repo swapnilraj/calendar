@@ -63,6 +63,15 @@ class EditorConflictBindingTest {
             store.beforeCas=null;assertTrue(c.flushDraft());assertNotNull(c.conflictBinding(true))
         } finally {scope.cancel()}
     }
+    @Test fun unchangedRawFieldsDoNotHideFailedLeasePersistence()=runBlocking {
+        val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
+        try {
+            val store=EventEditorControllerTest.Store();val c=ordinary(scope,store)
+            assertNotNull(c.conflictBinding(true));store.failWrites=true
+            assertFalse(c.flushDraft());assertEquals(EditorProblem.DRAFT_UNAVAILABLE,c.state.problem)
+            assertNull(c.conflictBinding(true))
+        } finally {scope.cancel()}
+    }
     @Test fun ordinaryImportedPointPrecisionAndExactExclusionRemainReadOnly()=runBlocking {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
         try {
