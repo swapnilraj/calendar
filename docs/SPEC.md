@@ -5,6 +5,20 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+### Schedule range endpoints
+
+Schedule always shows its loaded date range and explicit Earlier/Later controls, including when
+the shared phone header replaces component navigation. Each enabled action selects the adjacent
+range's first date and requests that one bounded replacement window through the existing callback.
+Scrolling never starts another provider read or appends pages. The year 1/9999 boundary disables
+the unavailable direction with a readable boundary explanation. Selecting an event keeps its exact
+occurrence reference; selecting an in-window date leaves the loaded range unchanged.
+These controls belong to ready data. Existing loading, permission, unavailable and read-limit
+presentations replace the event list and its range actions. Empty selection, no calendars and
+partial device coverage remain distinct and never imply complete account coverage. Normal phone
+presentation may use a compact date gutter and event cards; large text and narrow layouts must
+retain wrapping titles, chronological ordering, repeated-hour offsets and accessible actions.
+
 ### Google Calendar Android UX reference
 
 The user's confirmed UX target is the current Google Calendar Android phone app. Match its navigation
