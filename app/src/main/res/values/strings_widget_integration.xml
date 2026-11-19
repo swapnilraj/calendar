@@ -1,0 +1,5 @@
+<resources>
+    <string name="widget_reconfigure_reboot_note">If setup is needed after restarting your device, configure this widget again. Calendar details stay hidden until setup is verified.</string>
+    <string name="widget_config_stale">This widget or calendar changed. Review your choices and try again.</string>
+    <string name="widget_config_save_failed">The widget could not be saved safely. Try again.</string>
+</resources>
