@@ -53,14 +53,14 @@ internal data class FollowingExecutionReceipt(
         require(token==CreateSixJson.hash("SERIES_EDIT_V1"+sourceRaw))
         val m=master;val c=calendar;val selection=selected
         require(m.size<=128&&c.size<=128&&prefix.size<=128&&prefixWrite.size<=128&&(tail?.size?:0)<=128)
-        require(masterId>0&&calendarId>=0&&c["_id"]==calendarId.toString()&&selection.calendarId.value==calendarId&&selection.eventId==masterId&&selection.recurrence?.masterEventId==masterId)
+        require(masterId>0&&m["_id"]==masterId.toString()&&m["calendar_id"]==calendarId.toString()&&calendarId>=0&&c["_id"]==calendarId.toString()&&selection.calendarId.value==calendarId&&selection.eventId==masterId&&selection.recurrence?.masterEventId==masterId)
         require(m["deleted"]=="0"&&m["dtend"]==null&&m["allDay"] in setOf("0","1"))
         require(listOf("rdate","exdate","exrule").all{m[it].isNullOrEmpty()}&&listOf("original_id","original_sync_id","originalInstanceTime","originalAllDay").all{m[it]==null})
         for(table in listOf("reminders","attendees","extendedproperties")) {
             val key=if(table=="extendedproperties")"extendedProperties"else table
             val groups=s.getJSONArray(key);require(groups.length()<=1)
             if(groups.length()==1){val group=groups.getJSONObject(0);CreateSixJson.keys(group,"parent","rows");require(CreateSixJson.number(group,"parent")==masterId)}
-            val rows=children(table);require(rows.all{it.size<=128&&it["event_id"]==masterId.toString()&&it["_id"]?.toLongOrNull()?.let{n->n>0}==true})
+            val rows=children(table);require(rows.all{it.size<=128&&it["event_id"]==masterId.toString()&&it["_id"]?.toLongOrNull()?.let{n->n>0&&n.toString()==it["_id"]}==true})
             require(rows.map{it["_id"]}.distinct().size==rows.size)
         }
         require(whole==(ordinal==0)&&ordinal in 0..10000)
@@ -112,6 +112,22 @@ internal data class FollowingExecutionReceipt(
         val metadata=mapOf("title" to "title","location" to "eventLocation","description" to "description","availability" to "availability","privacy" to "accessLevel")
         for((input,native)in metadata)if(!patch.has(input))require(target[native]==master[native])
         if(whole)require(prefixWrite.keys.all{it in Context+setOf("eventEndTimezone","calendar_id","rrule","hasAlarm")||metadata.any{(input,native)->patch.has(input)&&it==native}})
+        if(whole) {
+            val alarm=if(patch.has("alerts"))if(patchedReminders.isEmpty())"0"else"1" else master["hasAlarm"]
+            require(prefix["hasAlarm"]==alarm)
+            if(!patch.has("alerts"))require("hasAlarm" !in prefixWrite)
+        } else {
+            val t=requireNotNull(tail)
+            val inputFields=metadata.filterKeys{patch.has(it)}.values.toSet()
+            val copied=PublicFields.filterTo(linkedSetOf()){master.containsKey(it)}
+            val fields=copied+inputFields+TailTimeFields+"uid2445"+if(patch.has("alerts"))setOf("hasAlarm")else emptySet()
+            require(t.keys==fields)
+            for(key in copied-inputFields)require(t[key]==master[key])
+            if(patch.has("alerts"))require(t["hasAlarm"]==if(patchedReminders.isEmpty())"0"else"1")
+            val unchangedClock=!j.has("start")&&j.get("duration")=="keep"
+            require(t["eventEndTimezone"]==if(unchangedClock)master["eventEndTimezone"]else t["eventTimezone"])
+            require(tailAttendees==children("attendees").map{row->row.filterKeys{it in AttendeeFields}})
+        }
         val d=j.get("duration")
         if(d is String)require(d=="keep"&&target["duration"]==master["duration"])else{val o=d as? JSONObject?:error("Invalid duration");require(o.length()==1);val k=if(o.has("seconds"))"seconds"else"days";CreateSixJson.keys(o,k);val n=CreateSixJson.number(o,k);require(n>0&&target["duration"]==if(k=="seconds")"PT${n}S"else"P${n}D")}
         // Rules and explicit starts are frozen protocol atoms, never passed to today's compiler.
@@ -126,6 +142,8 @@ internal data class FollowingExecutionReceipt(
         val Bookkeeping=setOf("dirty","mutators","lastDate","lastSynced")
         val PrefixFields=Context.toSet()+setOf("eventEndTimezone","calendar_id","rrule","hasAlarm","title","eventLocation","description","availability","accessLevel")
         val AttendeeFields=setOf("attendeeName","attendeeEmail","attendeeRelationship","attendeeType","attendeeStatus")
+        val TailTimeFields=setOf("calendar_id","dtstart","dtend","duration","allDay","eventTimezone","eventEndTimezone","rrule")
+        val PublicFields=setOf("title","description","eventLocation","eventStatus","eventColor","availability","accessLevel","organizer","hasAttendeeData","guestsCanModify","guestsCanInviteOthers","guestsCanSeeGuests")
         val TailFields=PrefixFields+setOf("uid2445","eventStatus","eventColor","organizer","hasAttendeeData","guestsCanModify","guestsCanInviteOthers","guestsCanSeeGuests")
         fun handles(op:CalendarLocalStore.Operation)=op.kind==Kind&&runCatching{JSONObject(op.resultRef?:"{}").optInt("version")==3}.getOrDefault(false)
         fun parse(op:CalendarLocalStore.Operation,maxBytes:Int):Pair<JSONObject,FollowingExecutionReceipt> {

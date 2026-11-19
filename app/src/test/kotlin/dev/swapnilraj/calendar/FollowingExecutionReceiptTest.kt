@@ -36,7 +36,7 @@ class FollowingExecutionReceiptTest {
         val key=if(allDay)RecurrenceKey.Date(selectedStart.atOffset(ZoneOffset.UTC).toLocalDate())else RecurrenceKey.Timed(selectedStart)
         val command=CalendarSeriesWriter.frozenCommandJson(SeriesCommand.FollowingEdit(RecurrenceEditIntent.FollowingSeriesEdit(key,EventPatch(title=FieldChange.Set("Synthetic changed"))))).toString()
         val prefixWrite=FollowingExecutionReceipt.Context.associateWith{master[it]}+if(whole)mapOf("eventEndTimezone" to null,"rrule" to master["rrule"],"title" to "Synthetic changed")else mapOf("rrule" to "FREQ=DAILY;COUNT=2")
-        val tail=if(whole)null else mapOf("calendar_id" to "2","dtstart" to selectedStart.toEpochMilli().toString(),"dtend" to null,"duration" to master["duration"],"allDay" to master["allDay"],"eventTimezone" to master["eventTimezone"],"eventEndTimezone" to master["eventTimezone"],
+        val tail=if(whole)null else mapOf("calendar_id" to "2","dtstart" to selectedStart.toEpochMilli().toString(),"dtend" to null,"duration" to master["duration"],"allDay" to master["allDay"],"eventTimezone" to master["eventTimezone"],"eventEndTimezone" to master["eventEndTimezone"],
             "rrule" to "FREQ=DAILY;COUNT=6","uid2445" to "33bf8ffd-3d12-4943-a755-9b337538e1c2","title" to "Synthetic changed","description" to master["description"],"eventLocation" to master["eventLocation"],"organizer" to master["organizer"])
         return FollowingExecutionReceipt("following",command,CreateSixJson.hash("SERIES_EDIT_V1"+source),source,whole,if(whole)0 else 2,prefixWrite,master+prefixWrite,reminders,tail,
             if(whole)emptyList()else reminders.map{it.filterKeys{k->k in setOf("minutes","method")}},emptyList(),selectedStart,selectedStart.plusSeconds(duration))
@@ -66,7 +66,7 @@ class FollowingExecutionReceiptTest {
     @Test fun historicalZoneStringsDecodeWithoutCurrentZoneLookup() {
         val r=receipt();val source=JSONObject(r.sourceRaw);val master=source.getJSONObject("master").put("eventTimezone","Historical/Removed_Zone")
         val raw=source.toString();val historical=r.copy(sourceRaw=raw,token=CreateSixJson.hash("SERIES_EDIT_V1"+raw),prefixWrite=r.prefixWrite+mapOf("eventTimezone" to "Historical/Removed_Zone"),
-            prefix=r.prefix+mapOf("eventTimezone" to "Historical/Removed_Zone"),tail=r.tail!!+mapOf("eventTimezone" to "Historical/Removed_Zone","eventEndTimezone" to "Historical/Removed_Zone"))
+            prefix=r.prefix+mapOf("eventTimezone" to "Historical/Removed_Zone"),tail=r.tail!!+mapOf("eventTimezone" to "Historical/Removed_Zone"))
         assertEquals("Historical/Removed_Zone",FollowingExecutionReceipt.parse(op(historical),1024*1024).second.tail!!["eventTimezone"])
     }
     @Test fun anonymousWholeRemainsEligibleButUnbindableSplitCannotPrepare() {
@@ -88,7 +88,7 @@ class FollowingExecutionReceiptTest {
     @Test fun recomputedDigestCannotChangePrefixUidContextOrUnchangedMetadata() {
         val r=receipt()
         for(altered in listOf(r.copy(prefixWrite=r.prefixWrite+mapOf("eventTimezone" to "UTC")),r.copy(prefix=r.prefix+mapOf("uid2445" to "replacement")),
-            r.copy(tail=r.tail!!+mapOf("description" to "Changed without command")),r.copy(prefixReminders=emptyList()),r.copy(firstEnd=r.firstEnd.plusSeconds(1))))
+            r.copy(tail=r.tail!!+mapOf("description" to "Changed without command")),r.copy(tail=r.tail!!+mapOf("eventEndTimezone" to "Europe/London")),r.copy(prefixReminders=emptyList()),r.copy(firstEnd=r.firstEnd.plusSeconds(1))))
             rejects{FollowingExecutionReceipt.parse(op(altered),1024*1024)}
     }
     @Test fun exceptionAndExdateMaterialCannotEnterTheExceptionFreeProtocolWithANewDigest() {
