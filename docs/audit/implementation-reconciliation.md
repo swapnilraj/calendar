@@ -41,6 +41,32 @@ SQL and synthetic provider transactions. `live-synthetic` may use injected mutat
 app action is discoverable or enabled. Read each row's remaining acceptance; test totals are not a
 completion measure. A SQLite reopen or Activity recreation is not an actual process-kill test.
 
+## Immutable ordinary CREATE integration — 19 November 2026
+
+At source `97c3f3f`, `./gradlew test :app:assembleDebug :app:lintDebug` passed **2,243 tests**
+(app 1,969, core 257, weather 17), APK assembly and lint, with zero failures/errors/skips in 6m3s.
+This supersedes the earlier local source checkpoint below, without changing the historical CSV
+or external acceptance evidence.
+
+New one-off and recurring creates now use receipt6 with a frozen winning native plan, generated UID,
+operation-bound digest and exact ACK layout. Retry/recovery reuses that plan without current
+authoring/recurrence compilation or stored-zone resolution. Namespace/UID binding precedes private
+parent/child payload; exact child ID/slot/membership and final native bounds are required. Definite
+rollback can be explicitly retried; uncertain attempts never replay or perform UID/title/time search.
+Legacy2/3/5 records retain their original bytes/protocol, and receipt4 edits are unchanged.
+
+Independent one-off probes first reproduced three false-save child ACK cases. The
+[before/after evidence](evidence/oneoff-create-ack-before-receipt6-2026-11-19.json) records those failures,
+the nine passing ACK/UID/privacy controls, independent 127-check backend verification, 20 actual-app
+synthetic journeys and the complete aggregate gate. The publication closure passed 117 focused checks
+and independent source review; PR64 is draft while full CI runs. PR63 diagnostic uploads passed CI
+and merged. These are bounded local/provider-fixture results, not server delivery or native-device proof.
+
+A guarded owned-emulator writer harness is being prepared separately; no new native receipt6 run is
+claimed. Following immutable execution, EXDATE/exception transfer, production clone admission, actual
+Google/Workspace propagation, physical reminders/accessibility/upgrade, seven-day beta and stable
+owner signing/release remain pending. The goal remains active.
+
 ## Subsequent acknowledgement and accessibility review — 19 November 2026
 
 At source `12917f1`, the full `./gradlew test :app:assembleDebug :app:lintDebug` gate passed

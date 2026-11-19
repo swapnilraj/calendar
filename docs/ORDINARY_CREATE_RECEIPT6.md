@@ -1,8 +1,9 @@
 # Immutable ordinary CREATE recovery
 
-Status: implemented for new ordinary one-off and recurring creates in the aggregate app; integration
-verification is in progress. Existing receipt2/3/5 operations retain their original protocols. This
-does not admit provider clone profiles or establish Google/Workspace sync or physical acceptance.
+Status: implemented for new ordinary one-off and recurring creates in the aggregate app. The complete
+local gate passed 2,243 tests, debug assembly and lint. Existing receipt2/3/5 operations retain their
+original protocols. This does not admit provider clone profiles or establish Google/Workspace sync
+or physical acceptance.
 
 ## Contract
 

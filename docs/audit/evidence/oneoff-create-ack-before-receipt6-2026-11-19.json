@@ -2,7 +2,7 @@
   "schema": 1,
   "date": "2026-11-19",
   "scope": "Dedicated synthetic SQLite CalendarContract provider; no real account/device operations",
-  "status": "CORRECTED_IN_AGGREGATE_FOCUSED_VERIFICATION",
+  "status": "CORRECTED_IN_COMPLETE_LOCAL_AGGREGATE_GATE",
   "testCheckout": "e12ed2f",
   "sourceBase": "62bbfdf",
   "productionSource": "12917f1",
@@ -18,7 +18,7 @@
     "oneOffReorderedReminderAckCannotClaimSave"
   ],
   "forwardControls": "The six additional UID/READ-only controls passed in the nine-check after suite; they were not part of the three historical defect probes.",
-  "next": "Full aggregate test/debug APK/lint gate is running; account/device/beta/signing remain pending.",
+  "next": "Native LOCAL writer harness is being prepared; Google/Workspace/device/beta/stable signing remain pending.",
   "after": {
     "sourceCheckout": "97c3f3f",
     "tests": 9,
@@ -40,6 +40,18 @@
     "unchangedOriginalThree": true,
     "combinedProviderVerification": 127,
     "selectedActualAppJourneys": 20,
-    "fullAggregateGate": "RUNNING; recorded separately"
+    "fullAggregateGate": {
+      "status": "PASS",
+      "source": "97c3f3f",
+      "command": "./gradlew test :app:assembleDebug :app:lintDebug",
+      "tests": 2243,
+      "app": 1969,
+      "core": 257,
+      "weather": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "finishedUtc": "2026-11-19T01:24:57.969557Z"
+    }
   }
 }

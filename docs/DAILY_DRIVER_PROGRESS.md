@@ -4,11 +4,11 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
-At source checkpoint `12917f1`, the required full gate **passed: 2,211 tests**
-(core 257, app 1,937, weather 17), debug APK assembly and lint, with zero failures, errors or skipped
+At source checkpoint `97c3f3f`, the required full gate **passed: 2,243 tests**
+(core 257, app 1,969, weather 17), debug APK assembly and lint, with zero failures, errors or skipped
 tests. Command: `./gradlew test :app:assembleDebug :app:lintDebug`; log
-`/tmp/daylight-ack-and-accessibility-full-gate.log`. Completed in 5m55s. Debug APK 43,278,760 bytes, SHA-256:
-`5a59b37b653e3b6093a0417c629775977be734b35992ce5dee0b08d6276ec2a8`.
+`/tmp/daylight-receipt6-full-gate.log`. Completed in 6m3s. Debug APK 45,203,980 bytes, SHA-256:
+`1fca3bfbeb9b1ceed348c1ddfcfb5c5d77688f2275f85a5ab76345254a2ef45a`.
 This remains a debug-signed local build, not a stable release or daily-driver certification.
 
 The shared Add people picker is connected to meeting creation and owned one-off editing. Optional
@@ -30,7 +30,7 @@ keyboard and TalkBack spoken behavior remain unverified.
 
 Independent review reproduced ten false local-save results from hostile create acknowledgements.
 The [before/after evidence](audit/evidence/create-acknowledgement-regressions-2026-11-19.json)
-records those failures and 15 passing ACK controls after correction. New recurring receipt5 stores
+records those failures and 15 passing ACK controls after correction. The earlier recurring receipt5 stores
 the canonical known master before interpreting bounded raw child ACK facts, then requires exact
 child IDs at their authored alert indices and complete row/instance proof. Incomplete child evidence
 stays known-ID uncertainty; malformed master evidence never supplies a guessed ID or retry.
@@ -38,17 +38,19 @@ Legacy receipt3 commits remain conservative; explicit proven retries retain old 
 The correction passed 99 publication-focused checks, an independent 84-check aggregate verification,
 and this full gate, including the updated actual-app recurring journey. Receipt4 edit recovery and
 its exact native-plan helpers are retained. Source-free immutable CREATE plans and stable generated
-UID binding remain the next bounded protocol packet; recovery still recompiles recurrence today.
+UID binding are now implemented for both new create modes through receipt6 below; legacy receipt5
+still recompiles recurrence during proof/recovery.
+
 Subsequent independent [one-off ACK probes](audit/evidence/oneoff-create-ack-before-receipt6-2026-11-19.json)
-reproduced three false local-save results in the still-active receipt2 creation path (malformed,
-missing and reordered reminder ACKs). These new cases are not covered by the 2,211-test checkpoint.
+reproduced three false local-save results in the then-active receipt2 creation path (malformed,
+missing and reordered reminder ACKs). Those new cases were not covered by the prior 2,211-test checkpoint.
 Receipt6 is now integrated at `97c3f3f` for both new creation modes. Independent clean-checkout
 verification passed 127 checks, including the unchanged three ACK regressions and six UID/private-read
 controls. Twenty selected actual-app synthetic journeys also passed. The codec now has 11 checks,
 including strict all-day zone types and historical-zone decode without current lookup. New source
 freezes the winning native plan/generated UID and verifies complete child proof; legacy operations
-remain byte-preserving. The full test/debug APK/lint gate is running; these focused results do not
-replace the latest accepted aggregate checkpoint above.
+remain byte-preserving. The complete 2,243-test/debug APK/lint gate now passes, including all existing
+screenshots. No new UI image was recorded for this backend change.
 
 Incoming public EDIT review now supports an explicit proposed zone for eligible NULL-zone timed
 sources, including the displayed zone. Exact Apply/CAS and issued ZONE rights are required; absent-zone
@@ -88,13 +90,22 @@ diagnostics after CI failure, with attempt-specific artifact names. YAML/path va
 passed at `d71b4b6`; GitHub created both diagnostics and debug APK artifacts. PR63 merged as `a2d48dc`.
 It changes no application code.
 
+[PR64](https://github.com/swapnilraj/calendar/pull/64) publishes the bounded receipt6 backend closure.
+Its 117 focused checks and independent source review passed; full CI is running at `8b4e103`.
+It remains draft/unmerged. The publication preserves initial timed-zone compatibility without
+importing receipt4 or changing legacy mutation bodies. All four PR61–64 attachments are confirmed.
+
 The aggregate source remains ahead of bounded publication. PR55–62 artifact attachments are now
 confirmed in the task; earlier hanging calls were reconciled against the attachment inventory before
 retrying missing entries. Controlled personal/Workspace organizer-attendee,
 offline/conflict/recurrence tests, physical reminders/Doze/reboot/timezone/TalkBack/upgrade acceptance
-and the seven-day work/personal beta remain pending. Immutable CREATE recovery, advanced recurrence
-preservation and remaining publication are continuing source packets. The goal is active and is not
+and the seven-day work/personal beta remain pending. Immutable Following execution, exception preservation, guarded native receipt6 verification and
+remaining publication are continuing source packets. The goal is active and is not
 marked complete.
+
+The prior `12917f1` gate passed 2,211 tests, debug assembly and lint in 5m55s; log
+`/tmp/daylight-ack-and-accessibility-full-gate.log`, debug APK SHA-256
+`5a59b37b653e3b6093a0417c629775977be734b35992ce5dee0b08d6276ec2a8`.
 
 The prior `6ee8f6e` full checkpoint passed 2,177 tests with debug assembly and lint in 6m10s;
 its log is `/tmp/daylight-contact-picker-full-gate.log`. Its debug APK SHA-256 was
