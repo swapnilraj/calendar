@@ -5,6 +5,15 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+### Fenced agenda widget engine
+
+Widget work is serialized and bootstraps its durable binding/removal ledger before processing updates.
+Epoch and generation checks prevent stale work from recreating removed or rebound widgets. Widget
+configuration uses its own persistent namespace and selection; reading a widget never changes provider
+visibility, synchronization or events. Widget persistence does not change the calendar-store schema.
+Framework activation, configuration/open activities and application ownership are separate integration
+steps; real destinations and resources must exist before the widget is offered in the manifest.
+
 ### Self-contained ordinary edit recovery
 
 New one-off UPDATE/DELETE operations freeze receipt4 source and native write plans before dispatch.
