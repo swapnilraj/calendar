@@ -16,6 +16,10 @@ Retain historical receipt2/3 recovery, recurring retirement restrictions and exi
 Unattempted legacy CREATE and explicit temporal UPDATE retries also apply current native-zone
 compatibility admission; Java-only zones unsupported by Android return ZONE without dispatch.
 Attempted/committed recovery and frozen legacy receipt bytes are not migrated or replayed.
+Authored timed bounds must align to whole milliseconds; nonrepresentable precision returns TIME
+before dispatch. Exact milliseconds and negative epochs remain supported. Frozen receipt4 original
+or result bounds with non-native precision stay uncertain and cannot authorize retry or acknowledgement;
+their bytes are never rounded or migrated. Untouched imported fields retain their original values.
 
 ### Authored recurring creation in the phone editor
 
