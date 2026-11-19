@@ -55,6 +55,38 @@ class EditorConflictAdvisoryControllerTest {
     }
     private fun shown(c:EditorConflictAdvisoryController,i:EditorConflictAdvisoryInput)=c.presentation(i)
 
+    @Test fun editedExclusionRequiresBoundNamespaceAndConsistentCalendarIdentity()=runBlocking {
+        val original=ConflictAdvisoryFixture.candidate()
+        val bound=ConflictAdvisoryFixture.binding.copy(editedRef=original.ref)
+        // Valid namespace exclusion and an unselected edited calendar both remain useful controls.
+        fixture {f,c->
+            val input=ConflictAdvisoryFixture.input(binding=bound);c.update(input)
+            assertEquals(original.ref,f.requests.single().exclude)
+            f.emit(0,CalendarReadState.Ready(f.snapshot(0,candidates=listOf(original))))
+            assertTrue(shown(c,input).canReportNoConflict)
+        }
+        val other=ConflictAdvisoryFixture.identity.copy(calendarId=CalendarId(3),providerId="other-calendar")
+        fixture {f,c->
+            val input=ConflictAdvisoryFixture.input(binding=bound,calendars=setOf(other));c.update(input)
+            assertEquals(setOf(other),f.requests.single().calendars)
+            val candidate=original.copy(calendar=other,ref=original.ref.copy(calendarId=other.calendarId))
+            f.emit(0,CalendarReadState.Ready(f.snapshot(0,candidates=listOf(candidate))))
+            assertEquals(1,shown(c,input).knownConflicts)
+        }
+        val unsafe=mutableListOf<String>()
+        for(case in listOf("reused-namespace","inconsistent-binding")) fixture {f,c->
+            val selected=if(case=="reused-namespace") ConflictAdvisoryFixture.identity.copy(account=CalendarAccount("replacement","foreign"),owner="replacement",providerId="reused-provider") else other
+            val reference=original.ref.copy(calendarId=selected.calendarId)
+            val input=ConflictAdvisoryFixture.input(binding=bound.copy(editedRef=reference),calendars=setOf(selected))
+            c.update(input)
+            if(f.requests.isNotEmpty()) {
+                f.emit(0,CalendarReadState.Ready(f.snapshot(0,candidates=listOf(original.copy(calendar=selected,ref=reference)))))
+                unsafe+="$case:queried:clear=${shown(c,input).canReportNoConflict}"
+            } else if(shown(c,input).status!=EditorConflictAdvisoryStatus.UNAVAILABLE) unsafe+="$case:unmasked"
+        }
+        println("P2 edited namespace unsafe=$unsafe")
+        assertEquals("A ref-only exclusion cannot rebind an edited source namespace",emptyList<String>(),unsafe)
+    }
     @Test fun oldControllerClearCannotRenderOnNewControllerWithSameInputAndEpoch()=runBlocking {
         val scope=CoroutineScope(SupervisorJob()+Dispatchers.Unconfined)
         val oldFeed=ConflictAdvisoryFeed();val newFeed=ConflictAdvisoryFeed()
