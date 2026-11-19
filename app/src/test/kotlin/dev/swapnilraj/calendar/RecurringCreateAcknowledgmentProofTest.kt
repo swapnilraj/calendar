@@ -24,7 +24,7 @@ import org.robolectric.shadows.ShadowContentResolver
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[35],application=Application::class)
 class RecurringCreateAcknowledgmentProofTest {
-    private enum class Ack { SCHEME, QUERY, FRAGMENT, ZERO, MALFORMED_CHILD, MISSING_CHILD, WRONG_PARENT_CHILD, REORDERED_CHILD, DUPLICATE_CHILD, FOREIGN_ONE_OFF }
+    private enum class Ack { SCHEME, QUERY, FRAGMENT, ZERO, MALFORMED_CHILD, MISSING_CHILD, WRONG_PARENT_CHILD, REORDERED_CHILD, DUPLICATE_CHILD, FOREIGN_ONE_OFF, ASSERT_COUNT, ASSERT_SHAPE, MASTER_COUNT, EXTRA_RESULT, CANONICAL }
     private val start=Instant.parse("2028-01-03T09:00:00Z")
     private val identity=CalendarIdentity(CalendarId(2),CalendarAccount("owner@example.invalid","com.google"),"owner@example.invalid","calendar-A")
     private val draft=EventDraft(CalendarId(2),EventTime.Timed(start,start.plusSeconds(3600)),ZoneId.of("UTC"),
@@ -41,6 +41,21 @@ class RecurringCreateAcknowledgmentProofTest {
     @Test fun wrongParentReminderAcknowledgmentCannotBeReplacedByMatchingPayloadReadback()=child(Ack.WRONG_PARENT_CHILD)
     @Test fun reorderedReminderAcknowledgmentsCannotBeAcceptedAsTheIssuedInsertOrder()=child(Ack.REORDERED_CHILD)
     @Test fun duplicateReminderAcknowledgmentsCannotBecomeDistinctLinkedChildren()=child(Ack.DUPLICATE_CHILD)
+
+    @Test fun contradictoryCalendarAssertionCountRetainsKnownMasterButCannotAcknowledgeSave()=child(Ack.ASSERT_COUNT)
+    @Test fun calendarAssertionUriInsteadOfCountRetainsKnownMasterButCannotAcknowledgeSave()=child(Ack.ASSERT_SHAPE)
+    @Test fun masterCountInsteadOfInsertUriCannotBecomeKnownSave()=master(Ack.MASTER_COUNT)
+    @Test fun unexpectedExtraBatchResultCannotBecomeCompleteAcknowledgment()=child(Ack.EXTRA_RESULT)
+    @Test fun zeroAlertCreateStillVerifiesReadOnlyFromItsCanonicalTwoResultBatch()=runBlocking {fixture(Ack.CANONICAL) {f->
+        val input=draft.copy(alertMinutes=emptyList())
+        val result=f.writer.create("synthetic-create",input)
+        assertTrue(result.toString(),result is MutationResult.LocalSaved)
+        val ref=(result as MutationResult.LocalSaved).ref
+        assertTrue(ref.eventId>0);assertEquals(RecurrenceRef(ref.eventId,start),ref.recurrence)
+        assertEquals(0,f.p.base.count("reminders"));assertEquals(1,f.p.base.batchCount)
+        f.permissions.remove(Manifest.permission.WRITE_CALENDAR)
+        assertEquals(result,f.writer.recover("synthetic-create"));assertEquals(1,f.p.base.batchCount)
+    }}
 
     private fun master(mode:Ack)=runBlocking {fixture(mode) {f->
         val input=if(mode==Ack.FOREIGN_ONE_OFF)draft.copy(recurrence=null) else draft
@@ -99,6 +114,11 @@ class RecurringCreateAcknowledgmentProofTest {
                 Ack.REORDERED_CHILD->{val first=result[2];result[2]=result[3];result[3]=first}
                 Ack.DUPLICATE_CHILD->result[3]=result[2]
                 Ack.FOREIGN_ONE_OFF->result[1]=ContentProviderResult(event.buildUpon().authority("foreign.synthetic.invalid").build())
+                Ack.ASSERT_COUNT->result[0]=ContentProviderResult(0)
+                Ack.ASSERT_SHAPE->result[0]=ContentProviderResult(ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,2))
+                Ack.MASTER_COUNT->result[1]=ContentProviderResult(1)
+                Ack.EXTRA_RESULT->return result+ContentProviderResult(1)
+                Ack.CANONICAL->Unit
             }
             return result
         }
