@@ -255,6 +255,7 @@ class CalendarWriter(
                         .put("master", Long.MAX_VALUE).put("ackComplete", false).toString()
                     if (minimal.toByteArray(Charsets.UTF_8).size > readBudgets.maxCanonicalBytes) throw Invalid(setOf(InvalidEventField.RECURRENCE))
                 }
+                prepared.editReceipt?.let { preflightEditCommit(it, preparedProof) }
                 store.prepare(id, signature, kind, preparedProof.toString())
                 val persisted = store.operation(id) ?: error("Operation journal unavailable")
                 if (persisted.signature != signature || persisted.kind != kind) return@withLock MutationResult.Conflict(null)
@@ -264,6 +265,7 @@ class CalendarWriter(
                     val winner = OrdinaryEditReceipt.parse(persisted).second
                     prepared = preparedEdit(winner)
                     preparedProof = winner.prepared(signature, identityJson(prepared.namespace))
+                    preflightEditCommit(winner, preparedProof)
                     val expected = requireNotNull(prepared.expectedSource)
                     if (source(requireNotNull(prepared.originalRef), expected.event.containsKey("uid2445")).encode() != expected.encode()) throw Stale()
                     policy(expected)
@@ -500,6 +502,17 @@ class CalendarWriter(
         val time = EventTime.Timed(receipt.result.instanceStart, receipt.result.instanceEnd)
         return Prepared(operations, time, receipt.result.calendarId, receipt.result.eventId, calendarIdentity(source.calendar), receipt.original,
             source, editReceipt = receipt, reminderInserts = inserts, acknowledgedCounts = counts)
+    }
+
+    /** Reserve both possible v4 committed wire shapes before any provider attempt. The distinct
+     * maximum-width IDs are a size bound only; they are never persisted as native identities. */
+    private fun preflightEditCommit(receipt: OrdinaryEditReceipt, prepared: JSONObject) {
+        fun committed(ids: List<Long>?): String = JSONObject(prepared.toString())
+            .put("ackComplete", ids != null).apply { ids?.let { put("reminderIds", JSONArray(it)) } }
+            .put("stage", "committed").put("ref", refJson(receipt.result)).toString()
+        checkStoredJson(committed(null), readBudgets.maxCanonicalBytes)
+        val maximumIds = List(receipt.alerts?.size ?: 0) { Long.MAX_VALUE - it }
+        checkStoredJson(committed(maximumIds), readBudgets.maxCanonicalBytes)
     }
 
     private suspend fun recoverEdit(operation: CalendarLocalStore.Operation, parsed: Pair<JSONObject, OrdinaryEditReceipt>): MutationResult {

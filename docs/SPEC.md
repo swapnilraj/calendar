@@ -76,6 +76,9 @@ native result, child membership and complete acknowledgements. Changed or missin
 uncertain. Legacy receipt2/3 recovery stays on its existing protocol; receipt2 edits still need their
 retained snapshots. Providers that assign or change a formerly NULL event UID/sync identity after
 commit cannot be inferred to match; their recovery stays conservative pending account verification.
+Before a new or adopted receipt4 edit reaches the provider, reserve journal space for both minimal
+and complete acknowledgement records, including maximum-width child IDs. A predictable overflow
+returns unavailable without attempting any native write; exact-fit records remain dispatchable.
 
 New ordinary one-off and recurring CREATE operations use receipt6. Initial validation freezes native
 values, first-instance bounds, an operation-bound plan digest and a generated UID. Competing writers
