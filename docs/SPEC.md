@@ -5,6 +5,15 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+Private incoming CREATE completion (draft version7) and EDIT review (version8) retain raw caller
+suggestions separately from provider source authority. Unknown fields, duplicate fields, future versions,
+mismatched identities and malformed proof fail closed without normalizing or applying suggestions.
+Prepared EDIT candidates bind exact source token/baseline and reject legacy or already-frozen native
+drafts; consumed handoff receipts retain session/generation or source hashes rather than caller
+title/notes/token payload. These opaque draft documents add no storage schema, provider write,
+automatic retry, or receipt4/6 migration. This packet supplies protocol prerequisites; services and UI
+acceptance remain separate.
+
 ### Fenced agenda widget engine
 
 Widget work is serialized and bootstraps its durable binding/removal ledger before processing updates.
