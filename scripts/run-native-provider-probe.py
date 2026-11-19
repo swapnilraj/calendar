@@ -223,7 +223,42 @@ APP_CASES = {
 }
 
 
-def require_app_phase(report, phase, run_id, pins):
+def validate_target_process(value):
+    if (not isinstance(value, dict) or set(value) != {"pid", "startElapsedRealtime", "name"} or
+            type(value.get("pid")) is not int or not 1 <= value["pid"] <= 2147483647 or
+            type(value.get("startElapsedRealtime")) is not int or not 1 <= value["startElapsedRealtime"] <= 9223372036854775807 or
+            value.get("name") != APP):
+        raise Refusal("native target process identity is missing, ambiguous or not the owned app")
+    return value
+
+
+def confirm_target_exit(adb, args, process, output, label):
+    """Observe only the native-reported owned PID; adb-client exit is not target exit."""
+    process = validate_target_process(process)
+    proof = {"targetProcess": process, "method": "ps-exact-owned-pid", "status": "UNPROVEN", "observations": []}
+    try:
+        for attempt in range(10):
+            guard_device(adb, args)
+            raw = adb.read(["ps", "-p", str(process["pid"]), "-o", "PID,NAME"], shell=True)
+            guard_device(adb, args)
+            lines = [line.split() for line in raw.splitlines() if line.strip()]
+            if lines == [["PID", "NAME"]]:
+                proof["observations"].append("REPORTED_PID_ABSENT")
+                proof["status"] = "TARGET_PID_ABSENT"
+                return proof
+            if lines != [["PID", "NAME"], [str(process["pid"]), APP]]:
+                # Do not inspect a replacement process, infer a stopped target from a new name,
+                # enumerate other PIDs, or try another command when visibility is uncertain.
+                raise Refusal("owned target PID lifecycle read is ambiguous; permission continuation withheld")
+            proof["observations"].append("REPORTED_OWNED_PID_PRESENT")
+            if attempt < 9:
+                time.sleep(0.1)
+        raise Refusal("owned target process remains running; permission continuation withheld")
+    finally:
+        exclusive_json(output / (label + ".target-exit.json"), proof)
+
+
+def require_app_phase(report, phase, run_id, pins, prior_processes=None):
     expected_status = {"CREATE_STAGE": "STAGED", "RECOVER_READ_ONLY": "RECOVERED", "CLEANUP": "PASS"}.get(phase)
     if not isinstance(report, dict) or expected_status is None or type(report.get("schema")) is not int or report["schema"] != 1 or report.get("runId") != run_id or report.get("status") != expected_status:
         raise Refusal("app probe phase did not complete; no permission continuation or automatic retry")
@@ -237,6 +272,25 @@ def require_app_phase(report, phase, run_id, pins):
     if any(type(report.get(k)) is not int or report[k] != v for k, v in
            (("queryTimeoutSeconds", 30), ("directQueryCap", 320), ("batchAssertionCap", 128))) or report.get("deadlineKind") != "cooperative":
         raise Refusal("app probe cooperative limits were not preserved")
+    process = validate_target_process(report.get("targetProcess"))
+    preceding = {"CREATE_STAGE": (), "RECOVER_READ_ONLY": ("CREATE_STAGE",), "CLEANUP": ("CREATE_STAGE", "RECOVER_READ_ONLY")}[phase]
+    if prior_processes is None:
+        if preceding:
+            raise Refusal("prior native target processes must remain pinned across phases")
+        prior_processes = {}
+    reported_priors = report.get("priorProcesses")
+    if (not isinstance(prior_processes, dict) or set(prior_processes) != set(preceding) or
+            not isinstance(reported_priors, dict) or set(reported_priors) != set(preceding) or reported_priors != prior_processes):
+        raise Refusal("native target process lineage changed or is incomplete")
+    last_start = 0
+    for previous_phase in preceding:
+        validate_target_process(reported_priors[previous_phase])
+        previous = validate_target_process(prior_processes[previous_phase])
+        if previous["startElapsedRealtime"] <= last_start:
+            raise Refusal("prior native process starts are not monotonic")
+        last_start = previous["startElapsedRealtime"]
+    if process["startElapsedRealtime"] <= last_start:
+        raise Refusal("native phase did not start in a distinct fresh target process")
     cases = report.get("cases")
     if not isinstance(cases, list) or len(cases) != 6:
         raise Refusal("app probe requires its exact six-case matrix")
@@ -336,7 +390,7 @@ class Capture:
         return self.reports[0], self.codes[0]
 
 
-def instrument(adb, run_id, mode, pins, output, label, end_zone_mode="distinct", app_phase=None, boot_id=None):
+def instrument(adb, run_id, mode, pins, output, label, end_zone_mode="distinct", app_phase=None, boot_id=None, process_witness=False):
     extras = {"probeOptIn": "IDENTITY_ONLY_V1" if mode == "identity" else "LOCAL_APP_CREATE_V1" if mode == "app-create-recovery" else "LOCAL_FIXTURE_V1", "probeRunId": run_id}
     if mode in ("fixtures", "app-create-recovery"):
         extras.update({"probeEndZoneMode": end_zone_mode, "expectedBuildFingerprint": pins["buildFingerprint"], "expectedProviderPackage": pins["package"],
@@ -348,6 +402,10 @@ def instrument(adb, run_id, mode, pins, output, label, end_zone_mode="distinct",
         if app_phase not in ("CREATE_STAGE", "RECOVER_READ_ONLY", "CLEANUP") or boot_id is None:
             raise Refusal("explicit app probe phase and boot pin required")
         extras.update({"probeAppPhase": app_phase, "expectedBootId": boot_id})
+    if process_witness:
+        if mode != "identity":
+            raise Refusal("read-only process witness belongs to identity preflight only")
+        extras["probeProcessWitness"] = "OWNED_TARGET_PROCESS_V1"
     tokens = ["am", "instrument", "--user", "0", "-w", "-r"]
     for key, value in extras.items():
         tokens += ["-e", key, value]
@@ -437,6 +495,8 @@ def run(args):
             raise Refusal("fixtures require a prior successful identity-mode result.json")
         canonical_uuid(prior.get("runId"))
         pins = require_pass(prior.get("probeReport"), "identity", prior.get("runId"))
+        if args.mode == "app-create-recovery" and pins["sdk"] < 35:
+            raise Refusal("app writer probe requires the reviewed owned API35-or-later build")
         if args.run_id == prior.get("runId") or prior.get("apks") != apks:
             raise Refusal("fixtures require a new run UUID and the same frozen APK pair")
         expected = prior.get("guard", {})
@@ -457,13 +517,13 @@ def run(args):
     exclusive_json(args.output_dir / "host-metadata.json", {k: v for k, v in state.items() if k != "probeReport"})
     adb = Adb(args.adb, args.serial)
 
-    def guarded_instrument(mode, descriptor, label, app_phase=None):
+    def guarded_instrument(mode, descriptor, label, app_phase=None, process_witness=False):
         guard_device(adb, args)
         if any(sha256(path) != meta["sha256"] for path, meta in ((app_path, app_meta), (test_path, test_meta))):
             raise Refusal("APK changed before instrumentation phase")
         try:
             return instrument(adb, args.run_id, mode, descriptor, args.output_dir, label,
-                              getattr(args, "end_zone_mode", "distinct"), app_phase, args.expected_boot_id)
+                              getattr(args, "end_zone_mode", "distinct"), app_phase, args.expected_boot_id, process_witness)
         finally:
             # Also perform the post-check when instrumentation reports failure or malformed output.
             state["guard"] = guard_device(adb, args)
@@ -482,11 +542,15 @@ def run(args):
                 raise Refusal("APK changed during install; no retry attempted")
         guard_device(adb, args)
         if args.mode in ("fixtures", "app-create-recovery"):
-            fresh = guarded_instrument("identity", None, "identity-preflight")
+            fresh = guarded_instrument("identity", None, "identity-preflight", process_witness=args.mode == "app-create-recovery")
             state["identityPreflightReport"] = fresh
             guard_device(adb, args)
             if require_pass(fresh, "identity", args.run_id) != pins:
                 raise Refusal("provider binary/build/signing identity changed before permission grants")
+            if args.mode == "app-create-recovery":
+                # Validate this boot's exact-PID ps absence behavior BEFORE creating a fixture.
+                # A nonzero ps exit remains unreadable/unsupported, never inferred as absence.
+                state["identityTargetExit"] = confirm_target_exit(adb, args, fresh.get("targetProcess"), args.output_dir, "identity-preflight")
             for permission in ("android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR"):
                 guard_device(adb, args)
                 adb.mutation(["pm", "grant", "--user", "0", APP, permission], shell=True)
@@ -495,19 +559,23 @@ def run(args):
             stage = guarded_instrument(args.mode, pins, "app-create-stage", "CREATE_STAGE")
             require_app_phase(stage, "CREATE_STAGE", args.run_id, pins)
             state["stageReport"] = stage
-            # instrument() returns only after process.wait(), complete protocol and RESULT_OK.
+            # process.wait() above proves HOST adb completion only. The target PID is independent.
+            state["stageTargetExit"] = confirm_target_exit(adb, args, stage["targetProcess"], args.output_dir, "app-create-stage")
             guard_device(adb, args)
             adb.mutation(["pm", "revoke", "--user", "0", APP, "android.permission.WRITE_CALENDAR"], shell=True)
             guard_device(adb, args)
             recovered = guarded_instrument(args.mode, pins, "app-recover-read-only", "RECOVER_READ_ONLY")
-            require_app_phase(recovered, "RECOVER_READ_ONLY", args.run_id, pins)
+            require_app_phase(recovered, "RECOVER_READ_ONLY", args.run_id, pins, {"CREATE_STAGE": stage["targetProcess"]})
             state["recoveryReport"] = recovered
+            state["recoveryTargetExit"] = confirm_target_exit(adb, args, recovered["targetProcess"], args.output_dir, "app-recover-read-only")
             # Regrant is cleanup-only, following complete same-run ownership and recovery proof.
             guard_device(adb, args)
             adb.mutation(["pm", "grant", "--user", "0", APP, "android.permission.WRITE_CALENDAR"], shell=True)
             guard_device(adb, args)
             report = guarded_instrument(args.mode, pins, "instrumentation", "CLEANUP")
-            actual = require_app_phase(report, "CLEANUP", args.run_id, pins)
+            actual = require_app_phase(report, "CLEANUP", args.run_id, pins,
+                                       {"CREATE_STAGE": stage["targetProcess"], "RECOVER_READ_ONLY": recovered["targetProcess"]})
+            state["cleanupTargetExit"] = confirm_target_exit(adb, args, report["targetProcess"], args.output_dir, "app-cleanup")
         else:
             report = guarded_instrument(args.mode, pins, "instrumentation")
             actual = require_pass(report, args.mode, args.run_id, getattr(args, "end_zone_mode", None))

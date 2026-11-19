@@ -18,6 +18,17 @@ PINS = {"package": "com.android.providers.calendar", "versionCode": 35, "baseSha
         "buildFingerprint": "synthetic-owned-build", "sdk": 35, "securityPatch": "2026-01-01"}
 GUARD = {"serial": "emulator-5554", "avd": host.OWNED_AVD, "bootId": BOOT,
          "buildFingerprint": PINS["buildFingerprint"], "qemu": "1", "androidUser": 0}
+PROCESSES = {
+    "identity": {"pid": 11110, "startElapsedRealtime": 50, "name": host.APP},
+    "CREATE_STAGE": {"pid": 11111, "startElapsedRealtime": 100, "name": host.APP},
+    "RECOVER_READ_ONLY": {"pid": 11112, "startElapsedRealtime": 200, "name": host.APP},
+    "CLEANUP": {"pid": 11113, "startElapsedRealtime": 300, "name": host.APP},
+}
+
+
+def prior_for(phase):
+    keys = {"CREATE_STAGE": (), "RECOVER_READ_ONLY": ("CREATE_STAGE",), "CLEANUP": ("CREATE_STAGE", "RECOVER_READ_ONLY")}[phase]
+    return {key: copy.deepcopy(PROCESSES[key]) for key in keys}
 
 
 def phase_report(phase, run=RUN):
@@ -33,7 +44,7 @@ def phase_report(phase, run=RUN):
               "ownershipProof": "EXACT_RUN_MANIFEST_AND_CALENDAR", "receiptVersion": 6, "cases": cases,
               "fixtureRetained": phase != "CLEANUP", "queryTimeoutSeconds": 30, "directQueryCap": 320,
               "batchAssertionCap": 128, "deadlineKind": "cooperative", "directQueryCount": 80,
-              "batchAssertionCount": 6}
+              "batchAssertionCount": 6, "targetProcess": copy.deepcopy(PROCESSES[phase]), "priorProcesses": prior_for(phase)}
     report["cleanup"] = ({"status": "VERIFIED_CALENDAR_AND_TRACKED_IDS_ABSENT", "trackedEventCount": 6,
                           "localFiles": "VERIFIED_EXACT_RUN_FILES_ABSENT", "directQueryCount": 250, "batchAssertionCount": 7,
                           "trackedIdCheckScope": "GLOBAL_TRACKED_IDS"} if phase == "CLEANUP" else
@@ -48,7 +59,7 @@ def phase_report(phase, run=RUN):
 class PhaseProtocolTest(unittest.TestCase):
     def test_valid_phases_keep_stage_distinct_from_pass(self):
         for phase in ("CREATE_STAGE", "RECOVER_READ_ONLY", "CLEANUP"):
-            self.assertEqual(PINS, host.require_app_phase(phase_report(phase), phase, RUN, PINS))
+            self.assertEqual(PINS, host.require_app_phase(phase_report(phase), phase, RUN, PINS, prior_for(phase)))
 
     def test_wrong_or_partial_proof_is_never_continuable(self):
         mutations = [lambda r: r.update(status="PASS"), lambda r: r.update(runId=BOOT),
@@ -65,13 +76,13 @@ class PhaseProtocolTest(unittest.TestCase):
                            ("nativeWriteCalls", 1), ("forbiddenWriteAttempts", 1), ("guardedChildQueries", 15),
                            ("minimalBindingQueries", True)):
             report = phase_report("RECOVER_READ_ONLY"); report["recovery"][key] = value
-            with self.assertRaises(host.Refusal): host.require_app_phase(report, "RECOVER_READ_ONLY", RUN, PINS)
+            with self.assertRaises(host.Refusal): host.require_app_phase(report, "RECOVER_READ_ONLY", RUN, PINS, prior_for("RECOVER_READ_ONLY"))
 
     def test_cleanup_requires_calendar_events_and_local_files_absent(self):
         for key, value in (("status", "CLEANUP_WITHHELD"), ("trackedEventCount", 5), ("localFiles", "UNKNOWN"),
                            ("trackedIdCheckScope", "CALENDAR_SCOPED")):
             report = phase_report("CLEANUP"); report["cleanup"][key] = value
-            with self.assertRaises(host.Refusal): host.require_app_phase(report, "CLEANUP", RUN, PINS)
+            with self.assertRaises(host.Refusal): host.require_app_phase(report, "CLEANUP", RUN, PINS, prior_for("CLEANUP"))
 
     def test_identity_mode_does_not_accept_writer_stage(self):
         with self.assertRaises(host.Refusal): host.require_pass(phase_report("CREATE_STAGE"), "identity", RUN)
@@ -103,6 +114,16 @@ class PhaseProtocolTest(unittest.TestCase):
         for value in ("device-123", "emulator-0", "emulator-5554 extra", "emulator-5554\n"):
             with self.assertRaises(Exception): host.emulator_serial(value)
 
+    def test_native_process_identity_and_both_prior_tuples_are_required(self):
+        for key, value in (("pid", True), ("pid", 0), ("pid", 2147483648), ("name", "another.app"),
+                           ("startElapsedRealtime", 0), ("startElapsedRealtime", 100)):
+            report = phase_report("RECOVER_READ_ONLY"); report["targetProcess"][key] = value
+            with self.assertRaises(host.Refusal): host.require_app_phase(report, "RECOVER_READ_ONLY", RUN, PINS, prior_for("RECOVER_READ_ONLY"))
+        for changed_phase in ("CREATE_STAGE", "RECOVER_READ_ONLY"):
+            report = phase_report("CLEANUP"); report["priorProcesses"][changed_phase]["pid"] += 10
+            with self.assertRaises(host.Refusal): host.require_app_phase(report, "CLEANUP", RUN, PINS, prior_for("CLEANUP"))
+        with self.assertRaises(host.Refusal): host.require_app_phase(phase_report("CLEANUP"), "CLEANUP", RUN, PINS)
+
 
 class HostOrderingTest(unittest.TestCase):
     def setup_run(self, directory):
@@ -124,12 +145,23 @@ class HostOrderingTest(unittest.TestCase):
                                         "--output-dir", str(directory / "out"), "--run-id", RUN])
         return args
 
-    def execute(self, args, bad_phase=None, corruption=False, interrupted=False):
+    def execute(self, args, bad_phase=None, corruption=False, interrupted=False, process_states=None):
         events = []
+        process_states = process_states or {}
         class Adb:
             def __init__(self, *ignored): pass
             def mutation(self, tokens, shell=False): events.append(tuple(tokens))
-        def instrument(adb, run, mode, pins, output, label, endzone="distinct", phase=None, boot=None):
+            def read(self, tokens, shell=False):
+                self_outer = {str(value["pid"]): key for key, value in PROCESSES.items()}
+                if len(tokens) != 5 or tokens[:2] != ["ps", "-p"] or tokens[3:] != ["-o", "PID,NAME"] or tokens[2] not in self_outer:
+                    raise AssertionError("only native-reported exact owned PID reads are allowed")
+                key = self_outer[tokens[2]]; events.append(("target-ps", key))
+                outcome = process_states.get(key, "absent")
+                if outcome == "unreadable": raise host.Refusal("synthetic nonzero/unreadable ps")
+                if outcome == "ambiguous": return "PID NAME\n" + tokens[2] + " other.process"
+                if outcome == "running": return "PID NAME\n" + tokens[2] + " " + host.APP
+                return "PID NAME"
+        def instrument(adb, run, mode, pins, output, label, endzone="distinct", phase=None, boot=None, process_witness=False):
             events.append(("instrument-enter", phase or mode))
             if bad_phase is not None and phase == bad_phase:
                 if interrupted: raise KeyboardInterrupt()
@@ -137,11 +169,12 @@ class HostOrderingTest(unittest.TestCase):
             if mode == "identity":
                 report = {"schema": 1, "status": "PASS", "scope": "native-provider-identity-only", "runId": RUN,
                           "productionProfileActivation": "NONE", "providerIdentity": PINS}
+                if process_witness: report["targetProcess"] = copy.deepcopy(PROCESSES["identity"])
             else: report = phase_report(phase)
             if phase == "CREATE_STAGE" and corruption: report["ownershipProof"] = "CORRUPT"
             events.append(("instrument-exit-protocol-complete", phase or mode))
             return report
-        with patch.object(host, "Adb", Adb), patch.object(host, "guard_device", side_effect=lambda *_: dict(GUARD)), patch.object(host, "instrument", side_effect=instrument):
+        with patch.object(host, "Adb", Adb), patch.object(host, "guard_device", side_effect=lambda *_: dict(GUARD)), patch.object(host, "instrument", side_effect=instrument), patch.object(host.time, "sleep"):
             try: host.run(args)
             except (host.Refusal, KeyboardInterrupt): pass
         return events, json.loads((args.output_dir / "result.json").read_text())
@@ -153,8 +186,10 @@ class HostOrderingTest(unittest.TestCase):
         grants = [i for i, event in enumerate(events) if event == ("pm", "grant", "--user", "0", host.APP, "android.permission.WRITE_CALENDAR")]
         self.assertEqual(2, len(grants)); self.assertEqual("PASS", result["status"])
         self.assertLess(events.index(("instrument-exit-protocol-complete", "CREATE_STAGE")), events.index(revoke))
+        self.assertLess(events.index(("target-ps", "CREATE_STAGE")), events.index(revoke))
         self.assertLess(events.index(revoke), events.index(("instrument-enter", "RECOVER_READ_ONLY")))
         self.assertLess(events.index(("instrument-exit-protocol-complete", "RECOVER_READ_ONLY")), grants[-1])
+        self.assertLess(events.index(("target-ps", "RECOVER_READ_ONLY")), grants[-1])
         self.assertLess(grants[-1], events.index(("instrument-enter", "CLEANUP")))
 
     def test_failed_or_corrupt_stage_cannot_revoke_or_start_recovery(self):
@@ -178,6 +213,46 @@ class HostOrderingTest(unittest.TestCase):
             args = self.setup_run(d); args.expected_boot_id = RUN
             with patch.object(host, "Adb", side_effect=AssertionError("must not construct adb")):
                 with self.assertRaises(host.Refusal): host.run(args)
+
+    def test_host_adb_exit_with_still_running_stage_target_cannot_revoke_write(self):
+        with tempfile.TemporaryDirectory() as d:
+            args = self.setup_run(d); events, result = self.execute(args, process_states={"CREATE_STAGE": "running"})
+            proof = json.loads((args.output_dir / "app-create-stage.target-exit.json").read_text())
+        self.assertIn(("instrument-exit-protocol-complete", "CREATE_STAGE"), events)
+        self.assertEqual(10, events.count(("target-ps", "CREATE_STAGE")))
+        self.assertEqual("UNPROVEN", proof["status"]); self.assertEqual("FAIL", result["status"])
+        self.assertFalse(any(e[:2] == ("pm", "revoke") for e in events))
+        self.assertNotIn(("instrument-enter", "RECOVER_READ_ONLY"), events)
+
+    def test_unproven_recovery_target_cannot_regrant_write_or_start_cleanup(self):
+        for outcome in ("running", "unreadable", "ambiguous"):
+            with tempfile.TemporaryDirectory() as d:
+                args = self.setup_run(d); events, result = self.execute(args, process_states={"RECOVER_READ_ONLY": outcome})
+            self.assertEqual("FAIL", result["status"])
+            self.assertEqual(1, events.count(("pm", "grant", "--user", "0", host.APP, "android.permission.WRITE_CALENDAR")))
+            self.assertNotIn(("instrument-enter", "CLEANUP"), events)
+            if outcome != "running": self.assertEqual(1, events.count(("target-ps", "RECOVER_READ_ONLY")))
+
+    def test_unreadable_nonzero_or_ambiguous_ps_preflight_creates_no_fixture_and_grants_no_permission(self):
+        for outcome in ("unreadable", "ambiguous", "running"):
+            with tempfile.TemporaryDirectory() as d:
+                args = self.setup_run(d); events, result = self.execute(args, process_states={"identity": outcome})
+            self.assertEqual("FAIL", result["status"])
+            self.assertNotIn(("instrument-enter", "CREATE_STAGE"), events)
+            self.assertFalse(any(e[:2] in (("pm", "grant"), ("pm", "revoke")) for e in events))
+
+    def test_identity_mode_keeps_no_calendar_permission_or_process_read_behavior(self):
+        with tempfile.TemporaryDirectory() as d:
+            args = self.setup_run(d); args.mode = "identity"; events, result = self.execute(args)
+        self.assertEqual("PASS", result["status"])
+        self.assertFalse(any(e[0] in ("target-ps", "pm") for e in events))
+
+    def test_unknown_reported_name_is_refused_before_any_pid_read(self):
+        class NoReads:
+            def read(self, *args, **kwargs): raise AssertionError("must not inspect unowned process")
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(host.Refusal):
+                host.confirm_target_exit(NoReads(), object(), {"pid": 123, "startElapsedRealtime": 20, "name": "another.app"}, Path(d), "bad")
 
 
 class DeviceGuardTest(unittest.TestCase):

@@ -161,6 +161,10 @@ class NativeCalendarProviderProbe : Instrumentation() {
             if (identityOnly) {
                 step("identity-only")
                 report.put("scope", "native-provider-identity-only").put("providerIdentity", identity())
+                if (arguments.containsKey("probeProcessWitness")) {
+                    requireCondition(arguments.getString("probeProcessWitness") == "OWNED_TARGET_PROCESS_V1", "INVALID_PROCESS_WITNESS_REQUEST")
+                    report.put("targetProcess", NativeWriterProbeState.currentProcess())
+                }
                 return
             }
             if (optIn == "LOCAL_APP_CREATE_V1") {
@@ -226,6 +230,14 @@ class NativeCalendarProviderProbe : Instrumentation() {
                 val row = state.cases.getJSONObject(index); knownEventIds += row.getLong("id"); knownUids[row.getLong("id")] = row.getString("uid")
             }
             deadline()
+            if (appPhase != "CREATE_STAGE") {
+                requireCondition(preflightAbsent && creationAttempted && calendarId != null && state.cases.length() == 6, "APP_OWNERSHIP_INCOMPLETE")
+                requireCondition(state.phase == if (appPhase == "RECOVER_READ_ONLY") "STAGED" else "RECOVERED", "APP_PHASE_MISMATCH")
+                if (appPhase == "RECOVER_READ_ONLY") requireCondition(context.getDatabasePath(state.database).isFile, "APP_STORE_MISSING")
+            }
+            val (process, priorProcesses) = state.claimProcess(requireNotNull(appPhase))
+            report.put("targetProcess", process).put("priorProcesses", priorProcesses)
+            saveAppState()
             if (appPhase == "CREATE_STAGE") {
                 requireCondition(state.phase == "CREATING" && namespace().isEmpty(), "FIXTURE_NAMESPACE_ALREADY_EXISTS")
                 preflightAbsent = true; saveAppState()
@@ -239,10 +251,6 @@ class NativeCalendarProviderProbe : Instrumentation() {
                     put(C.CAN_MODIFY_TIME_ZONE, 1)
                 }) ?: throw Failure("CALENDAR_INSERT_ACK_MISSING")
                 calendarId = idFrom(inserted, "calendars", requested.encodedQuery); saveAppState()
-            } else {
-                requireCondition(preflightAbsent && creationAttempted && calendarId != null && state.cases.length() == 6, "APP_OWNERSHIP_INCOMPLETE")
-                requireCondition(state.phase == if (appPhase == "RECOVER_READ_ONLY") "STAGED" else "RECOVERED", "APP_PHASE_MISMATCH")
-                if (appPhase == "RECOVER_READ_ONLY") requireCondition(context.getDatabasePath(state.database).isFile, "APP_STORE_MISSING")
             }
             guardCalendar()
             if (appPhase == "CLEANUP") {

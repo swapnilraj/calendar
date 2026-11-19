@@ -105,6 +105,12 @@ python3 scripts/run-native-provider-probe.py app-create-recovery \
 
 This is one explicitly requested three-phase protocol, not automatic retries:
 
+Before calendar permission grants or fixture creation, app mode requests an optional native target
+process witness in its fresh read-only identity preflight. That report contains only the exact app
+process name, `Process.myPid()` and `Process.getStartElapsedRealtime()` alongside the existing binary
+identity. The ordinary identity/18-case modes do not request this witness and keep their original
+behavior. This preflight performs no calendar query or mutation.
+
 1. **CREATE_STAGE:** create an exclusive UUID-specific synthetic LOCAL calendar with explicit ALERT
    support/max2 and six new app operations. Canonical controls cover timed one-off with10/30-minute
    alerts, UTC-date two-day one-off without alerts, COUNT3 timed recurring with10/30-minute alerts,
@@ -112,7 +118,7 @@ This is one explicitly requested three-phase protocol, not automatic retries:
    deliberately fail test-wrapper queries after the real native batch returns its original,
    unmodified ACKs. These two must retain exact known-master, complete child-ACK COMMITTED receipt6
    material; the other four must be VERIFIED. Every operation is submitted exactly once.
-2. Only a complete `STAGED` report plus observed instrumentation process exit permits the host to
+2. Only a complete `STAGED` report plus separately confirmed native target-PID absence permits the host to
    revoke **only** the target app's WRITE_CALENDAR using `pm revoke --user 0`. A separate fresh
    instrumentation process must observe READ granted and WRITE denied, reopen the same exclusive
    store, and recover each operation twice. The existing authoring probe throws if invoked. The
@@ -121,11 +127,37 @@ This is one explicitly requested three-phase protocol, not automatic retries:
    guarded acknowledged reminder-item reads. Successful proof requires24 minimal binding queries,
    24 membership queries,16 guarded child queries and zero mutation attempts. Generated UID, frozen
    plan digest, native first-instance bounds, parent and child identities must remain exact.
-3. Only complete `RECOVERED` and exact same-run ownership proof permits WRITE to be granted again,
+3. Only complete `RECOVERED`, separately confirmed target-PID absence, and exact same-run ownership proof permit WRITE to be granted again,
    **solely** for a final fresh-process CLEANUP phase. The existing guarded calendar-ID/account/type/
    name/owner assertion and exact owned-calendar delete remain in use. All6 tracked event IDs,
    fixture namespace, exclusive local database/sidecars and private run manifest must be absent.
    Cleanup has its own admission fence, including the outer finally path: an admitted, completed CLEANUP entry, RECOVERED state, and all6 VERIFIED cases each recovered twice are required before any mutation. Failed/partial/unknown app runs report CLEANUP_WITHHELD and retain their fixture/artifacts. Only complete cleanup is PASS. STAGED/RECOVERED are never final acceptance.
+
+`process.wait()` and its `.exit.json` artifact describe the **host adb client only**. They do not
+establish target-process termination. For the optional identity witness and each app phase, the
+host validates the native positive PID and exact `dev.swapnilraj.calendar` name before issuing only
+`ps -p <reported-pid> -o PID,NAME`, bracketed by the existing owned serial/AVD/boot/user guards. At most
+10 reads, with0.1-second delays between still-present observations, are allowed. Only a successful
+read containing exactly the PID/NAME header and no row confirms `TARGET_PID_ABSENT`; a matching row
+remains running, and a changed name, malformed output, permission failure or nonzero command exit is
+unproven. There is no alternate command, arbitrary process enumeration, kill or force-stop fallback.
+Each phase has a separate exclusive `.target-exit.json` artifact. Target absence is required before
+WRITE revoke and cleanup-only WRITE regrant, independently of complete instrumentation/adb exit.
+
+The owned API35 build's absent-process `ps` exit behavior has **not** yet been exercised by this
+source-only packet. Some implementations may return nonzero when no PID matches; the host does not
+reinterpret that failure as absence. The nonmutating identity/PID preflight checks the strict
+supported behavior on the current pinned boot **before any fixture or calendar permission grant**;
+unsupported behavior stops there. A still-running or unproven target never authorizes continuation.
+
+Native phase records also bind PID, SDK start-elapsed time and exact app name into the strict
+same-run manifest. RECOVER and CLEANUP retain both available prior phase tuples and require a new,
+strictly later start tuple before phase work. Host reports must match the independently pinned prior
+report tuples as well. A missing legacy witness, repeated phase, altered tuple or invalid numeric
+identity is rejected rather than adopted. Fixed ordered six-case labels, mode/kind/fault flags,
+10/30-or-zero alert mapping and exact positive Int/Long child IDs are validated on cold manifest
+reads and again before cleanup admission; numeric coercion and corrupt matrices cannot authorize
+deletion. These remain app-private lifecycle witnesses, not a general OS process certification.
 
 The observer forwards the original app batch to the real CalendarProvider as one transaction;
 `ContentResolver.wrap(ContentProvider)` is a public SDK API, not a replacement calendar engine.

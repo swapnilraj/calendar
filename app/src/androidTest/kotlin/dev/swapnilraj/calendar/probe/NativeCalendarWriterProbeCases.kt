@@ -79,6 +79,7 @@ internal class NativeCalendarWriterProbeCases(
             check(operation.phase == "ATTEMPTED")
             val receipt = OrdinaryCreateReceipt.parse(operation, 1024 * 1024).second
             check(receipt.identity == identity && receipt.plan.mode == recipe.mode && receipt.plan.allDay == recipe.allDay)
+            check(receipt.plan.reminders == recipe.alerts.map { mapOf("minutes" to it.toString(), "method" to "1") })
             check(operations.size == 2 + recipe.alerts.size && operations[0].isAssertQuery && operations[0].uri == ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI, calendar))
             check(operations.all { !it.isYieldAllowed && !it.isExceptionAllowed && !it.isCall })
             val dummy = arrayOf(ContentProviderResult(1), ContentProviderResult(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, Long.MAX_VALUE)))
@@ -99,6 +100,7 @@ internal class NativeCalendarWriterProbeCases(
             val row = JSONObject().put("label", recipe.label).put("operation", recipe.operation).put("id", id)
                 .put("uid", receipt.plan.uid).put("digest", receipt.prepared().getString("planDigest")).put("start", receipt.plan.firstStart.toEpochMilli())
                 .put("end", receipt.plan.firstEnd.toEpochMilli()).put("reminders", JSONArray(children)).put("mode", recipe.mode)
+                .put("alertMinutes", JSONArray(recipe.alerts))
                 .put("allDay", recipe.allDay).put("fault", recipe.fault).put("phase", "COMMITTED").put("recoveries", 0)
             state.cases.put(row); activeRecord = row; persist()
             return result // All result facts/URIs/counts are unmodified.
