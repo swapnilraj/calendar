@@ -213,6 +213,69 @@ def require_pass(report, mode, run_id, end_zone_mode=None):
     return descriptor
 
 
+APP_CASES = {
+    "one-off-timed-alerts": ("ONE_OFF", False, 2, "NONE"),
+    "one-off-all-day-zero": ("ONE_OFF", True, 0, "NONE"),
+    "recurring-timed-alerts": ("RECURRING", False, 2, "NONE"),
+    "recurring-all-day-zero": ("RECURRING", True, 0, "NONE"),
+    "one-off-known-commit": ("ONE_OFF", False, 2, "INJECTED_POST_ACK_QUERY_FAILURE"),
+    "recurring-known-commit": ("RECURRING", False, 2, "INJECTED_POST_ACK_QUERY_FAILURE"),
+}
+
+
+def require_app_phase(report, phase, run_id, pins):
+    expected_status = {"CREATE_STAGE": "STAGED", "RECOVER_READ_ONLY": "RECOVERED", "CLEANUP": "PASS"}.get(phase)
+    if not isinstance(report, dict) or expected_status is None or type(report.get("schema")) is not int or report["schema"] != 1 or report.get("runId") != run_id or report.get("status") != expected_status:
+        raise Refusal("app probe phase did not complete; no permission continuation or automatic retry")
+    if (report.get("scope") != "native-local-app-writer-only" or report.get("appPhase") != phase or
+            report.get("productionProfileActivation") != "NONE" or report.get("googleWorkspaceRoundTrip") != "NOT_RUN" or
+            report.get("ownershipProof") != "EXACT_RUN_MANIFEST_AND_CALENDAR" or type(report.get("receiptVersion")) is not int or report["receiptVersion"] != 6):
+        raise Refusal("app probe scope/ownership evidence is incomplete")
+    descriptor = validate_descriptor(report.get("providerIdentity"))
+    if descriptor != pins or descriptor["sdk"] < 35:
+        raise Refusal("app probe provider binary/build identity changed")
+    if any(type(report.get(k)) is not int or report[k] != v for k, v in
+           (("queryTimeoutSeconds", 30), ("directQueryCap", 320), ("batchAssertionCap", 128))) or report.get("deadlineKind") != "cooperative":
+        raise Refusal("app probe cooperative limits were not preserved")
+    cases = report.get("cases")
+    if not isinstance(cases, list) or len(cases) != 6:
+        raise Refusal("app probe requires its exact six-case matrix")
+    seen = set()
+    for case in cases:
+        if not isinstance(case, dict) or set(case) != {"label", "mode", "allDay", "alertCount", "fault", "phase", "recoveries", "uidStable", "planStable"}:
+            raise Refusal("invalid app probe case")
+        label = case.get("label")
+        if label not in APP_CASES or label in seen:
+            raise Refusal("duplicate/unknown app probe case")
+        seen.add(label)
+        mode, all_day, alerts, fault = APP_CASES[label]
+        expected_phase = "COMMITTED" if phase == "CREATE_STAGE" and fault != "NONE" else "VERIFIED"
+        if (case.get("mode") != mode or type(case.get("allDay")) is not bool or case["allDay"] != all_day or
+                type(case.get("alertCount")) is not int or case["alertCount"] != alerts or case.get("fault") != fault or
+                case.get("phase") != expected_phase or type(case.get("recoveries")) is not int or
+                case["recoveries"] != (0 if phase == "CREATE_STAGE" else 2) or
+                case.get("uidStable") is not (phase != "CREATE_STAGE" or fault == "NONE") or case.get("planStable") is not True):
+            raise Refusal("app probe case proof is incomplete")
+    cleanup = report.get("cleanup", {})
+    counts = cleanup if phase == "CLEANUP" else report
+    for key, maximum in (("directQueryCount", 320), ("batchAssertionCount", 128)):
+        if type(counts.get(key)) is not int or not 0 <= counts[key] <= maximum:
+            raise Refusal("app probe cumulative budget proof is incomplete")
+    if phase == "CLEANUP":
+        if (cleanup.get("status") != "VERIFIED_CALENDAR_AND_TRACKED_IDS_ABSENT" or cleanup.get("trackedEventCount") != 6 or
+                cleanup.get("localFiles") != "VERIFIED_EXACT_RUN_FILES_ABSENT"):
+            raise Refusal("app probe exact fixture cleanup was not verified")
+    elif cleanup.get("status") != "RETAINED_FOR_EXPLICIT_NEXT_PHASE" or cleanup.get("ownershipVerified") is not True or report.get("fixtureRetained") is not True:
+        raise Refusal("app probe staged ownership was not durably retained")
+    if phase == "RECOVER_READ_ONLY":
+        recovery = report.get("recovery", {})
+        if any(recovery.get(k) is not True for k in ("readGranted", "writeDenied", "authoringTrapInstalled")) or any(
+                type(recovery.get(k)) is not int or recovery[k] != v for k, v in
+                (("nativeWriteCalls", 0), ("forbiddenWriteAttempts", 0), ("minimalBindingQueries", 24), ("membershipQueries", 24), ("guardedChildQueries", 16))):
+            raise Refusal("app probe READ-only recovery evidence is incomplete")
+    return descriptor
+
+
 class Capture:
     def __init__(self):
         self.stdout = bytearray()
@@ -273,14 +336,18 @@ class Capture:
         return self.reports[0], self.codes[0]
 
 
-def instrument(adb, run_id, mode, pins, output, label, end_zone_mode="distinct"):
-    extras = {"probeOptIn": "IDENTITY_ONLY_V1" if mode == "identity" else "LOCAL_FIXTURE_V1", "probeRunId": run_id}
-    if mode == "fixtures":
+def instrument(adb, run_id, mode, pins, output, label, end_zone_mode="distinct", app_phase=None, boot_id=None):
+    extras = {"probeOptIn": "IDENTITY_ONLY_V1" if mode == "identity" else "LOCAL_APP_CREATE_V1" if mode == "app-create-recovery" else "LOCAL_FIXTURE_V1", "probeRunId": run_id}
+    if mode in ("fixtures", "app-create-recovery"):
         extras.update({"probeEndZoneMode": end_zone_mode, "expectedBuildFingerprint": pins["buildFingerprint"], "expectedProviderPackage": pins["package"],
                        "expectedProviderVersion": str(pins["versionCode"]), "expectedBaseSha256": pins["baseSha256"],
                        "expectedSplitsJson": json.dumps(pins["splits"], separators=(",", ":")),
                        "expectedSignersJson": json.dumps(pins["signers"], separators=(",", ":")),
                        "expectedSigningHistoryJson": json.dumps(pins["signingHistory"], separators=(",", ":"))})
+    if mode == "app-create-recovery":
+        if app_phase not in ("CREATE_STAGE", "RECOVER_READ_ONLY", "CLEANUP") or boot_id is None:
+            raise Refusal("explicit app probe phase and boot pin required")
+        extras.update({"probeAppPhase": app_phase, "expectedBootId": boot_id})
     tokens = ["am", "instrument", "--user", "0", "-w", "-r"]
     for key, value in extras.items():
         tokens += ["-e", key, value]
@@ -322,6 +389,7 @@ def instrument(adb, run_id, mode, pins, output, label, end_zone_mode="distinct")
             parse_error = error
             # Keep draining this same process; never kill/retry an uncertain native batch.
     returncode = process.wait()
+    exclusive_json(output / (label + ".exit.json"), {"hostAdbProcessExited": True, "returncode": returncode})
     exclusive_bytes(output / (label + ".stdout.txt"), bytes(capture.stdout))
     if parse_error:
         raise parse_error
@@ -335,7 +403,7 @@ def instrument(adb, run_id, mode, pins, output, label, end_zone_mode="distinct")
 def parser():
     root = argparse.ArgumentParser(description=__doc__)
     sub = root.add_subparsers(dest="mode", required=True)
-    for mode in ("identity", "fixtures"):
+    for mode in ("identity", "fixtures", "app-create-recovery"):
         item = sub.add_parser(mode, help="read-only provider descriptor" if mode == "identity" else "explicit 18-case LOCAL fixture run")
         item.add_argument("--serial", required=True, type=emulator_serial)
         item.add_argument("--expected-avd", required=True, choices=[OWNED_AVD])
@@ -345,8 +413,9 @@ def parser():
         item.add_argument("--output-dir", required=True, type=Path, help="new directory; existing paths/artifacts are never overwritten")
         item.add_argument("--run-id", type=canonical_uuid, default=str(uuid.uuid4()))
         item.add_argument("--adb", default="adb")
-        if mode == "fixtures":
+        if mode in ("fixtures", "app-create-recovery"):
             item.add_argument("--identity-report", required=True, type=Path, help="prior successful identity-mode result.json from this same boot and APK pair")
+        if mode == "fixtures":
             item.add_argument("--end-zone-mode", choices=["distinct", "null"], default="distinct", help="no automatic fallback after a rejected distinct zone")
     return root
 
@@ -359,7 +428,7 @@ def run(args):
     apks = {"app": app_meta, "test": test_meta}
     prior = None
     pins = None
-    if args.mode == "fixtures":
+    if args.mode in ("fixtures", "app-create-recovery"):
         raw = args.identity_report.read_bytes()
         if len(raw) > MAX_STDOUT:
             raise Refusal("identity artifact is oversized")
@@ -379,19 +448,22 @@ def run(args):
     state = {"schema": 1, "mode": args.mode, "runId": args.run_id, "apks": apks,
              "component": COMPONENT, "status": "FAIL", "guard": None, "probeReport": None,
              "expectedGuard": {"serial": args.serial, "avd": args.expected_avd, "bootId": args.expected_boot_id, "androidUser": 0},
-             "acceptanceScope": "provider identity only" if args.mode == "identity" else "native LOCAL fixture matrix only",
+             "acceptanceScope": "provider identity only" if args.mode == "identity" else "native LOCAL app writer receipt6 only" if args.mode == "app-create-recovery" else "native LOCAL fixture matrix only",
              "googleWorkspaceRoundTrip": "NOT_RUN", "productionProfileActivation": "NONE"}
-    if args.mode == "fixtures":
+    if args.mode in ("fixtures", "app-create-recovery"):
         state["identityArtifactSha256"] = sha256(args.identity_report)
-        state["endZoneMode"] = args.end_zone_mode
+        if args.mode == "fixtures":
+            state["endZoneMode"] = args.end_zone_mode
     exclusive_json(args.output_dir / "host-metadata.json", {k: v for k, v in state.items() if k != "probeReport"})
     adb = Adb(args.adb, args.serial)
 
-    def guarded_instrument(mode, descriptor, label):
+    def guarded_instrument(mode, descriptor, label, app_phase=None):
         guard_device(adb, args)
+        if any(sha256(path) != meta["sha256"] for path, meta in ((app_path, app_meta), (test_path, test_meta))):
+            raise Refusal("APK changed before instrumentation phase")
         try:
             return instrument(adb, args.run_id, mode, descriptor, args.output_dir, label,
-                              getattr(args, "end_zone_mode", "distinct"))
+                              getattr(args, "end_zone_mode", "distinct"), app_phase, args.expected_boot_id)
         finally:
             # Also perform the post-check when instrumentation reports failure or malformed output.
             state["guard"] = guard_device(adb, args)
@@ -409,7 +481,7 @@ def run(args):
             if sha256(path) != metadata["sha256"]:
                 raise Refusal("APK changed during install; no retry attempted")
         guard_device(adb, args)
-        if args.mode == "fixtures":
+        if args.mode in ("fixtures", "app-create-recovery"):
             fresh = guarded_instrument("identity", None, "identity-preflight")
             state["identityPreflightReport"] = fresh
             guard_device(adb, args)
@@ -419,10 +491,28 @@ def run(args):
                 guard_device(adb, args)
                 adb.mutation(["pm", "grant", "--user", "0", APP, permission], shell=True)
         guard_device(adb, args)
-        report = guarded_instrument(args.mode, pins, "instrumentation")
+        if args.mode == "app-create-recovery":
+            stage = guarded_instrument(args.mode, pins, "app-create-stage", "CREATE_STAGE")
+            require_app_phase(stage, "CREATE_STAGE", args.run_id, pins)
+            state["stageReport"] = stage
+            # instrument() returns only after process.wait(), complete protocol and RESULT_OK.
+            guard_device(adb, args)
+            adb.mutation(["pm", "revoke", "--user", "0", APP, "android.permission.WRITE_CALENDAR"], shell=True)
+            guard_device(adb, args)
+            recovered = guarded_instrument(args.mode, pins, "app-recover-read-only", "RECOVER_READ_ONLY")
+            require_app_phase(recovered, "RECOVER_READ_ONLY", args.run_id, pins)
+            state["recoveryReport"] = recovered
+            # Regrant is cleanup-only, following complete same-run ownership and recovery proof.
+            guard_device(adb, args)
+            adb.mutation(["pm", "grant", "--user", "0", APP, "android.permission.WRITE_CALENDAR"], shell=True)
+            guard_device(adb, args)
+            report = guarded_instrument(args.mode, pins, "instrumentation", "CLEANUP")
+            actual = require_app_phase(report, "CLEANUP", args.run_id, pins)
+        else:
+            report = guarded_instrument(args.mode, pins, "instrumentation")
+            actual = require_pass(report, args.mode, args.run_id, getattr(args, "end_zone_mode", None))
         state["probeReport"] = report
         state["guard"] = guard_device(adb, args)
-        actual = require_pass(report, args.mode, args.run_id, getattr(args, "end_zone_mode", None))
         if actual["buildFingerprint"] != state["guard"]["buildFingerprint"] or (pins and actual != pins):
             raise Refusal("completed report does not match the guarded pinned provider/build")
         state["status"] = "PASS"

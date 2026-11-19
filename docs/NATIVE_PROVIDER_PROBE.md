@@ -78,6 +78,90 @@ and draining bounded output without a timeout kill, provider restart, retry or f
 Use the phase progress and process artifact to inspect the same run. Interrupting host monitoring
 leaves the on-device outcome potentially unknown; it does not authorize another fixture run.
 
+## App writer receipt6 mode — source/host verification only; native run NOT_RUN
+
+`app-create-recovery` exercises the real `CalendarWriter`, a fresh explicit `CalendarReader`, and
+an exclusive run-specific `CalendarLocalStore`. The instrumentation still substitutes a bare
+`Application`; it never starts production app/reminder/widget initialization or collects calendar
+flows. There are no global calendar scans, accounts, production profile admissions or new production
+APIs. The new mode requires API35 or later on the **same single owned AVD** above. A previous identity
+artifact is reusable only when its complete provider/build/boot pins and reviewed APK pair match.
+Rebuild both APKs from the reviewed checkout with `-Pdaylight.providerProbe=true`, then capture a
+new identity report if the APK pair changed. Building does not authorize execution.
+
+After lead review of source, host tests, both built APKs and the current owned boot/provider pins,
+the explicit command is (example only, not recorded execution):
+
+```sh
+python3 scripts/run-native-provider-probe.py app-create-recovery \
+  --serial emulator-5554 \
+  --expected-avd daylight_google_reference_userdebug_api35 \
+  --expected-boot-id '<same-current-canonical-boot-uuid>' \
+  --app-apk /reviewed/pair/app-debug.apk \
+  --test-apk /reviewed/pair/app-debug-androidTest.apk \
+  --identity-report /reviewed/same-pair-identity/result.json \
+  --output-dir /tmp/daylight-app-writer-new-unused-run
+```
+
+This is one explicitly requested three-phase protocol, not automatic retries:
+
+1. **CREATE_STAGE:** create an exclusive UUID-specific synthetic LOCAL calendar with explicit ALERT
+   support/max2 and six new app operations. Canonical controls cover timed one-off with10/30-minute
+   alerts, UTC-date two-day one-off without alerts, COUNT3 timed recurring with10/30-minute alerts,
+   and COUNT3 UTC-date recurring without alerts. Two more timed operations (one-off and recurring)
+   deliberately fail test-wrapper queries after the real native batch returns its original,
+   unmodified ACKs. These two must retain exact known-master, complete child-ACK COMMITTED receipt6
+   material; the other four must be VERIFIED. Every operation is submitted exactly once.
+2. Only a complete `STAGED` report plus observed instrumentation process exit permits the host to
+   revoke **only** the target app's WRITE_CALENDAR using `pm revoke --user 0`. A separate fresh
+   instrumentation process must observe READ granted and WRITE denied, reopen the same exclusive
+   store, and recover each operation twice. The existing authoring probe throws if invoked. The
+   SDK-only forwarding observer rejects all provider mutation attempts during recovery and audits
+   exact-calendar/ID/UID selection, minimal binding before payloads, raw reminder membership and
+   guarded acknowledged reminder-item reads. Successful proof requires24 minimal binding queries,
+   24 membership queries,16 guarded child queries and zero mutation attempts. Generated UID, frozen
+   plan digest, native first-instance bounds, parent and child identities must remain exact.
+3. Only complete `RECOVERED` and exact same-run ownership proof permits WRITE to be granted again,
+   **solely** for a final fresh-process CLEANUP phase. The existing guarded calendar-ID/account/type/
+   name/owner assertion and exact owned-calendar delete remain in use. All6 tracked event IDs,
+   fixture namespace, exclusive local database/sidecars and private run manifest must be absent.
+   Only this complete result is PASS. STAGED/RECOVERED are never final acceptance.
+
+The observer forwards the original app batch to the real CalendarProvider as one transaction;
+`ContentResolver.wrap(ContentProvider)` is a public SDK API, not a replacement calendar engine.
+It validates the complete authored values/backreferences against the durable receipt before
+forwarding and passes returned ACK facts unchanged. Injected post-ACK read failure is explicitly
+labelled synthetic fault injection, not a real device permission failure. Actual READ-only recovery
+is independently checked against OS permission state in the next process. Native verification
+covers receipt6's bounded **first** occurrence; this mode does not certify every later recurrence,
+remote sync, physical reminder delivery or Google/Workspace behavior.
+
+An app-private noBackup AtomicFile contains exact run/boot/provider pins, exclusive database name,
+preflight absence/creation-attempt/calendar ownership, canonical ACK IDs, private UID/digest witnesses,
+phase and cumulative budgets. Missing/corrupt/mismatched ownership never becomes a fresh fixture or
+an inferred cleanup target. A file/store/namespace collision refuses CREATE. The same15-minute
+cooperative deadline,320-query cap (20 reserved for cleanup),128-assertion cap,32-row per-query cap
+and30-second query cancellation are cumulative across processes. An in-flight SDK batch is never
+killed, restarted or replayed. Direct app queries cannot escape the exact fixture scope.
+
+A failed/interrupted stage, incomplete protocol, changed binary/boot, or corrupted manifest stops
+host progression without another create, UID/title/time discovery, permission workaround or blind
+cleanup. In particular, failed or interrupted READ-only recovery leaves WRITE denied and the
+retained fixture/store for lead inspection; it does **not** authorize cleanup or a rerun. Cleanup
+failure also remains failure. There is no standalone automatic resume/cleanup command. Any later
+recovery decision requires review of that same run's artifacts and ownership, never a fresh-run
+substitution. Existing identity-only and18-case modes keep their original protocol.
+
+Host verification (no adb or device calls):
+
+```sh
+python3 -m unittest discover -s scripts -p test_native_provider_probe.py -v
+```
+
+The new files currently establish build/host-protocol readiness only. No app-writer native run,
+Google/Workspace round trip, physical-device compatibility, clone admission, or live reminder
+acceptance follows from them.
+
 ## Native LOCAL evidence — 18 November 2026
 
 The guarded API35 experiment passed all18 cases. Six RRULE-only controls reproduced stale cached

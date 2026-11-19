@@ -90,7 +90,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
         } finally {
             val cleaned = if (probe.identityOnly) true else probe.cleanup(report)
             probe.close()
-            report.put("status", if (successful && cleaned) "PASS" else "FAIL")
+            report.put("status", if (successful && cleaned) probe.successStatus else "FAIL")
             var encoded = report.toString()
             if (encoded.toByteArray(Charsets.UTF_8).size > 65_536) {
                 encoded = JSONObject().put("schema", 1).put("status", "FAIL")
@@ -136,7 +136,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
         private var inCleanup = false
         private var directQueries = 0
         private var batchAssertions = 0
-        private val began = SystemClock.elapsedRealtime()
+        private var began = SystemClock.elapsedRealtime()
         private val knownEventIds = linkedSetOf<Long>()
         private val knownUids = linkedMapOf<Long, String>()
         private val cases = JSONArray()
@@ -144,16 +144,27 @@ class NativeCalendarProviderProbe : Instrumentation() {
         private var endZoneMode = "distinct"
         var identityOnly: Boolean = false
             private set
+        var successStatus = "PASS"
+            private set
+        private var appPhase: String? = null
+        private var appState: NativeWriterProbeState? = null
+        private var appCompleted = false
 
         fun run(report: JSONObject) {
             val optIn = argument("probeOptIn")
-            requireCondition(optIn in setOf("LOCAL_FIXTURE_V1", "IDENTITY_ONLY_V1"), "OPT_IN_REQUIRED")
+            requireCondition(optIn in setOf("LOCAL_FIXTURE_V1", "IDENTITY_ONLY_V1", "LOCAL_APP_CREATE_V1"), "OPT_IN_REQUIRED")
             identityOnly = optIn == "IDENTITY_ONLY_V1"
             runId = argument("probeRunId").also { requireCondition(UUID.fromString(it).toString() == it, "INVALID_RUN_ID") }
             report.put("runId", runId)
             if (identityOnly) {
                 step("identity-only")
                 report.put("scope", "native-provider-identity-only").put("providerIdentity", identity())
+                return
+            }
+            if (optIn == "LOCAL_APP_CREATE_V1") {
+                appPhase = argument("probeAppPhase").also { requireCondition(it in setOf("CREATE_STAGE", "RECOVER_READ_ONLY", "CLEANUP"), "INVALID_APP_PHASE") }
+                runApp(report)
+                appCompleted = true
                 return
             }
             account = "daylight-native-probe-${requireNotNull(runId)}"
@@ -190,6 +201,82 @@ class NativeCalendarProviderProbe : Instrumentation() {
             for (seed in seeds) for (limit in Limit.entries) for (variant in Variant.entries) runCase(seed, limit, variant)
             report.put("directQueryCountBeforeCleanup", directQueries).put("batchAssertionCountBeforeCleanup", batchAssertions)
             requireCondition(cases.length() == 18, "CASE_COUNT")
+        }
+
+        private fun runApp(report: JSONObject) {
+            requireCondition(Build.VERSION.SDK_INT >= 35, "APP_PROBE_REQUIRES_API35")
+            val run = requireNotNull(runId)
+            val boot = argument("expectedBootId").also { requireCondition(UUID.fromString(it).toString() == it, "INVALID_BOOT_ID") }
+            pinned = identity().also(::verifyPins)
+            report.put("scope", "native-local-app-writer-only").put("providerIdentity", pinned).put("appPhase", appPhase).put("receiptVersion", 6)
+            account = "daylight-native-probe-$run"; owner = "$run@probe.invalid"
+            permissions()
+            val state = if (appPhase == "CREATE_STAGE") NativeWriterProbeState.create(context, run, boot, pinned)
+                else NativeWriterProbeState.open(context, run, boot, pinned)
+            appState = state
+            began = NativeWriterProbeState.number(state.value, "started")
+            directQueries = NativeWriterProbeState.number(state.value, "queries").toInt()
+            batchAssertions = NativeWriterProbeState.number(state.value, "assertions").toInt()
+            preflightAbsent = state.value.getBoolean("preflightAbsent"); creationAttempted = state.value.getBoolean("creationAttempted")
+            calendarId = if (state.value.isNull("calendar")) null else state.value.getLong("calendar")
+            for (index in 0 until state.cases.length()) {
+                val row = state.cases.getJSONObject(index); knownEventIds += row.getLong("id"); knownUids[row.getLong("id")] = row.getString("uid")
+            }
+            deadline()
+            if (appPhase == "CREATE_STAGE") {
+                requireCondition(state.phase == "CREATING" && namespace().isEmpty(), "FIXTURE_NAMESPACE_ALREADY_EXISTS")
+                preflightAbsent = true; saveAppState()
+                step("app-create-local-calendar"); creationAttempted = true; saveAppState()
+                val requested = localCalendarUri()
+                val inserted = resolver.insert(requested, ContentValues().apply {
+                    put(C.ACCOUNT_NAME, account); put(C.ACCOUNT_TYPE, CalendarContract.ACCOUNT_TYPE_LOCAL); put(C.NAME, account); put(C.OWNER_ACCOUNT, owner)
+                    put(C.CALENDAR_DISPLAY_NAME, "Daylight native app writer probe"); put(C.CALENDAR_COLOR, 0xff567087.toInt())
+                    put(C.CALENDAR_ACCESS_LEVEL, C.CAL_ACCESS_OWNER); put(C.CALENDAR_TIME_ZONE, "UTC"); put(C.SYNC_EVENTS, 1); put(C.VISIBLE, 0)
+                    put(C.ALLOWED_REMINDERS, "1"); put(C.MAX_REMINDERS, 2); put(C.ALLOWED_AVAILABILITY, "0,1,2"); put(C.ALLOWED_ATTENDEE_TYPES, "0,1,2")
+                }) ?: throw Failure("CALENDAR_INSERT_ACK_MISSING")
+                calendarId = idFrom(inserted, "calendars", requested.encodedQuery); saveAppState()
+            } else {
+                requireCondition(preflightAbsent && creationAttempted && calendarId != null && state.cases.length() == 6, "APP_OWNERSHIP_INCOMPLETE")
+                requireCondition(state.phase == if (appPhase == "RECOVER_READ_ONLY") "STAGED" else "RECOVERED", "APP_PHASE_MISMATCH")
+                if (appPhase == "RECOVER_READ_ONLY") requireCondition(context.getDatabasePath(state.database).isFile, "APP_STORE_MISSING")
+            }
+            guardCalendar()
+            if (appPhase == "CLEANUP") {
+                requireCondition((0 until state.cases.length()).all { state.cases.getJSONObject(it).getInt("recoveries") == 2 }, "APP_RECOVERY_INCOMPLETE")
+                report.put("cases", NativeCalendarWriterProbeCases.reportCases(state)).put("ownershipProof", "EXACT_RUN_MANIFEST_AND_CALENDAR")
+                return
+            }
+            val sourceUid = query(C.CONTENT_URI, arrayOf(C._SYNC_ID), calendarSelection(), calendarArgs()).single()[C._SYNC_ID]?.takeIf(String::isNotBlank)
+            val identity = dev.swapnilraj.calendar.core.CalendarIdentity(dev.swapnilraj.calendar.core.CalendarId(calendar()),
+                dev.swapnilraj.calendar.core.CalendarAccount(requireNotNull(account), CalendarContract.ACCOUNT_TYPE_LOCAL), owner, sourceUid)
+            val app = NativeCalendarWriterProbeCases(context, state, calendar(), identity,
+                beforeQuery = { consumeAppQuery() }, beforeBatch = { count ->
+                    deadline(); requireCondition(batchAssertions + count <= 128, "BATCH_ASSERTION_BUDGET"); batchAssertions += count; saveAppState()
+                }, guard = ::guardCalendar, persist = ::saveAppState, watchdog = watchdog, progress = ::step)
+            try {
+                if (appPhase == "CREATE_STAGE") {
+                    app.create(); state.phase = "STAGED"; successStatus = "STAGED"
+                } else {
+                    state.phase = "RECOVERING"; saveAppState()
+                    report.put("recovery", app.recover()); state.phase = "RECOVERED"; successStatus = "RECOVERED"
+                }
+            } finally { app.close(); saveAppState() }
+            report.put("cases", NativeCalendarWriterProbeCases.reportCases(state)).put("ownershipProof", "EXACT_RUN_MANIFEST_AND_CALENDAR")
+                .put("fixtureRetained", true).put("directQueryCount", directQueries).put("batchAssertionCount", batchAssertions)
+        }
+
+        private fun consumeAppQuery() {
+            requireCondition(++directQueries <= 300, "DIRECT_QUERY_BUDGET"); deadline(); saveAppState()
+        }
+        private fun saveAppState() {
+            appState?.let { state ->
+                state.value.put("queries", directQueries).put("assertions", batchAssertions).put("preflightAbsent", preflightAbsent)
+                    .put("creationAttempted", creationAttempted).put("calendar", calendarId ?: JSONObject.NULL)
+                for (index in 0 until state.cases.length()) {
+                    val row = state.cases.getJSONObject(index); knownEventIds += row.getLong("id"); knownUids[row.getLong("id")] = row.getString("uid")
+                }
+                state.save()
+            }
         }
 
         private fun runCase(seed: Seed, limit: Limit, variant: Variant) {
@@ -363,6 +450,14 @@ class NativeCalendarProviderProbe : Instrumentation() {
 
         fun cleanup(report: JSONObject): Boolean {
             val result = JSONObject(); report.put("cleanup", result)
+            if (appPhase != null && (appPhase == "RECOVER_READ_ONLY" || appPhase == "CREATE_STAGE" && appCompleted)) {
+                result.put("status", "RETAINED_FOR_EXPLICIT_NEXT_PHASE").put("ownershipVerified", appState != null)
+                return true
+            }
+            if (appPhase != null && appState == null) {
+                result.put("status", "BLOCKED_NO_VALID_RUN_MANIFEST")
+                return false
+            }
             inCleanup = true
             if (!creationAttempted) {
                 result.put("status", "NO_CREATION_ATTEMPTED")
@@ -371,6 +466,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
             }
             return try {
                 step("cleanup-owned-local-calendar")
+                appState?.assertPersisted(context)
                 requireCondition(preflightAbsent && account != null && owner != null, "CLEANUP_NAMESPACE_NOT_PROVEN")
                 permissions(); verifyPins(identity())
                 val matches = namespace()
@@ -407,6 +503,7 @@ class NativeCalendarProviderProbe : Instrumentation() {
                 }
                 result.put("status", "VERIFIED_CALENDAR_AND_TRACKED_IDS_ABSENT").put("trackedEventCount", knownEventIds.size)
                     .put("directQueryCount", directQueries).put("batchAssertionCount", batchAssertions)
+                appState?.let { state -> state.phase = "CLEANED"; saveAppState(); state.deleteAfterVerifiedCleanup(context); result.put("localFiles", "VERIFIED_EXACT_RUN_FILES_ABSENT") }
                 true
             } catch (failure: Exception) {
                 result.put("status", "BLOCKED_NO_BLIND_DELETE").put("failure", safeFailure(failure))
@@ -441,8 +538,10 @@ class NativeCalendarProviderProbe : Instrumentation() {
             } finally { timeout.cancel(false) }
         }
         private fun permissions() {
-            requireCondition(context.checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED &&
-                context.checkSelfPermission(Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED, "READ_WRITE_PERMISSION_REQUIRED")
+            val read = context.checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
+            val write = context.checkSelfPermission(Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
+            if (appPhase == "RECOVER_READ_ONLY") requireCondition(read && !write, "READ_ONLY_CALENDAR_PERMISSIONS_REQUIRED")
+            else requireCondition(read && write, "READ_WRITE_PERMISSION_REQUIRED")
         }
         @Suppress("DEPRECATION")
         private fun identity(): JSONObject {
