@@ -5,6 +5,15 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+### Self-contained ordinary edit recovery
+
+New one-off UPDATE/DELETE operations freeze receipt4 source and native write plans before dispatch.
+Retry adopts the durable winner and rechecks its original namespace and source; attempted uncertain
+operations never replay. READ-only recovery requires exact native results and complete child proof.
+Reserve journal space for both minimal and complete acknowledgement records before new or adopted
+writes, including maximum-width child IDs. Predictable overflow returns unavailable without writing.
+Retain historical receipt2/3 recovery, recurring retirement restrictions and existing command signatures.
+
 ### Authored recurring creation in the phone editor
 
 Production creation enables daily, weekly, monthly and yearly recurrence through the full-height
