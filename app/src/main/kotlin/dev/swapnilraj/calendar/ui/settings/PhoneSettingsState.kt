@@ -6,7 +6,7 @@ import dev.swapnilraj.calendar.data.settings.CalendarSettingChange
 import java.time.ZoneId
 
 internal enum class PhoneSettingsPage { HOME, GENERAL }
-internal enum class PhoneSettingEditor { NONE, WEEKDAY, ZONE, DURATION, THEME, VIEW, TIMED_REMINDER, ALL_DAY_REMINDER, WEATHER_UNITS }
+internal enum class PhoneSettingEditor { NONE, WEEKDAY, ZONE, DURATION, THEME, VIEW, TIMED_REMINDER, ALL_DAY_REMINDER, WEATHER_UNITS, INVITATION_FILTER }
 
 /** Local navigation/raw input only. It never persists or replays a preference change. */
 internal class PhoneSettingsState {
@@ -37,6 +37,7 @@ internal class PhoneSettingsState {
             PhoneSettingEditor.VIEW -> options.defaultView.name
             PhoneSettingEditor.ALL_DAY_REMINDER -> options.allDayReminder.name
             PhoneSettingEditor.WEATHER_UNITS -> options.weatherUnits.name
+            PhoneSettingEditor.INVITATION_FILTER -> options.invitationFilter.name
             else -> ""
         }
         raw = when (editor) {

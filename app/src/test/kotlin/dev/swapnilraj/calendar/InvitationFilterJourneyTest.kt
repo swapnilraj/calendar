@@ -1,0 +1,258 @@
+package dev.swapnilraj.calendar
+
+import android.Manifest
+import android.content.ContentValues
+import android.provider.CalendarContract
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.*
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.data.CalendarPreferenceState
+import dev.swapnilraj.calendar.data.Settings
+import dev.swapnilraj.calendar.data.settings.CalendarSettingChange
+import dev.swapnilraj.calendar.data.settings.CalendarSettingSave
+import dev.swapnilraj.calendar.data.reminders.SavedReminderSettings
+import dev.swapnilraj.calendar.ui.calendars.CalendarViewOption
+import dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions
+import dev.swapnilraj.calendar.ui.settings.DisplayZoneOption
+import java.time.*
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.android.controller.ActivityController
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowContentResolver
+
+/** Actual application settings -> shared SQL-backed reader/search -> main views. Read-only
+ * synthetic fixtures; no Google invitation, synchronization or Android task-stack evidence. */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], qualifiers = "en-rUS-w393dp-h851dp-notnight-mdpi")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class InvitationFilterJourneyTest {
+    @get:Rule val compose = createEmptyComposeRule()
+    private val pending = "Synthetic invitation pending"
+    private val accepted = "Synthetic invitation accepted"
+    private val uncertain = "Synthetic invitation uncertain"
+
+    @Test fun actualSettingsChoiceFiltersMainPersistsOnRecreationAndKeepsProviderAndSelectionUnchanged() = fixture { f ->
+        shown(pending); shown(accepted); shown(uncertain)
+        compose.onNodeWithContentDescription("Open navigation menu").performClick()
+        compose.onNodeWithText("Settings").performClick()
+        shownTag("phone_settings_open_general")
+        compose.onNodeWithTag("phone_settings_open_general").performClick()
+        compose.onNodeWithTag("phone_settings_general_list").performScrollToNode(hasTestTag("phone_settings_row_invitations"))
+        compose.onNodeWithTag("phone_settings_row_invitations").performClick()
+        compose.onNodeWithText(f.app.getString(R.string.invitation_filter_pending)).performClick()
+        shownTag("phone_settings_general_list")
+        compose.onNodeWithTag("phone_settings_row_invitations")
+            .assertTextContains(f.app.getString(R.string.invitation_filter_pending))
+        compose.onNodeWithContentDescription("Back").performClick()
+        shownTag("phone_settings_home_list")
+        compose.onNodeWithContentDescription("Back").performClick()
+        assertPendingMain(f)
+        compose.runOnUiThread { f.activity.recreate() }
+        assertPendingMain(f)
+        // Default-ALL readers remain independent of the app's new display preference.
+        io {
+            val request = CalendarRequest(CalendarDateRange.day(f.today), ZoneOffset.UTC,
+                CalendarSelection.Explicit(setOf(CalendarId(2))))
+            val snapshot = f.app.calendarReader.readSnapshot(request) as CalendarReadState.Ready
+            assertEquals(3, snapshot.value.occurrences.size)
+        }
+        assertLocalOnly(f)
+    }
+
+    @Test fun changingFilterWhileRealSearchIsOpenDropsAcceptedHitsAndRetainsUnknownCoverage() = fixture { f ->
+        shown(pending)
+        compose.onNodeWithContentDescription("Search events").performClick()
+        shownTag("search_query")
+        compose.onNodeWithTag("search_query").performTextInput("Synthetic invitation")
+        shown(f.app.resources.getQuantityString(R.plurals.search_result_count, 3, 3))
+        compose.onNodeWithTag("search_results").performScrollToNode(hasTestTag("search_hit_2_8"))
+        compose.onNodeWithTag("search_hit_2_8").assertExists()
+        io { assertEquals(CalendarSettingSave.Saved,
+            f.app.settings.saveCalendarSetting(CalendarSettingChange.InvitationFilter(InvitationFilter.PENDING_ONLY))) }
+        compose.onNodeWithTag("search_results").performScrollToIndex(0)
+        shown(f.app.resources.getQuantityString(R.plurals.search_result_count, 1, 1))
+        compose.onNode(hasText(f.app.getString(R.string.invitation_filter_pending)) and
+            hasAnyAncestor(hasTestTag("search_sheet"))).assertExists()
+        compose.onNode(hasText("could not be classified as awaiting a response", substring = true)).assertExists()
+        compose.onNodeWithTag("search_results").performScrollToNode(hasTestTag("search_hit_2_7"))
+        compose.onNodeWithTag("search_hit_2_7").assertExists()
+        compose.onAllNodesWithTag("search_hit_2_8").assertCountEquals(0)
+        compose.onAllNodesWithTag("search_hit_2_9").assertCountEquals(0)
+        assertLocalOnly(f)
+    }
+
+    @Test fun successfulJourneyRestoresExactOriginalRawPreferences() = restorationWitness(false)
+
+    @Test fun failedJourneyRestoresExactOriginalRawPreferencesAndPreservesBodyFailure() = restorationWitness(true)
+
+    private fun restorationWitness(failBody: Boolean) {
+        val app = RuntimeEnvironment.getApplication() as CalendarApp
+        val store = rawStore(app.settings)
+        val original = io { store.data.first() }
+        val before = original.toMutablePreferences().apply {
+            this[stringPreferencesKey("display_invitation_filter")] = "FUTURE_FILTER"
+            this[stringPreferencesKey("display_default_duration_minutes")] = "future-duration"
+            this[stringPreferencesKey("display_zone_mode")] = "FIXED"
+            this[stringPreferencesKey("display_zone_id")] = "Asia/Tokyo"
+            this[stringPreferencesKey("calendar_view")] = "WEEK"
+            this[stringSetPreferencesKey("selected_calendar_ids")] = setOf("999")
+            this[stringSetPreferencesKey("known_calendar_accounts")] = setOf("synthetic-before")
+            this[stringPreferencesKey("synthetic_cleanup_opaque")] = "preserve"
+        }.toPreferences()
+        val bodyFailure = IllegalStateException("Synthetic invitation journey body failure")
+        try {
+            io { store.updateData { before } }
+            var caught: Throwable? = null
+            try {
+                fixture { f ->
+                    io { assertEquals(CalendarSettingSave.Saved,
+                        f.app.settings.saveCalendarSetting(CalendarSettingChange.InvitationFilter(InvitationFilter.PENDING_ONLY))) }
+                    if (failBody) throw bodyFailure
+                }
+            } catch (error: Throwable) { caught = error }
+            if (failBody) assertSame(bodyFailure, caught) else caught?.let { throw it }
+            // A fresh Settings owner must see the exact prior bytes, including unknown typed keys.
+            val restored = io { rawStore(Settings(app)).data.first() }
+            assertEquals(before.asMap(), restored.asMap())
+        } finally {
+            io {
+                store.updateData { original }
+                assertEquals(original.asMap(), store.data.first().asMap())
+            }
+        }
+    }
+
+    /** Synthetic QA only: preserve unknown keys without adding a production storage/reset API. */
+    @Suppress("UNCHECKED_CAST")
+    private fun rawStore(settings: Settings): DataStore<Preferences> =
+        Settings::class.java.getDeclaredField("store").apply { isAccessible = true }.get(settings) as DataStore<Preferences>
+
+    private fun assertPendingMain(f: Fixture) {
+        shown(pending)
+        shown(f.app.getString(R.string.invitation_filter_unknown_generic))
+        compose.onAllNodesWithText(accepted).assertCountEquals(0)
+        compose.onAllNodesWithText(uncertain).assertCountEquals(0)
+    }
+
+    private fun assertLocalOnly(f: Fixture) = io {
+        val state = f.app.settings.calendarPreferences.first { it is CalendarPreferenceState.Ready } as CalendarPreferenceState.Ready
+        assertEquals(InvitationFilter.PENDING_ONLY, state.value.options.invitationFilter)
+        assertEquals(CalendarSelection.Explicit(setOf(CalendarId(2))), state.value.selection)
+        assertEquals(SavedReminderSettings(), f.app.settings.readReminderSettings())
+        assertEquals(f.events, f.provider.snapshot("events"))
+        assertEquals(f.calendars, f.provider.snapshot("calendars"))
+        assertEquals(0, f.provider.batchCount)
+        assertTrue(f.app.calendarLocalStore.list().isEmpty())
+        f.app.calendarLocalStore.readableDatabase.rawQuery("SELECT COUNT(*) FROM mutation_journal", null).use {
+            assertTrue(it.moveToFirst()); assertEquals(0, it.getInt(0))
+        }
+    }
+
+    private fun shown(text: String) = compose.waitUntil(15_000) {
+        compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+    }
+    private fun shownTag(tag: String) = compose.waitUntil(15_000) {
+        compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+    }
+    private fun <T> io(block: suspend () -> T): T {
+        val result = AtomicReference<Result<T>?>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val worker = scope.launch { result.set(runCatching { block() }) }
+        var failure: Throwable? = null
+        try {
+            compose.waitUntil(15_000) { result.get() != null }
+            return requireNotNull(result.get()).getOrThrow()
+        } catch (error: Throwable) {
+            failure = error
+            throw error
+        } finally {
+            scope.cancel()
+            try { compose.waitUntil(5_000) { worker.isCompleted } }
+            catch (error: Throwable) {
+                val original = failure
+                if (original == null) throw error else if (original !== error) original.addSuppressed(error)
+            }
+        }
+    }
+    private class Fixture(val app: CalendarApp, val provider: NativeRecurringCreateJourneyProvider,
+        val activity: ActivityController<MainActivity>, val today: LocalDate) {
+        val events = provider.snapshot("events")
+        val calendars = provider.snapshot("calendars")
+    }
+    private fun fixture(block: (Fixture) -> Unit) {
+        val app = RuntimeEnvironment.getApplication() as CalendarApp
+        val store = rawStore(app.settings)
+        // Capture before permission, provider, preference or Activity setup can fail.
+        val original = io { store.data.first() }
+        var provider: NativeRecurringCreateJourneyProvider? = null
+        var activity: ActivityController<MainActivity>? = null
+        var failure: Throwable? = null
+        fun cleanup(action: () -> Unit) {
+            try { action() } catch (error: Throwable) {
+                val primary = failure
+                if (primary == null) failure = error else if (primary !== error) primary.addSuppressed(error)
+            }
+        }
+        try {
+            shadowOf(app).grantPermissions(Manifest.permission.READ_CALENDAR)
+            shadowOf(app).denyPermissions(Manifest.permission.WRITE_CALENDAR)
+            val ownedProvider = NativeRecurringCreateJourneyProvider().also { provider = it }
+            val today = LocalDate.now(ZoneOffset.UTC)
+            val start = today.atTime(12, 0).toInstant(ZoneOffset.UTC)
+            listOf(Triple(7, pending, 3), Triple(8, accepted, 1), Triple(9, uncertain, 0)).forEach { (id, title, response) ->
+                ownedProvider.db.insertOrThrow("events", null, ContentValues().apply {
+                    put("_id", id); put("calendar_id", 2); put("dtstart", start.toEpochMilli()); put("dtend", start.plusSeconds(3600).toEpochMilli())
+                    put("allDay", 0); put("eventTimezone", "UTC"); put("eventEndTimezone", "UTC"); put("title", title)
+                    put("isOrganizer", 0); put("organizer", "organizer@example.invalid"); put("selfAttendeeStatus", response)
+                    put("_sync_id", "synthetic-event-$id"); put("uid2445", "synthetic-uid-$id"); put("fixture_opaque", "opaque sentinel")
+                })
+            }
+            ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, ownedProvider)
+            io {
+                app.settings.saveReminderSettings(app.settings.readReminderSettings(), SavedReminderSettings())
+                // A fallback ALL in a legacy bulk save deliberately preserves unknown raw values.
+                // This fixture explicitly chooses ALL before exercising a pending-mode transition.
+                assertEquals(CalendarSettingSave.Saved,
+                    app.settings.saveCalendarSetting(CalendarSettingChange.InvitationFilter(InvitationFilter.ALL)))
+                assertTrue(app.settings.setDisplaySettings(CalendarSettingsOptions(weatherVisible = false,
+                    displayZone = DisplayZoneOption.Fixed(ZoneId.of("UTC")), invitationFilter = InvitationFilter.ALL)))
+                assertTrue(app.settings.setCalendarView(CalendarViewOption.DAY.name))
+                val metadata = app.calendarReader.readCalendars() as CalendarReadState.Ready
+                assertTrue(app.settings.setCalendarSelection(CalendarSelection.Explicit(setOf(CalendarId(2))), metadata.value))
+            }
+            compose.runOnUiThread {
+                activity = Robolectric.buildActivity(MainActivity::class.java)
+                requireNotNull(activity).setup().visible()
+            }
+            block(Fixture(app, ownedProvider, requireNotNull(activity), today))
+        } catch (error: Throwable) { failure = error }
+        finally {
+            activity?.let { ownedActivity ->
+                cleanup { compose.runOnUiThread { ownedActivity.pause() } }
+                cleanup { compose.runOnUiThread { ownedActivity.stop() } }
+                cleanup { compose.runOnUiThread { ownedActivity.destroy() } }
+            }
+            cleanup {
+                io {
+                    store.updateData { original }
+                    assertEquals(original.asMap(), store.data.first().asMap())
+                }
+            }
+            cleanup { provider?.db?.close() }
+        }
+        failure?.let { throw it }
+    }
+}

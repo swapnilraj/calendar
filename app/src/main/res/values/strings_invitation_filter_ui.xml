@@ -1,0 +1,8 @@
+<resources>
+    <string name="invitation_filter_title">Invitations</string>
+    <string name="invitation_filter_all">All events</string>
+    <string name="invitation_filter_pending">Pending invitations only</string>
+    <string name="invitation_filter_help">Show events awaiting your response. Events whose invitation status is unavailable cannot be confirmed as pending. This display filter does not change reminders.</string>
+    <string name="invitation_filter_unknown_generic">Some invitation statuses are unavailable.</string>
+    <string name="invitation_filter_partial_empty">No matching pending invitations could be confirmed in the available results.</string>
+</resources>
