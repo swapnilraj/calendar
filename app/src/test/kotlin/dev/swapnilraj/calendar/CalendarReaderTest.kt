@@ -41,6 +41,7 @@ class CalendarReaderTest {
         var failure: RuntimeException? = null
         var nullCursor = false
         lateinit var ownerScope: CoroutineScope
+        val instanceProjections = mutableListOf<List<String>>()
         var instanceQueries = 0
         var closed = 0
         var uri: Uri? = null
@@ -52,7 +53,7 @@ class CalendarReaderTest {
             if (nullCursor) return null
             val rows = when (uri.pathSegments.firstOrNull()) {
                 "calendars" -> calendars
-                "instances" -> { instanceQueries++; this.uri = uri; this.selection = selection; this.args = args; events }
+                "instances" -> { instanceProjections += projection!!.toList(); instanceQueries++; this.uri = uri; this.selection = selection; this.args = args; events }
                 "events" -> { eventQueries++; detailOverride?.let { listOf(it) } ?: metadataEvents.takeIf { it.isNotEmpty() } ?: events }
                 "attendees" -> { attendeeQueries++; attendees }
                 "reminders" -> { reminderQueries++; reminders }
@@ -429,6 +430,76 @@ class CalendarReaderTest {
             assertEquals(CalendarReadState.Unavailable, withTimeout(10_000) {
                 reader.observeCalendars().first { it != CalendarReadState.Loading }
             })
+        }
+    }
+
+    @Test fun pendingOnlyFiltersProvenInvitationsAndWarnsForUnknownEvidence() = runBlocking {
+        fixture { p, reader, _ ->
+            val evidence = listOf(false to 3, true to 0, false to 1, false to 2, false to 4, true to 3, false to 0, null to 3)
+            evidence.forEachIndexed { index, (organizer, status) ->
+                p.events += event(index.toLong() + 1, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") +
+                    mapOf("isOrganizer" to organizer?.let { if (it) 1 else 0 }, "selfAttendeeStatus" to status)
+            }
+            val all = (reader.readSnapshot(request) as CalendarReadState.Ready).value
+            assertEquals(8, all.occurrences.size)
+            assertTrue(all.occurrences.all { it.invitation == InvitationState.UNKNOWN })
+            assertFalse(p.instanceProjections.single().contains("isOrganizer"))
+            val pending = (reader.readSnapshot(request.copy(invitationFilter = InvitationFilter.PENDING_ONLY)) as CalendarReadState.Ready).value
+            assertEquals(listOf(1L), pending.occurrences.map { it.ref.eventId })
+            assertEquals(InvitationState.PENDING, pending.occurrences.single().invitation)
+            assertEquals(listOf(CalendarCoverage(CalendarId(2), CoverageReason.INVITATION_CLASSIFICATION_UNKNOWN)), pending.coverage)
+            assertTrue(p.instanceProjections.last().contains("isOrganizer"))
+            p.events[0] = p.events[0] + ("selfAttendeeStatus" to 1)
+            assertTrue((reader.readSnapshot(request.copy(invitationFilter = InvitationFilter.PENDING_ONLY)) as CalendarReadState.Ready).value.occurrences.isEmpty())
+            assertEquals(0, p.attendeeQueries + p.reminderQueries + p.eventQueries)
+        }
+    }
+
+    @Test fun pendingOnlyInvalidNumericEvidenceNeverWrapsIntoInvitations() = runBlocking {
+        fixture { p, reader, _ ->
+            val evidence = listOf(0 to 4_294_967_299L, 0 to 4_294_967_298L, 0 to "03", 0 to "+3", 0 to "3.0", 0 to null, "false" to 3, 2 to 3, null to 3, 0 to 3)
+            evidence.forEachIndexed { index, (organizer, status) ->
+                p.events += event(index.toLong() + 1, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") +
+                    mapOf("isOrganizer" to organizer, "selfAttendeeStatus" to status)
+            }
+            val result = (reader.readSnapshot(request.copy(invitationFilter = InvitationFilter.PENDING_ONLY)) as CalendarReadState.Ready).value
+            assertEquals(listOf(10L), result.occurrences.map { it.ref.eventId })
+            assertEquals(listOf(CalendarCoverage(CalendarId(2), CoverageReason.INVITATION_CLASSIFICATION_UNKNOWN)), result.coverage)
+            assertEquals(0, p.attendeeQueries + p.reminderQueries)
+        }
+    }
+
+    @Test fun pendingOnlyUnknownsOutsideRangeOrSelectionDoNotCreateCoverage() = runBlocking {
+        fixture { p, reader, _ ->
+            p.calendars += calendar(id = 3)
+            p.events += event(1, "2026-11-16T10:00:00Z", "2026-11-16T11:00:00Z")
+            p.events += event(2, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z", calendar = 3)
+            p.events += event(3, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") + mapOf("isOrganizer" to 0, "selfAttendeeStatus" to 1)
+            val result = (reader.readSnapshot(request.copy(selection = CalendarSelection.Explicit(setOf(CalendarId(2))), invitationFilter = InvitationFilter.PENDING_ONLY)) as CalendarReadState.Ready).value
+            assertTrue(result.occurrences.isEmpty())
+            assertTrue(result.coverage.isEmpty())
+        }
+    }
+
+    @Test fun pendingOnlyFreeBusySourcesStayRedactedAndReportInsufficientAccess() = runBlocking {
+        fixture { p, reader, _ ->
+            p.calendars[0] = calendar(access = 100)
+            p.events += event(1, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") + mapOf("isOrganizer" to 0, "selfAttendeeStatus" to 3)
+            val all = (reader.readSnapshot(request) as CalendarReadState.Ready).value
+            assertEquals("Busy", all.occurrences.single().title)
+            assertEquals(InvitationState.UNKNOWN, all.occurrences.single().invitation)
+            val result = (reader.readSnapshot(request.copy(invitationFilter = InvitationFilter.PENDING_ONLY)) as CalendarReadState.Ready).value
+            assertTrue(result.occurrences.isEmpty())
+            assertEquals(listOf(CalendarCoverage(CalendarId(2), CoverageReason.INSUFFICIENT_ACCESS)), result.coverage)
+            assertEquals(0, p.attendeeQueries + p.reminderQueries + p.eventQueries)
+        }
+    }
+
+    @Test fun pendingOnlyRangeLimitNeverPublishesCompleteFilteredPrefix() = runBlocking {
+        fixture(readBudgets = ProviderReadBudgets(maxRangeInstances = 1)) { p, reader, _ ->
+            p.events += event(1, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") + mapOf("isOrganizer" to 0, "selfAttendeeStatus" to 1)
+            p.events += event(2, "2026-11-17T12:00:00Z", "2026-11-17T13:00:00Z") + mapOf("isOrganizer" to 0, "selfAttendeeStatus" to 3)
+            assertEquals(CalendarReadState.LimitExceeded, reader.readSnapshot(request.copy(invitationFilter = InvitationFilter.PENDING_ONLY)))
         }
     }
 }
