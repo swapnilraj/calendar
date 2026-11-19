@@ -27,6 +27,14 @@ Earlier attempts retain their original meaning:
 
 ## Latest integrated correction — 19 November 2026
 
+The newer aggregate checkpoint `4e8cf57` passes **2,408 tests**, debug assembly, lint and release
+manifest processing with zero failures/errors/skips. It restores the already-published closed
+ordinary-recurring retirement boundary; the regression reproduced the prior aggregate drift, then
+all12 focused retirement checks passed. [Evidence](evidence/aggregate-retirement-default-full-gate-2026-11-19.json).
+This is local aggregate evidence, not completion of Google/Workspace, real-device, exact UX, beta or
+stable-owner release acceptance. Older cutoffs and failed attempts below retain their original meaning.
+
+
 The newer complete default gate at `563dea7` passes **2,407 tests**, APK assembly, lint and
 release-manifest processing with zero failures/errors/skips. It adds the legacy draft-family refusal
 regression. The first run failed with ENOSPC; that failed evidence remains preserved separately from

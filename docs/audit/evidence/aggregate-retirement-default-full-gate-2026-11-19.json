@@ -1,0 +1,134 @@
+{
+  "gate": {
+    "source": "4e8cf57ee37d44b05edf3d97468e963a8a570ae7",
+    "headAfter": "4e8cf57ee37d44b05edf3d97468e963a8a570ae7",
+    "statusAfter": "",
+    "startedAt": "2026-11-19T14:03:41.087565+00:00",
+    "finishedAt": "2026-11-19T14:09:53.735993+00:00",
+    "seconds": 372.648,
+    "command": [
+      "./gradlew",
+      "test",
+      ":app:assembleDebug",
+      ":app:lintDebug",
+      ":app:processReleaseMainManifest"
+    ],
+    "exitCode": 0,
+    "counts": {
+      "tests": 2408,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "modules": {
+      "app": {
+        "tests": 2134,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "calendar-core": {
+        "tests": 257,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "weather": {
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "xmlErrors": [],
+    "expectedDefaultTests": 2408
+  },
+  "frozen": {
+    "source": "4e8cf57ee37d44b05edf3d97468e963a8a570ae7",
+    "folder": "/tmp/daylight-verified-2408-4e8cf57",
+    "apkBytes": 45746604,
+    "apkSha256": "14b3c074f73b237b4e00f030bca60695cb1dbb041d14e66bd06a392200a5bd33",
+    "signerSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278",
+    "normalManifests": {
+      "debug": {
+        "package": "dev.swapnilraj.calendar",
+        "application": "dev.swapnilraj.calendar.CalendarApp",
+        "enabledComponents": 18,
+        "probeOnlyQueries": false
+      },
+      "release": {
+        "package": "dev.swapnilraj.calendar",
+        "application": "dev.swapnilraj.calendar.CalendarApp",
+        "enabledComponents": 16,
+        "probeOnlyQueries": false
+      }
+    },
+    "definedRequiredClasses": [
+      "dev.swapnilraj.calendar.CalendarApp",
+      "dev.swapnilraj.calendar.ui.LiveCalendarDayKt",
+      "dev.swapnilraj.calendar.ui.events.SeriesEventEditorSheetKt",
+      "dev.swapnilraj.calendar.ui.grid.TimedGridGestureInputKt",
+      "dev.swapnilraj.calendar.android.navigation.CalendarEntryActivity",
+      "dev.swapnilraj.calendar.android.navigation.CalendarSeedReviewActivity",
+      "dev.swapnilraj.calendar.android.navigation.CalendarEditReviewActivity",
+      "dev.swapnilraj.calendar.data.calendar.CalendarOperationRetirement"
+    ],
+    "counts": {
+      "tests": 2408,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "scope": "Developer debug checkpoint only; owner signing/account/device/Google UX/beta gates remain pending",
+    "zipBytes": 14566850,
+    "zipSha256": "627014a4c9ecd32b8bc52896bb6e4eca5e7c8735c637c26efcd07490847364b0"
+  },
+  "backup": {
+    "branch": "codex/verified-2408-20261119",
+    "source": "4e8cf57ee37d44b05edf3d97468e963a8a570ae7",
+    "status": "PUSH_VERIFIED"
+  },
+  "beforeRegression": {
+    "source": "b3d99c5899341a5650b1dbedc3c90a12094f1d3a",
+    "status": "FAIL",
+    "exitCode": 1,
+    "seconds": 91,
+    "counts": {
+      "tests": 1,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": [
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarOperationRetirementTest",
+        "tests": 1,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0
+      }
+    ]
+  },
+  "afterFocused": {
+    "source": "4e8cf57ee37d44b05edf3d97468e963a8a570ae7",
+    "status": "PASS",
+    "exitCode": 0,
+    "seconds": 30,
+    "counts": {
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": [
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarOperationRetirementTest",
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ]
+  },
+  "scope": "Complete default aggregate local checkpoint. Account/device/Google UX/beta/owner signing and final integrated release gates remain pending."
+}

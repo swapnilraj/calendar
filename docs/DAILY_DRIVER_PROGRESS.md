@@ -24,23 +24,32 @@ the calendar. The same SDK screenshot/input method works for both apps; main/eve
 still unverified. [Observed evidence](audit/evidence/google-reference-back-check-2026-11-19.json).
 
 
-The complete default gate at **`563dea70ed360f766162712c674f9b92dfd2e363` passes 2,407 tests**
-(app 2,133/core 257/weather 17), debug APK assembly, lint and release-manifest processing with zero
-failures/errors/skips in 7m9s. Normal debug/release retain `CalendarApp`, 18/16 enabled components
-and no probe-only queries. The added regression checks that legacy ordinary drafts with foreign or
-malformed family tags stay retained and unreadable. See the
-[complete checkpoint evidence](audit/evidence/legacy-family-default-full-gate-2026-11-19.json).
+The complete default gate at **`4e8cf57ee37d44b05edf3d97468e963a8a570ae7` passes 2,408 tests**
+(app 2,134/core 257/weather 17), debug APK assembly, lint and release-manifest processing with zero
+failures/errors/skips in 6m12s. The exact published ordinary-recurring retirement guard is restored in
+the aggregate: its unchanged published regression first reproduced Unsupported→Retired, then all
+12 retirement checks passed. Dedicated scoped-series and meeting families retain their own encoders.
+See [complete checkpoint evidence](audit/evidence/aggregate-retirement-default-full-gate-2026-11-19.json).
 
-[Verified source](https://github.com/swapnilraj/calendar/tree/codex/verified-2407-20261119) is backed up
-separately from publication. Frozen developer APK 48,252,332 bytes SHA-256
-`efe90cccfe4207dd59d7b956205737dec8c5e870735bcf8e422afcf197d88e01`;
-ZIP 14,569,165 bytes SHA-256 `ec5ebb89f73f324dd19ec5090e9251dae953600fe9e62c1269c9e5e24d9e2af4`.
-Files `/tmp/daylight-verified-2407-563dea7/`; signer 90936f83… verified. The first attempt at the same
-source failed because disk space ran out; its failure and partial XML remain preserved. Removing only
-ignored inactive compiler intermediates freed approximately 6 GiB before the successful fresh run.
-PR81/82/83 merged after full CI as `4e0ed50`/`d0e3dc2`/`1d8af3a`. Meeting application routes,
-widget application integration and incoming-intent publication still need bounded integration.
-Stable owner signing and required account/device/beta acceptance remain pending.
+[Verified source](https://github.com/swapnilraj/calendar/tree/codex/verified-2408-20261119) is backed up
+separately from publication. Frozen developer APK 45,746,604 bytes SHA-256
+`14b3c074f73b237b4e00f030bca60695cb1dbb041d14e66bd06a392200a5bd33`;
+ZIP 14,566,850 bytes SHA-256 `627014a4c9ecd32b8bc52896bb6e4eca5e7c8735c637c26efcd07490847364b0`.
+Files `/tmp/daylight-verified-2408-4e8cf57/`; developer certificate 90936f83… verified. Independent SDK
+manifest checks retain normal CalendarApp/package, 18 debug/16 release enabled components and no
+probe-only queries. Eight required implementation classes were verified as actual DEX definitions.
+The earlier 2,407-test checkpoint and its ENOSPC attempt remain historical, unchanged evidence.
+Stable owner signing and controlled account/device/UX/beta acceptance remain pending.
+
+PR87/88/90/91/92/93 have merged after their CI gates. Application meeting routes (PR89) remain
+unmerged: the historical full-CI selector failure, local reproduction limits and later 29-case passing
+run are preserved. The fixture now explicitly declares no default calendar and waits for actionable
+choices; the passing run captured no preconfigured default, so historical causality is unproven.
+A later CI attempt failed dependency resolution before tests. Canonical Maven Central POM/module/JAR
+returned HTTP200 with hashes matching cache, and a single controlled CI recheck was requested without
+changing lib-recur0.17.1. Recurrence presentation passed121 checks/five captures; grid presentation
+passed34/five captures; EDIT review passed95/two captures. Public intent ownership/routes and native
+alarm delivery remain separate gates.
 
 The receipt4 precision correction is integrated at `bb7e88a`: authored non-millisecond times return
 TIME before dispatch, and invalid frozen original/result identities cannot authorize retry or acknowledgement.
