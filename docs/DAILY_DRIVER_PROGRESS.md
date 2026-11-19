@@ -930,3 +930,18 @@ checks and five inspected captures passed; its two SQL-backed app journeys plus 
 case passed with verification. Broader regression review and a new combined gate remain required
 before it becomes part of an accepted aggregate. Selected-calendar conflicts are under pure-layer
 implementation; the other remaining source families and external device/account/beta gates stay open.
+
+### Invitation combined gate found fixture contamination — 19 November
+
+The integrated candidate at `cccfd53` failed its full gate after7m12s, with five app failures:
+four live-calendar checks and one widget retry check. It is not an accepted build. Inspection of
+the draft-browser comparison shows the new pending-only badge in a later fixture that expected
+ALL; the new invitation journeys lack exact preference teardown. Success/failure restoration
+witnesses and an independent widget deadline investigation are in progress. No image was
+rebaselined, and the full log, current XML and18 comparison/output images are retained.
+[Failed-gate evidence](audit/evidence/invitation-aggregate-failed-gate-2026-11-19.json).
+
+The corrected pure selected-calendar conflict algorithm separately passed34 checks after three
+actual DATE-semantics regressions were reproduced and fixed. Independent source review found no
+remaining blocker; the two new files are integrated, but no native conflict adapter or editor UI
+is activated. A new combined gate remains required. The last accepted full checkpoint stays2,446.
