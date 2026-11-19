@@ -41,6 +41,30 @@ class CalendarOperationRetirementTest {
         val (kind,signature)=fingerprint(request);prepare(request.operationId,signature,kind,metadata);return requireNotNull(operation(request.operationId))
     }
 
+    @Test fun recurringEditsStayClosedWhilePublishedMeetingEncodersRemainDistinct() = runBlocking { stores {one,_,a,b ->
+        val recurring=ref.copy(recurrence=RecurrenceRef(ref.eventId,start))
+        val requests=listOf<RetirableOperation>(
+            RetirableOperation.Update("recurring-update",recurring,token,EventPatch(title=FieldChange.Set("Changed"))),
+            RetirableOperation.Delete("recurring-delete",recurring,token))
+        requests.forEach{request->
+            assertEquals(OperationRetirementResult.Unsupported,a.retire(request))
+            assertEquals(OperationRetirementResult.Unsupported,b.inspect(request))
+            assertNull(one.operationHeader(request.operationId))
+        }
+        val meetings=listOf<RetirableOperation>(
+            RetirableOperation.Meeting("meeting",ref,token,MeetingCommand.Respond(RecurrenceScope.THIS,MeetingResponse.YES)),
+            RetirableOperation.MeetingCreate("meeting-create",token,draft,listOf(MeetingGuestInput("guest@example.invalid",MeetingGuestType.REQUIRED))))
+        meetings.forEach { request ->
+            assertEquals(OperationRetirementResult.Retired(request.operationId),a.retire(request))
+            assertEquals(OperationRetirementResult.Retired(request.operationId),b.inspect(request))
+            assertNotEquals("CREATE",one.operationHeader(request.operationId)!!.kind)
+        }
+        val plain=RetirableOperation.Create("plain",draft)
+        assertEquals(OperationRetirementResult.Retired("plain"),a.retire(plain));val before=one.operationHeader("plain")
+        assertEquals(OperationRetirementResult.Conflict("plain"),b.retire(plain.copy(draft=draft.copy(recurrence=RecurrenceSpec(RecurrencePattern.Daily)))))
+        assertEquals(before,one.operationHeader("plain"))
+    } }
+
     @Test fun missingFenceSurvivesReopenAndCannotBePreparedAttemptedOrMarked() = runBlocking { stores { one,two,a,b ->
         val request=RetirableOperation.Create("missing",draft)
         assertEquals(OperationRetirementResult.NotRetired("missing"),a.inspect(request));assertNull(one.operationHeader("missing"))
