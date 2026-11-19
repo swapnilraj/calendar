@@ -188,7 +188,9 @@ internal fun LiveCalendarDay(
         CalendarViewOption.THREE_DAY, CalendarViewOption.WEEK -> multiDayRange
         else -> CalendarDateRange(visibleDate.minusDays(1), visibleDate.plusDays(2))
     }
-    val request = remember(range, displayNow.zone, effectiveSelection) { CalendarRequest(range, displayNow.zone, effectiveSelection) }
+    val request = remember(range, displayNow.zone, effectiveSelection, options.invitationFilter) {
+        CalendarRequest(range, displayNow.zone, effectiveSelection, options.invitationFilter)
+    }
     var openedEvent by remember { mutableStateOf<OpenedEvent?>(null) }
     fun openEvent(ref: EventRef) { openedEvent = OpenedEvent(ref, currentDate().toString(), view, effectiveSelection, displayNow.zone) }
     val selected = openedEvent?.takeIf { it.dateText == dateText && it.view == view && it.selection == effectiveSelection && it.zone == displayNow.zone }?.ref
@@ -580,11 +582,18 @@ internal fun LiveCalendarDay(
                     onSelectDate = ::navigatePhoneDate,
                     onChooseDate = { cancelPhoneNavigation(); phoneDatePicker = true })
             }
+            if (options.invitationFilter == InvitationFilter.PENDING_ONLY) {
+                Text(stringResource(R.string.invitation_filter_pending), Modifier.padding(horizontal = 12.dp),
+                    style = MaterialTheme.typography.bodySmall)
+            }
             (snapshot as? CalendarReadState.Ready)?.value?.let { ready ->
                 val chosenCalendars = ready.request.selection
                 val notice = when {
                     ready.calendars.isEmpty() -> R.string.navigation_no_calendars
                     chosenCalendars is CalendarSelection.Explicit && chosenCalendars.ids.isEmpty() -> R.string.navigation_no_selection
+                    ready.request.invitationFilter == InvitationFilter.PENDING_ONLY && ready.coverage.any {
+                        it.reason == CoverageReason.INVITATION_CLASSIFICATION_UNKNOWN
+                    } -> R.string.invitation_filter_unknown_generic
                     ready.coverage.isNotEmpty() -> R.string.navigation_partial_coverage
                     else -> null
                 }
@@ -808,6 +817,7 @@ internal fun LiveCalendarDay(
                 .getOrNull()?.takeIf(::validSearchRange) ?: defaultSearchRange(displayNow.toLocalDate())
         }
         SearchWorkflow(search, effectiveSelection, displayNow.zone, options.showDeclined, searchQuery, searchRange,
+            invitationFilter = options.invitationFilter,
             onQueryChange = { searchQuery = it },
             onRangeChange = { searchRangeText = "${it.start}/${it.endExclusive}" },
             onChooseCalendars = { showSearch = false; scope.launch { drawer.open() } },

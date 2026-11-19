@@ -648,6 +648,10 @@ Eligible EDIT
 suggestions use the separate source-pinned version8 review above; recurring/guest editing and live
 Google UX verification remain separate.
 
+### Pending invitation display filter
+
+General → Invitations offers All events (the default) and Pending invitations only through a single typed InvitationFilter setting change. The display filter applies to calendar views and search; changing search context immediately hides stale rows and prevents opening a hit from the previous context. Only confirmed pending invitations appear in pending-only results. Unknown invitation classification remains explicit in coverage and qualifies empty search results rather than claiming a complete absence. Reminder, widget, direct-link and conflict reads keep their independent ALL requests. Existing calendar selection, declined-event controls, preference readiness and source/privacy masking remain in force.
+
 ### M9 — App-owned reminders
 
 - Own notification presentation, dismissals, snoozes and delivery tracking. Guide setup for notification
