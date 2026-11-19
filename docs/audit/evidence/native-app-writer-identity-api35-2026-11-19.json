@@ -1,0 +1,64 @@
+{
+  "acceptanceScope": "provider identity only",
+  "apks": {
+    "app": {
+      "bytes": 44214692,
+      "name": "app-debug.apk",
+      "sha256": "74487effb57b35be0ed4250acfff5cb982319c301b42c9dfbead82db8ce3c17c"
+    },
+    "test": {
+      "bytes": 365864,
+      "name": "app-debug-androidTest.apk",
+      "sha256": "b4c3220bd277508b28785b00adee0c543bbfc8cf14b302157023fcee5ee41850"
+    }
+  },
+  "component": "dev.swapnilraj.calendar.providerprobe/dev.swapnilraj.calendar.probe.NativeCalendarProviderProbe",
+  "expectedGuard": {
+    "androidUser": 0,
+    "avd": "daylight_google_reference_userdebug_api35",
+    "bootId": "f14d0429-80d1-4b93-9eeb-da5f4f2046ac",
+    "serial": "emulator-5554"
+  },
+  "googleWorkspaceRoundTrip": "NOT_RUN",
+  "guard": {
+    "androidUser": 0,
+    "avd": "daylight_google_reference_userdebug_api35",
+    "bootId": "f14d0429-80d1-4b93-9eeb-da5f4f2046ac",
+    "buildFingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys",
+    "qemu": "1",
+    "serial": "emulator-5554"
+  },
+  "mode": "identity",
+  "probeReport": {
+    "batchAssertionCap": 128,
+    "batchAssertionCountKind": "operations-in-attempted-batches",
+    "deadlineKind": "cooperative",
+    "directQueryCap": 320,
+    "googleWorkspaceRoundTrip": "NOT_RUN",
+    "productionProfileActivation": "NONE",
+    "providerIdentity": {
+      "baseSha256": "a1facdbec3de78c6817efe1aea40b804a66c8ccbcd23a72a426d8c21cfebd273",
+      "buildFingerprint": "google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys",
+      "package": "com.android.providers.calendar",
+      "sdk": 35,
+      "securityPatch": "2024-09-05",
+      "signers": [
+        "6cecc50e34ae31bfb5678986d6d6d3736c571ded2f2459527793e1f054eb0c9b"
+      ],
+      "signingHistory": [
+        "6cecc50e34ae31bfb5678986d6d6d3736c571ded2f2459527793e1f054eb0c9b"
+      ],
+      "splits": [],
+      "versionCode": 35
+    },
+    "queryTimeoutSeconds": 30,
+    "runId": "000dd245-03a5-4138-87a3-5ca74b9f8c57",
+    "schema": 1,
+    "scope": "native-provider-identity-only",
+    "status": "PASS"
+  },
+  "productionProfileActivation": "NONE",
+  "runId": "000dd245-03a5-4138-87a3-5ca74b9f8c57",
+  "schema": 1,
+  "status": "PASS"
+}

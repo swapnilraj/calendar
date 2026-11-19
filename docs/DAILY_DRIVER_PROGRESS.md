@@ -50,11 +50,24 @@ AndroidTest assembly passed29s. Full CI passed at `5db9c60`, including host guar
 and opt-in AndroidTest assembly; PR65 merged as `53017c2`. The task attachment is confirmed. CI now checks host guards and compiles the probe without
 starting an emulator or granting permissions.
 
+Fresh [owned-emulator identity capture](audit/evidence/native-app-writer-identity-api35-2026-11-19.json)
+now passes with the reviewed `e609b4f` pair on API35/user0/boot `f14d0429-80d1-4b93-9eeb-da5f4f2046ac`.
+The complete descriptor exactly matches the unchanged historical18-case SDK report: provider35,
+base APK `a1facdbe…`, no splits, same signer/history/build/patch. The one capture completed naturally
+in386.5s, with no calendar grants or fixtures. A verified zombie-PID lock was moved intact to its
+startup record before the unchanged owned AVD could boot; config bytes were unchanged.
+
+One app-create/recovery protocol is now authorized and monitored as run
+`cf21909f-024d-4ccd-b4df-69b2cbabc057`, using the same immutable pair/boot/pins and a mandatory
+nonmutating target-PID absence preflight before any grants/fixtures. No app-mode success is claimed
+while it runs; there is no retry, forced cleanup or production profile admission.
+
 The [native app-writer harness](audit/evidence/native-app-writer-source-review-2026-11-19.json)
 is now integrated with19 passing host checks, successful AndroidTest compilation/pair assembly,
 and independently verified frozen APK hashes/signatures. The pair binds production base `1a0fd3d`.
-Current boot/provider pins, exact-PID absence behavior and all actual native phases remain NOT_RUN.
-Old pairs remain unapproved; this source checkpoint does not establish native acceptance.
+At that source-only review, current boot/provider pins and native phases were NOT_RUN. The fresh
+identity capture above supersedes the identity gap; exact-PID absence and app-mode acceptance remain
+pending. Old pairs remain unapproved, and compilation alone establishes no native acceptance.
 
 Navigation fixture transition hardening from the already published PR62 is now selectively
 integrated as `f895cfb`: journeys wait for displayed controls and a closed drawer after preference
