@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "date": "2026-11-19",
+  "scope": "Dedicated synthetic SQLite CalendarContract provider; no real account/device operations",
+  "status": "REPRODUCED_BEFORE_RECEIPT6",
+  "testCheckout": "e12ed2f",
+  "sourceBase": "62bbfdf",
+  "productionSource": "12917f1",
+  "tests": 3,
+  "failures": 3,
+  "errors": 0,
+  "skipped": 0,
+  "finding": "Ordinary one-off receipt2 creation returned LocalSaved despite malformed, missing or reordered reminder acknowledgements.",
+  "xmlSha256": "d5519c2febd29eab6ee6e2f6356cd5ab1dbd1e16e209755010504e637eea2cab",
+  "cases": [
+    "oneOffMalformedReminderAckCannotClaimSave",
+    "oneOffMissingReminderAckCannotClaimSave",
+    "oneOffReorderedReminderAckCannotClaimSave"
+  ],
+  "forwardControls": "Six UID/frozen-plan acceptance controls in the same test file were not run in this before-fix experiment.",
+  "next": "Approved receipt6 implementation; fixed-after evidence remains pending."
+}

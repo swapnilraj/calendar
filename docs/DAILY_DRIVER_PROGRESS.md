@@ -39,6 +39,10 @@ The correction passed 99 publication-focused checks, an independent 84-check agg
 and this full gate, including the updated actual-app recurring journey. Receipt4 edit recovery and
 its exact native-plan helpers are retained. Source-free immutable CREATE plans and stable generated
 UID binding remain the next bounded protocol packet; recovery still recompiles recurrence today.
+Subsequent independent [one-off ACK probes](audit/evidence/oneoff-create-ack-before-receipt6-2026-11-19.json)
+reproduced three false local-save results in the still-active receipt2 creation path (malformed,
+missing and reordered reminder ACKs). These new cases are not covered by the 2,211-test checkpoint.
+The approved receipt6 packet covers both new creation modes; correction/after evidence is pending.
 
 Incoming public EDIT review now supports an explicit proposed zone for eligible NULL-zone timed
 sources, including the displayed zone. Exact Apply/CAS and issued ZONE rights are required; absent-zone
