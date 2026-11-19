@@ -43,7 +43,9 @@ sealed interface GridPreviewResult {
         /** Keep the stored event zone and every unrelated field, even in a different display zone. */
         val patch: EventPatch get() = EventPatch(time = FieldChange.Set(time))
     }
-    data class NeedsReview(val reason: GridReviewReason, val candidateOffsets: List<ZoneOffset>) : GridPreviewResult
+    data class NeedsReview(val reason: GridReviewReason, val candidateOffsets: List<ZoneOffset>,
+        /** Snapped logical wall position only; this does not select an offset or imply an instant. */
+        val snappedTarget: GridTarget) : GridPreviewResult
     data class Invalid(val reason: GridInvalidReason) : GridPreviewResult
 }
 
@@ -124,10 +126,10 @@ object TimedGridPlanning {
         }
         val local = date.atStartOfDay().plusMinutes(minute)
         val offsets = target.zone.rules.getValidOffsets(local)
-        if (offsets.isEmpty()) return GridPreviewResult.NeedsReview(GridReviewReason.CLOCK_GAP, emptyList())
+        if (offsets.isEmpty()) return GridPreviewResult.NeedsReview(GridReviewReason.CLOCK_GAP, emptyList(), snapped)
         val offset = when (val choice = target.offsetChoice) {
             GridOffsetChoice.Unspecified -> {
-                if (offsets.size != 1) return GridPreviewResult.NeedsReview(GridReviewReason.CLOCK_OVERLAP, offsets.toList())
+                if (offsets.size != 1) return GridPreviewResult.NeedsReview(GridReviewReason.CLOCK_OVERLAP, offsets.toList(), snapped)
                 offsets.single()
             }
             is GridOffsetChoice.Explicit -> {
