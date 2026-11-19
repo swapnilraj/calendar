@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import dev.swapnilraj.calendar.data.Settings
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.*
 import android.Manifest
 import android.content.ComponentName
@@ -328,10 +329,12 @@ class PublicCalendarEntryJourneyTest {
     private fun rawStore(settings: Settings): DataStore<Preferences> =
         Settings::class.java.getDeclaredField("store").apply { isAccessible = true }.get(settings) as DataStore<Preferences>
 
-    private fun <T> io(block: suspend () -> T): T {
+    private fun <T> io(onWorker: (Job) -> Unit = {}, block: suspend () -> T): T {
         val result = AtomicReference<Result<T>?>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val worker = scope.launch { result.set(runCatching { block() }) }
+        val worker = scope.launch(start = CoroutineStart.LAZY) { result.set(runCatching { block() }) }
+        onWorker(worker)
+        worker.start()
         var failure: Throwable? = null
         try {
             compose.waitUntil(15_000) { result.get() != null }
@@ -412,7 +415,8 @@ class PublicCalendarEntryJourneyTest {
         val original = io { store.data.first().toMutablePreferences().toPreferences() }
         var provider: NativeRecurringCreateJourneyProvider? = null
         var fixture: Fixture? = null
-        var runtimeStarted = false
+        val ownedWorkers = CopyOnWriteArrayList<Job>()
+        val ownedResumes = CopyOnWriteArrayList<Job>()
         var failure: Throwable? = null
         fun cleanup(action: () -> Unit) {
             try { action() } catch (error: Throwable) {
@@ -426,10 +430,10 @@ class PublicCalendarEntryJourneyTest {
             val ownedProvider = NativeRecurringCreateJourneyProvider().also { provider = it }
             if (seed) ownedProvider.seedOneOff(start, start.plusSeconds(3600), sourceTitle)
             ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, ownedProvider)
-            io {
+            io(onWorker = { ownedWorkers += it }) {
                 app.settings.saveReminderSettings(app.settings.readReminderSettings(), SavedReminderSettings())
-                runtimeStarted = true
-                val resume = app.reminderRuntime.onResume()
+                currentCoroutineContext().ensureActive()
+                val resume = app.reminderRuntime.onResume().also { ownedResumes += it }
                 try { resume.join() } finally { if (!currentCoroutineContext().isActive) resume.cancel() }
                 app.settings.setDisplaySettings(CalendarSettingsOptions(weatherVisible = false, displayZone = DisplayZoneOption.Fixed(zone)))
                 val metadata = app.calendarReader.readCalendars() as CalendarReadState.Ready
@@ -448,20 +452,35 @@ class PublicCalendarEntryJourneyTest {
                 }
             }
             cleanup {
-                io {
+                io(onWorker = { ownedWorkers += it }) {
                     store.updateData { original }
                     assertEquals(original.asMap(), store.data.first().asMap())
                 }
             }
             // This fixture explicitly resumed this runtime during setup; restore its policy too.
             // Never cancel Application-owned scopes or unrelated process-start work.
-            if (runtimeStarted) cleanup {
-                io {
-                    val resume = app.reminderRuntime.onResume()
+            if (ownedResumes.isNotEmpty()) cleanup {
+                io(onWorker = { ownedWorkers += it }) {
+                    currentCoroutineContext().ensureActive()
+                    val resume = app.reminderRuntime.onResume().also { ownedResumes += it }
                     try { resume.join() } finally { if (!currentCoroutineContext().isActive) resume.cancel() }
                 }
             }
-            cleanup { provider?.db?.close() }
+            // A cancelled test worker can finish before its Application-owned resume job.
+            // Await both exact job sets before releasing their provider; never cancel a global scope.
+            ownedWorkers.forEach { it.cancel() }
+            ownedResumes.forEach { it.cancel() }
+            var quiescent = false
+            cleanup {
+                compose.waitUntil(5_000) {
+                    ownedWorkers.all { it.isCompleted } && ownedResumes.all { it.isCompleted }
+                }
+                quiescent = true
+            }
+            if (quiescent) cleanup { provider?.db?.close() }
+            else cleanup {
+                throw AssertionError("Public fixture cleanup retained provider: owned worker/runtime job completion could not be proven")
+            }
         }
         failure?.let { throw it }
     }
