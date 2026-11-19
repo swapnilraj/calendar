@@ -24,9 +24,9 @@ class OwnedMeetingEditorController(val launch:OwnedMeetingLaunch,private val mee
     var presentationVisible by mutableStateOf(true);private set
     val state get()=if(presentationVisible) backing else backing.copy(fields=null,problem=OwnedMeetingProblem.PERMISSION,
         confirmCancel=false,confirmDiscard=false,localOutcome=null)
-    private var document:OwnedDocument?=null
+    private var document by mutableStateOf<OwnedDocument?>(null)
     private var expected:DraftRecord?=null
-    private var pendingRaw:OwnedDocument?=null
+    private var pendingRaw by mutableStateOf<OwnedDocument?>(null)
     private var verified=false
     private var stopped=false
     private var retirementProven=false
@@ -36,6 +36,17 @@ class OwnedMeetingEditorController(val launch:OwnedMeetingLaunch,private val mee
     private val action=AtomicBoolean(false)
     private val storage=Mutex()
     private val operations=Mutex()
+    /** Source time is evidence only; this never exposes the source edit token or guest payload. */
+    fun conflictBinding(hostVisible:Boolean):EditorConflictBinding? {
+        val doc=document ?: return null
+        if(!hostVisible || !presentationVisible || stopped || leaseLost || !verified || backing.loading || backing.busy ||
+            pendingRaw!=null || doc.frozen!=null || backing.recoveryRequired || backing.localOutcome!=null ||
+            backing.acknowledged || backing.discarded || backing.problem in setOf(OwnedMeetingProblem.DRAFT_REVIEW,
+                OwnedMeetingProblem.DRAFT_UNAVAILABLE,OwnedMeetingProblem.DRAFT_CHANGED,OwnedMeetingProblem.SOURCE_CHANGED,
+                OwnedMeetingProblem.PERMISSION,OwnedMeetingProblem.UNAVAILABLE)) return null
+        return EditorConflictBinding(doc.generation,doc.revision,EditorTemporalInput.from(doc.fields.event),doc.baseline.identity,
+            doc.baseline.selected,EditorTemporalInput.from(doc.baseline.original),doc.baseline.time)
+    }
     val frozen get()=document?.frozen!=null
     val calendarLabel get()=if(presentationVisible) document?.baseline?.calendarLabel.orEmpty() else ""
     val accountLabel get()=if(presentationVisible) document?.baseline?.accountLabel.orEmpty() else ""

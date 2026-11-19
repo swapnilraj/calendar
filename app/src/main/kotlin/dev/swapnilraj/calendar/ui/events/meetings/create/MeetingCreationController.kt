@@ -6,6 +6,8 @@ import androidx.compose.runtime.setValue
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.ui.events.EventEditorController
 import dev.swapnilraj.calendar.ui.events.EventEditorFields
+import dev.swapnilraj.calendar.ui.events.EditorTemporalInput
+import dev.swapnilraj.calendar.ui.events.EditorConflictBinding
 import java.time.*
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.*
@@ -37,17 +39,28 @@ class MeetingCreationController(val launch: MeetingCreationLaunch, private val m
     var state by mutableStateOf(MeetingCreationState()); private set
     private val action = AtomicBoolean(false)
     private val storage = Mutex()
-    private var document: MeetingCreationDocument? = null
+    private var document by mutableStateOf<MeetingCreationDocument?>(null)
     private var expected: DraftRecord? = null
     private var stopped = false
     private var verified = false
     private var retirementProven = false
-    private var pendingRaw: MeetingCreationDocument? = null
+    private var pendingRaw by mutableStateOf<MeetingCreationDocument?>(null)
     private var cleanupAttempt: DraftRecord? = null
     private var cleanupChanged = false
     private data class Reviewed(val generation: String,val revision: String,val operationId: String,
         val authority: MeetingCreationAuthority,val command: FrozenMeetingCreation)
     private var reviewed: Reviewed? = null
+    /** Read-only lease correlation; the phone must also mask its optimistic raw projection. */
+    fun conflictBinding(presentationVisible: Boolean): EditorConflictBinding? {
+        val doc = document ?: return null
+        if (!presentationVisible || stopped || state.loading || state.busy || pendingRaw != null || doc.frozen != null ||
+            state.recoveryRequired || state.localSaved != null || state.acknowledged || state.discarded ||
+            state.problem in setOf(MeetingCreationProblem.DRAFT_UNAVAILABLE, MeetingCreationProblem.DRAFT_REVIEW,
+                MeetingCreationProblem.STALE_DRAFT, MeetingCreationProblem.SOURCE_CHANGED, MeetingCreationProblem.PERMISSION,
+                MeetingCreationProblem.DENIED, MeetingCreationProblem.UNAVAILABLE) || doc.authority != null && !verified) return null
+        return EditorConflictBinding(doc.generation, doc.revision, EditorTemporalInput.from(doc.fields.event),
+            doc.fields.event.targetIdentity, null)
+    }
     val hasPendingRawInput: Boolean get() = pendingRaw != null
     val frozen: Boolean get() = document?.frozen != null
     val hasFrozenRecurrence: Boolean get() = document?.frozen?.draft?.recurrence != null

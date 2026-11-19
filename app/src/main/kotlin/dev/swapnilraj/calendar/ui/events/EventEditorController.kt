@@ -55,13 +55,28 @@ class EventEditorController(
     private val atomic = drafts as? AtomicDraftStore
     private val action = java.util.concurrent.atomic.AtomicBoolean(false)
     private val storage = kotlinx.coroutines.sync.Mutex()
-    private var document: OrdinaryDraftDocument? = null
+    private var document by mutableStateOf<OrdinaryDraftDocument?>(null)
+    private var conflictRawEpoch by mutableStateOf(0L)
+    private var conflictPersistedEpoch by mutableStateOf(0L)
+    private var conflictPersistenceActive by mutableStateOf(false)
     private var expectedRecord: DraftRecord? = null
     private var persistence: Job? = null
-    private var closed = false
+    private var closed by mutableStateOf(false)
     private var dispatchStopped = false
     private var retirementProven = false
     private var recurrenceReviewPayload = ""
+    /** A host must pass its immediate READ/visibility mask; no provider permission is issued here. */
+    fun conflictBinding(presentationVisible: Boolean): EditorConflictBinding? {
+        val doc = document ?: return null
+        if (!presentationVisible || writesBlocked() || state.recoveryRequired || state.localOutcome != null || state.result != null ||
+            conflictPersistenceActive || conflictRawEpoch != conflictPersistedEpoch || doc.fields != state.fields || doc.zoneAuthored != state.zoneAuthored ||
+            state.problem in setOf(EditorProblem.PERMISSION, EditorProblem.DENIED, EditorProblem.UNAVAILABLE, EditorProblem.CONFLICT)) return null
+        val generation = doc.generation ?: return null
+        val revision = doc.revision ?: return null
+        return EditorConflictBinding(generation, revision, EditorTemporalInput.from(state.fields), boundCalendarIdentity,
+            existing?.details?.occurrence?.ref, if (existing != null) EditorTemporalInput.from(original) else null,
+            if (existing != null) initial.time else null)
+    }
     val pendingOperationId: String get() = document?.operationId.orEmpty()
     val pendingOperationKind: String get() = document?.operationKind.orEmpty()
     val generation: String? get() = document?.generation
@@ -250,6 +265,7 @@ class EventEditorController(
         val zoneAuthored = state.zoneAuthored || explicitZone && initial.eventZone == null && existing?.details?.eventZone == null &&
             existing?.allowedFields?.contains(EditableField.ZONE) == true && document?.let {!it.legacy && !it.hasRequest && it.hasNullSourceZone} == true
         if (next == old && notices == state.notices && zoneAuthored == state.zoneAuthored) return
+        conflictRawEpoch++
         recurrenceReviewPayload = ""
         state = state.copy(fields = next, notices = notices, zoneAuthored = zoneAuthored, recurrenceReview = null, problem = if (state.reviewRequired) EditorProblem.CONFLICT else null, result = null)
         if (persist) {
@@ -273,29 +289,36 @@ class EventEditorController(
         if (drafts.load(draftId) == expectedRecord) true else { stale(); false }
     } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE); false }
     private fun stale() { closed = true; state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE, retryReady = false, recurrenceReview = null) }
-    private suspend fun replace(next: OrdinaryDraftDocument): Boolean = storage.withLock {
+    private suspend fun replace(next: OrdinaryDraftDocument, conflictEpoch: Long? = null): Boolean = storage.withLock {
         currentCoroutineContext().ensureActive()
         // Local commit, exact receipt readback and adoption finish together even if the UI cancels.
         withContext(NonCancellable) {
-            if (closed || next.legacy) return@withContext false
-            val expected = expectedRecord ?: return@withContext false
-            val replacement = next.record(clock.instant())
-            val result = try { atomic?.compareAndSet(draftId, expected, replacement) ?: DraftChangeResult.Unavailable }
-                catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { DraftChangeResult.Unavailable }
-            val applied = when (result) {
-                DraftChangeResult.Applied -> true
-                DraftChangeResult.Changed -> { stale(); false }
-                DraftChangeResult.Unavailable -> try { drafts.load(draftId) == replacement } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false }
-            }
-            if (applied) { document = OrdinaryDraftDocument.decode(replacement); expectedRecord = replacement }
-            else if (!closed) state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE)
-            applied
+            conflictPersistenceActive = true
+            try {
+                if (closed || next.legacy) return@withContext false
+                val expected = expectedRecord ?: return@withContext false
+                val replacement = next.record(clock.instant())
+                val result = try { atomic?.compareAndSet(draftId, expected, replacement) ?: DraftChangeResult.Unavailable }
+                    catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { DraftChangeResult.Unavailable }
+                val applied = when (result) {
+                    DraftChangeResult.Applied -> true
+                    DraftChangeResult.Changed -> { stale(); false }
+                    DraftChangeResult.Unavailable -> try { drafts.load(draftId) == replacement } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { false }
+                }
+                if (applied) {
+                    document = OrdinaryDraftDocument.decode(replacement); expectedRecord = replacement
+                    if (conflictEpoch != null && conflictEpoch == conflictRawEpoch && next.fields == state.fields &&
+                        next.zoneAuthored == state.zoneAuthored) conflictPersistedEpoch = conflictEpoch
+                }
+                else if (!closed) state = state.copy(problem = EditorProblem.DRAFT_UNAVAILABLE)
+                applied
+            } finally { conflictPersistenceActive = false }
         }
     }
     private suspend fun persistFields(): Boolean {
         val doc = document ?: return false
         if (doc.legacy || doc.hasRequest || state.reviewRequired) return false
-        return replace(doc.copy(fields = state.fields, notices = state.notices, zoneAuthored = state.zoneAuthored))
+        return replace(doc.copy(fields = state.fields, notices = state.notices, zoneAuthored = state.zoneAuthored), conflictRawEpoch)
     }
     fun save() = saveReviewed(false)
     fun dismissRecurrenceReview() { recurrenceReviewPayload = ""; state = state.copy(recurrenceReview = null) }
@@ -644,25 +667,10 @@ class EventEditorController(
                 start?.offset?.id.orEmpty(), end?.offset?.id.orEmpty(), draft.availability?.toString().orEmpty(), draft.privacy?.toString().orEmpty(), targetIdentity = draft.targetIdentity, recurrence = RecurrenceEditorFields.from(draft.recurrence))
         }
         fun normalizedDraft(fields: EventEditorFields, preserveTime: EventTime? = null, preserveAlerts: List<Int>? = null): EventDraft = try {
-            val startDate = LocalDate.parse(fields.startDate); val endDate = LocalDate.parse(fields.endDate)
+            // Preserve the original validation position even when exact imported time is kept.
+            LocalDate.parse(fields.startDate); LocalDate.parse(fields.endDate)
             val zone = ZoneId.of(fields.zone)
-            val time = preserveTime ?: if (fields.allDay) {
-                if (endDate < startDate) throw InvalidInput(EditorProblem.INVALID_INPUT)
-                EventTime.AllDay(CalendarDateRange(startDate, endDate.plusDays(1)))
-            } else {
-                fun instant(date: LocalDate, rawTime: String, choice: String): Instant {
-                    val local = date.atTime(LocalTime.parse(rawTime))
-                    val offsets = zone.rules.getValidOffsets(local)
-                    if (offsets.isEmpty()) throw InvalidInput(EditorProblem.NONEXISTENT_TIME)
-                    val offset = if (offsets.size == 1) offsets.single() else offsets.firstOrNull { it.id == choice }
-                        ?: throw InvalidInput(EditorProblem.AMBIGUOUS_TIME)
-                    return local.toInstant(offset)
-                }
-                val start = instant(startDate, fields.startTime, fields.startOffset)
-                val end = instant(endDate, fields.endTime, fields.endOffset)
-                if (end <= start) throw InvalidInput(EditorProblem.INVALID_INPUT)
-                EventTime.Timed(start, end)
-            }
+            val time = preserveTime ?: EditorTemporalInput.from(fields).normalizedTime()
             val alerts = preserveAlerts ?: if (fields.alerts.isBlank()) emptyList() else fields.alerts.split(',').map { it.trim().toInt().also { value ->
                 if (value == CalendarContract.Reminders.MINUTES_DEFAULT) throw InvalidInput(EditorProblem.INVALID_INPUT)
             } }.distinct()

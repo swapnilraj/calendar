@@ -623,6 +623,8 @@ unavailable reads never certify clear time. Complete coverage describes the sele
 window only. This read port activates no UI, save authority, coworker availability or cloud guarantee;
 permission loss without a provider notification still requires lifecycle masking and refresh.
 
+Editor overlap diagnostics may consume read-only temporal input and draft correlation data only while the current draft lease is usable. Pending persistence, stale or hidden sources, legacy/recovery and frozen/outcome states expose no active binding. Time-only normalization retains existing save semantics, unchanged imported precision and explicit DST choices. The binding exposes no edit token, private field payload or mutation authority. This seam does not activate an advisory interface or alter saving.
+
 ### M8 — Search, preferences and Android entry points
 
 Search title/location/description with cancellation/debounce and calendar filters. Default range is
