@@ -24,7 +24,7 @@ internal fun PhoneSettingsHeader(title: String, enabled: Boolean, onBack: () -> 
     Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         val back = stringResource(R.string.phone_settings_back)
         IconButton(onClick = onBack, enabled = enabled, modifier = Modifier.semantics { contentDescription = back }) {
-            val color = MaterialTheme.colorScheme.onSurface
+            val color = LocalContentColor.current
             val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
             Canvas(Modifier.size(24.dp)) {
                 val tip = if (rtl) 0.8f else 0.2f

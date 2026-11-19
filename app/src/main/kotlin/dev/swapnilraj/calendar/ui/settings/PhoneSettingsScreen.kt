@@ -61,7 +61,7 @@ fun PhoneSettingsScreen(
                 val savingLabel = stringResource(R.string.phone_settings_saving)
                 LinearProgressIndicator(Modifier.fillMaxWidth().semantics { contentDescription = savingLabel })
             }
-            if (saveError != null && state.editor == PhoneSettingEditor.NONE) {
+            if (saveError != null && state.editor == PhoneSettingEditor.NONE && state.lastChange != null) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
                     Text(saveError, color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.ContentOrLtr),

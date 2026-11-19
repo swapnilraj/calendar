@@ -53,6 +53,8 @@ internal class PhoneSettingsState {
         generation++
         editor = PhoneSettingEditor.NONE
         attemptedApply = false
+        lastChange = null
+        submittedGeneration = -1
     }
 
     fun submit(change: CalendarSettingChange, revision: Long) {
@@ -67,6 +69,7 @@ internal class PhoneSettingsState {
         if (!awaitingSave) return
         if (revision > submittedRevision) {
             awaitingSave = false
+            lastChange = null
             if (generation == submittedGeneration && editor == submittedEditor && editor != PhoneSettingEditor.NONE) {
                 editor = PhoneSettingEditor.NONE
                 generation++

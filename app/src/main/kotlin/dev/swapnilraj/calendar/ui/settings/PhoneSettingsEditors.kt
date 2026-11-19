@@ -49,7 +49,6 @@ internal fun PhoneSettingsEditor(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val title = phoneSettingsEditorTitle(state.editor)
     val rawEditor = state.editor in listOf(PhoneSettingEditor.ZONE, PhoneSettingEditor.DURATION, PhoneSettingEditor.TIMED_REMINDER)
     val validationError = if (rawEditor && state.attemptedApply && state.rawChange() == null) {
         stringResource(when (state.editor) {
@@ -59,7 +58,7 @@ internal fun PhoneSettingsEditor(
         })
     } else null
     val error = validationError ?: saveError
-    Column(modifier.fillMaxSize().testTag("phone_settings_editor").semantics { paneTitle = title }) {
+    Column(modifier.fillMaxSize().testTag("phone_settings_editor")) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (rawEditor) PhoneSettingsRawEditor(state, busy, validationError != null)
