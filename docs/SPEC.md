@@ -79,6 +79,12 @@ commit cannot be inferred to match; their recovery stays conservative pending ac
 Before a new or adopted receipt4 edit reaches the provider, reserve journal space for both minimal
 and complete acknowledgement records, including maximum-width child IDs. A predictable overflow
 returns unavailable without attempting any native write; exact-fit records remain dispatchable.
+Authored timed bounds for new creates and explicit temporal edits must align to whole milliseconds;
+nonrepresentable precision returns TIME without dispatch. Exact milliseconds, including negative
+epochs, remain valid. Frozen receipt4 original/result bounds with non-native precision remain
+uncertain and cannot authorize retry or acknowledgement; their bytes are never rounded or migrated.
+Untouched imported temporal fields remain unchanged. Unattempted legacy temporal retries also apply
+current native-zone admission; attempted/committed recovery retains its existing frozen protocol.
 
 New ordinary one-off and recurring CREATE operations use receipt6. Initial validation freezes native
 values, first-instance bounds, an operation-bound plan digest and a generated UID. Competing writers

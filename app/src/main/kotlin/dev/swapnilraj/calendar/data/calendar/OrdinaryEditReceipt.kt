@@ -29,6 +29,7 @@ internal data class OrdinaryEditReceipt(
     /** Fixed v4 wire mapping. No current policy, display zone or timezone rules participate. */
     fun validate() {
         require(kind in setOf("UPDATE", "DELETE") && original.recurrence == null && result.recurrence == null)
+        require(listOf(original, result).all { it.instanceStart.nano % 1_000_000 == 0 && it.instanceEnd.nano % 1_000_000 == 0 })
         require(original.eventId > 0 && original.calendarId == result.calendarId && original.eventId == result.eventId)
         require(event["_id"] == original.eventId.toString() && event["calendar_id"] == original.calendarId.value.toString())
         require(event["dtstart"]?.toLong() == original.instanceStart.toEpochMilli() && event["dtend"]?.toLong() == original.instanceEnd.toEpochMilli())

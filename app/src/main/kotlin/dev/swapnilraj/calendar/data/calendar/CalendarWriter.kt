@@ -739,8 +739,11 @@ class CalendarWriter(
     }
 
     private fun validateTime(draft: EventDraft, authored: Boolean = false) {
-        if (draft.time is EventTime.Timed) {
+        val time = draft.time
+        if (time is EventTime.Timed) {
             val zone = draft.eventZone ?: throw Invalid(setOf(InvalidEventField.ZONE))
+            if (authored && (time.start.nano % 1_000_000 != 0 || time.end.nano % 1_000_000 != 0))
+                throw Invalid(setOf(InvalidEventField.TIME))
             // Native CalendarProvider parses stored zone strings through tzdb/TimeZone. Keep
             // unrelated imported data untouched, but never author a Java-only zone spelling.
             if (authored && !ProviderTimeZoneCompatibility.isCompatible(zone)) throw Invalid(setOf(InvalidEventField.ZONE))

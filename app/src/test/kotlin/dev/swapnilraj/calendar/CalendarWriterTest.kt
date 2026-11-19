@@ -1080,5 +1080,127 @@ class CalendarWriterTest {
             assertEquals(1, provider.batchCount)
         }
     }
+    @Test fun ordinaryTimeAuthoringRejectsNonNativePrecisionAndRetainsExactMillis() = runBlocking {
+        val base = draft.time as EventTime.Timed
+        val negativeStart = Instant.parse("1969-12-31T23:59:59.500Z")
+        val negativeEnd = Instant.parse("1970-01-01T00:00:00.500Z")
+        val cases = listOf(
+            Triple("START_NANOS", EventTime.Timed(base.start.plusNanos(1), base.end), false),
+            Triple("END_NANOS", EventTime.Timed(base.start, base.end.plusNanos(1)), false),
+            Triple("NEGATIVE_START_NANOS", EventTime.Timed(negativeStart.plusNanos(1), negativeEnd), false),
+            Triple("EXACT_MILLIS", EventTime.Timed(base.start.plusMillis(1), base.end.plusMillis(2)), true),
+            Triple("NEGATIVE_EXACT_MILLIS", EventTime.Timed(negativeStart, negativeEnd), true),
+        )
+        val failures = mutableListOf<String>()
+        for ((label, candidate, exact) in cases) fixture { provider, writer, store, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            val before = provider.events.map { it.toMap() }
+            val batches = provider.batchCount
+            val result = writer.update("precision", ref, token, EventPatch(time = FieldChange.Set(candidate)))
+            val delta = provider.batchCount - batches
+            val saved = result as? MutationResult.LocalSaved
+            val nativeExact = saved?.let { value ->
+                val event = provider.events.single()
+                value.ref.instanceStart == Instant.ofEpochMilli(requireNotNull(event["dtstart"]).toLong()) &&
+                    value.ref.instanceEnd == Instant.ofEpochMilli(requireNotNull(event["dtend"]).toLong())
+            }
+            val phase = store.operationHeader("precision")?.phase
+            println("Receipt4 precision authoring: kind=UPDATE case=$label exact=$exact result=${result.javaClass.simpleName} batches=$delta phase=$phase nativeExact=$nativeExact")
+            if (exact) {
+                val expected = MutationResult.LocalSaved(ref.copy(instanceStart = candidate.start, instanceEnd = candidate.end))
+                if (result != expected || delta != 1 || nativeExact != true || phase != "VERIFIED")
+                    failures += "$label: exact millisecond edit was not verified exactly"
+            } else if (result != MutationResult.ValidationFailed(setOf(InvalidEventField.TIME)) || delta != 0 ||
+                phase != null || before != provider.events.map { it.toMap() }) {
+                failures += "$label: result=${result.javaClass.simpleName} batches=$delta phase=$phase nativeExact=$nativeExact"
+            }
+        }
+        for ((label, candidate, exact) in cases) fixture { provider, writer, store, _ ->
+            val result = writer.create("precision-create", draft.copy(time = candidate))
+            val saved = result as? MutationResult.LocalSaved
+            val nativeExact = saved?.let { value ->
+                val event = provider.events.single()
+                value.ref.instanceStart == Instant.ofEpochMilli(requireNotNull(event["dtstart"]).toLong()) &&
+                    value.ref.instanceEnd == Instant.ofEpochMilli(requireNotNull(event["dtend"]).toLong())
+            }
+            val phase = store.operationHeader("precision-create")?.phase
+            println("Receipt4 precision authoring: kind=CREATE case=$label exact=$exact result=${result.javaClass.simpleName} batches=${provider.batchCount} phase=$phase nativeExact=$nativeExact")
+            if (exact) {
+                if (saved == null || saved.ref.instanceStart != candidate.start || saved.ref.instanceEnd != candidate.end ||
+                    provider.batchCount != 1 || nativeExact != true || phase != "VERIFIED")
+                    failures += "CREATE/$label: exact millisecond create was not verified exactly"
+            } else if (result != MutationResult.ValidationFailed(setOf(InvalidEventField.TIME)) || provider.batchCount != 0 ||
+                phase != null || provider.events.isNotEmpty()) {
+                failures += "CREATE/$label: result=${result.javaClass.simpleName} batches=${provider.batchCount} phase=$phase"
+            }
+        }
+        assertTrue("Non-native precision crossed ordinary authoring: ${failures.joinToString("; ")}", failures.isEmpty())
+    }
+
+    @Test fun frozenNonNativePrecisionNeverAuthorizesRetryOrAcknowledgesANativeIdentity() = runBlocking {
+        val failures = mutableListOf<String>()
+        val variants = listOf("ORIGINAL_START", "ORIGINAL_END", "RESULT_START", "RESULT_END", "NEGATIVE_RESULT_START")
+        for (variant in variants) for (phase in listOf("PREPARED", "ATTEMPTED", "COMMITTED")) fixture { provider, writer, store, _ ->
+            val ref = (writer.create("seed", draft) as MutationResult.LocalSaved).ref
+            val token = (writer.loadForEdit(ref) as EditReadResult.Ready).event.token
+            val validTime = EventTime.Timed(ref.instanceStart.plusSeconds(60), ref.instanceEnd.plusSeconds(60))
+            val validPatch = EventPatch(time = FieldChange.Set(validTime))
+            val calibration = async(start = CoroutineStart.LAZY) { writer.update("calibration", ref, token, validPatch) }
+            provider.onQuery = { if (store.operationHeader("calibration")?.phase == "PREPARED") calibration.cancel() }
+            calibration.start()
+            try { calibration.await(); fail("Calibration must stop before provider dispatch") }
+            catch (_: CancellationException) { }
+            finally { provider.onQuery = null }
+            val template = requireNotNull(store.operation("calibration"))
+            assertEquals("PREPARED", template.phase); assertEquals(1, provider.batchCount)
+            val (prepared, issued) = OrdinaryEditReceipt.parse(template)
+            val original = when (variant) {
+                "ORIGINAL_START" -> ref.copy(instanceStart = ref.instanceStart.plusNanos(1))
+                "ORIGINAL_END" -> ref.copy(instanceEnd = ref.instanceEnd.plusNanos(1))
+                else -> ref
+            }
+            val result = when (variant) {
+                "RESULT_START" -> issued.result.copy(instanceStart = issued.result.instanceStart.plusNanos(1))
+                "RESULT_END" -> issued.result.copy(instanceEnd = issued.result.instanceEnd.plusNanos(1))
+                "NEGATIVE_RESULT_START" -> issued.result.copy(instanceStart = Instant.parse("1969-12-31T23:59:59.500000001Z"),
+                    instanceEnd = Instant.parse("1970-01-01T00:00:00.500Z"))
+                else -> issued.result
+            }
+            val time = EventTime.Timed(result.instanceStart, result.instanceEnd)
+            val patch = EventPatch(time = FieldChange.Set(time))
+            val command = org.json.JSONObject(issued.command.toString()).put("start", original.instanceStart.toString())
+                .put("end", original.instanceEnd.toString()).put("time", time.toString())
+            val signature = CalendarWriter.updateFingerprint(original, token, patch, 1024 * 1024).second
+            val changes = issued.changes + mapOf("dtstart" to result.instanceStart.toEpochMilli().toString(),
+                "dtend" to result.instanceEnd.toEpochMilli().toString())
+            // Reconstruct a self-consistent previously issued v4 frame, not a broken checksum.
+            // Native rows remain millisecond values; an invalid original/result must stay uncertain.
+            val forged = issued.copy(command = command, changes = changes, result = result)
+            val metadata = forged.prepared(signature, prepared.getJSONObject("identity"))
+            store.prepare("frozen-precision", signature, "UPDATE", metadata.toString())
+            if (phase == "COMMITTED") {
+                metadata.put("ackComplete", true).put("reminderIds", org.json.JSONArray())
+                    .put("stage", "committed").put("ref", OrdinaryEditReceipt.refJson(result))
+                provider.events.single().putAll(changes) // Explicit synthetic prior native commit.
+            }
+            store.forceOperationForTest("frozen-precision", phase, metadata.toString())
+            val before = provider.events.map { it.toMap() }
+            provider.queryCounts.clear()
+            val batches = provider.batchCount
+            val recovered = writer.recover("frozen-precision")
+            val submitted = writer.update("frozen-precision", original, token, patch)
+            val afterPhase = store.operationHeader("frozen-precision")?.phase
+            val delta = provider.batchCount - batches
+            println("Receipt4 frozen precision: case=$variant phase=$phase recover=${recovered.javaClass.simpleName} submit=${submitted.javaClass.simpleName} batches=$delta after=$afterPhase queries=${provider.queryCounts.values.sum()}")
+            val expected = MutationResult.Uncertain("frozen-precision", null)
+            val safeSubmission = submitted == expected || phase == "PREPARED" && submitted == MutationResult.Unavailable
+            if (recovered != expected || !safeSubmission || delta != 0 || afterPhase != phase ||
+                provider.queryCounts.isNotEmpty() || before != provider.events.map { it.toMap() }) {
+                failures += "$variant/$phase: recover=${recovered.javaClass.simpleName} submit=${submitted.javaClass.simpleName} batches=$delta after=$afterPhase"
+            }
+        }
+        assertTrue("Non-native frozen identity was accepted: ${failures.joinToString("; ")}", failures.isEmpty())
+    }
 
 }
