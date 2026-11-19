@@ -119,7 +119,7 @@ class PhoneCalendarNavigationJourneyTest {
                             { height -> scope.launch { app.settings.setHourHeight(height) } },
                             { link -> app.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }, settings = app.settings,
                             mutations = app.calendarWriter, drafts = app.calendarLocalStore,
-                            retirement = app.operationRetirement, onOpenReminders = { remindersOpen = true })
+                            retirement = app.operationRetirement, search = app.calendarSearch, onOpenReminders = { remindersOpen = true })
                         if (remindersOpen) ReminderSettingsWorkflow(app) { remindersOpen = false }
                     }
                 }
@@ -202,7 +202,7 @@ class PhoneCalendarNavigationJourneyTest {
             var activity: ActivityController<MainActivity>? = null
             try {
                 compose.runOnUiThread { activity = Robolectric.buildActivity(MainActivity::class.java).setup().visible() }
-                shownTag("calendar_phone_month"); compose.onNodeWithContentDescription("Search events").assertDoesNotExist()
+                shownTag("calendar_phone_month"); compose.onNodeWithContentDescription("Search events").assertIsDisplayed()
                 block(Fixture(app, provider, requireNotNull(activity)))
                 assertEquals(0, provider.writeAttempts)
                 assertTrue(runBlocking { app.calendarLocalStore.list() }.isEmpty())
