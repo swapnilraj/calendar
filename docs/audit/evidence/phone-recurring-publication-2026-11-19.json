@@ -1,0 +1,82 @@
+{
+  "source": "7710b48",
+  "worktree": "/workspace/daylight-workers/recurring-phone-ready",
+  "runs": [
+    {
+      "phase": "focus-first",
+      "xml": "/tmp/daylight-recurring-phone-focus-first-xml",
+      "log": "/tmp/daylight-recurring-phone-focus-first.log",
+      "counts": {
+        "tests": 86,
+        "failures": 3,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "phase": "focus-retry",
+      "xml": "/tmp/daylight-recurring-phone-focus-retry-xml",
+      "log": "/tmp/daylight-recurring-phone-focus-retry.log",
+      "counts": {
+        "tests": 86,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "phase": "record",
+      "xml": "/tmp/daylight-recurring-phone-record-xml",
+      "log": "/tmp/daylight-recurring-phone-record.log",
+      "counts": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    {
+      "phase": "verify",
+      "xml": "/tmp/daylight-recurring-phone-ordinary-verify-xml",
+      "log": "/tmp/daylight-recurring-phone-ordinary-verify.log",
+      "counts": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    }
+  ],
+  "images": [
+    {
+      "path": "app/src/test/screenshots/phone_recurring_create_review_light.png",
+      "sha256": "2488a306ffba4debe998bc38bd887b2763a73a7df159a72f3814a964c7df3253",
+      "visuallyInspected": true,
+      "new": true
+    },
+    {
+      "path": "app/src/test/screenshots/phone_event_editor_light.png",
+      "sha256": "2d30d9eb8034ce39b3ac7e0c76029e8e867efd6f6574e55bbdba692d909eee3d",
+      "visuallyInspected": true,
+      "new": false
+    },
+    {
+      "path": "app/src/test/screenshots/phone_event_editor_dark.png",
+      "sha256": "aa02773ed44f0350cc232091f239d1eb25715733902ef81ba3579b14b8ce8097",
+      "visuallyInspected": true,
+      "new": false
+    },
+    {
+      "path": "app/src/test/screenshots/phone_event_editor_rtl_large.png",
+      "sha256": "ac5516edcc7a9711f287015e45fa182e75f85cbd8c300bf33d9a96811dbf1473",
+      "visuallyInspected": true,
+      "new": false
+    }
+  ],
+  "firstFailures": "Two new workflow tests omitted explicit granted permission callback;12h matcher counted underlying rows. Fixed fixtures only;83 other tests passed.",
+  "scope": "Synthetic production phone workflow/controller and screenshot evidence only; no device, provider or Google parity claim.",
+  "branchScope": "codex/dd-recurring-phone-ready on c669ce5; existing ordinary baselines belong to this publication branch",
+  "leadInspectedNewReviewImage": true,
+  "rootIntegration": "Only clock-format correction, four new workflow tests and review image selected; no aggregate gate claimed yet",
+  "aggregateGate": "PENDING"
+}

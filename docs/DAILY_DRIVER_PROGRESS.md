@@ -4,6 +4,16 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+Subsequent source integrates explicit Schedule loaded-range endpoints and accessible grouped cards:
+36 focused tests passed, and six affected/new images were recorded and inspected. Phone recurring
+creation publication passed86 focused checks after correcting three new test-fixture failures; one
+review image was recorded/inspected and three existing ordinary editor baselines verified unchanged
+on that publication branch. The root selects its clock-format correction and four phone workflow
+tests. See [Schedule evidence](audit/evidence/schedule-endpoints-2026-11-19.json) and
+[bounded recurring-editor evidence](audit/evidence/phone-recurring-publication-2026-11-19.json).
+The combined full gate for these subsequent changes is pending; the passing aggregate below is
+still the last complete checkpoint. No new Google/Workspace or physical acceptance is claimed.
+
 At source `31c003915cffc8ccfe324f1fd6e94e09b8bdbf04`, the complete gate **passed all 2,359 tests**
 (app 2,085 + core257 + weather17), debug APK assembly and lint, zero failures/errors/skips, in6m11s.
 This includes the adaptive Month overview and receipt4 EXDATE metadata bridge, all original Following

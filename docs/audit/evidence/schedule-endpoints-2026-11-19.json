@@ -1,0 +1,76 @@
+{
+  "source": "ba852b3",
+  "command": "source /tmp/daylight-env.sh; export ANDROID_HOME=/home/agent/Android/Sdk; ./gradlew :app:recordRoborazziDebug --tests dev.swapnilraj.calendar.AgendaViewTest.agendaLight --tests dev.swapnilraj.calendar.AgendaViewTest.agendaDark --tests dev.swapnilraj.calendar.AgendaViewTest.largeFontRtlKeepsEveryGroupReachable --tests dev.swapnilraj.calendar.AgendaViewTest.phoneChromeSuppressionRetainsRangeAndExplicitEndpointsWithoutScrollReads --tests dev.swapnilraj.calendar.AgendaViewTest.firstSupportedYearDisablesEarlierAndExplainsTheBoundary --tests dev.swapnilraj.calendar.LiveCalendarDayTest.agendaKeepsOneRangeWhenAnotherDateOpensAndRetainsFilteredNavigation",
+  "result": [
+    {
+      "name": "dev.swapnilraj.calendar.AgendaViewTest",
+      "tests": "5",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "7.653"
+    },
+    {
+      "name": "dev.swapnilraj.calendar.LiveCalendarDayTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "1.481"
+    }
+  ],
+  "images": [
+    {
+      "path": "app/src/test/screenshots/agenda_light.png",
+      "sha256": "0ac53ff2d72449250bbf3947c865958fbffb84ad8aa8ad10d8b2d51cfac37993",
+      "inspected": true
+    },
+    {
+      "path": "app/src/test/screenshots/agenda_dark.png",
+      "sha256": "538d33ebe7ed1f26440716197a26a9d59d3a52d20a208c3f2a8175c1c2733ec1",
+      "inspected": true
+    },
+    {
+      "path": "app/src/test/screenshots/agenda_large_rtl.png",
+      "sha256": "49cc1f335037bbe4c0eff3eb1fb1e98f035e4a82cba84ffe296964dec7a8f764",
+      "inspected": true
+    },
+    {
+      "path": "app/src/test/screenshots/integration_live_agenda.png",
+      "sha256": "35c5d56d7ead113d65648d37dfd4a79e97b0a573a4112ee28f040941a515be21",
+      "inspected": true
+    },
+    {
+      "path": "app/src/test/screenshots/agenda_phone_compact.png",
+      "sha256": "f3f697940b7af7882dc21e5af18578760a232dee72cb1bb12cebd6e177c9acf8",
+      "inspected": true
+    },
+    {
+      "path": "app/src/test/screenshots/agenda_phone_boundary.png",
+      "sha256": "1acbc89a9f32971e35320f3fd337328298303babca23c7dc3083123e88fcb1b6",
+      "inspected": true
+    }
+  ],
+  "observations": [
+    "Light/dark grouped cards retain titles, time ranges, continuation lines and outlined/struck declined event.",
+    "Large RTL stacks full-width wrapping cards and right-anchored group heading; list remains scrollable.",
+    "Production host shows shared toolbar plus loaded range and both explicit endpoints with selected empty day and exact event card.",
+    "360dp compact fixture fits gutters/cards/endpoints; lower content scrolls naturally.",
+    "Year1 fixture visibly disables Earlier and explains the supported boundary without claiming complete cloud coverage."
+  ],
+  "limitations": [
+    "Synthetic Robolectric reference only; no Google main/pixel/gesture or native accessibility acceptance established."
+  ],
+  "functional": {
+    "source": "ba852b3",
+    "tests": 36,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "seconds": 99,
+    "log": "/tmp/daylight-schedule-functional1.log",
+    "xml": "/tmp/daylight-schedule-functional1-evidence"
+  },
+  "leadInspectedSixImages": true,
+  "aggregateGate": "PENDING"
+}
