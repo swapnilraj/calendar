@@ -4,10 +4,16 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextDirection
@@ -60,6 +66,9 @@ internal class GuestPickerSearchSession(private val source: DeviceContactSuggest
 internal fun PhoneGuestPicker(rows: List<MeetingCreationGuestFields>, enabled: Boolean,
     source: DeviceContactSuggestionSource?, contactsPermissionGranted: Boolean, requestContactsPermission: () -> Unit,
     onAdd: (String, String?) -> Unit, onDone: ((Boolean) -> Unit) -> Unit, onClose: () -> Unit) {
+    val focusManager=LocalFocusManager.current
+    val keyboard=LocalSoftwareKeyboardController.current
+    val title=stringResource(R.string.guest_picker_title)
     val scope=rememberCoroutineScope()
     val session=remember(source) { GuestPickerSearchSession(source,scope) }
     var finishing by remember(session) { mutableStateOf(false) }
@@ -71,11 +80,11 @@ internal fun PhoneGuestPicker(rows: List<MeetingCreationGuestFields>, enabled: B
     BackHandler { close() }
     val active=enabled && !finishing && !closed
     val proseStyle=LocalTextStyle.current.copy(textDirection=TextDirection.ContentOrLtr)
-    Surface(Modifier.fillMaxSize()) {
+    Surface(Modifier.fillMaxSize().semantics {paneTitle=title}) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
             Row(Modifier.fillMaxWidth().heightIn(min=64.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically) {
                 TextButton(onClick=::close,enabled=!finishing) {Text(stringResource(R.string.guest_picker_back))}
-                Text(stringResource(R.string.guest_picker_title),Modifier.weight(1f).semantics {heading()},style=MaterialTheme.typography.titleLarge)
+                Text(title,Modifier.weight(1f).semantics {heading()},style=MaterialTheme.typography.titleLarge)
                 TextButton(enabled=active,onClick={finishing=true;flushFailed=false;onDone { saved ->
                     if(!closed) {finishing=false;if(saved) close() else flushFailed=true}
                 }}) {Text(stringResource(R.string.phone_event_done))}
@@ -83,6 +92,8 @@ internal fun PhoneGuestPicker(rows: List<MeetingCreationGuestFields>, enabled: B
             LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(horizontal=24.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 item {
                     OutlinedTextField(session.query,{session.changeQuery(it)},enabled=active,singleLine=true,
+                        keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Email,imeAction=ImeAction.Done),
+                        keyboardActions=KeyboardActions(onDone={focusManager.clearFocus();keyboard?.hide()}),
                         label={Text(stringResource(R.string.guest_picker_search))},textStyle=LocalTextStyle.current.copy(textDirection=TextDirection.ContentOrLtr),
                         modifier=Modifier.fillMaxWidth())
                     Row {

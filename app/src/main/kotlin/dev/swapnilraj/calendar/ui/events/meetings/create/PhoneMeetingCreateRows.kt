@@ -2,11 +2,17 @@ package dev.swapnilraj.calendar.ui.events.meetings.create
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextDirection
@@ -19,6 +25,8 @@ import dev.swapnilraj.calendar.ui.events.*
 @Composable
 internal fun PhoneMeetingCreatePeople(guests: List<MeetingCreationGuestFields>, types: Set<MeetingGuestType>,
     enabled: Boolean, actions: PhoneMeetingCreateActions, onOpenPicker: (() -> Unit)?) {
+    val focusManager=LocalFocusManager.current
+    val keyboard=LocalSoftwareKeyboardController.current
     PhoneEditorRow(PhoneEventGlyph.PEOPLE,stringResource(R.string.phone_meeting_create_people))
     Column(Modifier.fillMaxWidth().padding(start=64.dp,end=24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         guests.forEachIndexed { index,guest -> key(guest.rowId) {
@@ -32,7 +40,8 @@ internal fun PhoneMeetingCreatePeople(guests: List<MeetingCreationGuestFields>, 
                     TextButton(onClick={ actions.guests { rows -> rows.filterNot { it.rowId==guest.rowId } } },enabled=enabled,modifier=Modifier.semantics { contentDescription=removeLabel }) { Text(stringResource(R.string.phone_event_remove)) }
                 }
                 OutlinedTextField(guest.email,{ value -> actions.guests { rows -> rows.map { if(it.rowId==guest.rowId) it.copy(email=value) else it } } },
-                    label={Text(emailLabel)},enabled=enabled,singleLine=true,textStyle=LocalTextStyle.current.copy(textDirection=TextDirection.ContentOrLtr),modifier=Modifier.fillMaxWidth().semantics {contentDescription="$person: $emailLabel"})
+                    label={Text(emailLabel)},enabled=enabled,singleLine=true,keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Email,imeAction=ImeAction.Done),
+                    keyboardActions=KeyboardActions(onDone={focusManager.clearFocus();keyboard?.hide()}),textStyle=LocalTextStyle.current.copy(textDirection=TextDirection.ContentOrLtr),modifier=Modifier.fillMaxWidth().semantics {contentDescription="$person: $emailLabel"})
                 OutlinedTextField(guest.name,{ value -> actions.guests { rows -> rows.map { if(it.rowId==guest.rowId) it.copy(name=value) else it } } },
                     label={Text(nameLabel)},enabled=enabled,textStyle=LocalTextStyle.current.copy(textDirection=TextDirection.ContentOrLtr),modifier=Modifier.fillMaxWidth().semantics {contentDescription="$person: $nameLabel"})
                 if(guest.type.isBlank()) Text(stringResource(R.string.phone_meeting_create_choose_role),style=MaterialTheme.typography.bodySmall)
