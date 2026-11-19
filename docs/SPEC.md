@@ -767,6 +767,15 @@ never retired or reissued through ordinary event retirement. The draft browser o
 only through its matching host callback and retains corrupt or unknown records. Application routing
 remains separate.
 
+Injectable scoped-series workflows persist a supported scope draft before publishing its typed
+launch and match its exact record ID, selected occurrence, scope, action and generation before
+mounting an editor. Missing or stale routes never seed a replacement; submitted drafts may recover
+without a fresh source read or repeated mutation. Reviewing an unsubmitted changed source may
+publish a new generation only within the retained calendar namespace through an explicit replacement
+handler. Permission grant never retries a mutation automatically, and missing write preflight cannot
+freeze a new command. These workflows preserve ordinary retirement guards and remain inactive until
+separate application composition supplies their routes.
+
 ## Connected filtered search
 
 The shared phone toolbar and drawer open literal, case-insensitive search through the published
