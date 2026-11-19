@@ -95,6 +95,81 @@ class CalendarReaderTest {
         }
     }
 
+    /** Assert end-to-end admission, not just the metadata capability flags. */
+    private suspend fun assertUnknownAccessDoesNotReadPrivateRows(raw: Any?, expectedObservation: Int?) {
+        fixture { provider, reader, _ ->
+            provider.calendars[0] = calendar() + mapOf("calendar_access_level" to raw)
+            provider.events += event(91, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z")
+            val metadata = reader.readCalendars() as CalendarReadState.Ready
+            val observed = metadata.value.single()
+            assertEquals(expectedObservation, observed.accessLevel)
+            assertEquals(CalendarCapabilities(), observed.capabilities)
+            val range = reader.readSnapshot(request) as CalendarReadState.Ready
+            assertTrue(range.value.occurrences.isEmpty())
+            assertTrue(CalendarCoverage(CalendarId(2), CoverageReason.INSUFFICIENT_ACCESS) in range.value.coverage)
+            val ref = EventRef(CalendarId(2), 91, Instant.parse("2026-11-17T10:00:00Z"), Instant.parse("2026-11-17T11:00:00Z"))
+            assertEquals(CalendarReadState.Unavailable, reader.readDetails(ref))
+            assertEquals(0, provider.instanceQueries)
+            assertEquals(0, provider.eventQueries)
+            assertEquals(0, provider.attendeeQueries)
+            assertEquals(0, provider.reminderQueries)
+        }
+    }
+
+    @Test fun wrappedOwnerAccessNeverBecomesOwnerOrAdmitsPrivateReads() = runBlocking {
+        assertUnknownAccessDoesNotReadPrivateRows(4294967996L, null)
+    }
+
+    @Test fun noncanonicalAndOutsideIntAccessRemainUnknownWithoutPrivateReads() = runBlocking {
+        for (raw in listOf(null, Long.MAX_VALUE, Long.MIN_VALUE, -4294966596L,
+            "0700", "+700", " 700", "700.0", "9223372036854775808", "owner"))
+            assertUnknownAccessDoesNotReadPrivateRows(raw, null)
+    }
+
+    @Test fun representableUnknownAndNegativeAccessAreObservedWithoutGrantOrPrivateReads() = runBlocking {
+        for (raw in listOf(-1, 400, 701, Int.MAX_VALUE))
+            assertUnknownAccessDoesNotReadPrivateRows(raw.toLong(), raw)
+    }
+
+    @Test fun allKnownAccessLevelsKeepCapabilitiesAndDefaultAllProjections() = runBlocking {
+        val levels = listOf(CalendarContract.Calendars.CAL_ACCESS_NONE, CalendarContract.Calendars.CAL_ACCESS_FREEBUSY,
+            CalendarContract.Calendars.CAL_ACCESS_READ, CalendarContract.Calendars.CAL_ACCESS_RESPOND,
+            CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR, CalendarContract.Calendars.CAL_ACCESS_EDITOR,
+            CalendarContract.Calendars.CAL_ACCESS_OWNER, CalendarContract.Calendars.CAL_ACCESS_ROOT)
+        for (level in levels) fixture { provider, reader, _ ->
+            provider.calendars[0] = calendar(access = level)
+            provider.events += event(92, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z")
+            val observed = (reader.readCalendars() as CalendarReadState.Ready).value.single()
+            assertEquals(level, observed.accessLevel)
+            fun decision(threshold: Int) = if (level >= threshold) AccessDecision.ALLOWED else AccessDecision.DENIED
+            assertEquals(CalendarCapabilities(decision(CalendarContract.Calendars.CAL_ACCESS_READ),
+                decision(CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR), decision(CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR),
+                decision(CalendarContract.Calendars.CAL_ACCESS_RESPOND)), observed.capabilities)
+            val range = (reader.readSnapshot(request) as CalendarReadState.Ready).value
+            if (level == CalendarContract.Calendars.CAL_ACCESS_NONE) {
+                assertTrue(range.occurrences.isEmpty())
+                assertEquals(0, provider.instanceQueries)
+            } else {
+                assertEquals(1, range.occurrences.size)
+                assertEquals(if (level == CalendarContract.Calendars.CAL_ACCESS_FREEBUSY) "Busy" else "Synthetic event",
+                    range.occurrences.single().title)
+                assertTrue(provider.instanceProjections.single().contains(CalendarContract.Instances.TITLE))
+                assertFalse(provider.instanceProjections.single().contains(CalendarContract.Events.IS_ORGANIZER))
+            }
+        }
+    }
+
+    @Test fun argbColorNarrowingRemainsIndependentOfAccessNormalization() = runBlocking {
+        fixture { provider, reader, _ ->
+            provider.calendars[0] = calendar() + mapOf("calendar_color" to 0xffaabbccL)
+            provider.events += event(93, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z") + mapOf("displayColor" to 0xffc0ffeeL)
+            val calendar = (reader.readCalendars() as CalendarReadState.Ready).value.single()
+            assertEquals(0xffaabbcc.toInt(), calendar.color)
+            assertEquals(AccessDecision.ALLOWED, calendar.capabilities.readDetails)
+            assertEquals(0xffc0ffee.toInt(), (reader.readSnapshot(request) as CalendarReadState.Ready).value.occurrences.single().color)
+        }
+    }
+
     @Test fun oneShotReadsObserveCurrentProviderWithoutNotificationOrReplay() = runBlocking {
         fixture { provider, reader, _ ->
             provider.events += event(1, "2026-11-17T10:00:00Z", "2026-11-17T11:00:00Z")

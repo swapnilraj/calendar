@@ -168,7 +168,7 @@ class CalendarReader(
         buildList {
             while (cursor.moveToNext()) {
                 currentCoroutineContext().ensureActive()
-                val access = cursor.number(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL)?.toInt()
+                val access = cursor.calendarAccessObservation()
                 add(CalendarInfo(
                     CalendarId(cursor.requiredLong(CalendarContract.Calendars._ID)),
                     cursor.text(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME).orEmpty(),
@@ -203,14 +203,14 @@ class CalendarReader(
                 else {
                     if (!calendar.providerVisible) add(CalendarCoverage(id, CoverageReason.PROVIDER_HIDDEN))
                     if (!calendar.syncEnabled) add(CalendarCoverage(id, CoverageReason.SYNC_DISABLED))
-                    if (calendar.accessLevel?.let { it < CalendarContract.Calendars.CAL_ACCESS_FREEBUSY } == true ||
+                    if (calendar.accessLevel.decision(CalendarContract.Calendars.CAL_ACCESS_FREEBUSY) != AccessDecision.ALLOWED ||
                         request.invitationFilter == InvitationFilter.PENDING_ONLY && calendar.capabilities.readDetails != AccessDecision.ALLOWED)
                         add(CalendarCoverage(id, CoverageReason.INSUFFICIENT_ACCESS))
                 }
             }
         }
         val eligible = selected.filter { id -> byId[id]?.let {
-            it.accessLevel?.let { access -> access >= CalendarContract.Calendars.CAL_ACCESS_FREEBUSY } != false
+            it.accessLevel.decision(CalendarContract.Calendars.CAL_ACCESS_FREEBUSY) == AccessDecision.ALLOWED
         } == true }
         if (eligible.isEmpty()) return CalendarSnapshot(request, calendars, emptyList(), coverage)
         val page = queryOccurrences(request, byId, eligible)
@@ -307,6 +307,8 @@ class CalendarReader(
     suspend fun readDetails(ref: EventRef): CalendarReadState<EventDetails> = guarded(readBudgets.details) {
         val calendar = queryCalendars().firstOrNull { it.id == ref.calendarId }
             ?: throw IllegalStateException("Calendar no longer available")
+        // Unknown raw observations do not admit Instances or private detail queries.
+        check(calendar.accessLevel.decision(CalendarContract.Calendars.CAL_ACCESS_FREEBUSY) == AccessDecision.ALLOWED)
         // A retained navigation reference must not display the old time of a rescheduled or
         // deleted occurrence. Validate it against the currently expanded instances first.
         val instanceUri = CalendarContract.Instances.CONTENT_URI.buildUpon().apply {
@@ -472,6 +474,13 @@ class CalendarReader(
     private fun Cursor.number(name: String): Long? = getColumnIndex(name).takeIf { it >= 0 && !isNull(it) }?.let(::getLong)
     private fun Cursor.requiredLong(name: String): Long = number(name) ?: throw IllegalStateException("Missing required calendar field")
     private fun zone(value: String?): ZoneId? = value?.let { runCatching { ZoneId.of(it) }.getOrNull() }
+    /** Preserve representable observations without coercing a wide or noncanonical value into rights. */
+    private fun Cursor.calendarAccessObservation(): Int? {
+        val raw = text(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL) ?: return null
+        val value = raw.toLongOrNull()?.takeIf { it.toString() == raw } ?: return null
+        return value.takeIf { it in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() }?.toInt()
+    }
+
     private fun Int?.decision(threshold: Int) = when {
         this == null -> AccessDecision.UNKNOWN
         this !in setOf(CalendarContract.Calendars.CAL_ACCESS_NONE, CalendarContract.Calendars.CAL_ACCESS_FREEBUSY,
