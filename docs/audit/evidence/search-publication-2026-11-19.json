@@ -1,0 +1,221 @@
+{
+  "source": "590c44b",
+  "imagesSource": "eb70bf7",
+  "base": "c9dc7637d979fe5fe750e3882f9b54ca65bc70e5",
+  "focused": {
+    "source": "590c44bb0f4c819c32ea060ff94f833f71431450",
+    "status": "PASS",
+    "seconds": 44,
+    "totals": {
+      "tests": 74,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": [
+      {
+        "name": "dev.swapnilraj.calendar.LiveCalendarDayTest",
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.PhoneCalendarNavigationJourneyTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.ReadLimitUiTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.SearchControllerTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.SearchSheetTest",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.SearchWorkflowContextTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.data.calendar.CalendarSearchReaderTest",
+        "tests": 21,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "log": "/tmp/daylight-search-publication-focused3.log",
+    "logSha256": "53c0352791f0e217ef6ea4af5871fa3c20cb50361d9d55a27c51a3d29501314d",
+    "xml": "/tmp/daylight-search-publication-focused3-xml",
+    "screenshotRecord": false,
+    "screenshotVerify": false,
+    "firstAttempts": [
+      "/tmp/daylight-search-publication-focused1-evidence.json",
+      "/tmp/daylight-search-publication-focused2-evidence.json"
+    ]
+  },
+  "firstZeroTestCompileFailures": [
+    {
+      "source": "66300800c0175c18a026f79ad48cb669be7189be",
+      "command": "./gradlew :app:testDebugUnitTest --tests dev.swapnilraj.calendar.data.calendar.CalendarSearchReaderTest --tests dev.swapnilraj.calendar.SearchControllerTest --tests dev.swapnilraj.calendar.SearchSheetTest --tests dev.swapnilraj.calendar.SearchWorkflowContextTest --tests dev.swapnilraj.calendar.LiveCalendarDayTest --tests dev.swapnilraj.calendar.ReadLimitUiTest --tests dev.swapnilraj.calendar.PhoneCalendarNavigationJourneyTest -Proborazzi.test.record=false -Proborazzi.test.verify=false",
+      "status": "COMPILE_FAILED",
+      "testsExecuted": 0,
+      "seconds": 3,
+      "missingModuleDependency": "calendar-core implementation(libs.coroutines.core)",
+      "reason": "CalendarSearch Flow import unresolved; existing catalog pins1.11.0. No version addition needed.",
+      "log": "/tmp/daylight-search-publication-focused1.log",
+      "logSha256": "5a645cc08aa4d02ceaf5fb889247ed786463e30a153e50b985a74c7fdcf8414a",
+      "xmlFiles": 0
+    },
+    {
+      "source": "f8f26dd5bce339f1befa4f2d46da405d6a5f9492",
+      "status": "TEST_COMPILE_FAILED",
+      "testsExecuted": 0,
+      "seconds": 25,
+      "productionCompile": "PASS",
+      "reason": "Selected search fixture assigns future start/end, but published fields were private vals. Root fixture uses vars.",
+      "log": "/tmp/daylight-search-publication-focused2.log",
+      "logSha256": "8da9c90f653d0e4fe413bde891acf1436a174c29bda78a3a2662f8a3e72b0453",
+      "xmlFiles": 0
+    }
+  ],
+  "recording": {
+    "source": "e954f1b23e4cda8922eda19c561f0e2873c9456e",
+    "command": "./gradlew :app:recordRoborazziDebug --tests dev.swapnilraj.calendar.SearchSheetTest.searchResultsLight --tests dev.swapnilraj.calendar.SearchSheetTest.searchPermissionDark --tests dev.swapnilraj.calendar.SearchSheetTest.searchLargeRtlKeepsFullOccurrenceReachable --tests dev.swapnilraj.calendar.ReadLimitUiTest.searchLimitCannotDisplayStalePayloadAndIsActionableAtLargeRtl --tests dev.swapnilraj.calendar.LiveCalendarDayTest.realSearchOpensNativeDetailsOutsideTheVisibleWeekWithoutLosingItsOccurrence --tests dev.swapnilraj.calendar.LiveCalendarDayTest.daySearchMovesPagerToResultDateAfterClosingNativeDetails --tests dev.swapnilraj.calendar.PhoneCalendarNavigationJourneyTest.completeLiveHostLightPhoneNavigation --tests dev.swapnilraj.calendar.PhoneCalendarNavigationJourneyTest.completeLiveHostDarkPhoneNavigation --tests dev.swapnilraj.calendar.PhoneCalendarNavigationJourneyTest.completeLiveHostLargeFontRtlPhoneNavigation",
+    "seconds": 15,
+    "totals": {
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": [
+      {
+        "name": "dev.swapnilraj.calendar.LiveCalendarDayTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.PhoneCalendarNavigationJourneyTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.ReadLimitUiTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "name": "dev.swapnilraj.calendar.SearchSheetTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "files": [
+      {
+        "path": "app/src/test/screenshots/search_results_light.png",
+        "sha256": "7d8b4a7969dad015b7ab290e4d395821ecca57ca25ba70e683c803137f3c5c02",
+        "visuallyInspected": true,
+        "new": true
+      },
+      {
+        "path": "app/src/test/screenshots/search_permission_dark.png",
+        "sha256": "805977a20381eab8dc9191a7c36f81877b9ae1c189b36cac3d551e6a0b9e92ec",
+        "visuallyInspected": true,
+        "new": true
+      },
+      {
+        "path": "app/src/test/screenshots/search_large_rtl.png",
+        "sha256": "7a20bce51e70b2221ad99334ae84021ce175219a51b36f08a8a7f26b180e40be",
+        "visuallyInspected": true,
+        "new": true
+      },
+      {
+        "path": "app/src/test/screenshots/read_limit_search_large_rtl.png",
+        "sha256": "8b7fa575711ec16a42d8dc1662a3a5ed76d59c0942e9b46f619eb5836b1e291c",
+        "visuallyInspected": true,
+        "new": true
+      },
+      {
+        "path": "app/src/test/screenshots/integration_live_search.png",
+        "sha256": "c0bfacba82767c593711bc45ec1e0adbb62f4c5bbeb1cdcb88b509636bd6fd6e",
+        "visuallyInspected": true,
+        "new": true
+      },
+      {
+        "path": "app/src/test/screenshots/integration_search_day_result.png",
+        "sha256": "33ccf2a1dec08186004c8db009910a4bafb4c6412f2907c83125543d9fc2d453",
+        "visuallyInspected": true,
+        "new": true
+      },
+      {
+        "path": "app/src/test/screenshots/integration_phone_live_light.png",
+        "sha256": "7f8df367b43cd1d4311f30b7fb49d459fd89e50b5aa524dc4f414167553b7158",
+        "visuallyInspected": true,
+        "new": false
+      },
+      {
+        "path": "app/src/test/screenshots/integration_phone_live_dark.png",
+        "sha256": "3af986fad5d6647a0b8d5f3543395f33575908f9c9d632036a04263b2fa0d8d2",
+        "visuallyInspected": true,
+        "new": false
+      },
+      {
+        "path": "app/src/test/screenshots/integration_phone_live_large_rtl.png",
+        "sha256": "43018f8132a2b8c87af47e468351c2f7a6ec2cc9fe30c3586b68845f3d62c9fc",
+        "visuallyInspected": true,
+        "new": false
+      }
+    ],
+    "focusedEvidence": "/tmp/daylight-search-publication-focused3-evidence.json",
+    "retainedInitialFailures": [
+      "/tmp/daylight-search-publication-focused1-evidence.json",
+      "/tmp/daylight-search-publication-focused2-evidence.json"
+    ],
+    "observations": [
+      "Normal light results show retained query, inclusive range, display zone, coverage warning, dated timed hit, UTC all-day date and explicit truncation/more control.",
+      "Dark permission state retains query/range and offers only supplied component permission callback plus Retry; production permission ownership remains separate.",
+      "Large RTL result titles/time/account/snippet wrap, with full results reachable through scrolling.",
+      "Large RTL read-limit state contains no stale private title/calendar rows; query and actionable range/Retry remain reachable.",
+      "Actual shared-host search includes January2027 date/year; selection reaches January1 day grid after native details close.",
+      "Three existing full-host navigation images retain date navigator and fixed display-zone date, with Search icon now visible; large RTL month label intentionally ellipsizes while navigator displays full month/year."
+    ],
+    "limitations": [
+      "Synthetic Robolectric host/component evidence; no native account, Google main, TalkBack or physical acceptance claimed."
+    ]
+  },
+  "leadInspected": [
+    "search_permission_dark",
+    "read_limit_search_large_rtl",
+    "integration_search_day_result"
+  ],
+  "publicationCI": "PENDING",
+  "scope": "Connected bounded literal search using existing provider helpers; no provider visibility/sync/write changes or Google/account/native parity acceptance."
+}
