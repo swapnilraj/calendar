@@ -276,8 +276,9 @@ internal fun LiveCalendarDay(
             title = { Text(stringResource(R.string.phone_host_time_scale)) },
             text = { Column {
                 Text(stringResource(R.string.phone_host_scale_percent, (scale / 64f * 100).toInt()))
+                val scaleLabel = stringResource(R.string.phone_host_time_scale_accessibility)
                 Slider(value = scale, onValueChange = { scale = it }, valueRange = 32f..160f,
-                    modifier = Modifier.semantics { contentDescription = "Calendar time scale" })
+                    modifier = Modifier.semantics { contentDescription = scaleLabel })
             } },
             confirmButton = { TextButton(onClick = {
                 onSaveHourHeight(scale); dayNavigationRevision++; phoneZoomOpen = false
