@@ -48,7 +48,7 @@ class AgendaViewTest {
     private fun show(initialRange: CalendarDateRange = range, initialSelection: LocalDate = date,
         events: List<EventOccurrence> = fixtures(), displayZone: ZoneId = zone, fontScale: Float = 1f,
         direction: LayoutDirection = LayoutDirection.Ltr, onSelect: (LocalDate) -> Unit = {},
-        onOpen: (EventRef) -> Unit = {}, onRange: (CalendarDateRange) -> Unit = {}) {
+        onOpen: (EventRef) -> Unit = {}, onRange: (CalendarDateRange) -> Unit = {}, showNavigationChrome: Boolean = true) {
         compose.setContent {
             var requestedRange by remember { mutableStateOf(initialRange) }
             var selection by remember { mutableStateOf(initialSelection) }
@@ -56,7 +56,7 @@ class AgendaViewTest {
                 CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale), LocalLayoutDirection provides direction) {
                     AgendaView(requestedRange, selection, events, displayZone,
                         onSelectDate = { selection = it; onSelect(it) }, onOpenEvent = onOpen,
-                        onRequestRange = { requestedRange = it; onRange(it) }, today = date.plusDays(1))
+                        onRequestRange = { requestedRange = it; onRange(it) }, today = date.plusDays(1), showNavigationChrome = showNavigationChrome)
                 }
             }
         }
@@ -122,6 +122,59 @@ class AgendaViewTest {
         compose.onNodeWithText("Later").performClick()
         assertEquals(CalendarDateRange(range.endExclusive, range.endExclusive.plusDays(7)), requested)
     }
+    @Test @Config(qualifiers = "w360dp-h640dp-mdpi") fun phoneChromeSuppressionRetainsRangeAndExplicitEndpointsWithoutScrollReads() {
+        val requested = mutableListOf<CalendarDateRange>()
+        val selections = mutableListOf<LocalDate>()
+        show(onRange = { requested += it }, onSelect = { selections += it }, showNavigationChrome = false)
+        compose.onNodeWithTag("agenda_loaded_range").assertIsDisplayed()
+        compose.onNodeWithTag("agenda_earlier").assertIsDisplayed()
+        compose.onNodeWithTag("agenda_later").assertIsDisplayed()
+        agendaNode("agenda_event_${date.plusDays(1)}_1_4").assertIsDisplayed()
+        assertTrue(requested.isEmpty())
+        compose.onNodeWithTag("agenda_later").performClick()
+        val next = CalendarDateRange(range.endExclusive, range.endExclusive.plusDays(7))
+        assertEquals(listOf(next), requested)
+        assertEquals(listOf(next.start), selections)
+        compose.onNodeWithTag("agenda_earlier").performClick()
+        assertEquals(listOf(next, range), requested)
+        assertEquals(listOf(next.start, range.start), selections)
+        compose.onRoot().captureRoboImage("src/test/screenshots/agenda_phone_compact.png")
+    }
+    @Test fun firstSupportedYearDisablesEarlierAndExplainsTheBoundary() {
+        var requests = 0
+        show(initialRange = CalendarDateRange(AgendaMinDate, AgendaMinDate.plusDays(31)), initialSelection = AgendaMinDate,
+            events = emptyList(), onRange = { requests++ }, showNavigationChrome = false)
+        compose.onNodeWithTag("agenda_earlier").assertIsNotEnabled()
+        compose.onNodeWithTag("agenda_later").assertIsEnabled()
+        compose.onNodeWithText("Start of supported dates (year 1).").assertIsDisplayed()
+        assertEquals(0, requests)
+        compose.onRoot().captureRoboImage("src/test/screenshots/agenda_phone_boundary.png")
+    }
+    @Test fun compactDateAndCardRemainDistinctFullSizeActionsWithExactOccurrence() {
+        var opened: EventRef? = null
+        var rangeChanges = 0
+        show(onOpen = { opened = it }, onRange = { rangeChanges++ }, showNavigationChrome = false)
+        val dateBounds = compose.onNodeWithTag("agenda_date_$date").fetchSemanticsNode().boundsInRoot
+        val card = agendaNode("agenda_event_${date}_2_7")
+        val cardBounds = card.fetchSemanticsNode().boundsInRoot
+        assertTrue(dateBounds.width >= 48f && dateBounds.height >= 48f)
+        assertTrue(cardBounds.width >= 48f && cardBounds.height >= 48f)
+        card.performClick()
+        assertEquals(recurring, opened)
+        assertEquals(0, rangeChanges)
+    }
+    @Test @Config(qualifiers = "w320dp-h640dp-mdpi") fun narrowLargeRtlStacksWrappingCardsAndRetainsEndpointAccess() {
+        val title = "A long personal and work appointment title that must remain available in full"
+        val event = fixtures().first { it.ref == recurring }.copy(title = title)
+        var opened: EventRef? = null
+        show(events = listOf(event), fontScale = 2f, direction = LayoutDirection.Rtl, onOpen = { opened = it }, showNavigationChrome = false)
+        compose.onNodeWithTag("agenda_loaded_range").assertIsDisplayed()
+        compose.onNodeWithTag("agenda_earlier").assertIsDisplayed()
+        compose.onNodeWithTag("agenda_later").assertIsDisplayed()
+        agendaNode("agenda_event_${date}_2_7").performClick()
+        compose.onNodeWithText(title).assertExists()
+        assertEquals(recurring, opened)
+    }
     @Test fun datePickerSelectsAnArbitraryLeapDayAndRequestsItsBoundedWindow() {
         var selected: LocalDate? = null
         var requested: CalendarDateRange? = null
@@ -168,6 +221,7 @@ class AgendaViewTest {
         show(initialRange = late, initialSelection = AgendaMaxDate, events = emptyList())
         compose.onNodeWithText("Later").assertIsNotEnabled()
         compose.onNodeWithText("Earlier").assertIsEnabled()
+        compose.onNodeWithText("End of supported dates (year 9999).").assertIsDisplayed()
     }
     @Test(expected = IllegalArgumentException::class) fun unboundedRangesAreRejectedBeforeIteration() {
         agendaDays(CalendarDateRange(date, date.plusDays(367)), date, emptyList(), zone)

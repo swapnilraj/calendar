@@ -267,6 +267,13 @@ class LiveCalendarDayTest {
             compose.onNodeWithTag("calendar_phone_today").performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
             assertEquals(3, provider.rangeQueries)
+            compose.onNodeWithTag("agenda_loaded_range").assertIsDisplayed()
+            compose.onNodeWithTag("agenda_later").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("No events in the displayed range.").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(4, provider.rangeQueries)
+            compose.onNodeWithTag("agenda_earlier").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture meeting").fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(5, provider.rangeQueries) // One replacement read for each explicit endpoint action.
             compose.onNodeWithContentDescription("Open navigation menu").performClick()
             compose.onNodeWithText("Select none").performClick()
             compose.onNodeWithText("Close").performClick()
