@@ -59,6 +59,6 @@ data class EditorConflictAdvisoryState(
 
 /** Correlation is private to this controller instance; callers cannot mint a current observation. */
 class EditorConflictAdvisoryObservation internal constructor(
-    internal val input: EditorConflictAdvisoryInput?, internal val epoch: Long,
+    internal val owner: Any, internal val input: EditorConflictAdvisoryInput?, internal val epoch: Long,
     val presentation: EditorConflictAdvisoryState,
 )

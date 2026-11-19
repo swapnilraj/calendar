@@ -11,13 +11,14 @@ class EditorConflictAdvisoryController(
     private val scope: CoroutineScope,
 ) {
     private val lock = Any()
+    private val owner = Any()
     private val session = UUID.randomUUID().toString()
     private var epoch = 0L
     private var collectionEpoch = 0L
     private var current: EditorConflictAdvisoryInput? = null
     private var job: Job? = null
     private var closed = false
-    private val mutable = MutableStateFlow(EditorConflictAdvisoryObservation(null, epoch,
+    private val mutable = MutableStateFlow(EditorConflictAdvisoryObservation(owner,null, epoch,
         EditorConflictAdvisoryState(EditorConflictAdvisoryStatus.HIDDEN)))
     val state: StateFlow<EditorConflictAdvisoryObservation> = mutable.asStateFlow()
 
@@ -30,7 +31,7 @@ class EditorConflictAdvisoryController(
             collectionEpoch = epoch
             current = input
             val initial = initial(input)
-            mutable.value = EditorConflictAdvisoryObservation(input, epoch, initial)
+            mutable.value = EditorConflictAdvisoryObservation(owner,input, epoch, initial)
             job?.cancel()
             job = null
             if (initial.status != EditorConflictAdvisoryStatus.LOADING || !input.sourceReady) return
@@ -38,7 +39,7 @@ class EditorConflictAdvisoryController(
                 ConflictReadRequest(ConflictDraftRevision(session, epoch), input.binding!!.normalizedTime(input.visibleTime!!),
                     input.planningZone, input.selectedCalendars!!, input.binding.editedRef)
             } catch (_: Exception) {
-                mutable.value = EditorConflictAdvisoryObservation(input, epoch,
+                mutable.value = EditorConflictAdvisoryObservation(owner,input, epoch,
                     EditorConflictAdvisoryState(EditorConflictAdvisoryStatus.UNSUPPORTED_TIME, firstOccurrenceOnly=input.firstOccurrenceOnly))
                 return
             }
@@ -52,7 +53,7 @@ class EditorConflictAdvisoryController(
     fun presentation(input: EditorConflictAdvisoryInput,
         observed: EditorConflictAdvisoryObservation = state.value): EditorConflictAdvisoryState = synchronized(lock) {
         if (closed) EditorConflictAdvisoryState(EditorConflictAdvisoryStatus.HIDDEN)
-        else if (current?.same(input) == true && observed.epoch == epoch && observed.input === current) observed.presentation
+        else if (observed.owner === owner && current?.same(input) == true && observed.epoch == epoch && observed.input === current) observed.presentation
         else initial(input)
     }
 
@@ -61,7 +62,7 @@ class EditorConflictAdvisoryController(
         closed = true
         epoch++
         current = null
-        mutable.value=EditorConflictAdvisoryObservation(null,epoch,EditorConflictAdvisoryState(EditorConflictAdvisoryStatus.HIDDEN))
+        mutable.value=EditorConflictAdvisoryObservation(owner,null,epoch,EditorConflictAdvisoryState(EditorConflictAdvisoryStatus.HIDDEN))
         job?.cancel(); job=null
     }
 
@@ -108,8 +109,18 @@ class EditorConflictAdvisoryController(
             // An invalidation or new source observation also makes held render frames obsolete.
             check(epoch < Long.MAX_VALUE)
             epoch++
-            mutable.value=EditorConflictAdvisoryObservation(input,epoch,value)
+            mutable.value=EditorConflictAdvisoryObservation(owner,input,epoch,value)
         }
+    }
+
+    private fun validEditedNamespace(input: EditorConflictAdvisoryInput): Boolean {
+        val binding = input.binding ?: return false
+        val ref = binding.editedRef ?: return true
+        val identity = binding.calendarIdentity ?: return false
+        if (identity.calendarId != ref.calendarId) return false
+        // A selected reused numeric ID must not exclude the replacement account's event.
+        // An edited calendar absent from selection needs no exclusion in another namespace.
+        return input.selectedCalendars?.none { it.calendarId == ref.calendarId && it != identity } != false
     }
 
     private fun initial(input: EditorConflictAdvisoryInput): EditorConflictAdvisoryState {
@@ -119,6 +130,7 @@ class EditorConflictAdvisoryController(
             !input.sourceReady -> EditorConflictAdvisoryStatus.LOADING
             input.binding==null -> EditorConflictAdvisoryStatus.INACTIVE_DRAFT
             input.pendingRaw || input.visibleTime==null || input.visibleTime!=input.binding.input -> EditorConflictAdvisoryStatus.PENDING_INPUT
+            !validEditedNamespace(input) -> EditorConflictAdvisoryStatus.UNAVAILABLE
             input.selectedCalendars==null -> EditorConflictAdvisoryStatus.SELECTION_UNAVAILABLE
             input.selectedCalendars.isEmpty() -> EditorConflictAdvisoryStatus.NO_CALENDARS_SELECTED
             else -> try {
