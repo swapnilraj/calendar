@@ -604,6 +604,15 @@ Pre-dispatch frozen source checks read child membership as IDs, then compare kno
 items under issued calendar/UID guards with parent checks around payload reads. Empty property sets
 are checked without property payloads; nonempty WHOLE properties retain the existing in-place policy.
 See [the private Following protocol](FOLLOWING_EXECUTION_RECEIPT3.md).
+Pure selected-local-calendar overlap assessment requires exact draft session/revision, source
+namespace/generation, proposed time, planning zone, full calendar identities and excluded occurrence
+context equality. Timed overlap is half-open; DATE/DATE overlap uses dates, while mixed DATE/timed
+occupancy uses deterministic day bounds in the explicit planning zone. Known free, cancelled or
+declined observations do not occupy time. Unknown overlapping metadata remains possible, partial
+coverage cannot certify no conflict, and empty selection/unavailable reads stay distinct. Only a
+complete selected local window with no known or possible conflict may report that advisory result.
+This pure contract activates no UI/native read adapter and grants no save authority or coworker
+availability claim; later adapters must mask invalidated or permission-lost contexts immediately.
 
 ### M8 — Search, preferences and Android entry points
 
