@@ -152,8 +152,18 @@ class NativeRecurringMeetingCreateJourneyTest {
         val stable=MeetingCreationDraftCodec.record(doc.copy(fields=doc.fields.copy(event=event)),Instant.parse("2026-11-18T09:00:00Z"))
         assertEquals(DraftChangeResult.Applied,runBlocking {f.app.calendarLocalStore.compareAndSet(record.id,record,stable)})
         openDrafts();compose.onNodeWithText(f.app.getString(R.string.events_drafts_open)).performClick();shown(f.app.getString(R.string.phone_meeting_create_title))
-        chooseCalendar(f);compose.onNodeWithText(f.app.getString(R.string.phone_meeting_create_add_person)).performScrollTo().performClick()
-        compose.onNodeWithContentDescription("Person 1: ${f.app.getString(R.string.phone_meeting_create_email)}").performScrollTo().performTextReplacement(guest)
+        chooseCalendar(f)
+        val addPerson=hasText(f.app.getString(R.string.phone_meeting_create_add_person)) and hasClickAction() and isEnabled()
+        // The calendar CAS can be visible before its queued action unlocks the rendered form.
+        compose.waitUntil(15_000) {compose.waitForIdle();compose.onAllNodes(addPerson).fetchSemanticsNodes().size==1}
+        compose.onNode(addPerson).performScrollTo().performClick()
+        val email=hasContentDescription("Person 1: ${f.app.getString(R.string.phone_meeting_create_email)}") and hasSetTextAction() and isEnabled()
+        // Observe both durable addition and the enabled row before authoring its raw email.
+        compose.waitUntil(15_000) {
+            compose.waitForIdle()
+            document(f).fields.guests.singleOrNull()!=null && compose.onAllNodes(email).fetchSemanticsNodes().size==1
+        }
+        compose.onNode(email).performScrollTo().performTextReplacement(guest)
         compose.waitUntil(15_000) {document(f).fields.guests.singleOrNull()?.email==guest}
         compose.onNodeWithText(f.app.getString(R.string.phone_meeting_create_required)).performScrollTo().performClick()
         compose.waitUntil(15_000) {document(f).fields.guests.singleOrNull()?.type=="REQUIRED"}
