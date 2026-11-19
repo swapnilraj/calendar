@@ -13,7 +13,8 @@ import dev.swapnilraj.calendar.data.reminders.*
 import dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions
 import java.time.Instant
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -169,16 +170,50 @@ class ReminderSettingsJourneyTest {
         lateinit var activity: ActivityController<MainActivity>
         compose.runOnUiThread { activity = Robolectric.buildActivity(MainActivity::class.java).setup().visible() }
         val f = Fixture(app, provider, activity, identity)
-        try { block(f) }
-        finally {
-            compose.runOnUiThread { activity.pause().stop().destroy() }
-            shadowOf(app).grantPermissions(Manifest.permission.READ_CALENDAR)
-            runBlocking {
-                app.settings.saveReminderSettings(app.settings.readReminderSettings(), SavedReminderSettings())
-                app.reminderRuntime.onResume().join()
-            }
-            f.manager.cancelAll()
-            provider.close()
+        var failure: Throwable? = null
+        fun retain(error: Throwable) {
+            val original = failure
+            if (original == null) failure = error else if (original !== error) original.addSuppressed(error)
         }
+        fun cleanup(action: () -> Unit) {
+            try { action() } catch (error: Throwable) { retain(error) }
+        }
+        try { block(f) } catch (error: Throwable) { retain(error) }
+        finally {
+            cleanup { compose.runOnUiThread { activity.pause().stop().destroy() } }
+            cleanup { shadowOf(app).grantPermissions(Manifest.permission.READ_CALENDAR) }
+            // Let Compose/Robolectric service queued work while IO resets the policy and reconciles.
+            // A blocking join here can strand the scheduler which owns lifecycle cancellation work.
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val resetFailure = AtomicReference<Throwable?>()
+            val resume = AtomicReference<Job?>()
+            val reset = scope.launch {
+                try {
+                    val result = app.settings.saveReminderSettings(app.settings.readReminderSettings(), SavedReminderSettings())
+                    assertTrue("Fixture reminder reset must be acknowledged", result is ReminderPreferenceSave.Saved)
+                    assertEquals(SavedReminderSettings(), app.settings.readReminderSettings())
+                    ensureActive()
+                    val reconciliation = app.reminderRuntime.onResume()
+                    resume.set(reconciliation)
+                    try { reconciliation.join() }
+                    finally { if (!isActive) reconciliation.cancel() }
+                } catch (error: Throwable) { resetFailure.set(error) }
+            }
+            try {
+                cleanup {
+                    compose.waitUntil(15_000) { reset.isCompleted }
+                    resetFailure.get()?.let { throw it }
+                }
+            } finally {
+                scope.cancel()
+                resume.get()?.cancel()
+                cleanup {
+                    compose.waitUntil(5_000) { reset.isCompleted && resume.get()?.isCompleted != false }
+                }
+                cleanup { f.manager.cancelAll() }
+                cleanup { provider.close() }
+            }
+        }
+        failure?.let { throw it }
     }
 }
