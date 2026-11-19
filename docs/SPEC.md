@@ -14,6 +14,11 @@ Widget Create preserves every mounted ordinary or meeting draft. An organizer wo
 READ loss with its same controller while calendar content and semantics are masked, and imported-row
 cloning remains unverified. All meeting screens use the actual system clock preference.
 
+A grid preview that encounters a clock gap or overlap retains its snapped logical date/minute and
+display zone for explicit review. That target does not choose an offset or imply an instant. Review
+presentation must use the same snapped wall position instead of the unsnapped pointer location;
+accepting a specific valid offset remains a separate explicit action.
+
 For a modern, unsubmitted ordinary edit of an imported event with a genuinely NULL source zone,
 an explicit permitted zone-picker/manual selection records authored zone intent even when the
 selected zone equals the renderer's displayed fallback. The next explicit Save freezes ZONE.Set
