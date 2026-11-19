@@ -27,6 +27,8 @@ class OrdinaryZonePickerWriterTest {
     private val harness=NullZoneTravelEditTest()
     private fun journey(editTime:Boolean)=runBlocking {harness.fixture {f->
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Tokyo"))
+        // Native SQL rows have a fixed nullable duration column, even before the first edit.
+        f.provider.events.single()["duration"]=null
         val (source,launch)=f.prepare();val c=f.open(launch,source);val original=c.state.fields
         assertEquals("Asia/Tokyo",original.zone);assertNull(source.details.eventZone)
         val before=f.provider.events.map { it.toMap() }.single();val reminders=f.provider.reminders.map { it.toMap() }
