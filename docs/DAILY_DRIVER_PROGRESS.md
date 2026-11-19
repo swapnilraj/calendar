@@ -11,6 +11,12 @@ tests. Command: `./gradlew test :app:assembleDebug :app:lintDebug`; log
 `1fca3bfbeb9b1ceed348c1ddfcfb5c5d77688f2275f85a5ab76345254a2ef45a`.
 This remains a debug-signed local build, not a stable release or daily-driver certification.
 
+Navigation fixture transition hardening from the already published PR62 is now selectively
+integrated as `f895cfb`: journeys wait for displayed controls and a closed drawer after preference
+commit, and explicitly verify Activity replacement. All8 navigation tests passed in17s
+(`/tmp/daylight-phone-navigation-visible-transitions.log`). This is test-only; no screenshots or
+production UI changed.
+
 Independent [Following metadata regression evidence](audit/evidence/following-null-end-zone-before-2026-11-19.json)
 subsequently exposed a title-only split changing an admitted SQL NULL end timezone to the start zone.
 The synthetic adapter returned LocalSaved with one batch while preserving the prefix except RRULE.
