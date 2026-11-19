@@ -148,7 +148,7 @@ class MeetingFamilyDraftBrowserTest {
         compose.onNodeWithText("Recover operation").assertDoesNotExist()
         compose.onRoot().captureRoboImage("src/test/screenshots/events_drafts_meeting_families_light.png")
         compose.onNodeWithText("Unrecognized draft").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Refresh").performClick(); assertEquals(1, refreshes)
+        compose.onNodeWithText("Refresh drafts").performClick(); assertEquals(1, refreshes)
         assertEquals(before, listOf(response.record(), creation.record(), owned.record())); assertNoAuthorityCalls()
     }
 }
