@@ -82,9 +82,14 @@ The host-only correction `a9044b9` retains strict general command handling and p
 A new run `bf8af411-bef6-4a2d-a923-0e5a98bb44df` passed that preflight, created its dedicated local
 calendar, then failed the first app-create case with a platform IllegalArgumentException. Cleanup was
 withheld; no recovery stage ran. Read-only copies of its exact private state show CREATING, calendar 1,
-five queries, zero batch assertions/cases and no exact operation journal row; WAL/SHM were absent and
-the rollback journal empty. This metadata alone is not reported as a provider outcome. Source-based
-diagnosis and safe fixture cleanup remain pending; no blind replay, adoption or production admission.
+five attempted queries, zero batch assertions/cases and no exact operation journal row; WAL/SHM were
+absent and the rollback journal empty. Frozen-source review identifies a harness defect: its null-only
+sort guard rejects CalendarWriter's `_id ASC` calendar-item query before forwarding. The writer returns
+Unavailable; a later harness missing-journal assertion masks it as IllegalArgumentException. Together
+with the pre-forwarding journal/assertion requirements, this supports no app event batch forwarded on
+this controlled path. It does not establish global provider/event absence. The separately created
+fixture calendar remains retained. A narrow harness correction and safe cleanup are pending; no blind
+replay, failed-run adoption or production admission.
 
 The [native app-writer harness](audit/evidence/native-app-writer-source-review-2026-11-19.json)
 is now integrated with19 passing host checks, successful AndroidTest compilation/pair assembly,
@@ -578,3 +583,20 @@ routing are not yet connected, so this is not an enabled end-to-end alert workfl
 Meeting API and atomic draft-store capability contracts have been added for subsequent RSVP work.
 Atomic SQLite implementation, meeting writer/UI, existing-editor CAS migration and real two-account
 propagation remain pending; an interface alone does not establish these capabilities.
+
+
+### Current bounded publication and phone-settings packets — 19 November
+
+[PR68](https://github.com/swapnilraj/calendar/pull/68) passed full CI (host guards, test/debug/lint and
+opt-in probe compilation) in 5m36s at `230321c`, then merged as `a1f22df`. The aggregate already contains
+its host-only fix. Attachment was requested, but the task artifact endpoint did not return; confirmation
+remains pending. [PR69](https://github.com/swapnilraj/calendar/pull/69) is a draft legacy scoped-series
+backend publication with 90 focused checks passing after a test-fixture known-reminder join correction;
+its first 76-pass/14-failure fixture attempt is retained. It deliberately leaves FollowingEdit and clone
+admission closed and adds no UI wiring. Its temporary Following-disable variant must not replace the
+aggregate's Following3 implementation.
+
+Field-only phone-preference persistence is integrated as `ec8664f`: 18 focused checks pass in 14s,
+including independent concurrent edits, exact preservation of unrelated unknown/malformed values,
+compound timezone/reminder changes, invalid input and IO/cancellation behavior. New Settings/General
+components and host wiring are in progress, not yet accepted by screenshots or the complete gate.
