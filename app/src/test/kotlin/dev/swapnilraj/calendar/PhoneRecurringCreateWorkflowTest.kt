@@ -37,9 +37,9 @@ class PhoneRecurringCreateWorkflowTest {
         val launch = requireNotNull(DraftBrowserCodec.read(record).launch)
         val request = EventWriteRequest.fromLaunch(launch, LocalDate.parse("2028-06-15"), ZoneOffset.UTC)
         compose.setContent { DaylightTheme {
-            if (enabled == null) EventWriteWorkflow(request, writer, store, listOf(eventTestCalendar()), use24Hour, {}, {}, {}, clock = clock)
+            if (enabled == null) EventWriteWorkflow(request, writer, store, listOf(eventTestCalendar()), use24Hour, {}, {}, {}, clock = clock, requestWritePermission = { true })
             else EventWriteWorkflow(request, writer, store, listOf(eventTestCalendar()), use24Hour, {}, {}, {}, clock = clock,
-                recurringCreationSupported = enabled)
+                recurringCreationSupported = enabled, requestWritePermission = { true })
         } }
         compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Title").fetchSemanticsNodes().isNotEmpty() }
     }
@@ -79,7 +79,8 @@ class PhoneRecurringCreateWorkflowTest {
         compose.onNodeWithText("Save").performClick()
         compose.onNodeWithText("Review recurring event").assertIsDisplayed()
         // One bounds summary and every preview occurrence use the caller's clock convention.
-        assertEquals(6, compose.onAllNodesWithText("AM", substring = true).fetchSemanticsNodes().size)
+        val inReview = hasAnyAncestor(isDialog() and hasAnyDescendant(hasText("Review recurring event")))
+        assertEquals(6, compose.onAllNodes(hasText("AM", substring = true) and inReview).fetchSemanticsNodes().size)
         compose.onAllNodesWithText("09:00", substring = true).assertCountEquals(0)
         assertEquals(0, writer.creates)
     }
