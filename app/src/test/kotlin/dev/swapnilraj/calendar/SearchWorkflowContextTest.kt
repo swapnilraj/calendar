@@ -23,10 +23,11 @@ class SearchWorkflowContextTest {
             old.copy(calendar = calendar.copy(selection = CalendarSelection.Explicit(emptySet()))),
             old.copy(calendar = calendar.copy(displayZone = ZoneId.of("America/New_York"))),
             old.copy(calendar = calendar.copy(range = CalendarDateRange.day(range.start.plusDays(1)))),
-            old.copy(includeDeclined = false))
+            old.copy(includeDeclined = false),
+            old.copy(calendar = calendar.copy(invitationFilter = InvitationFilter.PENDING_ONLY)))
         desired.forEach { target ->
             val shown = searchStateForContext(old, target.query, target.calendar.range,
-                target.calendar.selection, target.calendar.displayZone, target.includeDeclined)
+                target.calendar.selection, target.calendar.displayZone, target.includeDeclined, target.calendar.invitationFilter)
             assertTrue(shown.hits.isEmpty())
             assertNull(shown.snapshot)
             assertEquals(target.query, shown.query)

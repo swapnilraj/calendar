@@ -846,6 +846,14 @@ contract adds no visible control or live-view filtering until the separate prese
 
 ## Phone Settings and General
 
+General → Invitations offers All events (the default) and Pending invitations only through the
+typed app-local preference. The choice applies to calendar views and search; a changed search context
+immediately masks stale hits and rejects old-context clicks. Only confirmed pending invitations
+appear in pending-only results. UNKNOWN classification retains coverage and qualifies empty results.
+Reminder, widget and direct-link reads keep independent ALL requests. Calendar selection, declined
+controls, preference readiness and existing privacy/source masking remain in force. Recreating the
+app retains the filter; provider rows, visibility and synchronization settings are unchanged.
+
 The drawer opens full-height Settings → General for existing supported preferences. Grouped
 rows/switches and focused in-place choice/numeric/zone editors replace the production bulk sheet;
 legacy component fixtures retain their sheet API. Current persisted view is labelled View. Home
