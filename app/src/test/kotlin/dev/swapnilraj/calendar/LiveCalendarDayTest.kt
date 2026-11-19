@@ -743,8 +743,8 @@ class LiveCalendarDayTest {
         private val details = java.util.concurrent.atomic.AtomicInteger()
         val rangeQueries get() = ranges.get()
         val detailQueries get() = details.get()
-        private val start = Instant.parse("2026-11-17T09:00:00Z").toEpochMilli()
-        private val end = Instant.parse("2026-11-17T10:00:00Z").toEpochMilli()
+        var start = Instant.parse("2026-11-17T09:00:00Z").toEpochMilli()
+        var end = Instant.parse("2026-11-17T10:00:00Z").toEpochMilli()
         override fun onCreate() = true
         override fun query(uri: Uri, projection: Array<out String>?, selection: String?,
             args: Array<out String>?, order: String?): Cursor {
