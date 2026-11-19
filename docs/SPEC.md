@@ -5,6 +5,11 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+A grid preview that encounters a clock gap or overlap retains its snapped logical date/minute and
+display zone for explicit review. That target does not choose an offset or imply an instant. Review
+presentation must use the same snapped wall position instead of the unsnapped pointer location;
+accepting a specific valid offset remains a separate explicit action.
+
 An explicit Add people action may convert an eligible, current ordinary new-event draft into a
 dedicated meeting-creation draft using one exact-record compare-and-set. Raw fields and authored
 recurrence remain intact; conversion never reads meeting authority, requests calendar permission or
