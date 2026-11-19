@@ -4,6 +4,14 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+The subsequent Following3 aggregate at `8ef9258` ran2,289 tests and failed one existing meeting
+journey at its immediate Save lookup after repeat input closed. All Following3/guarded-read tests
+passed. Test-only durable-repeat/UI-ready waits are integrated at `f8f88d1`; the same4 meeting
+journeys pass without product changes, retries or longer timeouts. The [attempt and focused
+hardening](audit/evidence/following3-aggregate-checks-2026-11-19.json) are retained; a complete rerun
+is pending. The independent worker did not execute that extra task due tool screening, so this
+fixture hardening is lead-verified only.
+
 The complete verified source checkpoint `57fe2ad` is also preserved on the separate
 [GitHub checkpoint branch](https://github.com/swapnilraj/calendar/tree/codex/verified-2246-20261119).
 This preserves the tested aggregate source without overwriting the bounded publication branch; it

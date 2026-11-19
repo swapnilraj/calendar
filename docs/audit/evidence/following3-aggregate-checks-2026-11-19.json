@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-19",
+  "failedAggregate": {
+    "source": "8ef9258",
+    "status": "FAIL",
+    "tests": 2289,
+    "failures": 1,
+    "errors": 0,
+    "skipped": 0,
+    "elapsed": "6m25s",
+    "log": "/tmp/daylight-following3-guarded-full-gate.log",
+    "test": "NativeRecurringMeetingCreateJourneyTest.committedRecurringMeetingRestoresAfterReadLossAndRecoversFrozenPlanWithoutSnapshotsOrAnotherBatch",
+    "failure": "saveReview immediately clicked an enabled Save selector after closing repeat input; no matching enabled node at click",
+    "xmlSha256": "dd949a0721892b7acba47e8cfbe221d2d717aa917c51041816fedaeece5408a7",
+    "preservedXml": "/tmp/daylight-following3-guarded-full-gate-meeting-save-failure.xml"
+  },
+  "testOnlyReadinessHardening": {
+    "source": "8d1bf9c",
+    "integratedSource": "f8f88d1",
+    "scope": "same four original meeting journeys and assertions; no product changes",
+    "changes": [
+      "Wait for exact repeat fields in durable draft after Done",
+      "Wait for enabled Save and idle UI frame before opening explicit review",
+      "Existing 15s waits retained; no retries or timeout increases"
+    ],
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "buildElapsed": "1m28s",
+    "testsElapsedSeconds": 16.118,
+    "log": "/tmp/daylight-recurring-meeting-review-readiness-focused.log",
+    "xml": "/tmp/daylight-recurring-meeting-review-readiness-focused.xml",
+    "independentWorker": "Did not execute due tool screening; lead implemented/verified this fixture-only hardening"
+  },
+  "completeRerun": "PENDING",
+  "limitations": [
+    "Historical transient UI state and causal contribution of load were not captured",
+    "No native/account/Google delivery or stable release acceptance"
+  ]
+}
