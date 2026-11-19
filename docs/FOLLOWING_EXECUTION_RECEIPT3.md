@@ -1,6 +1,6 @@
 # Frozen exception-free Following execution
 
-Status: the isolated implementation passes 69 focused host checks; aggregate integration verification
+Status: the isolated implementation passes 72 focused host checks; aggregate integration verification
 is pending. This protocol
 changes no command bytes, core planner, schema or clone-profile registry. No production clone
 profile is admitted. EXDATE/exception transfer remains outside this packet.
@@ -38,6 +38,9 @@ mismatch with the exact known ID/calendar/generated UID still bound retains know
 but permits no payload read, success or proof rewrite. An observed namespace/UID loss suppresses the
 known result; unavailable identity checks do not invent an observed replacement. Raw unissued empty
 sync values are checked as observed and are never rewritten into a stable identity.
+Frozen pre-dispatch source comparison reads Reminder/Attendee ID membership first, then only the
+exact known child items with native parent/calendar/UID guards and identity checks before/after.
+It never falls back to a full child collection payload when binding or membership changes.
 Dispatch still requires fresh clone admission for nonzero splits at all existing boundaries;
 Unverified production policy continues to deny those writes.
 

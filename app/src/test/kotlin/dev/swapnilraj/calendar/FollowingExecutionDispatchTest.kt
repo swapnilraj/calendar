@@ -61,7 +61,10 @@ class FollowingExecutionDispatchTest {
         f.store.writableDatabase.execSQL("DELETE FROM edit_snapshots")
         f.family.frozenPreparationProbe={error("Current preparation must not run for frozen retry")}
         assertEquals(common(MutationResult.SafeToRetry("change")),f.family.recover("change"))
+        f.p.base.queries.clear()
         val saved=f.family.mutate("change",f.selected,f.edit.token,input) as SeriesMutationResult.LocalSaved
+        val properties=f.p.base.queries.filter{it.path=="extendedproperties"}
+        assertTrue("Empty property sources need only absence/count fields",properties.isNotEmpty()&&properties.all{q->q.fields!=null&&q.fields.none{it=="name"||it=="value"}})
         assertEquals(receipt.uid,f.p.value(saved.identity.masterEventId,"uid2445"));assertEquals(receipt.tail!!["eventEndTimezone"],f.p.value(saved.identity.masterEventId,"eventEndTimezone"));assertEquals(2,f.p.base.batchCount)
     }}
     @Test fun knownCommitReopensReadOnlyWithoutSnapshotsCompilerOrFreshCloneAdmission()=runBlocking{fixture{f->

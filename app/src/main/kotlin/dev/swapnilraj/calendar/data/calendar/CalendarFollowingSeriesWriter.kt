@@ -234,7 +234,11 @@ internal class CalendarFollowingSeriesWriter(
         Math.subtractExact(r.firstStart.toEpochMilli(),1);Math.addExact(r.firstStart.toEpochMilli(),1)
         val children=r.children("reminders").size+r.children("attendees").size+r.children("extendedproperties").size+r.prefixReminders.size+r.tailReminders.size+r.tailAttendees.size
         val width=r.master.size+r.calendar.size+(r.tail?.size?:0)
-        if(children>readBudgets.maxSeriesChildren||100L+8L*children>readBudgets.mutation.maxRows||10L*width+32L*children+256>readBudgets.mutation.maxCells)throw ProviderReadLimitExceeded()
+        val childColumns=(r.children("reminders")+r.children("attendees")+r.children("extendedproperties")+r.prefixReminders+r.tailReminders+r.tailAttendees)
+            .sumOf{it.size.toLong()+2L}
+        // Include repeated identity/membership guards and actual stored child widths, including
+        // nullable opaque source columns, before allowing a predictably unverifiable dispatch.
+        if(children>readBudgets.maxSeriesChildren||100L+8L*children>readBudgets.mutation.maxRows||10L*width+16L*childColumns+64L*children+256>readBudgets.mutation.maxCells)throw ProviderReadLimitExceeded()
         val result=if(r.whole)r.masterId else Long.MAX_VALUE
         val results=steps.mapIndexed{index,s->if(s.kind=="INSERT")ContentProviderResult(ContentUris.withAppendedId(Uri.parse("content://${CalendarContract.AUTHORITY}/${s.table}"),if(s.slot=="TAIL")result else Long.MAX_VALUE-index-1))else ContentProviderResult(requireNotNull(s.expected))}.toTypedArray()
         val facts=FollowingAcknowledgments.capture(results,steps.size)?:throw Review("Complete native acknowledgements cannot fit the private receipt")
@@ -256,12 +260,40 @@ internal class CalendarFollowingSeriesWriter(
         val guard=identityGuard(r.masterId,r.calendarId,r.master["uid2445"],r.master["_sync_id"],true)
         if(frozenRows(CalendarContract.Events.CONTENT_URI,null,guard.first,guard.second,1).singleOrNull()!=r.master)return false
         if(!noExceptions(r.masterId,r.master["_sync_id"],CalendarId(r.calendarId)))return false
+        suspend fun bound()=identityRow(r.masterId,r.calendarId,r.master["uid2445"],r.master["_sync_id"],true).first
         for(table in listOf("reminders","attendees","extendedproperties")){
-            if(!identityRow(r.masterId,r.calendarId,r.master["uid2445"],r.master["_sync_id"],true).first)return false
-            val actual=frozenRows(Uri.parse("content://${CalendarContract.AUTHORITY}/$table"),null,"event_id = ?",arrayOf(r.masterId.toString()),readBudgets.maxSeriesChildren)
-            if(actual.sortedBy{it["_id"]?.toLongOrNull()}!=r.children(table).sortedBy{it["_id"]?.toLongOrNull()})return false
+            if(!bound())return false
+            val uri=Uri.parse("content://${CalendarContract.AUTHORITY}/$table")
+            val expected=r.children(table)
+            if(table=="extendedproperties") {
+                // Preserve the existing WHOLE in-place property policy. SPLIT sources have none;
+                // no new joined property view or clone capability is assumed here.
+                if(expected.isEmpty()) {
+                    if(frozenRows(uri,arrayOf("_id","event_id"),"event_id = ?",arrayOf(r.masterId.toString()),readBudgets.maxSeriesChildren).isNotEmpty()||!bound())return false
+                } else {
+                    val actual=frozenRows(uri,null,"event_id = ?",arrayOf(r.masterId.toString()),readBudgets.maxSeriesChildren)
+                    if(actual.sortedBy{it["_id"]?.toLongOrNull()}!=expected.sortedBy{it["_id"]?.toLongOrNull()}||!bound())return false
+                }
+                continue
+            }
+            suspend fun membership():Boolean {
+                val actual=frozenRows(uri,arrayOf("_id","event_id"),"event_id = ?",arrayOf(r.masterId.toString()),readBudgets.maxSeriesChildren)
+                return actual.all{it["event_id"]==r.masterId.toString()}&&actual.size==expected.size&&
+                    actual.map{it["_id"]}.distinct().size==actual.size&&actual.map{it["_id"]}.toSet()==expected.map{it["_id"]}.toSet()
+            }
+            if(!membership()||!bound())return false
+            for(row in expected){
+                if(!bound())return false
+                var selection="event_id = ? AND calendar_id = ?"
+                val args=mutableListOf<String?>(r.masterId.toString(),r.calendarId.toString())
+                val uid=r.master["uid2445"]
+                if(uid==null)selection+=" AND uid2445 IS NULL"else{selection+=" AND uid2445 = ?";args+=uid}
+                val child=ContentUris.withAppendedId(uri,requireNotNull(row["_id"]).toLong())
+                if(frozenRows(child,row.keys.toTypedArray(),selection,args.toTypedArray(),1).singleOrNull()!=row||!bound())return false
+            }
+            if(!membership()||!bound())return false
         }
-        return identityRow(r.masterId,r.calendarId,r.master["uid2445"],r.master["_sync_id"],true).first
+        return bound()
     }
 
     private fun identityGuard(id:Long,calendar:Long,uid:String?,sync:String?,guardSync:Boolean):Pair<String,Array<String?>> {
