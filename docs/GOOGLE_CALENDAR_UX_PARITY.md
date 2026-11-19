@@ -43,6 +43,27 @@ files match `/tmp/daylight-google-ux-resume-*.png`. These are session-local evid
 Google assets. **Main navigation, event editor, guests and recurrence remain UNVERIFIED live.**
 The separate native local-provider acceptance run is provider evidence, not Google UX certification.
 
+### Public entry-point follow-up — 19 November 2026
+
+Fresh read-only manifest/resource inspection of the same pinned APK found public event VIEW/INSERT/
+EDIT routes on exported `com.android.calendar.event.LaunchInfoActivity`. Exported
+`com.android.calendar.AllInOneActivity` is an alias for the same activity, handling the launcher and
+VIEW date/time routes. Exported `CalendarPublicPreferenceActivity` also targets it, accepting
+MANAGE_NETWORK_USAGE or MAIN with NOTIFICATION_PREFERENCES. The launcher new-event shortcut
+likewise targets LaunchInfoActivity. The actual calendar/settings activities are not exported.
+
+Packaged labels include “On this device” (`0x7f140283`), “Non-Google accounts” (`0x7f14027a`) and
+“Calendar works better with a Google Account” (`0x7f1403d1`). They do not establish an accessible
+account-free bootstrap. The notification “Not right now” control is not an authentication skip;
+authentication “Not now” belongs to existing-account sync repair. Static evidence also does not
+prove sign-in is mandatory.
+
+The public settings alias is a legitimate candidate for a later bounded runtime observation, with
+no guarantee it avoids the same setup error. No non-exported route, account/credential action,
+APK modification or new runtime interaction was attempted. The session-local ledger is
+`/tmp/daylight-google-public-entrypoint-audit-2026-11-19.json`; reference assets remain outside Git.
+Main calendar/editor interactions and exact parity remain unverified.
+
 ## APK resource inspection — 18 November 2026
 
 **Status: static resource candidate evidence only. Google main-calendar phone UX remains
