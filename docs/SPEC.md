@@ -5,6 +5,12 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+Ordinary recurring UPDATE and DELETE requests retain the closed retirement boundary: neither
+inspection nor retirement may create an abandonment tombstone for them. Scoped recurring operations
+use the dedicated Series family and its exact encoder; meeting and authored recurring-create
+retirement keep their distinct existing fingerprints. Legacy ordinary requests remain retained for
+review instead of being reissued through a different operation family.
+
 Legacy ordinary draft versions1/4 accept an absent feature tag or the exact `ordinary-editor` tag.
 After known family dispatch, foreign or malformed tags remain retained and unreadable without an
 ordinary launch. Version5 keeps its strict envelope validation; no draft bytes are rewritten by listing.
