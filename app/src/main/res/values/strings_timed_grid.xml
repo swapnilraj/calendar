@@ -1,0 +1,21 @@
+<resources>
+    <string name="timed_grid_hint">Long-press an empty time to create, or an editable event to move. Drag its lower handle to change the end.</string>
+    <string name="timed_grid_checking">Checking whether this event can be edited…</string>
+    <string name="timed_grid_unavailable">Editing is unavailable here. Open the event’s editor to review its current access and time.</string>
+    <string name="timed_grid_original">Drag to preview a time change. Releasing at the original position keeps the event unchanged.</string>
+    <string name="timed_grid_ready">%1$s · %2$s elapsed minutes. Release to review in the editor.</string>
+    <string name="timed_grid_gap">%1$s is in a clock gap. Release to choose a valid time in the editor.</string>
+    <string name="timed_grid_overlap">%1$s occurs twice. Release to choose the clock occurrence in the editor.</string>
+    <string name="timed_grid_invalid">This time cannot be used. Cancel or choose another time in the editor.</string>
+    <string name="timed_grid_cancel">Cancel</string>
+    <string name="timed_grid_create_editor">Choose time</string>
+    <string name="timed_grid_edit_editor">Edit date and time in the editor</string>
+    <string name="timed_grid_create_action">Create an event on this date in the editor</string>
+    <string name="timed_grid_create_hint">Long-press an empty time to preview a new event, or choose a time in the editor.</string>
+    <string name="timed_grid_edit_hint">Long-press an editable event to move it, or its lower handle to change the end. Release to review in the editor.</string>
+    <string name="timed_grid_ready_compact">%1$s · %2$s min\nRelease to review</string>
+    <string name="timed_grid_gap_compact">%1$s · Clock gap\nRelease to review</string>
+    <string name="timed_grid_overlap_compact">%1$s · Time occurs twice\nRelease to review</string>
+    <string name="timed_grid_ready_seconds">%1$s · %2$s elapsed seconds. Release to review in the editor.</string>
+    <string name="timed_grid_ready_compact_seconds">%1$s · %2$s s\nRelease to review</string>
+</resources>

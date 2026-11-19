@@ -10,6 +10,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.PathEffect
+import dev.swapnilraj.calendar.ui.grid.*
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -33,11 +41,19 @@ fun DayGrid(date: LocalDate, events: List<CalEvent>, hourHeight: Float, now: Zon
     zone: ZoneId, use24Hour: Boolean, onEventClick: (CalEvent) -> Unit,
     modifier: Modifier = Modifier,
     background: @Composable BoxScope.() -> Unit = {},
-    showTimeGutter: Boolean = true) {
+    showTimeGutter: Boolean = true,
+    interactions: TimedGridInteractions? = null,
+    viewport: TimedGridViewport? = null,
+    onPreviewChanged: (TimedGridPreview?) -> Unit = {},
+    cancelSignal: Long = 0,
+    externalPreview: TimedGridPreview? = null) {
     val gutterWidth = if (showTimeGutter) calendarGutter(date, use24Hour) else 0.dp
     val minimumHeight = minimumEventHeight().value
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val fontScale = LocalDensity.current.fontScale
+    val density = LocalDensity.current
+    val fontScale = density.fontScale
+    var gridCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var visiblePreview by remember { mutableStateOf<TimedGridPreview?>(null) }
     val geometry = remember(date, zone) { DayGeometry(date, zone) }
     val placements = remember(events, date, zone, hourHeight, minimumHeight) {
         layoutEvents(timedEvents(events, date, zone), minimumHeight.toDouble() * 60 / hourHeight)
@@ -46,8 +62,29 @@ fun DayGrid(date: LocalDate, events: List<CalEvent>, hourHeight: Float, now: Zon
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val primary = MaterialTheme.colorScheme.primary
     val surface = if (LocalDaylightDarkTheme.current) androidx.compose.ui.graphics.Color(0xff191919) else MaterialTheme.colorScheme.surface
-    BoxWithConstraints(modifier.fillMaxWidth().height((hourHeight * 24).dp).clipToBounds()
-        .background(surface)) {
+    BoxWithConstraints(modifier.fillMaxWidth().height((hourHeight * 24).dp)) {
+        val areaWidth = (maxWidth - gutterWidth - 4.dp).coerceAtLeast(1.dp)
+        val occupied = placements.map { placed ->
+            val start = (placed.timed.startMinute / 60 * hourHeight).toFloat()
+            val height = maxOf(minimumHeight, ((placed.timed.endMinute - placed.timed.startMinute) / 60 * hourHeight).toFloat()).coerceAtMost(hourHeight * 24 - start)
+            val columnWidth = areaWidth / placed.columns
+            val width = (columnWidth - 2.dp).coerceAtLeast(1.dp)
+            val relative = gutterWidth + columnWidth * placed.column + 2.dp
+            with(density) {
+                val x = if (rtl) maxWidth.toPx() - relative.toPx() - width.toPx() else relative.toPx()
+                Rect(x, start.dp.toPx(), x + width.toPx(), (start + height).dp.toPx())
+            }
+        }
+        val controller = rememberTimedGridController(GridGestureRuntime(date, zone, events, hourHeight, density.density, fontScale, rtl,
+            with(density) { gutterWidth.toPx() }, interactions, viewport, gridCoordinates, occupied) { visiblePreview = it; onPreviewChanged(it) })
+        LaunchedEffect(controller, cancelSignal) { controller.cancel() }
+        val createLabel = if (viewport?.dateAtRoot != null)
+            stringResource(R.string.multiday_grid_create_action, date.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.FULL).withLocale(LocalLocale.current.platformLocale)))
+            else stringResource(R.string.timed_grid_create_action)
+        Box(Modifier.matchParentSize().clipToBounds().background(surface).onGloballyPositioned { gridCoordinates = it }
+            .timedGridTapGuard(controller).timedGridGestureInput(controller).then(if (interactions?.creationEnabled == true) Modifier.semantics {
+                customActions = listOf(CustomAccessibilityAction(createLabel) { interactions.onCreateInEditor?.invoke(date); true })
+            } else Modifier)) {
         CompositionLocalProvider(LocalCalendarGutter provides gutterWidth) { background() }
         // Restore the plain calendar substrate only where the fixed clock rows cannot identify
         // a unique forecast instant. Ordinary-day weather rendering remains untouched.
@@ -103,18 +140,45 @@ fun DayGrid(date: LocalDate, events: List<CalEvent>, hourHeight: Float, now: Zon
                 drawCircle(primary, 4.dp.toPx(), Offset(edge, lineY))
             }
         }
-        val areaWidth = (maxWidth - gutterWidth - 4.dp).coerceAtLeast(1.dp)
+        val preview = (externalPreview ?: visiblePreview)?.takeIf { it.contextKey == interactions?.contextKey &&
+            (externalPreview != null || controller.active?.events == events) }?.result
+        val previewPlacements = (preview as? dev.swapnilraj.calendar.core.GridPreviewResult.Ready)?.time?.let { time ->
+            // Synthetic geometry only: this object is never a proposal source, callback or authority.
+            layoutEvents(timedEvents(listOf(CalEvent(0, time.start, time.end, "", 0)), date, zone), minimumHeight.toDouble() * 60 / hourHeight)
+        }.orEmpty()
+        Canvas(Modifier.matchParentSize()) {
+            val left = if (rtl) 2.dp.toPx() else (gutterWidth + 2.dp).toPx()
+            val width = (size.width - gutterWidth.toPx() - 4.dp.toPx()).coerceAtLeast(0f)
+            val stroke = Stroke(2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx())))
+            previewPlacements.forEach { placed ->
+                val top = (placed.timed.startMinute / 60 * hourHeight).toFloat().dp.toPx()
+                val height = ((placed.timed.endMinute - placed.timed.startMinute) / 60 * hourHeight).toFloat().dp.toPx()
+                drawRoundRect(primary, Offset(left, top), Size(width, height), style = stroke)
+            }
+            if (preview is dev.swapnilraj.calendar.core.GridPreviewResult.NeedsReview && preview.snappedTarget.date == date) {
+                val y = (preview.snappedTarget.minute / 60 * hourHeight).toFloat().dp.toPx()
+                drawLine(primary, Offset(left, y), Offset(left + width, y), 2.dp.toPx(), pathEffect = stroke.pathEffect)
+            }
+        }
         placements.forEach { placed ->
             key(placed.timed.key) {
                 val start = (placed.timed.startMinute / 60 * hourHeight).toFloat()
                 val height = maxOf(minimumHeight, ((placed.timed.endMinute - placed.timed.startMinute) / 60 * hourHeight).toFloat())
                     .coerceAtMost(hourHeight * 24 - start)
                 val columnWidth = areaWidth / placed.columns
+                val source = editableGridSource(placed.timed.event)
+                val segment = placed.timed.segment?.key
+                val eligible = source != null && segment != null && interactions?.eligible(placed.timed.event) == true
+                val resize = eligible && segment?.end == source?.time?.end
+                val gestures = if (eligible) Modifier.timedGridGestureInput(controller, source, segment, resize) else Modifier
                 EventBlock(placed.timed.event, height, zone, use24Hour,
                     Modifier.offset(x = gutterWidth + columnWidth * placed.column + 2.dp, y = start.dp)
-                        .width((columnWidth - 2.dp).coerceAtLeast(1.dp)).height(height.dp), onEventClick,
-                    timedSegment = placed.timed)
+                        .width((columnWidth - 2.dp).coerceAtLeast(1.dp)).height(height.dp).then(gestures),
+                    onClick = { if (!controller.suppressTap) onEventClick(it) }, timedSegment = placed.timed,
+                    onOpenEditor = if (eligible) ({ interactions?.onOpenEditor?.invoke(requireNotNull(source).ref) }) else null,
+                    resizeHandle = resize)
             }
         }
+    }
     }
 }

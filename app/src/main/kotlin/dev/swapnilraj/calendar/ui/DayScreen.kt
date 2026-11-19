@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.swapnilraj.calendar.data.*
+import dev.swapnilraj.calendar.ui.grid.TimedGridInteractions
 import java.time.*
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -50,12 +51,18 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
     compactTitle: Boolean = false,
     onScrollMinuteChanged: (Double) -> Unit = {},
     onChooseCalendars: (() -> Unit)? = null,
-    showNavigationChrome: Boolean = true) {
+    showNavigationChrome: Boolean = true,
+    interactions: TimedGridInteractions? = null,
+    onCancelPendingEdit: (() -> Unit)? = null) {
     val zone = now.zone
     val anchorText = rememberSaveable { initialDate.toString() }
     val anchor = LocalDate.parse(anchorText)
     val pager = rememberPagerState(initialPage = MiddlePage, pageCount = { Int.MAX_VALUE })
     val scope = rememberCoroutineScope()
+    val latestCancelPendingEdit by rememberUpdatedState(onCancelPendingEdit)
+    LaunchedEffect(pager) {
+        snapshotFlow { pager.isScrollInProgress }.collect { moving -> if (moving) latestCancelPendingEdit?.invoke() }
+    }
     var height by rememberSaveable { mutableFloatStateOf(initialHourHeight.coerceIn(32f, 160f)) }
     // A new saved-state key prevents interpreting a pre-upgrade pixel offset as wall minutes.
     var sharedMinute by key("day-wall-minute-v1") { rememberSaveable { mutableDoubleStateOf(initialScrollHour?.times(60) ?: -1.0) } }
@@ -77,10 +84,11 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
             if (fontScale <= 1.3f) Text(visibleDate.format(DateTimeFormatter.ofPattern(if (compactTitle) "MMM yyyy" else "MMMM yyyy", locale)), style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             actions()
-            IconButton(onClick = { scope.launch { pager.animateScrollToPage((pager.currentPage - 1).coerceAtLeast(0)) } }) {
+            IconButton(onClick = { onCancelPendingEdit?.invoke(); scope.launch { pager.animateScrollToPage((pager.currentPage - 1).coerceAtLeast(0)) } }) {
                 Chevron(false, "Previous day")
             }
             IconButton(onClick = {
+                onCancelPendingEdit?.invoke()
                 val target = (MiddlePage.toLong() + ChronoUnit.DAYS.between(anchor, now.toLocalDate())).toInt()
                 scope.launch { pager.animateScrollToPage(target) }
             }, modifier = Modifier.semantics { contentDescription = "Go to today" }) {
@@ -94,7 +102,7 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
                     Text(now.dayOfMonth.toString(), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
                 }
             }
-            IconButton(onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } }) { Chevron(true, "Next day") }
+            IconButton(onClick = { onCancelPendingEdit?.invoke(); scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } }) { Chevron(true, "Next day") }
         }
         }
         HorizontalPager(pager, modifier = Modifier.weight(1f), key = { it }) { page ->
@@ -122,9 +130,11 @@ fun DayScreen(now: ZonedDateTime, use24Hour: Boolean, initialHourHeight: Float,
                     onScroll = { pixels ->
                         sharedMinute = (pixels.toDouble() / with(density) { height.dp.toPx() } * 60).coerceIn(0.0, 1440.0)
                         onScrollMinuteChanged(sharedMinute)
-                    }, onHourHeight = { height = it },
+                    }, onHourHeight = { onCancelPendingEdit?.invoke(); height = it },
                     onZoomFinished = onSaveHourHeight, onEventClick,
-                    summary = { summary(date) }, background = { background(date) })
+                    summary = { summary(date) }, background = { background(date) },
+                    interactions = interactions?.takeIf { state is CalendarState.Ready && page == pager.currentPage },
+                    onCancelPendingEdit = onCancelPendingEdit)
             }
         }
     }

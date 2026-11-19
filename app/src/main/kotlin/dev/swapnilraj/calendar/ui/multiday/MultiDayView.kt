@@ -10,6 +10,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import dev.swapnilraj.calendar.ui.grid.*
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.input.pointer.*
@@ -38,6 +42,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
  * vertical scroll; readable columns pan horizontally when they do not fit. No provider queries.
  * [showWeekends] omits Saturday/Sunday only from a seven-date week; three-day ranges keep every date.
  * Weather/summary slots must contain only actual forecast coverage for their supplied date.
+ * Optional gestures resolve actual visible column bounds and share vertical auto-scroll; they never
+ * pan horizontally or page the range. [onCancelPendingEdit] also applies while gesture ports are absent,
+ * so navigation/local sheets can invalidate a host's pending asynchronous editor preparation.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,6 +68,8 @@ fun MultiDayView(
     modifier: Modifier = Modifier,
     showWeekends: Boolean = true,
     showNavigationChrome: Boolean = true,
+    interactions: TimedGridInteractions? = null,
+    onCancelPendingEdit: (() -> Unit)? = null,
 ) {
     require(initialHourHeight.isFinite())
     require(initialScrollMinute == null || initialScrollMinute.isFinite())
@@ -92,15 +101,40 @@ fun MultiDayView(
     val latestOnScroll by rememberUpdatedState(onScrollMinuteChanged)
     val latestHeight by rememberUpdatedState(hourHeight)
     val latestDensity by rememberUpdatedState(density)
+    var bodyBounds by remember { mutableStateOf(Rect.Zero) }
+    val columnBounds = remember { mutableStateMapOf<LocalDate, MultiDayColumnBounds>() }
+    var cancelSignal by remember { mutableLongStateOf(0) }
+    var sharedPreview by remember { mutableStateOf<Pair<Any, TimedGridPreview>?>(null) }
+    val enabledInteractions = interactions?.let { config ->
+        val editable = byDate.values.any { values -> values.any { config.eligible(it) } }
+        when {
+            !editable && !config.creationEnabled -> null
+            !editable -> config.copy(onEdit = null, onBeginEdit = null, onOpenEditor = null)
+            else -> config
+        }
+    }
+    val latestCancelPendingEdit by rememberUpdatedState(onCancelPendingEdit)
+    fun cancelGesture() { cancelSignal++; sharedPreview = null; onCancelPendingEdit?.invoke() }
+    val effective = enabledInteractions?.copy(
+        onOpenEditor = enabledInteractions.onOpenEditor?.let { open -> { ref -> cancelGesture(); open(ref) } },
+        onCreateInEditor = enabledInteractions.onCreateInEditor?.let { create -> { date -> cancelGesture(); create(date) } },
+    )
+    LaunchedEffect(horizontal) {
+        snapshotFlow { horizontal.isScrollInProgress }.distinctUntilChanged().collect { moving ->
+            if (moving) latestCancelPendingEdit?.invoke()
+        }
+    }
     val earlier = adjacentMultiDayRange(range, false)
     val later = adjacentMultiDayRange(range, true)
     fun navigate(date: LocalDate) {
+        cancelGesture()
         onSelectDate(date)
         if (date !in range) onNavigateRange(multiDayWindow(date, rangeDates.size))
     }
     fun zoom(next: Float, pivot: Float = 0f) {
         val clamped = next.coerceIn(32f, 160f)
         if (clamped == hourHeight) return
+        cancelGesture()
         val oldPx = with(density) { hourHeight.dp.toPx() }
         val nextPx = with(density) { clamped.dp.toPx() }
         anchor = (((vertical.value + pivot) / oldPx - pivot / nextPx) * 60).toDouble().coerceIn(0.0, 1440.0)
@@ -108,6 +142,7 @@ fun MultiDayView(
         hourHeight = clamped
     }
     val latestSetZoom by rememberUpdatedState<(Float, Double) -> Unit>({ next, minute ->
+        onCancelPendingEdit?.invoke()
         restoring = true
         anchor = minute.coerceIn(0.0, 1440.0)
         hourHeight = next
@@ -129,23 +164,23 @@ fun MultiDayView(
                     style = MaterialTheme.typography.titleLarge.copy(textDirection = TextDirection.Content), modifier = Modifier.weight(1f))
                 TextButton(enabled = today in MultiDayMinDate..MultiDayMaxDate, onClick = { navigate(today) }) { Text(stringResource(R.string.multiday_today)) }
             }
-            TextButton(onClick = { pickingDate = true }, modifier = Modifier.fillMaxWidth().testTag("multiday_date_picker")
+            TextButton(onClick = { cancelGesture(); pickingDate = true }, modifier = Modifier.fillMaxWidth().testTag("multiday_date_picker")
                 .semantics { contentDescription = pickerLabel }) {
                 Text("\u202a${range.start.format(formatter)} – ${range.endExclusive.minusDays(1).format(formatter)}\u202c",
                     style = MaterialTheme.typography.titleSmall.copy(textDirection = TextDirection.Content))
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(enabled = earlier != null, onClick = { earlier?.let { onSelectDate(it.start); onNavigateRange(it) } }, modifier = Modifier.weight(1f)) {
+                TextButton(enabled = earlier != null, onClick = { cancelGesture(); earlier?.let { onSelectDate(it.start); onNavigateRange(it) } }, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.multiday_previous))
                 }
-                TextButton(enabled = later != null, onClick = { later?.let { onSelectDate(it.start); onNavigateRange(it) } }, modifier = Modifier.weight(1f)) {
+                TextButton(enabled = later != null, onClick = { cancelGesture(); later?.let { onSelectDate(it.start); onNavigateRange(it) } }, modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.multiday_next))
                 }
             }
             }
             if (hiddenSelection) {
                 val label = stringResource(R.string.calendar_view_day_events, selectedDate.format(fullDates))
-                TextButton(onClick = { onShowDateEvents(selectedDate) }, modifier = Modifier.fillMaxWidth()
+                TextButton(onClick = { cancelGesture(); onShowDateEvents(selectedDate) }, modifier = Modifier.fillMaxWidth()
                     .testTag("multiday_hidden_selection").semantics { contentDescription = label; selected = true }) {
                     Text(label, style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content))
                 }
@@ -164,10 +199,21 @@ fun MultiDayView(
                     modifier = Modifier.semantics { contentDescription = zoomInLabel }) { Text("+") }
             }
             }
+            if (effective != null) TimedGridFeedback(selectedDate, displayZone, use24Hour, effective,
+                sharedPreview?.second?.takeIf { it.contextKey == effective.contextKey }) { cancelGesture() }
             HorizontalDivider(thickness = 0.5.dp)
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val columnWidth = maxOf((96f * density.fontScale.coerceAtLeast(1f)).dp, (maxWidth - gutter).coerceAtLeast(0.dp) / dates.size)
                 val horizontalViewport = with(density) { (maxWidth - gutter).coerceAtLeast(0.dp).toPx() }
+                val gutterPx = with(density) { gutter.toPx() }
+                val gridBounds = if (rtl) Rect(bodyBounds.left, bodyBounds.top, maxOf(bodyBounds.left, bodyBounds.right - gutterPx), bodyBounds.bottom)
+                    else Rect(minOf(bodyBounds.right, bodyBounds.left + gutterPx), bodyBounds.top, bodyBounds.right, bodyBounds.bottom)
+                val observedColumns = dates.mapNotNull { columnBounds[it] }
+                val layoutKey = listOf(range, dates, events, displayZone, hourHeight, density.density, density.fontScale,
+                    rtl, horizontal.value, columnWidth, gridBounds, observedColumns, cancelSignal)
+                val preview = sharedPreview?.takeIf { it.first == layoutKey }?.second
+                // Stale previews disappear immediately; cancellation also invalidates pending access reads.
+                LaunchedEffect(layoutKey) { if (sharedPreview?.first != layoutKey) sharedPreview = null }
                 LaunchedEffect(range, dates, selectedDate, columnWidth, horizontalViewport) {
                     val index = dates.indexOf(selectedDate)
                     if (index >= 0) {
@@ -186,9 +232,9 @@ fun MultiDayView(
                                 Box(Modifier.width(columnWidth).testTag("multiday_header_$date")) {
                                     val dayEvents = byDate.getValue(date)
                                     DayHeader(date, today, dayEvents.filter { it.allDay }, displayZone, use24Hour,
-                                        onEventClick = { event -> onSelectDate(date); event.ref?.let(onOpenEvent) },
+                                        onEventClick = { event -> cancelGesture(); onSelectDate(date); event.ref?.let(onOpenEvent) },
                                         summary = { summary(date) }, dayEvents = dayEvents, stacked = true, selected = date == selectedDate,
-                                        onShowDateEvents = { onSelectDate(date); onShowDateEvents(date) })
+                                        onShowDateEvents = { cancelGesture(); onSelectDate(date); onShowDateEvents(date) })
                                 }
                             }
                         }
@@ -209,7 +255,7 @@ fun MultiDayView(
                             anchor = vertical.value / with(density) { hourHeight.dp.toPx() } * 60.0
                             latestOnScroll(anchor)
                         }
-                        Box(Modifier.fillMaxSize().clipToBounds().pointerInput(Unit) {
+                        Box(Modifier.fillMaxSize().clipToBounds().onGloballyPositioned { bodyBounds = it.boundsInRoot() }.pointerInput(Unit) {
                             awaitEachGesture {
                                 awaitFirstDown(requireUnconsumed = false)
                                 var zoomed = false
@@ -237,14 +283,23 @@ fun MultiDayView(
                                 DayTimeGutter(hourHeight, use24Hour, Modifier.width(gutter).testTag("multiday_time_gutter"))
                                 Row(Modifier.weight(1f).horizontalScroll(horizontal).testTag("multiday_columns")) {
                                     dates.forEach { date ->
-                                        Box(Modifier.width(columnWidth).drawWithContent {
+                                        Box(Modifier.width(columnWidth).onGloballyPositioned {
+                                            val bounds = it.boundsInRoot()
+                                            columnBounds[date] = MultiDayColumnBounds(date, bounds.left, bounds.right)
+                                        }.drawWithContent {
                                             drawContent()
                                             val edge = if (rtl) size.width else 0f
                                             drawLine(columnLineColor, Offset(edge, 0f), Offset(edge, size.height), 0.5.dp.toPx())
                                         }.testTag("multiday_grid_$date")) {
+                                            val columnLabel = stringResource(R.string.multiday_grid_column, date.format(fullDates))
                                             DayGrid(date, byDate.getValue(date), hourHeight, now, displayZone, use24Hour,
-                                                onEventClick = { event -> onSelectDate(date); event.ref?.let(onOpenEvent) },
-                                                showTimeGutter = false, background = { background(date) })
+                                                modifier = if (effective != null) Modifier.semantics { contentDescription = columnLabel } else Modifier,
+                                                onEventClick = { event -> cancelGesture(); onSelectDate(date); event.ref?.let(onOpenEvent) },
+                                                showTimeGutter = false, background = { background(date) }, interactions = effective,
+                                                viewport = if (effective != null) TimedGridViewport(gridBounds, { vertical.value }, { vertical.scrollBy(it) },
+                                                    dateAtRoot = { point -> multiDayDateAtRoot(point, gridBounds, observedColumns) }, layoutKey = layoutKey, targetRange = range) else null,
+                                                onPreviewChanged = { value -> sharedPreview = value?.let { layoutKey to it } },
+                                                cancelSignal = cancelSignal, externalPreview = preview)
                                         }
                                     }
                                 }
