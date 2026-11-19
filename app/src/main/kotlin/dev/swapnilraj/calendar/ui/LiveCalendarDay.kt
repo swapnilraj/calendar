@@ -81,6 +81,8 @@ internal fun LiveCalendarDay(
     onOpenReminders: (() -> Unit)? = null,
     recurringCreationSupported: Boolean = false,
     search: CalendarSearch? = null,
+    widgetNavigation: WidgetCalendarNavigation? = null,
+    onWidgetNavigationConsumed: (String) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val selectedDateState = rememberSaveable { mutableStateOf<String?>(null) }
@@ -224,6 +226,51 @@ internal fun LiveCalendarDay(
         }
     }
     val canCreate = createDateAction != null && calendars.any { it.capabilities.createEvents == AccessDecision.ALLOWED }
+    var consumedWidgetNavigation by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(widgetNavigation, metadata, view, effectiveSelection, displayNow.zone) {
+        val navigation = widgetNavigation ?: return@LaunchedEffect
+        if (consumedWidgetNavigation == navigation.id) {
+            onWidgetNavigationConsumed(navigation.id)
+            return@LaunchedEffect
+        }
+        if (metadata !is CalendarReadState.Ready) return@LaunchedEffect
+        if (navigation.environment.displayZone != displayNow.zone || navigation.environment.appSelection != effectiveSelection) {
+            consumedWidgetNavigation = navigation.id
+            onWidgetNavigationConsumed(navigation.id)
+            onDraftFailure()
+            return@LaunchedEffect
+        }
+        val route = navigation.route
+        if (route is dev.swapnilraj.calendar.android.widgets.AgendaWidgetRoute.Create &&
+            (preparingWrite || writeRequestText != null)) {
+            consumedWidgetNavigation = navigation.id
+            onWidgetNavigationConsumed(navigation.id)
+            onDraftFailure()
+            return@LaunchedEffect
+        }
+        if (route is dev.swapnilraj.calendar.android.widgets.AgendaWidgetRoute.More && view != CalendarViewOption.AGENDA) {
+            if (settings?.setCalendarView(CalendarViewOption.AGENDA.name) != true) {
+                consumedWidgetNavigation = navigation.id
+                onWidgetNavigationConsumed(navigation.id)
+                onPreferenceFailure()
+            }
+            return@LaunchedEffect // The successful preference emission remounts the chosen view.
+        }
+        val date = when (route) {
+            is dev.swapnilraj.calendar.android.widgets.AgendaWidgetRoute.More -> route.date
+            else -> displayNow.toLocalDate()
+        }.coerceIn(MultiDayMinDate, MultiDayMaxDate)
+        selectedDateState.value = date.toString()
+        dayNavigationRevision++
+        if (view == CalendarViewOption.AGENDA) agendaWindow(date, 31).let { agendaRangeText = "${it.start}/${it.endExclusive}" }
+        if (view == CalendarViewOption.THREE_DAY || view == CalendarViewOption.WEEK)
+            planningMultiDayRange(date, multiDays, firstWeekday).let { multiDayRangeText = "${it.start}/${it.endExclusive}" }
+        consumedWidgetNavigation = navigation.id
+        onWidgetNavigationConsumed(navigation.id)
+        if (route is dev.swapnilraj.calendar.android.widgets.AgendaWidgetRoute.Create) {
+            if (writable && !preparingWrite) beginCreate(date, false) else onDraftFailure()
+        }
+    }
     LaunchedEffect(metadata, settings) {
         if (metadata is CalendarReadState.Ready && settings?.reconcileCalendars(calendars) == false) onPreferenceFailure()
     }
