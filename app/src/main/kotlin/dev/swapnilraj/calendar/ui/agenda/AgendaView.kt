@@ -1,17 +1,18 @@
 package dev.swapnilraj.calendar.ui.agenda
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.testTag
@@ -21,9 +22,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import dev.swapnilraj.calendar.ui.eventTextColor
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
 import java.time.*
@@ -70,63 +74,77 @@ fun AgendaView(
         onSelectDate(date)
         if (date !in range) onRequestRange(agendaWindow(date, days))
     }
-    LaunchedEffect(range, selectedDate) {
-        var selectedIndex = if (noEvents) 1 else 0
-        if (outside) selectedIndex++
-        val group = groups.indexOfFirst { it.date == selectedDate }
-        if (group >= 0 && !noEvents) {
-            for (index in 0 until group) selectedIndex += 1 + maxOf(1, groups[index].events.size)
-            listState.scrollToItem(selectedIndex)
-        } else listState.scrollToItem(0)
-    }
-    Surface(modifier.fillMaxSize()) {
-        Column {
-            if (showNavigationChrome) {
-            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.agenda_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                TextButton(enabled = today in AgendaMinDate..AgendaMaxDate, onClick = { navigateTo(today) },
-                    modifier = Modifier.semantics { contentDescription = todayActionLabel }) { Text(stringResource(R.string.agenda_today)) }
-            }
-            TextButton(onClick = { pickingDate = true }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = pickerLabel }) {
-                Text(selectedLabel, style = MaterialTheme.typography.titleMedium.copy(textDirection = TextDirection.Content))
-            }
-            val first = range.start.format(shortDates)
-            val last = range.endExclusive.minusDays(1).format(shortDates)
-            Text(if (first == last) first else "\u202a$first – $last\u202c", style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.align(Alignment.CenterHorizontally).padding(horizontal = 16.dp, vertical = 4.dp))
-            Row(Modifier.fillMaxWidth()) {
-                TextButton(enabled = earlier != null, onClick = { earlier?.let { onSelectDate(it.start); onRequestRange(it) } },
-                    modifier = Modifier.weight(1f)) { Text(stringResource(R.string.agenda_earlier)) }
-                TextButton(enabled = later != null, onClick = { later?.let { onSelectDate(it.start); onRequestRange(it) } },
-                    modifier = Modifier.weight(1f)) { Text(stringResource(R.string.agenda_later)) }
-            }
-            }
-            HorizontalDivider()
-            LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("agenda_list"), state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
-                if (noEvents) item(key = "empty_range") {
-                    Text(stringResource(R.string.agenda_no_events_range), style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
-                        modifier = Modifier.padding(24.dp))
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val compact = maxWidth >= 360.dp && LocalDensity.current.fontScale <= 1.3f
+        LaunchedEffect(range, selectedDate, compact) {
+            var selectedIndex = if (noEvents) 1 else 0
+            if (outside) selectedIndex++
+            val group = groups.indexOfFirst { it.date == selectedDate }
+            if (group >= 0 && !noEvents) {
+                for (index in 0 until group) selectedIndex += (if (compact) 0 else 1) + maxOf(1, groups[index].events.size)
+                listState.scrollToItem(selectedIndex)
+            } else listState.scrollToItem(0)
+        }
+        Surface(Modifier.fillMaxSize()) {
+            Column {
+                if (showNavigationChrome) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.agenda_title), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    TextButton(enabled = today in AgendaMinDate..AgendaMaxDate, onClick = { navigateTo(today) },
+                        modifier = Modifier.semantics { contentDescription = todayActionLabel }) { Text(stringResource(R.string.agenda_today)) }
                 }
-                if (outside) item(key = "outside_selection") {
-                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                        Text(stringResource(R.string.agenda_selected_outside), style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content))
-                        TextButton(onClick = { onRequestRange(agendaWindow(selectedDate, days)) }) { Text(stringResource(R.string.agenda_show_selected)) }
-                    }
+                TextButton(onClick = { pickingDate = true }, modifier = Modifier.fillMaxWidth().semantics { contentDescription = pickerLabel }) {
+                    Text(selectedLabel, style = MaterialTheme.typography.titleMedium.copy(textDirection = TextDirection.Content))
                 }
-                groups.forEach { group ->
-                    item(key = "date:${group.date}") {
-                        AgendaDateHeader(group.date, selectedDate, today, locale) { onSelectDate(group.date) }
+                }
+                val first = range.start.format(shortDates)
+                val last = range.endExclusive.minusDays(1).format(shortDates)
+                Text(stringResource(R.string.agenda_loaded_range, if (first == last) first else "\u202a$first – $last\u202c"), style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(horizontal = 16.dp, vertical = 4.dp).testTag("agenda_loaded_range"))
+                Row(Modifier.fillMaxWidth()) {
+                    TextButton(enabled = earlier != null, onClick = { earlier?.let { onSelectDate(it.start); onRequestRange(it) } },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("agenda_earlier")) { Text(stringResource(R.string.agenda_earlier)) }
+                    TextButton(enabled = later != null, onClick = { later?.let { onSelectDate(it.start); onRequestRange(it) } },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("agenda_later")) { Text(stringResource(R.string.agenda_later)) }
+                }
+                if (earlier == null || later == null) Text(stringResource(if (earlier == null) R.string.agenda_start_boundary else R.string.agenda_end_boundary),
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
+                HorizontalDivider()
+                LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("agenda_list"), state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
+                    if (noEvents) item(key = "empty_range") {
+                        Text(stringResource(R.string.agenda_no_events_range), style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+                            modifier = Modifier.padding(24.dp))
                     }
-                    if (group.events.isEmpty()) item(key = "empty:${group.date}") {
-                        Text(stringResource(R.string.agenda_no_events_day), style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp))
+                    if (outside) item(key = "outside_selection") {
+                        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                            Text(stringResource(R.string.agenda_selected_outside), style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content))
+                            TextButton(onClick = { onRequestRange(agendaWindow(selectedDate, days)) }) { Text(stringResource(R.string.agenda_show_selected)) }
+                        }
                     }
-                    items(group.events, key = { event ->
-                        "event:${group.date}:${event.ref.calendarId.value}:${event.ref.eventId}:${event.ref.instanceStart}:${event.ref.instanceEnd}:${event.ref.recurrence}"
-                    }) { event ->
-                        AgendaEventRow(group.date, event, displayZone, use24Hour, locale) {
-                            onSelectDate(group.date)
-                            onOpenEvent(event.ref)
+                    groups.forEach { group ->
+                        if (!compact) item(key = "date:${group.date}") {
+                            AgendaDateHeader(group.date, selectedDate, today, locale) { onSelectDate(group.date) }
+                        }
+                        if (group.events.isEmpty()) item(key = "empty:${group.date}") {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.Top) {
+                                if (compact) AgendaDateHeader(group.date, selectedDate, today, locale, compact = true) { onSelectDate(group.date) }
+                                Text(stringResource(R.string.agenda_no_events_day), style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content),
+                                    modifier = Modifier.weight(1f).padding(horizontal = 16.dp, vertical = 16.dp))
+                            }
+                        }
+                        items(group.events, key = { event ->
+                            "event:${group.date}:${event.ref.calendarId.value}:${event.ref.eventId}:${event.ref.instanceStart}:${event.ref.instanceEnd}:${event.ref.recurrence}"
+                        }) { event ->
+                            Row(Modifier.fillMaxWidth().padding(top = if (event == group.events.first()) 8.dp else 0.dp), verticalAlignment = Alignment.Top) {
+                                if (compact) {
+                                    if (event == group.events.first()) AgendaDateHeader(group.date, selectedDate, today, locale, compact = true) { onSelectDate(group.date) }
+                                    else Spacer(Modifier.width(64.dp))
+                                }
+                                AgendaEventRow(group.date, event, displayZone, use24Hour, locale, Modifier.weight(1f)) {
+                                    onSelectDate(group.date)
+                                    onOpenEvent(event.ref)
+                                }
+                            }
                         }
                     }
                 }
@@ -149,22 +167,26 @@ fun AgendaView(
 }
 
 @Composable
-private fun AgendaDateHeader(date: LocalDate, selectedDate: LocalDate, today: LocalDate, locale: Locale, onSelect: () -> Unit) {
+private fun AgendaDateHeader(date: LocalDate, selectedDate: LocalDate, today: LocalDate, locale: Locale, compact: Boolean = false, onSelect: () -> Unit) {
     val label = date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale))
     val selectLabel = stringResource(R.string.agenda_select_date, label)
     val todayLabel = stringResource(R.string.agenda_today)
-    TextButton(onClick = onSelect, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("agenda_date_$date")
+    TextButton(onClick = onSelect, modifier = (if (compact) Modifier.width(64.dp) else Modifier.fillMaxWidth()).heightIn(min = 48.dp).testTag("agenda_date_$date")
         .semantics { heading(); selected = date == selectedDate; contentDescription = selectLabel + if (date == today) ", $todayLabel" else "" },
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
-        Column(Modifier.fillMaxWidth()) {
-            Text(label, style = MaterialTheme.typography.titleMedium.copy(textDirection = TextDirection.Content))
+        contentPadding = PaddingValues(horizontal = if (compact) 4.dp else 16.dp, vertical = 8.dp)) {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = if (compact) Alignment.CenterHorizontally else Alignment.Start) {
+            if (compact) {
+                Text(date.format(DateTimeFormatter.ofPattern("EEE", locale)), style = MaterialTheme.typography.labelMedium)
+                Text(date.dayOfMonth.toString(), style = MaterialTheme.typography.titleLarge)
+            } else Text(label, Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium.copy(textDirection = TextDirection.ContentOrLtr),
+                textAlign = if (LocalLayoutDirection.current == LayoutDirection.Rtl) TextAlign.Right else TextAlign.Left)
             if (date == today) Text(stringResource(R.string.agenda_today), style = MaterialTheme.typography.labelMedium)
         }
     }
 }
 
 @Composable
-private fun AgendaEventRow(date: LocalDate, event: EventOccurrence, zone: ZoneId, use24Hour: Boolean, locale: Locale, onOpen: () -> Unit) {
+private fun AgendaEventRow(date: LocalDate, event: EventOccurrence, zone: ZoneId, use24Hour: Boolean, locale: Locale, modifier: Modifier = Modifier, onOpen: () -> Unit) {
     val time = agendaTimeLabel(event, zone, use24Hour, locale)
     val details = buildList {
         add(if (event.time is EventTime.AllDay) "${stringResource(R.string.agenda_all_day)}, $time" else time)
@@ -185,13 +207,21 @@ private fun AgendaEventRow(date: LocalDate, event: EventOccurrence, zone: ZoneId
                 minutes.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), minutes))
         }
     }.joinToString(" · ")
-    ListItem(headlineContent = {
-        Text(event.title.ifBlank { stringResource(R.string.agenda_no_title) }, style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Content),
-            textDecoration = if (event.declined) TextDecoration.LineThrough else null)
-    }, supportingContent = { Text(details, style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Content)) },
-        leadingContent = { Box(Modifier.size(12.dp).background(Color(event.color or 0xff000000.toInt()), CircleShape)) },
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("agenda_event_${date}_${event.ref.calendarId.value}_${event.ref.eventId}")
-            .clickable(onClickLabel = stringResource(R.string.agenda_open_event), onClick = onOpen))
+    val color = Color(event.color or 0xff000000.toInt())
+    val paragraph = if (LocalLayoutDirection.current == LayoutDirection.Rtl) TextAlign.Right else TextAlign.Left
+    Surface(modifier.padding(start = 4.dp, end = 12.dp, bottom = 6.dp).fillMaxWidth().heightIn(min = 48.dp)
+        .testTag("agenda_event_${date}_${event.ref.calendarId.value}_${event.ref.eventId}")
+        .clickable(onClickLabel = stringResource(R.string.agenda_open_event), onClick = onOpen),
+        shape = MaterialTheme.shapes.medium, color = if (event.declined) MaterialTheme.colorScheme.surface else color,
+        contentColor = if (event.declined) MaterialTheme.colorScheme.onSurface else eventTextColor(color),
+        border = if (event.declined) BorderStroke(1.dp, color) else null) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text(event.title.ifBlank { stringResource(R.string.agenda_no_title) }, Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.ContentOrLtr), textAlign = paragraph,
+                textDecoration = if (event.declined) TextDecoration.LineThrough else null)
+            Text(details, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.ContentOrLtr), textAlign = paragraph)
+        }
+    }
 }
 
 internal fun agendaTimeLabel(event: EventOccurrence, zone: ZoneId, use24Hour: Boolean, locale: Locale): String = when (val time = event.time) {

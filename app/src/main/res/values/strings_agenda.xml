@@ -23,4 +23,7 @@
         <item quantity="one">%d minute</item>
         <item quantity="other">%d minutes</item>
     </plurals>
+    <string name="agenda_loaded_range">Showing %1$s</string>
+    <string name="agenda_start_boundary">Start of supported dates (year 1).</string>
+    <string name="agenda_end_boundary">End of supported dates (year 9999).</string>
 </resources>
