@@ -1,6 +1,7 @@
 package dev.swapnilraj.calendar.data.settings
 
 import androidx.datastore.preferences.core.*
+import dev.swapnilraj.calendar.core.InvitationFilter
 import dev.swapnilraj.calendar.ui.calendars.CalendarViewOption
 import dev.swapnilraj.calendar.ui.settings.*
 import java.time.ZoneId
@@ -62,7 +63,11 @@ object CalendarSettingsCodec {
         }
         preferences[weather] = options.weatherVisible
         preferences[units] = options.weatherUnits.name
-        preferences[invitation] = options.invitationFilter.name
+        // The legacy sheet has no invitation control. Its fallback ALL is not an explicit
+        // instruction to replace an unknown future value or malformed stored type.
+        val storedInvitation = preferences.asMap().entries.firstOrNull { it.key.name == invitation.name }?.value
+        if (storedInvitation == null || InvitationFilter.entries.any { it.name == storedInvitation } ||
+            options.invitationFilter != InvitationFilter.ALL) preferences[invitation] = options.invitationFilter.name
     }
 
     fun valid(change: CalendarSettingChange): Boolean = when (change) {
