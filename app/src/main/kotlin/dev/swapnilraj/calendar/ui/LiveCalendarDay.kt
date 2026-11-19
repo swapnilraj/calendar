@@ -547,10 +547,15 @@ internal fun LiveCalendarDay(
                                     when (val eligible = readSeries(seriesMutations, ref)) {
                                         is SeriesReadResult.Ready -> {
                                             val source = eligible.series
+                                            val freshIdentity = result.value.calendar?.identity?.takeIf {
+                                                it.calendarId == ref.calendarId && it.account.name.isNotBlank() && it.account.type.isNotBlank()
+                                            }
                                             val anyAction = SeriesEditorAction.entries.any { action ->
                                                 RecurrenceScope.entries.any { canPrepareSeriesScope(source, it, action) }
                                             }
-                                            CalendarReadState.Ready(NativeDetails(source.selectedDetails.copy(
+                                            if (freshIdentity == null || source.selectedDetails.calendar?.identity != freshIdentity)
+                                                CalendarReadState.Unavailable
+                                            else CalendarReadState.Ready(NativeDetails(source.selectedDetails.copy(
                                                 canEdit = if (anyAction) AccessDecision.ALLOWED else AccessDecision.DENIED), series = source))
                                         }
                                         SeriesReadResult.PermissionRequired -> CalendarReadState.PermissionRequired

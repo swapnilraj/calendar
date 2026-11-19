@@ -787,6 +787,8 @@ separate application composition supplies their routes.
 
 The live application supplies those routes: an exact recurring reference opens an explicit scope
 picker using fresh series eligibility, then the retained editor. Scope and editor routes preserve
+the first fresh details read's full calendar namespace; a changed namespace during eligibility reads
+scrubs details and exposes no series action or draft. The routes also preserve
 the original occurrence identity and generation across recreation. Frozen series commands recover
 through their own writer without ordinary retirement or replacement. Existing one-off, meeting and
 widget permission and ownership boundaries remain in force; unavailable or unverified series
