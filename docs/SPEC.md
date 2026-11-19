@@ -14,7 +14,21 @@ title/notes/token payload. These opaque draft documents add no storage schema, p
 automatic retry, or receipt4/6 migration. This packet supplies protocol prerequisites; services and UI
 acceptance remain separate.
 
+### Retained meeting-family drafts
+
+The draft browser identifies response, creation and organizer-owned meeting records before ordinary
+draft decoding. Unknown or corrupt family/version records remain retained with no ordinary launch.
+Each family exposes Open only when the host supplies its matching callback; refreshing or listing
+never submits, normalizes or rewrites a draft. Discard keeps exact-record concurrency checks.
+Existing ordinary sorting, display and error behavior remain unchanged. Application routing is separate.
+
 ### Fenced agenda widget engine
+
+Widget application integration supplies durable binding/bootstrap/quarantine ownership before opening
+framework work. Configuration saves use the widget's own context and exact revision. Widget event
+opens revalidate binding, calendar namespace and occurrence before showing read-only details; Today,
+Create and More actions use validated one-shot navigation and retain existing editor drafts. The five
+widget components are activated only after their real owners, configuration and destinations exist.
 
 Widget work is serialized and bootstraps its durable binding/removal ledger before processing updates.
 Epoch and generation checks prevent stale work from recreating removed or rebound widgets. Widget
