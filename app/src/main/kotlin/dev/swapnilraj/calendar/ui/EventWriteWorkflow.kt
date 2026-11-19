@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
 import dev.swapnilraj.calendar.android.navigation.isCalendarSeedNativeHandoffVerified
+import dev.swapnilraj.calendar.android.navigation.CalendarEditReviewResult
 import dev.swapnilraj.calendar.ui.events.*
 import dev.swapnilraj.calendar.ui.events.meetings.create.MeetingCreationLaunch
 import kotlinx.coroutines.CancellationException
@@ -110,6 +111,7 @@ internal fun EventWriteWorkflow(
     onPromotedMeeting: ((MeetingCreationLaunch) -> Unit)? = null,
     presentationVisible: Boolean = true,
     onControllerPresence: (EventEditorController, Boolean) -> Unit = { _, _ -> },
+    incomingEditReview: CalendarEditReviewResult.Editor? = null,
 ) {
     var retry by remember(request) { mutableIntStateOf(0) }
     val latestPermission by rememberUpdatedState(requestWritePermission)
@@ -119,6 +121,10 @@ internal fun EventWriteWorkflow(
         value = try {
             val document = withContext(Dispatchers.IO) {
                 drafts.load(request.draftId)?.let { record ->
+                    if (record.id.startsWith("incoming-edit:")) {
+                        // Generic draft opens cannot bypass the private host's source pin.
+                        require(incomingEditReview != null && request.matches(incomingEditReview.launch))
+                    }
                     if (record.id.startsWith("incoming:")) require(isCalendarSeedNativeHandoffVerified(record,
                         drafts.load("incoming-review:${record.id.removePrefix("incoming:")}")))
                     OrdinaryDraftDocument.decode(record)
