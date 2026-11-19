@@ -491,7 +491,7 @@ class OrdinaryEditReceiptTest {
             val phase = store.operationHeader("precision-create")?.phase
             println("Receipt4 precision authoring: kind=CREATE case=$label exact=$exact result=${result.javaClass.simpleName} batches=${provider.batchCount} phase=$phase nativeExact=$nativeExact")
             if (exact) {
-                if (saved?.ref?.instanceStart != candidate.start || saved.ref.instanceEnd != candidate.end ||
+                if (saved == null || saved.ref.instanceStart != candidate.start || saved.ref.instanceEnd != candidate.end ||
                     provider.batchCount != 1 || nativeExact != true || phase != "VERIFIED")
                     failures += "CREATE/$label: exact millisecond create was not verified exactly"
             } else if (result != MutationResult.ValidationFailed(setOf(InvalidEventField.TIME)) || provider.batchCount != 0 ||
