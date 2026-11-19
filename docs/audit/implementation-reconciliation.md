@@ -27,6 +27,13 @@ Earlier attempts retain their original meaning:
 
 ## Latest integrated correction — 19 November 2026
 
+The newer complete default gate at `563dea7` passes **2,407 tests**, APK assembly, lint and
+release-manifest processing with zero failures/errors/skips. It adds the legacy draft-family refusal
+regression. The first run failed with ENOSPC; that failed evidence remains preserved separately from
+the fresh successful run. See [checkpoint evidence](evidence/legacy-family-default-full-gate-2026-11-19.json).
+This local checkpoint does not satisfy account, device, beta or stable release acceptance.
+
+
 The later complete gate at `ea389cf` now passes2,406 tests, APK assembly, lint and release-manifest
 processing (zero failures/errors/skips). Normal `CalendarApp`/package/18debug and16release enabled
 components are independently checked; both probe flags together are rejected. See the

@@ -4,21 +4,23 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
-The complete default gate at **`ea389cf47d26b27f6c3298bd0843896dd98093a0` passes2,406 tests**
-(app2,132/core257/weather17), debug APK assembly, lint and release-manifest processing with zero
-failures/errors/skips in6m2s. Default debug/release retain `CalendarApp`, their normal package and
-18/16 enabled components; probe-only queries are absent. Supplying both probe flags is correctly
-refused during configuration. The opt-in actual-package regression is excluded from default tests
-and retains its separately verified run. See
-[complete checkpoint evidence](audit/evidence/identity-precision-default-full-gate-2026-11-19.json).
+The complete default gate at **`563dea70ed360f766162712c674f9b92dfd2e363` passes 2,407 tests**
+(app 2,133/core 257/weather 17), debug APK assembly, lint and release-manifest processing with zero
+failures/errors/skips in 7m9s. Normal debug/release retain `CalendarApp`, 18/16 enabled components
+and no probe-only queries. The added regression checks that legacy ordinary drafts with foreign or
+malformed family tags stay retained and unreadable. See the
+[complete checkpoint evidence](audit/evidence/legacy-family-default-full-gate-2026-11-19.json).
 
-[Verified source](https://github.com/swapnilraj/calendar/tree/codex/verified-2406-20261119) is backed up
-separately from publication. Frozen developer APK48,252,332 bytes SHA-256
-`6cab46cb5ac551e249ec5ac8f4fc31d970fd0ba0591f0a8baa5c8af648c0e59d`;
-ZIP14,574,017 bytes SHA-256 `c63b290768da784468f6b0391e55ac7358fc72fa51e91f0d8c3bfa6bd56959df`.
-Files `/tmp/daylight-verified-2406-ea389cf/`; signer90936f83… verified. Stable owner signing and required
-account/device/beta acceptance remain pending. PR81/82 merged after full CI as `4e0ed50`/`d0e3dc2`;
-meeting/browser/application and widget/incoming-intent publication still needs bounded integration.
+[Verified source](https://github.com/swapnilraj/calendar/tree/codex/verified-2407-20261119) is backed up
+separately from publication. Frozen developer APK 48,252,332 bytes SHA-256
+`efe90cccfe4207dd59d7b956205737dec8c5e870735bcf8e422afcf197d88e01`;
+ZIP 14,569,165 bytes SHA-256 `ec5ebb89f73f324dd19ec5090e9251dae953600fe9e62c1269c9e5e24d9e2af4`.
+Files `/tmp/daylight-verified-2407-563dea7/`; signer 90936f83… verified. The first attempt at the same
+source failed because disk space ran out; its failure and partial XML remain preserved. Removing only
+ignored inactive compiler intermediates freed approximately 6 GiB before the successful fresh run.
+PR81/82/83 merged after full CI as `4e0ed50`/`d0e3dc2`/`1d8af3a`. Meeting application routes,
+widget application integration and incoming-intent publication still need bounded integration.
+Stable owner signing and required account/device/beta acceptance remain pending.
 
 The receipt4 precision correction is integrated at `bb7e88a`: authored non-millisecond times return
 TIME before dispatch, and invalid frozen original/result identities cannot authorize retry or acknowledgement.
@@ -26,7 +28,7 @@ The corrected bounded publication passes152 checks, including25 precision subcas
 blocker was reproduced in13 cases before correction. The prior compile failure and the single recurrence
 error-classification fixture failure remain separate in the
 [evidence](audit/evidence/ordinary-edit-precision-2026-11-19.json). [PR82](https://github.com/swapnilraj/calendar/pull/82)
-is open. The later complete default gate at `ea389cf` passes2,406 checks.
+is merged. The later complete default gate at `563dea7` passes 2,407 checks.
 
 The exact frozen `e0ce17a` reminder pair passed native SDK identity/capability admission on the owned
 API35 emulator: UID10213, all default component overrides,18 components (4 reminder entry points enabled),

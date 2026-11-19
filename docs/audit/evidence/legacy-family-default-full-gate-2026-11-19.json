@@ -1,0 +1,159 @@
+{
+  "gate": {
+    "source": "563dea70ed360f766162712c674f9b92dfd2e363",
+    "startedAt": "2026-11-19T11:55:06.596702+00:00",
+    "finishedAt": "2026-11-19T12:02:16.621976+00:00",
+    "seconds": 430.025,
+    "command": "./gradlew test :app:assembleDebug :app:lintDebug :app:processReleaseMainManifest",
+    "exitCode": 0,
+    "counts": {
+      "tests": 2407,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "modules": {
+      "app": {
+        "tests": 2133,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "calendar-core": {
+        "tests": 257,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "weather": {
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "log": "/tmp/daylight-legacy-family-default-full-gate2.log",
+    "xml": "/tmp/daylight-legacy-family-default-full-gate2-xml",
+    "headAfter": "563dea70ed360f766162712c674f9b92dfd2e363",
+    "statusAfter": "",
+    "expectedDefaultCount": 2407,
+    "availableBytesAfter": 6498148352,
+    "priorInfrastructureFailure": "/tmp/daylight-legacy-family-default-full-gate1-infrastructure-result.json"
+  },
+  "frozen": {
+    "source": "563dea70ed360f766162712c674f9b92dfd2e363",
+    "folder": "/tmp/daylight-verified-2407-563dea7",
+    "apkBytes": 48252332,
+    "apkSha256": "efe90cccfe4207dd59d7b956205737dec8c5e870735bcf8e422afcf197d88e01",
+    "zipBytes": 14569165,
+    "zipSha256": "ec5ebb89f73f324dd19ec5090e9251dae953600fe9e62c1269c9e5e24d9e2af4",
+    "signerSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278",
+    "normalManifests": {
+      "debug": {
+        "package": "dev.swapnilraj.calendar",
+        "application": "CalendarApp",
+        "enabledComponents": 18,
+        "probeOnlyQueries": false
+      },
+      "release": {
+        "package": "dev.swapnilraj.calendar",
+        "application": "CalendarApp",
+        "enabledComponents": 16,
+        "probeOnlyQueries": false
+      }
+    },
+    "counts": {
+      "tests": 2407,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "priorInfrastructureFailure": {
+    "source": "563dea70ed360f766162712c674f9b92dfd2e363",
+    "status": "FAILED_DURING_ENOSPC_NOT_A_PASS",
+    "command": "./gradlew test :app:assembleDebug :app:lintDebug :app:processReleaseMainManifest",
+    "gradleExitCode": 1,
+    "metadataSnapshotFailure": "OSError28 No space while copying SeriesEditorScreenTest.xml; original partial snapshot preserved separately.",
+    "validXmlObservedCounts": {
+      "tests": 2401,
+      "failures": 1838,
+      "errors": 0,
+      "skipped": 0
+    },
+    "xmlParseErrors": [],
+    "spaceEvidenceCount": 1838,
+    "spaceEvidenceExamples": [
+      {
+        "suite": "dev.swapnilraj.calendar.GridEditorIntegrationTest",
+        "term": "No space left on device"
+      },
+      {
+        "suite": "dev.swapnilraj.calendar.GridEditorIntegrationTest",
+        "term": "No space left on device"
+      },
+      {
+        "suite": "dev.swapnilraj.calendar.GridEditorIntegrationTest",
+        "term": "No space left on device"
+      },
+      {
+        "suite": "dev.swapnilraj.calendar.GridEditorIntegrationTest",
+        "term": "No space left on device"
+      },
+      {
+        "suite": "dev.swapnilraj.calendar.GridEditorIntegrationTest",
+        "term": "No space left on device"
+      },
+      {
+        "suite": "dev.swapnilraj.calendar.GridEditorIntegrationTest",
+        "term": "No space left on device"
+      },
+      {
+        "suite": "dev.swapnilraj.calendar.GridEditorIntegrationTest",
+        "term": "No space left on device"
+      },
+      {
+        "suite": "dev.swapnilraj.calendar.GridEditorIntegrationTest",
+        "term": "No space left on device"
+      },
+      {
+        "suite": "dev.swapnilraj.calendar.events.CreateCalendarIdentityTest",
+        "term": "No space left on device"
+      },
+      {
+        "suite": "dev.swapnilraj.calendar.events.CreateCalendarIdentityTest",
+        "term": "No space left on device"
+      }
+    ],
+    "failureExamples": [
+      {
+        "suite": "dev.swapnilraj.calendar.GridEditorIntegrationTest",
+        "message": "java.lang.RuntimeException: java.nio.file.FileSystemException: /tmp/robolectric-GridEditorIntegrationTest_nativeEmptySlotCreatesDurableTimedDraftAndWaitsForExplicitSave203412588432"
+      },
+      {
+        "suite": "dev.swapnilraj.calendar.GridEditorIntegrationTest",
+        "message": "java.lang.RuntimeException: java.nio.file.FileSystemException: /tmp/robolectric-GridEditorIntegrationTest_nativeMovePerformsPreflightThenFreshReadsAndPreservesUnrelatedFields714069"
+      },
+      {
+        "suite": "dev.swapnilraj.calendar.GridEditorIntegrationTest",
+        "message": "java.lang.RuntimeException: java.nio.file.FileSystemException: /tmp/robolectric-GridEditorIntegrationTest_nativeDeniedReadOnlyPreflightNeverOpensAnEditorOrSaves17475351240886890942"
+      },
+      {
+        "suite": "dev.swapnilraj.calendar.GridEditorIntegrationTest",
+        "message": "java.lang.RuntimeException: java.nio.file.FileSystemException: /tmp/robolectric-GridEditorIntegrationTest_nativeOverlapRequiresExplicitOffsetAndKeepsChoiceInDurableEditor6353569557"
+      },
+      {
+        "suite": "dev.swapnilraj.calendar.GridEditorIntegrationTest",
+        "message": "java.lang.RuntimeException: java.nio.file.FileSystemException: /tmp/robolectric-GridEditorIntegrationTest_nativeLowerHandleResizesEndRatherThanMovingStart16665939163459218295: No s"
+      }
+    ],
+    "log": "/tmp/daylight-legacy-family-default-full-gate1.log",
+    "logSha256": "5fff1cb08a7b35c308afb3abacf8c732ac757e3e9eca499479a8d47f96ab1836",
+    "recoveredXml": "/tmp/daylight-legacy-family-default-full-gate1-recovered-xml",
+    "partialXml": "/tmp/daylight-legacy-family-default-full-gate1-xml",
+    "cleanup": "/tmp/daylight-inactive-build-cleanup-20261119.json",
+    "availableBytes": 6470258688
+  },
+  "backupBranch": "codex/verified-2407-20261119",
+  "scope": "Default local tests/build/lint/release-manifest checkpoint only; developer debug signing. Required account/device/beta/owner release gates pending."
+}
