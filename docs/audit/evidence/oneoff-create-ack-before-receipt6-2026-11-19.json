@@ -2,7 +2,7 @@
   "schema": 1,
   "date": "2026-11-19",
   "scope": "Dedicated synthetic SQLite CalendarContract provider; no real account/device operations",
-  "status": "REPRODUCED_BEFORE_RECEIPT6",
+  "status": "CORRECTED_IN_AGGREGATE_FOCUSED_VERIFICATION",
   "testCheckout": "e12ed2f",
   "sourceBase": "62bbfdf",
   "productionSource": "12917f1",
@@ -17,6 +17,29 @@
     "oneOffMissingReminderAckCannotClaimSave",
     "oneOffReorderedReminderAckCannotClaimSave"
   ],
-  "forwardControls": "Six UID/frozen-plan acceptance controls in the same test file were not run in this before-fix experiment.",
-  "next": "Approved receipt6 implementation; fixed-after evidence remains pending."
+  "forwardControls": "The six additional UID/READ-only controls passed in the nine-check after suite; they were not part of the three historical defect probes.",
+  "next": "Full aggregate test/debug APK/lint gate is running; account/device/beta/signing remain pending.",
+  "after": {
+    "sourceCheckout": "97c3f3f",
+    "tests": 9,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "xmlSha256": "56c76a0f858159c34d8552ca07810fd056c971f70ae979b6cfaea4e7415955d3",
+    "cases": [
+      "identicalPublicDraftsWithDifferentOperationIdsGetDistinctGeneratedUids",
+      "invalidOneOffMasterStillHasNoKnownIdAndCannotReplay",
+      "knownCommitInEitherModeRecoversAfterReopenWithReadOnlyAccessAndNoReplay",
+      "newOneOffUidIsStableAcrossReadOnlyRecoveryAndRepeatedPublicCreateCalls",
+      "oneOffMalformedReminderAckCannotClaimSave",
+      "oneOffMissingReminderAckCannotClaimSave",
+      "oneOffReorderedReminderAckCannotClaimSave",
+      "oneOffUidReplacementFailsBeforePrivateEventOrChildPayloadRead",
+      "recurringUidReplacementFailsBeforePrivateEventOrChildPayloadRead"
+    ],
+    "unchangedOriginalThree": true,
+    "combinedProviderVerification": 127,
+    "selectedActualAppJourneys": 20,
+    "fullAggregateGate": "RUNNING; recorded separately"
+  }
 }

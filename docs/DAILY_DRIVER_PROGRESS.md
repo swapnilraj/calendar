@@ -42,10 +42,13 @@ UID binding remain the next bounded protocol packet; recovery still recompiles r
 Subsequent independent [one-off ACK probes](audit/evidence/oneoff-create-ack-before-receipt6-2026-11-19.json)
 reproduced three false local-save results in the still-active receipt2 creation path (malformed,
 missing and reordered reminder ACKs). These new cases are not covered by the 2,211-test checkpoint.
-The approved receipt6 packet covers both new creation modes; correction/after evidence is pending.
-The isolated codec at `e5cc005` passed 10 focused protocol checks, including historical-zone decoding
-without current timezone lookup. Its provider handler and app activation are still in progress;
-those component results do not close the one-off ACK defect or replace the aggregate checkpoint.
+Receipt6 is now integrated at `97c3f3f` for both new creation modes. Independent clean-checkout
+verification passed 127 checks, including the unchanged three ACK regressions and six UID/private-read
+controls. Twenty selected actual-app synthetic journeys also passed. The codec now has 11 checks,
+including strict all-day zone types and historical-zone decode without current lookup. New source
+freezes the winning native plan/generated UID and verifies complete child proof; legacy operations
+remain byte-preserving. The full test/debug APK/lint gate is running; these focused results do not
+replace the latest accepted aggregate checkpoint above.
 
 Incoming public EDIT review now supports an explicit proposed zone for eligible NULL-zone timed
 sources, including the displayed zone. Exact Apply/CAS and issued ZONE rights are required; absent-zone
