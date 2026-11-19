@@ -1,0 +1,52 @@
+<resources>
+    <string name="recurrence_editor_repeat">Repeat</string>
+    <string name="recurrence_editor_none">Does not repeat</string>
+    <string name="recurrence_editor_daily">Daily</string>
+    <string name="recurrence_editor_weekly">Weekly</string>
+    <string name="recurrence_editor_monthly">Monthly</string>
+    <string name="recurrence_editor_yearly">Yearly</string>
+    <string name="recurrence_editor_interval">Repeat every (1–1000)</string>
+    <string name="recurrence_editor_weekdays">Repeat on</string>
+    <string name="recurrence_editor_month_date">Day of the month</string>
+    <string name="recurrence_editor_month_weekday">Weekday in the month</string>
+    <string name="recurrence_editor_day">Day of the month (1–31)</string>
+    <string name="recurrence_editor_ordinal">Week number (1–5, or −1 to −5 from the end)</string>
+    <string name="recurrence_editor_month">Month (1–12)</string>
+    <string name="recurrence_editor_week_start">Week starts on</string>
+    <string name="recurrence_editor_end">Ends</string>
+    <string name="recurrence_editor_no_end">No end date</string>
+    <string name="recurrence_editor_count">After a number of occurrences</string>
+    <string name="recurrence_editor_through">Through a date</string>
+    <string name="recurrence_editor_count_value">Occurrences (1–10000)</string>
+    <string name="recurrence_editor_through_value">Last eligible date (YYYY-MM-DD)</string>
+    <string name="recurrence_editor_skips">Dates that do not exist, such as the 31st in a shorter month, are omitted.</string>
+    <string name="recurrence_editor_review">Review recurring event</string>
+    <string name="recurrence_editor_weekly_days">Weekly on %1$s</string>
+    <string name="recurrence_editor_monthly_day">Monthly on day %1$d</string>
+    <string name="recurrence_editor_monthly_ordinal">Monthly on the %1$s %2$s</string>
+    <string name="recurrence_editor_yearly_date">Yearly on %1$s</string>
+    <string name="recurrence_editor_week_start_value">Week starts on %1$s</string>
+    <string name="recurrence_editor_end_count">After %1$d occurrences</string>
+    <string name="recurrence_editor_end_date">Through %1$s, inclusive</string>
+    <string name="recurrence_editor_zone_value">Event time zone: %1$s</string>
+    <string name="recurrence_editor_preview">First expected occurrences</string>
+    <string name="recurrence_editor_preview_limit">This is a short expected preview. Your calendar provider determines the saved series and later occurrences.</string>
+    <string name="recurrence_editor_confirm">Create recurring event</string>
+    <string name="recurrence_editor_unavailable">Creating recurring events is not available in this view. Your repeat choices are retained.</string>
+    <string name="recurrence_editor_invalid">Check the repeat pattern, interval, limits, and first event date. The first date must match the pattern.</string>
+    <string name="recurrence_editor_transition">The expected occurrences include an unresolved clock change. Adjust the time or repeat limits before creating this series.</string>
+    <plurals name="recurrence_editor_every_day"><item quantity="one">Every %1$d day</item><item quantity="other">Every %1$d days</item></plurals>
+    <plurals name="recurrence_editor_every_week"><item quantity="one">Every %1$d week</item><item quantity="other">Every %1$d weeks</item></plurals>
+    <plurals name="recurrence_editor_every_month"><item quantity="one">Every %1$d month</item><item quantity="other">Every %1$d months</item></plurals>
+    <plurals name="recurrence_editor_every_year"><item quantity="one">Every %1$d year</item><item quantity="other">Every %1$d years</item></plurals>
+    <string name="recurrence_editor_first">first</string>
+    <string name="recurrence_editor_second">second</string>
+    <string name="recurrence_editor_third">third</string>
+    <string name="recurrence_editor_fourth">fourth</string>
+    <string name="recurrence_editor_fifth">fifth</string>
+    <string name="recurrence_editor_last">last</string>
+    <string name="recurrence_editor_second_last">second to last</string>
+    <string name="recurrence_editor_third_last">third to last</string>
+    <string name="recurrence_editor_fourth_last">fourth to last</string>
+    <string name="recurrence_editor_fifth_last">fifth to last</string>
+</resources>

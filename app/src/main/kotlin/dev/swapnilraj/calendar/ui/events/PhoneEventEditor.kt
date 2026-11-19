@@ -132,6 +132,7 @@ internal fun PhoneEventEditorContent(
                     PhoneEditorOffsetChoices(fields.startDate, fields.startTime, fields.zone, fields.startOffset, view.canEdit(EditableField.TIME), stringResource(R.string.phone_event_start_time)) { value -> controller.change { it.copy(startOffset = value) } }
                     PhoneEditorOffsetChoices(fields.endDate, fields.endTime, fields.zone, fields.endOffset, view.canEdit(EditableField.TIME), stringResource(R.string.phone_event_end_time)) { value -> controller.change { it.copy(endOffset = value) } }
                 }
+                if (!controller.isEditing && controller.recurringCreationSupported) PhoneEditorRow(PhoneEventGlyph.REPEAT, phoneRepeatSummary(fields.recurrence), enabled = !view.blocked, onClick = { panel = PhoneEditorPanel.REPEAT })
                 HorizontalDivider(Modifier.padding(start = 64.dp))
                 PhoneEditorRow(PhoneEventGlyph.PLACE, fields.location.ifBlank { stringResource(R.string.phone_event_add_location) }, enabled = view.canEdit(EditableField.LOCATION), onClick = { panel = PhoneEditorPanel.LOCATION })
                 PhoneEditorRow(PhoneEventGlyph.ALERT, phoneAlertsSummary(fields.alerts), enabled = view.canEdit(EditableField.ALERTS), onClick = { panel = PhoneEditorPanel.ALERTS })
@@ -147,6 +148,9 @@ internal fun PhoneEventEditorContent(
         }
     }
     panel?.let { current -> PhoneEditorPanelContent(current, view, use24Hour) { panel = null } }
+    state.recurrenceReview?.let { plan ->
+        runCatching { fields.recurrence.normalized() }.getOrNull()?.let { spec -> RecurrenceCreationReview(plan, spec, fields.title, controller::confirmRecurringCreate, controller::dismissRecurrenceReview, use24Hour = use24Hour) }
+    }
     if (state.confirmDelete) AlertDialog(onDismissRequest = controller::cancelDelete, title = { Text(stringResource(R.string.events_editor_confirm_delete)) }, text = { Text(stringResource(R.string.events_editor_delete_description)) },
         confirmButton = { TextButton(onClick = controller::confirmDelete) { Text(stringResource(R.string.events_editor_delete)) } }, dismissButton = { TextButton(onClick = controller::cancelDelete) { Text(stringResource(R.string.events_editor_cancel)) } })
     confirm?.let { action -> AlertDialog(onDismissRequest = { confirm = null },

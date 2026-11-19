@@ -5,6 +5,17 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+### Authored recurring creation in the phone editor
+
+Production creation enables daily, weekly, monthly and yearly recurrence through the full-height
+phone editor. The embedded host defaults this capability off; enabling it requires the existing
+recurring-create writer. A complete rule and explicit master-time review are required before a
+confirmed create. Changing relevant fields invalidates that review. Opening, restoring or returning
+from a permission request never submits a create. Frozen commands and uncertain outcomes retain
+their existing receipt6 recovery rules, and local save does not establish server delivery.
+This packet enables ordinary recurring creation only; meeting promotion, RSVP and scoped-series
+editing remain separate application routes.
+
 ### Schedule range endpoints
 
 Schedule always shows its loaded date range and explicit Earlier/Later controls, including when

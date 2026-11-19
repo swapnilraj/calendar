@@ -80,6 +80,19 @@ internal fun phoneAlertsSummary(raw: String): String {
     return when (alerts.size) { 0 -> stringResource(R.string.phone_event_no_notification); 1 -> phoneAlertLabel(alerts.single()); else -> pluralStringResource(R.plurals.phone_event_notification_count, alerts.size, alerts.size) }
 }
 @Composable
+internal fun phoneRepeatSummary(raw: RecurrenceEditorFields): String {
+    val spec = try { raw.normalized() } catch (_: Exception) { return stringResource(R.string.phone_event_repeat_incomplete) }
+        ?: return stringResource(R.string.recurrence_editor_none)
+    val locale = LocalLocale.current.platformLocale
+    val unit = when (spec.pattern) { RecurrencePattern.Daily -> R.plurals.recurrence_editor_every_day; is RecurrencePattern.Weekly -> R.plurals.recurrence_editor_every_week; is RecurrencePattern.MonthlyDate, is RecurrencePattern.MonthlyWeekday -> R.plurals.recurrence_editor_every_month; is RecurrencePattern.Yearly -> R.plurals.recurrence_editor_every_year }
+    val interval = if (spec.interval == 1) stringResource(when (spec.pattern) {
+        RecurrencePattern.Daily -> R.string.recurrence_editor_daily; is RecurrencePattern.Weekly -> R.string.recurrence_editor_weekly
+        is RecurrencePattern.MonthlyDate, is RecurrencePattern.MonthlyWeekday -> R.string.recurrence_editor_monthly; is RecurrencePattern.Yearly -> R.string.recurrence_editor_yearly
+    }) else pluralStringResource(unit, spec.interval, spec.interval)
+    val weekly = spec.pattern as? RecurrencePattern.Weekly
+    return if (weekly != null) "$interval · ${weekly.days.sortedBy { it.value }.joinToString(", ") { it.getDisplayName(TextStyle.SHORT, locale) }}" else interval
+}
+@Composable
 internal fun phoneMetadataLabel(value: String, privacy: Boolean): String = stringResource(if (privacy) when(value) {
     "" -> R.string.events_not_provided; "0" -> R.string.events_calendar_default_visibility; "1" -> R.string.events_confidential; "2" -> R.string.events_private; "3" -> R.string.events_public; else -> R.string.phone_event_review_value
 } else when(value) {
@@ -109,9 +122,9 @@ internal fun phoneEditorProblem(problem: EditorProblem) = when (problem) {
     EditorProblem.RETRY_UNAVAILABLE -> R.string.phone_event_no_retry
     EditorProblem.VISIBILITY_REQUIRED -> R.string.events_copy_visibility_required
     EditorProblem.CALENDAR_REQUIRED -> R.string.events_calendar_reselection
-    EditorProblem.RECURRENCE_UNSUPPORTED -> R.string.events_editor_unsupported
-    EditorProblem.RECURRENCE_INVALID -> R.string.events_editor_invalid
-    EditorProblem.RECURRENCE_REVIEW -> R.string.events_editor_unsupported
+    EditorProblem.RECURRENCE_UNSUPPORTED -> R.string.recurrence_editor_unavailable
+    EditorProblem.RECURRENCE_INVALID -> R.string.recurrence_editor_invalid
+    EditorProblem.RECURRENCE_REVIEW -> R.string.recurrence_editor_transition
 }
 internal fun phoneEditorNotice(notice: EditorNotice) = when (notice) {
     EditorNotice.DUPLICATE_AS_ONE_OFF -> R.string.events_copy_one_off
