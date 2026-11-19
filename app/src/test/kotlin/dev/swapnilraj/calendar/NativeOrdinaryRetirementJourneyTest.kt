@@ -7,6 +7,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.data.CalendarPreferenceState
 import dev.swapnilraj.calendar.data.calendar.CalendarWriterTest
 import dev.swapnilraj.calendar.data.reminders.SavedReminderSettings
 import dev.swapnilraj.calendar.ui.calendars.CalendarViewOption
@@ -14,6 +15,7 @@ import dev.swapnilraj.calendar.ui.events.FrozenEditorSubmission
 import dev.swapnilraj.calendar.ui.events.OrdinaryDraftDocument
 import dev.swapnilraj.calendar.ui.settings.*
 import java.time.ZoneId
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
@@ -46,6 +48,12 @@ class NativeOrdinaryRetirementJourneyTest {
             app.settings.setDisplaySettings(CalendarSettingsOptions(weatherVisible = false, timedReminderMinutes = 10, displayZone = DisplayZoneOption.Fixed(ZoneId.of("UTC"))))
             assertTrue(app.settings.setCalendarView(CalendarViewOption.DAY.name))
             val metadata = app.calendarReader.readCalendars() as CalendarReadState.Ready
+            val before = app.settings.calendarPreferences.first { it is CalendarPreferenceState.Ready } as CalendarPreferenceState.Ready
+            println("retirement_fixture_preconfigured_default_present=${before.value.defaultCalendar != null}")
+            // This journey exercises an explicit calendar choice, independent of earlier fixtures.
+            assertTrue(app.settings.setDefaultCalendar(null, metadata.value))
+            val ready = app.settings.calendarPreferences.first { it is CalendarPreferenceState.Ready } as CalendarPreferenceState.Ready
+            assertNull(ready.value.defaultCalendar)
             assertTrue(app.settings.setCalendarSelection(CalendarSelection.Explicit(setOf(CalendarId(2))), metadata.value))
         }
         val activity = Robolectric.buildActivity(MainActivity::class.java)
