@@ -1,0 +1,26 @@
+<resources>
+    <string name="seed_review_title">Review new event</string>
+    <string name="seed_review_complete">Review the dates, times and repeat rule before opening the event editor.</string>
+    <string name="seed_review_start_date">Start date (YYYY-MM-DD)</string>
+    <string name="seed_review_end_date">End date, inclusive (YYYY-MM-DD)</string>
+    <string name="seed_review_all_day">All day</string>
+    <string name="seed_review_start_time">Start time (HH:MM)</string>
+    <string name="seed_review_end_time">End time (HH:MM)</string>
+    <string name="seed_review_zone">Time zone</string>
+    <string name="seed_review_start_offset">Start UTC offset, if ambiguous</string>
+    <string name="seed_review_end_offset">End UTC offset, if ambiguous</string>
+    <string name="seed_review_original_rule">Original repeat rule: %1$s</string>
+    <string name="seed_review_rule">Repeat rule for review</string>
+    <string name="seed_review_remove_rule">Remove repeat rule</string>
+    <string name="seed_review_invalid">Check the dates, times, time zone and supported repeat rule. Ambiguous times require their UTC offsets.</string>
+    <string name="seed_review_unsaved">The saved version could not be verified. Your input remains shown here. Close and reopen the saved review to compare before continuing.</string>
+    <string name="seed_review_continue">Continue to event editor</string>
+    <string name="seed_review_guests">This event needs the meeting editor.</string>
+    <string name="seed_review_guests_retained">Your guest list is retained. No event has been saved.</string>
+    <string name="seed_review_permission">Calendar access is required to review the destination calendars.</string>
+    <string name="seed_review_allow_read">Allow calendar access</string>
+    <string name="seed_review_stale">This draft changed. Reopen it to review the current saved inputs.</string>
+    <string name="seed_review_unavailable">The saved review could not be verified. Your retained input has not been replaced.</string>
+    <string name="seed_review_retry">Retry</string>
+    <string name="seed_review_close">Close</string>
+</resources>
