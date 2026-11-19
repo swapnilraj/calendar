@@ -170,11 +170,22 @@ class InvitationFilterJourneyTest {
     private fun <T> io(block: suspend () -> T): T {
         val result = AtomicReference<Result<T>?>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        scope.launch { result.set(runCatching { block() }) }
+        val worker = scope.launch { result.set(runCatching { block() }) }
+        var failure: Throwable? = null
         try {
             compose.waitUntil(15_000) { result.get() != null }
             return requireNotNull(result.get()).getOrThrow()
-        } finally { scope.cancel() }
+        } catch (error: Throwable) {
+            failure = error
+            throw error
+        } finally {
+            scope.cancel()
+            try { compose.waitUntil(5_000) { worker.isCompleted } }
+            catch (error: Throwable) {
+                val original = failure
+                if (original == null) throw error else if (original !== error) original.addSuppressed(error)
+            }
+        }
     }
     private class Fixture(val app: CalendarApp, val provider: NativeRecurringCreateJourneyProvider,
         val activity: ActivityController<MainActivity>, val today: LocalDate) {
@@ -183,31 +194,65 @@ class InvitationFilterJourneyTest {
     }
     private fun fixture(block: (Fixture) -> Unit) {
         val app = RuntimeEnvironment.getApplication() as CalendarApp
-        shadowOf(app).grantPermissions(Manifest.permission.READ_CALENDAR)
-        shadowOf(app).denyPermissions(Manifest.permission.WRITE_CALENDAR)
-        val provider = NativeRecurringCreateJourneyProvider()
-        val today = LocalDate.now(ZoneOffset.UTC)
-        val start = today.atTime(12, 0).toInstant(ZoneOffset.UTC)
-        listOf(Triple(7, pending, 3), Triple(8, accepted, 1), Triple(9, uncertain, 0)).forEach { (id, title, response) ->
-            provider.db.insertOrThrow("events", null, ContentValues().apply {
-                put("_id", id); put("calendar_id", 2); put("dtstart", start.toEpochMilli()); put("dtend", start.plusSeconds(3600).toEpochMilli())
-                put("allDay", 0); put("eventTimezone", "UTC"); put("eventEndTimezone", "UTC"); put("title", title)
-                put("isOrganizer", 0); put("organizer", "organizer@example.invalid"); put("selfAttendeeStatus", response)
-                put("_sync_id", "synthetic-event-$id"); put("uid2445", "synthetic-uid-$id"); put("fixture_opaque", "opaque sentinel")
-            })
+        val store = rawStore(app.settings)
+        // Capture before permission, provider, preference or Activity setup can fail.
+        val original = io { store.data.first() }
+        var provider: NativeRecurringCreateJourneyProvider? = null
+        var activity: ActivityController<MainActivity>? = null
+        var failure: Throwable? = null
+        fun cleanup(action: () -> Unit) {
+            try { action() } catch (error: Throwable) {
+                val primary = failure
+                if (primary == null) failure = error else if (primary !== error) primary.addSuppressed(error)
+            }
         }
-        ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, provider)
-        io {
-            app.settings.saveReminderSettings(app.settings.readReminderSettings(), SavedReminderSettings())
-            assertTrue(app.settings.setDisplaySettings(CalendarSettingsOptions(weatherVisible = false,
-                displayZone = DisplayZoneOption.Fixed(ZoneId.of("UTC")))))
-            assertTrue(app.settings.setCalendarView(CalendarViewOption.DAY.name))
-            val metadata = app.calendarReader.readCalendars() as CalendarReadState.Ready
-            assertTrue(app.settings.setCalendarSelection(CalendarSelection.Explicit(setOf(CalendarId(2))), metadata.value))
+        try {
+            shadowOf(app).grantPermissions(Manifest.permission.READ_CALENDAR)
+            shadowOf(app).denyPermissions(Manifest.permission.WRITE_CALENDAR)
+            val ownedProvider = NativeRecurringCreateJourneyProvider().also { provider = it }
+            val today = LocalDate.now(ZoneOffset.UTC)
+            val start = today.atTime(12, 0).toInstant(ZoneOffset.UTC)
+            listOf(Triple(7, pending, 3), Triple(8, accepted, 1), Triple(9, uncertain, 0)).forEach { (id, title, response) ->
+                ownedProvider.db.insertOrThrow("events", null, ContentValues().apply {
+                    put("_id", id); put("calendar_id", 2); put("dtstart", start.toEpochMilli()); put("dtend", start.plusSeconds(3600).toEpochMilli())
+                    put("allDay", 0); put("eventTimezone", "UTC"); put("eventEndTimezone", "UTC"); put("title", title)
+                    put("isOrganizer", 0); put("organizer", "organizer@example.invalid"); put("selfAttendeeStatus", response)
+                    put("_sync_id", "synthetic-event-$id"); put("uid2445", "synthetic-uid-$id"); put("fixture_opaque", "opaque sentinel")
+                })
+            }
+            ShadowContentResolver.registerProviderInternal(CalendarContract.AUTHORITY, ownedProvider)
+            io {
+                app.settings.saveReminderSettings(app.settings.readReminderSettings(), SavedReminderSettings())
+                // A fallback ALL in a legacy bulk save deliberately preserves unknown raw values.
+                // This fixture explicitly chooses ALL before exercising a pending-mode transition.
+                assertEquals(CalendarSettingSave.Saved,
+                    app.settings.saveCalendarSetting(CalendarSettingChange.InvitationFilter(InvitationFilter.ALL)))
+                assertTrue(app.settings.setDisplaySettings(CalendarSettingsOptions(weatherVisible = false,
+                    displayZone = DisplayZoneOption.Fixed(ZoneId.of("UTC")), invitationFilter = InvitationFilter.ALL)))
+                assertTrue(app.settings.setCalendarView(CalendarViewOption.DAY.name))
+                val metadata = app.calendarReader.readCalendars() as CalendarReadState.Ready
+                assertTrue(app.settings.setCalendarSelection(CalendarSelection.Explicit(setOf(CalendarId(2))), metadata.value))
+            }
+            compose.runOnUiThread {
+                activity = Robolectric.buildActivity(MainActivity::class.java)
+                requireNotNull(activity).setup().visible()
+            }
+            block(Fixture(app, ownedProvider, requireNotNull(activity), today))
+        } catch (error: Throwable) { failure = error }
+        finally {
+            activity?.let { ownedActivity ->
+                cleanup { compose.runOnUiThread { ownedActivity.pause() } }
+                cleanup { compose.runOnUiThread { ownedActivity.stop() } }
+                cleanup { compose.runOnUiThread { ownedActivity.destroy() } }
+            }
+            cleanup {
+                io {
+                    store.updateData { original }
+                    assertEquals(original.asMap(), store.data.first().asMap())
+                }
+            }
+            cleanup { provider?.db?.close() }
         }
-        lateinit var activity: ActivityController<MainActivity>
-        compose.runOnUiThread { activity = Robolectric.buildActivity(MainActivity::class.java).setup().visible() }
-        try { block(Fixture(app, provider, activity, today)) }
-        finally { compose.runOnUiThread { activity.pause().stop().destroy() }; provider.db.close() }
+        failure?.let { throw it }
     }
 }
