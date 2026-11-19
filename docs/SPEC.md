@@ -7,6 +7,12 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ### Fenced agenda widget engine
 
+Widget application integration supplies durable binding/bootstrap/quarantine ownership before opening
+framework work. Configuration saves use the widget's own context and exact revision. Widget event
+opens revalidate binding, calendar namespace and occurrence before showing read-only details; Today,
+Create and More actions use validated one-shot navigation and retain existing editor drafts. The five
+widget components are activated only after their real owners, configuration and destinations exist.
+
 Widget work is serialized and bootstraps its durable binding/removal ledger before processing updates.
 Epoch and generation checks prevent stale work from recreating removed or rebound widgets. Widget
 configuration uses its own persistent namespace and selection; reading a widget never changes provider
