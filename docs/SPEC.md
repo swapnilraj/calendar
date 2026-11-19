@@ -86,6 +86,12 @@ uncertain and cannot authorize retry or acknowledgement; their bytes are never r
 Untouched imported temporal fields remain unchanged. Unattempted legacy temporal retries also apply
 current native-zone admission; attempted/committed recovery retains its existing frozen protocol.
 
+The SDK-only reminder identity build requires an explicit debug opt-in and a separate application
+ID/Application. Its unbound ports cannot access calendar/store data, schedule/cancel alarms or jobs,
+or post notifications. Startup admission requires bounded, attributed, settled counters and exact
+process exit; identity evidence never establishes reminder delivery. Ordinary debug/release builds
+retain CalendarApp and their normal components. Provider and reminder probe flags are exclusive.
+
 New ordinary one-off and recurring CREATE operations use receipt6. Initial validation freezes native
 values, first-instance bounds, an operation-bound plan digest and a generated UID. Competing writers
 adopt the durable prepare winner; retries reuse its UID/plan rather than current authoring rules.

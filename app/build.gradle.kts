@@ -4,6 +4,10 @@ plugins {
     alias(libs.plugins.roborazzi)
 }
 
+val providerProbeEnabled = providers.gradleProperty("daylight.providerProbe").orNull == "true"
+val reminderProbeEnabled = providers.gradleProperty("daylight.reminderProbe").orNull == "true"
+require(!(providerProbeEnabled && reminderProbeEnabled)) { "Select only one native probe runner" }
+
 android {
     namespace = "dev.swapnilraj.calendar"
     compileSdk {
@@ -12,6 +16,7 @@ android {
 
     defaultConfig {
         applicationId = "dev.swapnilraj.calendar"
+        manifestPlaceholders["daylightApplicationClass"] = "dev.swapnilraj.calendar.CalendarApp"
         minSdk = 29
         targetSdk = 36
         versionCode = providers.gradleProperty("daylight.versionCode").orNull?.let {
@@ -21,10 +26,27 @@ android {
             require(it.length <= 64 && it.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?"))) { "Invalid daylight.versionName" }
         } ?: "0.1.0"
         // SDK-only LOCAL provider experiments are explicit test builds, never release entry points.
-        if (providers.gradleProperty("daylight.providerProbe").orNull == "true") {
+        if (providerProbeEnabled) {
             testApplicationId = "dev.swapnilraj.calendar.providerprobe"
             testInstrumentationRunner = "dev.swapnilraj.calendar.probe.NativeCalendarProviderProbe"
         }
+        if (reminderProbeEnabled) {
+            testApplicationId = "dev.swapnilraj.calendar.reminderprobe.tests"
+            testInstrumentationRunner = "dev.swapnilraj.calendar.probe.NativeReminderProbe"
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            if (reminderProbeEnabled) {
+                applicationIdSuffix = ".reminderprobe"
+                manifestPlaceholders["daylightApplicationClass"] = "dev.swapnilraj.calendar.probe.ProbeReminderApplication"
+            }
+        }
+    }
+    if (reminderProbeEnabled) {
+        sourceSets.getByName("debug").manifest.srcFile("src/reminderProbe/AndroidManifest.xml")
+        sourceSets.getByName("testDebug").kotlin.srcDir("src/reminderProbeTest/kotlin")
     }
 
     compileOptions {
