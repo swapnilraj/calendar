@@ -600,3 +600,18 @@ issues no mutation scopes: scope capabilities remain empty/default UNKNOWN until
 its own fresh checks. Adding the adapter does not wire a new UI action, writer, provider clone
 profile or EXDATE transfer. Synthetic source tests do not establish native cache behavior or
 Google/Workspace propagation.
+
+
+## Scoped series backend publication
+
+The bounded series backend admits only scopes supported by complete fresh source, exact occurrence
+identity, current ACL/capability and the injected provider policy. The production clone policy remains
+unverified and admits no clone-dependent scope. This publication does not wire a UI action.
+THIS/ALL edit/delete and FOLLOWING delete preserve their existing bounded planner and journal rules;
+FOLLOWING edit remains closed in this packet. Unsupported or incomplete recurrence requires review.
+
+This is the legacy series protocol: recovery can depend on its stored source and current planner.
+It does not establish source-free frozen Following3 execution, complete child-acknowledgement proof,
+EXDATE/exception transfer or Google/Workspace propagation. Permanent retirement fences bind exact
+operation/fingerprint; unsupported families and unknown phases fail closed without provider dispatch.
+Synthetic provider tests are local evidence only, not installed-provider certification.
