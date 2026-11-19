@@ -590,11 +590,12 @@ propagation remain pending; an interface alone does not establish these capabili
 [PR68](https://github.com/swapnilraj/calendar/pull/68) passed full CI (host guards, test/debug/lint and
 opt-in probe compilation) in 5m36s at `230321c`, then merged as `a1f22df`. The aggregate already contains
 its host-only fix. Attachment was requested, but the task artifact endpoint did not return; confirmation
-remains pending. [PR69](https://github.com/swapnilraj/calendar/pull/69) is a draft legacy scoped-series
+remains pending. [PR69](https://github.com/swapnilraj/calendar/pull/69) is a bounded legacy scoped-series
 backend publication with 90 focused checks passing after a test-fixture known-reminder join correction;
-its first 76-pass/14-failure fixture attempt is retained. It deliberately leaves FollowingEdit and clone
-admission closed and adds no UI wiring. Its temporary Following-disable variant must not replace the
-aggregate's Following3 implementation.
+its first 76-pass/14-failure fixture attempt is retained. Full CI passed in 5m16s at `a1fa471`,
+including test/debug/lint and opt-in probe compilation; PR69 merged as `6262011`.
+It deliberately leaves FollowingEdit and clone admission closed and adds no UI wiring. Its temporary
+Following-disable variant must not replace the aggregate's Following3 implementation.
 
 Field-only phone-preference persistence is integrated as `ec8664f`: 18 focused checks pass in 14s,
 including independent concurrent edits, exact preservation of unrelated unknown/malformed values,
