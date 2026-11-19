@@ -25,6 +25,22 @@ Earlier attempts retain their original meaning:
   synchronization repair is integrated as `58070dd`; its focused journeys and the later `bf2ef3f`
   aggregate passed. These later results do not turn the earlier failed attempts into passes.
 
+## Latest integrated correction — 19 November 2026
+
+At `57fe2ad`, the complete test/debug APK/lint gate passed2,246 tests (app1,972/core257/weather17),
+with zero failures/errors/skips. Fresh eligible Following title-only and rule-only splits now preserve
+raw NULL/empty end timezones; legacy prepared material retains its exact issued value. The
+[correction evidence](evidence/following-null-end-zone-fixed-2026-11-19.json) retains the original
+metadata-loss failure,29 passing focused checks, an aggregate initial-render timeout, test-only
+synchronization hardening and the complete passing rerun. The historical timeout cause is unproven.
+
+The native receipt6 app-writer harness is source-integrated with19 passing host guards and successful
+AndroidTest pair compilation. Its [source/pair review](evidence/native-app-writer-source-review-2026-11-19.json)
+records exact hashes and lifecycle/cleanup fences; no new native execution is claimed. Immutable
+Following execution remains a separate unintegrated packet. Production clone admission, EXDATE/
+exception transfer, Google/Workspace propagation, physical-device acceptance, beta and stable owner
+signing/release remain pending. The historical151-row CSV cutoff is unchanged.
+
 ## Reading the evidence
 
 | Status | Meaning |
