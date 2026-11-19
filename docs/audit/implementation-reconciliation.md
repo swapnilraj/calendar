@@ -6,7 +6,8 @@ bounded behavior, source/test evidence and remaining acceptance. The original
 [feature inventory](feature-inventory.csv), baseline audit/probes and physical `NOT_RUN` evidence
 are unchanged. The CSV remains a historical reconciliation at `bf2ef3f`, not a rewrite of the audited
 `23808c1` baseline. The later source review below records bounded changes at `e1877a4` without
-changing those CSV rows.
+changing those CSV rows. The dated source review at `6ee8f6e` below supersedes older
+implementation-gap statements while preserving their historical cutoffs.
 
 The lead reports that the complete required test, debug APK assembly and lint gate passed at
 `bf2ef3f`, with no failures, errors or skipped tests. This is local synthetic-provider evidence,
@@ -39,6 +40,84 @@ SQL and synthetic provider transactions. `live-synthetic` may use injected mutat
 `backend-real-adapters-synthetic-provider`, `component`, `pure` and `contract-only` do not mean an
 app action is discoverable or enabled. Read each row's remaining acceptance; test totals are not a
 completion measure. A SQLite reopen or Activity recreation is not an actual process-kill test.
+
+## Additional source review — 19 November 2026, at 6ee8f6e
+
+This additive review preserves the historical CSV, inventory IDs and earlier failed attempts. Its
+source cutoff includes later ordinary recovery, incoming EDIT, meeting interfaces, contacts and
+private-activity cleanup fixes. Source presence and focused synthetic checks do not complete the
+inventory's device/account/beta acceptance. This documentation review runs no Gradle or account/device
+operations. The lead's required full gate at `6ee8f6e` passed **2,177 tests** (app1,903,
+core257, weather17), debug APK assembly and lint, with zero failures, errors or skipped tests.
+Command: `./gradlew test :app:assembleDebug :app:lintDebug`; session log:
+`/tmp/daylight-contact-picker-full-gate.log` (6m10s; completed19 November2026 at00:00UTC).
+The earlier `0a122bc` gate passed2,124 tests. These later passes supersede the old unresolved-build
+status while preserving the earlier failed attempt. See [the progress ledger](../DAILY_DRIVER_PROGRESS.md)
+for subsequent checkpoints and external acceptance. No device/account/beta gate is inferred from them.
+
+- **Ordinary draft/recovery completion (EDIT-16/17/18):** the historical `e1877a4` concurrency failure
+  is not the current unresolved build result. Subsequent fixture/concurrency corrections and the
+  completed gate above supersede that status without changing the original failure evidence.
+  `data/calendar/OrdinaryEditReceipt.kt` and `CalendarWriter.kt` now freeze newly prepared ordinary
+  UPDATE/DELETE source and native changes in receipt4. READ-only recovery survives `edit_snapshots`
+  removal and requires exact native event, child membership/payload, occurrence and namespace proof.
+  Incomplete acknowledgments and changed UID/sync identity remain uncertain without replay.
+  `CalendarWriterTest.kt` covers snapshot purge/reopen, exact retry, drift, child acknowledgments,
+  cancellation and legacy compatibility. Historical receipt2 edits retain their snapshot dependency.
+- **Public EDIT and authored missing zones (OS-05/EDIT-08):** public typed/untyped EDIT is now
+  manifest-enabled through `CalendarEntryActivity.kt`, with the non-exported
+  `CalendarEditReviewActivity.kt` continuation, explicit Apply, generation-bound ordinary handoff and
+  durable receipts. `CalendarEditReviewServices.kt` issues separate authored-zone intent when an
+  explicit proposed zone applies to a timed NULL-zone source, even if it equals the renderer.
+  Zone-only changes retain TIME.Keep; changed times without a proposed zone remain under review.
+  Arrival, grant and reopening do not author a mutation. Evidence: `PublicCalendarEditJourneyTest.kt`,
+  `CalendarEditZoneAuthoringTest.kt`, `PublicCalendarEditZoneJourneyTest.kt` and the ordinary
+  `events/NullZoneTravelEditTest.kt` checks. Earlier missing-activation/zone-intent statements are
+  obsolete for this cutoff; imported unsupported/frozen/legacy formats are not silently reinterpreted.
+- **Meeting creation and owned organizer UI (GUEST-04/06, DET-13):** `ui/LiveCalendarDay.kt` now
+  connects ordinary Add people promotion, `MeetingCreationWorkflow.kt`, and the owned one-off details
+  route through `OwnedMeetingWorkflow.kt`. Dedicated codecs/controllers preserve feature/generation,
+  raw guests, source authority and frozen commands. Creation schema2 connects typed authored
+  recurrence review; owned one-off editing supports issued sparse guest changes and separately
+  confirmed cancellation while preserving other responses and opaque fields. Evidence:
+  `NativeMeetingCreateJourneyTest.kt`, `NativeRecurringMeetingCreateJourneyTest.kt` and
+  `NativeOwnedMeetingJourneyTest.kt`. New one-off meeting receipt2 and recurring meeting receipts provide
+  source-free recovery; historical one-off receipt1 retains its snapshot dependency. This does not
+  implement recurring organizer guest changes or establish invitation/update/cancellation delivery.
+- **Optional device contacts and phone people entry:** `contacts/DeviceContactSuggestionSource.kt`,
+  `data/contacts/AndroidDeviceContactSuggestionSource.kt` and `ui/events/meetings/people/PhoneGuestPicker.kt`
+  are connected through `CalendarApp.kt`, `ui/DaylightContent.kt` and the create/owned workflows.
+  An existing OS grant alone does not opt in a picker session. The adapter queries only local DEFAULT
+  email suggestions with bounded projection/work and cancellation, with no remote directory search/account enumeration,
+  contact writes or new network service. Selected strings append to existing raw draft rows with no
+  guessed role or event save; the existing draft representation encodes a missing name as empty.
+  Five actual-host synthetic checks in `NativeContactGuestPickerJourneyTest.kt` passed, covering
+  pre-grant opt-in, active and late grants, recreation and owned guest preservation with zero calendar
+  batches. The contacts packet adds20 adapter checks,24 picker/session/parent checks, those five
+  actual-host journeys and four screenshot checks. `events/meetings/people/PhoneGuestPickerScreenshotsTest.kt`
+  covers manual, selected results, denied/dark and large-text RTL presentations. Physical contacts
+  permission behavior and the Google Calendar people-picker interaction remain unverified.
+- **Private review lifecycle and exact cleanup:** `CalendarSeedReviewActivity.kt`,
+  `CalendarEditReviewActivity.kt` and `ui/EventWriteWorkflow.kt` retain an accepted write/known-outcome
+  owner while stop/resume or authority refresh masks its presentation. Four unchanged controlled
+  `PrivateReviewCleanupLifecycleJourneyTest.kt` regressions failed before the fix and passed after it:
+  CREATE/EDIT, with/without a newer successor, acknowledge an already applied exact cleanup once,
+  finish with RESULT_OK and preserve the successor with one provider batch. Permission-mask component
+  checks remain separate. An Activity transition is not an OS process-kill or physical lifecycle test.
+- **Remaining recurrence admission and phone UX:** production still supplies
+  `ProviderClonePolicy.Unverified`; no provider clone profile is admitted. The LOCAL API35
+  [18-case cache experiment](evidence/native-local-provider-api35-2026-11-18.json) is bounded native
+  evidence, not whole-writer, hidden-metadata or Google/Workspace certification. Core
+  `RecurrenceFollowingMetadata.kt` remains metadata-only; native Following execution still rejects
+  exception transfer/exclusions. Generated THIS/nonzero-tail operations remain intentionally gated.
+  Empty-grid creation still requires long press in `ui/grid/TimedGridGestureInput.kt`; tap-slot quick
+  creation and other phone reference reconciliation remain source work, not completed parity.
+
+Personal/Workspace round-trips, offline conflict acceptance, physical reminders/Doze/reboot/timezone/
+TalkBack/upgrade checks, the seven-day work/personal beta, stable owner signing and durable published
+release remain pending. The prepared draft-release mechanism and fixture-key tests do not satisfy
+those gates. Google Calendar main flows/exact parity remain unverified; this review preserves every
+external `NOT_RUN` status. Source and test paths use the same relative roots described below.
 
 ## Later integrated source review at e1877a4
 
