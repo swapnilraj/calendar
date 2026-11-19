@@ -441,6 +441,16 @@ restrictions. Provide pending-invitation filtering and conflicts against the use
 these are not coworker availability. Do not offer unverified suppression of attendee updates. Verify
 invitation/RSVP/reschedule/recurrence-change/cancellation effects in the second account.
 
+Pure selected-local-calendar overlap assessment requires exact draft session/revision, source
+namespace/generation, proposed time, planning zone, full calendar identities and excluded occurrence
+context equality. Timed overlap is half-open; DATE/DATE overlap uses dates, while mixed DATE/timed
+occupancy uses deterministic day bounds in the explicit planning zone. Known free, cancelled or
+declined observations do not occupy time. Unknown overlapping metadata remains possible, partial
+coverage cannot certify no conflict, and empty selection/unavailable reads stay distinct. Only a
+complete selected local window with no known or possible conflict may report that advisory result.
+This pure contract activates no UI/native read adapter and grants no save authority or coworker
+availability claim; later adapters must mask invalidated or permission-lost contexts immediately.
+
 ### M8 — Search, preferences and Android entry points
 
 Search title/location/description with cancellation/debounce and calendar filters. Default range is
