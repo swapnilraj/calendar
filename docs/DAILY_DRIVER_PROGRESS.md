@@ -878,3 +878,20 @@ The [new source audit](audit/DAILY_DRIVER_REMAINING_IMPLEMENTATION_2026-11-19.md
 implementation gaps beyond publication and external acceptance. Source completeness is not claimed.
 The last full aggregate gate remains2,408 checks at4e8cf57; subsequent canonical-date hardening has
 four focused checks passing and awaits a new combined gate. Account/device/beta/signing gates remain.
+
+
+### Scoped-series namespace pin integrated — 19 November
+
+A real provider-fixture namespace switch between the first details read and series eligibility
+reproduced an action-authority bug (one failing regression before production changed). The fix
+requires exact full calendar identity equality before exposing series details or actions. All eight
+series journeys passed after the fix; the aggregate adaptation passed eight with recording in84s.
+Both editor and refusal images match the independently inspected publication images byte for byte.
+[Evidence](audit/evidence/series-details-namespace-pin-2026-11-19.json). PR99 publishes the live
+scoped-series route; its CI remains separate from the local aggregate gate.
+
+Published integration now includes PR94 series presentation, PR95 grid gestures, PR96 private edit
+review, PR97 series workflows and PR98 durable grid preparation. Public entry activation and the
+lead grid bridge remain separately staged. Pending-invitation contracts and semantic recurrence
+graph proof are bounded candidates, not enabled/completed features. The full aggregate gate remains
+the earlier2,408 checkpoint; a new combined gate is required after the recent source changes.

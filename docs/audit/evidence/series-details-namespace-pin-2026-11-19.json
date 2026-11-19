@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "date": "2026-11-19",
+  "scope": "Pin recurring action authority across separate fresh details and series reads",
+  "aggregateSource": "a36bdd1",
+  "publicationPr": "https://github.com/swapnilraj/calendar/pull/99",
+  "publicationHead": "9c66f1716ee5458847e60f93243e69991d8643ef",
+  "sourceReview": "Independent reviewer found initial namespace mismatch; fixed and re-reviewed with no remaining source blocker",
+  "before": {
+    "tests": 1,
+    "failures": 1,
+    "evidence": "/tmp/daylight-series-app-namespace-red1-evidence/report.json",
+    "productionUnchanged": true
+  },
+  "publicationAfter": {
+    "tests": 8,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsed": "24s",
+    "suites": [
+      {
+        "class": "dev.swapnilraj.calendar.data.calendar.RecurringProviderJourneyTest",
+        "tests": 3,
+        "xmlSha256": "3a0e91fa36620205b934693285e861d0e43338d6afd664969b456248e1fcdb32"
+      },
+      {
+        "class": "dev.swapnilraj.calendar.NativeSeriesTemporalJourneyTest",
+        "tests": 5,
+        "xmlSha256": "b631ac3c0e9a2c47e68dc57fcacb27f230d6e55d9a7e1debef4c220f696b489c"
+      }
+    ],
+    "beforeFailure": "/tmp/daylight-series-app-namespace-red1-evidence",
+    "sourceAtPass": {
+      "app/src/main/kotlin/dev/swapnilraj/calendar/ui/LiveCalendarDay.kt": "ea3fdc1d5212dabed21a035a2f7ba09bc73aa0ee06c4b750c3c463d4e4850bcf",
+      "app/src/test/kotlin/dev/swapnilraj/calendar/RecurringProviderJourneyTest.kt": "7c9a3604b6190c9f7596fa146b8a18ae0d1d9d27548454ce2de586bccdc4fe2f"
+    }
+  },
+  "publicationRecording": {
+    "source": "b3f230e",
+    "recordTests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsed": "18s",
+    "inspected": [
+      "integration_series_native_editor.png",
+      "integration_series_namespace_refusal.png"
+    ],
+    "images": {
+      "integration_series_native_editor.png": "88d497bc070a9037b7c197f35fa9d04f0dc7c556950d57db0c7c8f5e5e340b82",
+      "integration_series_namespace_refusal.png": "e11344139345b6945e17a7057df471f8162114c7f989b5669df7d4f125ff898c"
+    },
+    "functional8Evidence": "/tmp/daylight-series-app-namespace-green1-evidence/report.json",
+    "limits": [
+      "Source-rendered synthetic fixture",
+      "Not Google UX parity or account/device certification"
+    ]
+  },
+  "aggregateAfterAndRecording": {
+    "base": "5f18313",
+    "tests": 8,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsed": "1m24s",
+    "recording": true,
+    "suites": [
+      {
+        "class": "dev.swapnilraj.calendar.data.calendar.RecurringProviderJourneyTest",
+        "tests": 3,
+        "xmlSha256": "736105c06004ee00055366fab1b2a4aac065278f21849835f620fd0d611eadf6"
+      },
+      {
+        "class": "dev.swapnilraj.calendar.NativeSeriesTemporalJourneyTest",
+        "tests": 5,
+        "xmlSha256": "027c7a382ff510d89ee32ce0a29a24cf9258a039cae69f1507e814e043a75a86"
+      }
+    ],
+    "images": {
+      "integration_series_native_editor.png": "88d497bc070a9037b7c197f35fa9d04f0dc7c556950d57db0c7c8f5e5e340b82",
+      "integration_series_namespace_refusal.png": "e11344139345b6945e17a7057df471f8162114c7f989b5669df7d4f125ff898c"
+    },
+    "imagesByteIdenticalToInspectedPublishedBridge": true,
+    "rootAdaptations": [
+      "Retains existing requestMeetingWritePermission test keyword",
+      "NativeDetails existing positional series argument preserved"
+    ],
+    "fullAggregateGate": "NOT_RERUN_YET"
+  },
+  "limits": [
+    "Synthetic provider and source-rendered images",
+    "No namespace adoption, automatic mutation or permission retry",
+    "No Google/Workspace or Android task-stack certification",
+    "Full aggregate gate after this fix remains pending"
+  ]
+}
