@@ -5,6 +5,16 @@ the two disagree, this file wins, and it should be updated in the same change as
 
 ## Principles
 
+The injectable scoped-series editor retains the exact selected occurrence, master/calendar identity,
+source token, scope and draft generation. THIS, FOLLOWING and ALL actions require explicit allowed
+scope rights; following edits remain unavailable without complete supported tail proof. Raw
+recurrence/exception metadata and incomplete fields are retained, whole/following changes require
+their existing review, and permission grant or draft restoration never submits automatically.
+Exact-record compare-and-set and frozen commands govern recovery; submitted series operations are
+never retired or reissued through ordinary event retirement. The draft browser opens a scoped draft
+only through its matching host callback and retains corrupt or unknown records. Application routing
+remains separate.
+
 An explicit Add people action may convert an eligible, current ordinary new-event draft into a
 dedicated meeting-creation draft using one exact-record compare-and-set. Raw fields and authored
 recurrence remain intact; conversion never reads meeting authority, requests calendar permission or
