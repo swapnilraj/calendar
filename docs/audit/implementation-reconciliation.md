@@ -379,3 +379,15 @@ This verifies the integrated source, including guarded pre-dispatch child reads,
 native/account acceptance. The owned API-35 app-create probe failed its first create case and withheld
 cleanup; its test calendar remains pending diagnosis. Google Settings/General were observed live, but
 main/editor parity, Google/Workspace propagation, physical-device gates, beta and stable signing remain pending.
+
+
+### 19 November: phone Settings connected and full aggregate verified
+
+`f0018fb` passes2,320 tests, debug assembly and lint. Settings→General supports actual field-only
+preference saves with retained raw input/readiness masks; new view/zoom changes survive a failed-save
+retry. Ten synthetic screenshots were inspected, with logical-start RTL wrap corrections. See
+[focused/recording/full-gate evidence](evidence/phone-settings-2026-11-19.json). Google Settings/General
+were observed, while exact selectors/main/editor/device/account parity remains unverified. Following3
+publication PR70 is merged after fullCI; EXDATE metadata bridge/exception transfer and external daily-driver
+acceptance are still pending. The native create probe's harness sort defect is corrected in source;
+its retained fixture has no replay or cleanup acceptance.

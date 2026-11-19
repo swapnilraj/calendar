@@ -4,6 +4,18 @@ Updated 19 November 2026. Source of truth: [SPEC.md](SPEC.md); execution: [TASKS
 
 ## Latest local integration checkpoint
 
+At source `f0018fbe47379944c6c041145fd2dfba9eaa59f8`, the complete gate **passed all 2,320 tests**
+(app 2,046 + core 257 + weather 17), debug APK assembly and lint, zero failures/errors/skips, in6m47s.
+The [tested source checkpoint](https://github.com/swapnilraj/calendar/tree/codex/verified-2320-20261119)
+is preserved separately from the bounded publication branch. This includes the connected phone
+Settings/General flow, retained-input/independent-choice journeys, ten inspected images, Following
+private serializer equivalence and native query-sort diagnostics. See [evidence](audit/evidence/phone-settings-2026-11-19.json).
+Frozen APK:44,450,608 bytes, SHA-256 `c8d77b9c7dd275bfc26440eb9e8fde745c7b111e262e9c47c7e063c5de1feb26`.
+ZIP:14,526,478 bytes, SHA-256 `eb197703ff121ba6e47783b04a4fa51f91c7461945e53072e00450d8798bd3d7`.
+Files: `/tmp/daylight-verified-2320-f0018fb/`. The Android debug signer was verified; this is not a
+stable owner release. Native/account/beta/signing acceptance remains pending.
+
+
 At source `289727df1bc870ec4719b6b813703cfc0eb87a18`, the complete rerun **passed all 2,289 tests**
 (app 2,015 + core 257 + weather 17), debug APK assembly and lint, with zero failures/errors/skips.
 `./gradlew test :app:assembleDebug :app:lintDebug` completed in 3m58s. The
@@ -603,7 +615,7 @@ compound timezone/reminder changes, invalid input and IO/cancellation behavior. 
 components and host wiring are in progress, not yet accepted by screenshots or the complete gate.
 
 
-### Phone Settings/General integrated — complete gate pending
+### Phone Settings/General integrated — complete gate passed
 
 The production drawer now opens Settings → General with focused in-place editors and explicit
 field-only saves. Supported choices, actual default-calendar/reminder actions and Daylight weather
@@ -616,14 +628,20 @@ checks and11 final recording/host checks pass. The original host attempt stopped
 changed screenshot; after recording, its complete retry/display/filter assertions pass. Ten images
 were inspected; two RTL large-font images were corrected/reinspected for logical-start alignment.
 This is synthetic UI/provider evidence. Exact Google selectors/persistence, spoken accessibility,
-physical-device/account/beta and stable release acceptance remain pending. A new complete aggregate
-gate is queued; the earlier2,289 checkpoint remains the last full passing checkpoint until it completes.
+physical-device/account/beta and stable release acceptance remain pending. The complete2,320 aggregate gate at `f0018fb` passed; the earlier2,289 checkpoint remains preserved as historical evidence.
 
 The native query-sort/diagnostic correction is integrated as `49cab71`, with5 JVM regressions and27
 host guards passing. A real CalendarWriter regression reaches VERIFIED receipt6 through the same sort
 policy in one batch. Native AndroidTest compilation/execution and retained-fixture diagnosis remain
 pending; no event, journal or failed-run cleanup was replayed. [PR70](https://github.com/swapnilraj/calendar/pull/70)
-publishes the corrected Following3 backend with159 focused tests passing and CI pending. Only private
+publishes the corrected Following3 backend with159 focused tests passing. Full CI passed7m20 at `7bbbc88`; PR70 merged as `8ccdf74`. Only private
 legacy serializer localization was selectively ported into the aggregate (`659c0e9`); wire coercion,
 source/command fingerprints and receipt semantics are unchanged. Its attachment request remains
 unconfirmed while the task artifact endpoint is unavailable.
+
+
+The separate readonly retained-fixture inspection packet `671dfea` has34 mocked host tests passing
+and a reviewed three-query/no-cleanup branch. Its native pair compilation is in progress; no device
+execution or cleanup is authorized by that source result alone. The connected28-file phone-settings
+publication is prepared on merged `8ccdf74`, with selective Live wiring/test changes rather than
+copying the aggregate tree; its own52-check publication run is queued.

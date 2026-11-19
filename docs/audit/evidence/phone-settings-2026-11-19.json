@@ -52,7 +52,51 @@
     "Loading/Unavailable hide all editor controls; masked system Back retains exact unfinished input",
     "Opening/typing/masking/Cancel never auto-save"
   ],
-  "completeGate": "PENDING",
+  "completeGate": {
+    "source": "f0018fbe47379944c6c041145fd2dfba9eaa59f8",
+    "startedUtc": "2026-11-19T04:58:49.444730+00:00",
+    "status": "PASS",
+    "command": "./gradlew test :app:assembleDebug :app:lintDebug",
+    "exitCode": 0,
+    "finishedUtc": "2026-11-19T05:05:36.593770+00:00",
+    "counts": {
+      "app": [
+        2046,
+        0,
+        0,
+        0
+      ],
+      "calendar-core": [
+        257,
+        0,
+        0,
+        0
+      ],
+      "weather": [
+        17,
+        0,
+        0,
+        0
+      ]
+    },
+    "failedTests": [],
+    "apkBytes": 44450608,
+    "apkSha256": "c8d77b9c7dd275bfc26440eb9e8fde745c7b111e262e9c47c7e063c5de1feb26",
+    "signing": "DEBUG_ONLY_NOT_OWNER_RELEASE",
+    "zipBytes": 14526478,
+    "zipSha256": "eb197703ff121ba6e47783b04a4fa51f91c7461945e53072e00450d8798bd3d7",
+    "frozenArtifacts": "/tmp/daylight-verified-2320-f0018fb",
+    "nativeAccountBetaRelease": "PENDING",
+    "tests": 2320,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsed": "6m47s",
+    "log": "/tmp/daylight-phone-settings-full-gate.log",
+    "xml": "/tmp/daylight-phone-settings-full-gate-xml",
+    "sourceBackup": "https://github.com/swapnilraj/calendar/tree/codex/verified-2320-20261119",
+    "debugSignerSha256": "90936f837de57f48b69c5a1364920972880362722faf228d2f66c875f6bc6278"
+  },
   "limitations": [
     "Google Settings/General reference only; selector persistence and exact pixel parity unverified",
     "No physical TalkBack/account/beta/stable-signing acceptance"
