@@ -21,6 +21,14 @@ before dispatch. Exact milliseconds and negative epochs remain supported. Frozen
 or result bounds with non-native precision stay uncertain and cannot authorize retry or acknowledgement;
 their bytes are never rounded or migrated. Untouched imported fields retain their original values.
 
+### Explicit organizer edit and cancellation
+
+The injectable organizer-owned meeting workflow retains the original calendar/account, event and
+revision identities when editing guests or meeting fields. Saving or cancelling requires an explicit
+action, preserves unknown provider metadata and keeps conflicts and uncertain outcomes reviewable.
+Opening a draft or returning from a permission prompt never submits automatically. A local save or
+cancellation does not confirm delivery to guests; production routing is a separate integration gate.
+
 ### Authored recurring creation in the phone editor
 
 Production creation enables daily, weekly, monthly and yearly recurrence through the full-height
