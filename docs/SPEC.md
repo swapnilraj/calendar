@@ -75,6 +75,8 @@ its prepared bytes and can earn receipt5 only after the new dispatch. Frozen com
 fingerprints do not change. Recurring-create proof still recompiles the stored recurrence under the
 current rules and does not generate a stable UID; immutable source-free native plans and UID-bound
 recovery remain separate work. No Google/Workspace delivery or provider-clone admission follows.
+The approved next implementation packet is [immutable ordinary CREATE recovery](ORDINARY_CREATE_RECEIPT6.md);
+receipt6 is not yet active in the aggregate app.
 
 Owned one-off meeting details open a dedicated full-height organizer editor after exact occurrence,
 calendar namespace and issued-rights checks. Existing guest identity and response metadata are
