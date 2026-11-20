@@ -76,6 +76,15 @@ New file `calendar-core/.../OrdinaryCompoundEdits.kt`, tests in its own new file
   distinguish Ready, PermissionRequired, Denied, LimitExceeded and Unavailable. update and recover
   are a separate port so the old CalendarMutations cannot reinterpret or dispatch this family.
 
+The pure implementation also exposes explicit `readPalette(newSourceToken)` as an optional read,
+and immutable adapter-issued `CompoundEditAuthoringRules`: allowed availability values, known ALERT
+method support, maximum reminders and an explicitly known count of preserved non-ALERT rows. Unknown
+constraints never grant an authored change. Keep bypasses those authoring checks; empty ALERT
+replacement can preserve other methods without claiming nonempty ALERT capacity. Changed TIME/ZONE
+requires positive, exact-millisecond, year1–9999 bounds and a provider-compatible timed zone; unrelated
+edits preserve imported point events, precision and unknown zones. These pure checks are consistency
+checks only; native source, permissions, leases, receipt compilation and execution remain separate.
+
 Factories bind ordinary intent to its independently issued ordinary token/revision, full namespace,
 ref and explicit draft binding. Named additionally retains the independently issued palette context/
 stamp/revision. It must match the CURRENT palette observation at resolve; callers cannot substitute
