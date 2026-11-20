@@ -105,6 +105,7 @@ internal fun LiveCalendarDay(
     guestSuggestions: dev.swapnilraj.calendar.contacts.DeviceContactSuggestionSource? = null,
     contactsPermissionGranted: Boolean = false,
     requestContactsPermission: () -> Unit = {},
+    conflicts: CalendarSchedulingConflicts? = null,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -208,6 +209,17 @@ internal fun LiveCalendarDay(
     val metadataFlow = remember(reader) { reader.observeCalendars() }
     val metadata by metadataFlow.collectAsStateWithLifecycle(initialValue = CalendarReadState.Loading)
     val calendars = (metadata as? CalendarReadState.Ready)?.value.orEmpty()
+    val conflictCalendars = conflictCalendarIdentities(metadata, effectiveSelection)
+    val conflictReadAllowed = LocalCalendarReadAccess.current &&
+        snapshot != CalendarReadState.PermissionRequired && metadata != CalendarReadState.PermissionRequired
+    val conflictSlot: (@Composable (dev.swapnilraj.calendar.ui.events.PhoneEditorConflictSnapshot) -> Unit)? =
+        conflicts?.let { source -> { temporal ->
+            PhoneEditorConflictHost(source, temporal, conflictCalendars, displayNow.zone,
+                presentationVisible = LocalCalendarReadAccess.current, readPermission = conflictReadAllowed,
+                sourceReady = metadata != CalendarReadState.Loading,
+                calendarScope = if (effectiveSelection == CalendarSelection.ProviderVisible)
+                    ConflictCalendarScope.PROVIDER_VISIBLE else ConflictCalendarScope.EXACT_IDENTITIES)
+        } }
     val verifiedDefault = verifiedCreationCalendar(preferences, calendars)
     val writable = mutations != null && drafts != null
     val seriesWritable = seriesMutations != null && drafts != null
@@ -774,6 +786,7 @@ internal fun LiveCalendarDay(
             text = { Text(stringResource(R.string.navigation_draft_unavailable)) },
             confirmButton = { TextButton(onClick = { writeRequestText = null }) { Text(stringResource(R.string.events_close)) } })
         else EventWriteWorkflow(request, mutations, drafts, calendars, use24Hour, clock = draftClock,
+            conflictAdvisory = conflictSlot,
             recurringCreationSupported = recurringCreationSupported,
             retirement = operationRetirement, requestWritePermission = requestMeetingWritePermission,
             onReplacedLaunch = { launch -> writeRequestText = EventWriteRequest.fromLaunch(launch, visibleDate, displayNow.zone, request.delete).encode() },
@@ -792,6 +805,7 @@ internal fun LiveCalendarDay(
             confirmButton = { TextButton(onClick = { meetingCreationText = null }) { Text(stringResource(R.string.events_close)) } })
         else MeetingCreationWorkflow(route, requireNotNull(meetings), requireNotNull(atomicDrafts), calendars,
             operationRetirement, requireNotNull(requestMeetingWritePermission), use24Hour,
+            conflictAdvisory = conflictSlot,
             onDismiss = { meetingCreationText = null },
             onSaved = { meetingCreationText = null; reader.refresh(); onLocalSaved() }, clock = draftClock,
             guestSuggestions = guestSuggestions, contactsPermissionGranted = contactsPermissionGranted,
@@ -804,6 +818,7 @@ internal fun LiveCalendarDay(
             confirmButton = { TextButton(onClick = { ownedMeetingText = null }) { Text(stringResource(R.string.events_close)) } })
         else OwnedMeetingWorkflow(route, requireNotNull(meetings), requireNotNull(atomicDrafts),
             operationRetirement, requireNotNull(requestMeetingWritePermission), use24Hour,
+            conflictAdvisory = conflictSlot,
             presentationVisible = LocalCalendarReadAccess.current && snapshot != CalendarReadState.PermissionRequired && metadata != CalendarReadState.PermissionRequired,
             onDismiss = { ownedMeetingText = null },
             onSaved = { ownedMeetingText = null; reader.refresh(); onLocalSaved() },

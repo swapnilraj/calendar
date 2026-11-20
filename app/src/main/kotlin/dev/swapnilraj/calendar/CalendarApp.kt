@@ -81,6 +81,8 @@ open class CalendarApp : Application(), ReminderRuntimeOwner, AgendaWidgetApplic
         providerClonePolicy = providerClonePolicy) }
     val calendarSearch by lazy { CalendarSearchReader(contentResolver, calendarReader,
         { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
+    val calendarConflicts by lazy { dev.swapnilraj.calendar.data.calendar.CalendarConflictReader(contentResolver, calendarReader,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
     val settings by lazy { Settings(this) }
     val weather by lazy {
         val client = OpenMeteo(::fetchWeather)

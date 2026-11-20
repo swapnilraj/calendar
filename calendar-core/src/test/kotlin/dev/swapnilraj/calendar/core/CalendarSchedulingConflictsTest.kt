@@ -53,4 +53,23 @@ class CalendarSchedulingConflictsTest {
         assertTrue(SchedulingConflicts.assess(context, ConflictSnapshot(context, emptyList(), ConflictCoverage.Complete))
             is ConflictAssessment.NoCalendarsSelected)
     }
+
+    @Test fun scopeIsPartOfRequestAndPureContextCorrelation() {
+        for (selection in listOf(setOf(identity), emptySet())) {
+            val exact = request(selection)
+            val dynamic = ConflictReadRequest(exact.draftRevision, exact.proposedTime, exact.planningZone,
+                selection, calendarScope = ConflictCalendarScope.PROVIDER_VISIBLE)
+            val source = ConflictSourceRevision("adapter", 1)
+            val exactContext = exact.context(source)
+            val dynamicContext = dynamic.context(source)
+            assertEquals(ConflictCalendarScope.EXACT_IDENTITIES, exactContext.calendarScope)
+            assertEquals(ConflictCalendarScope.PROVIDER_VISIBLE, dynamicContext.calendarScope)
+            assertTrue(exact.matches(exactContext)); assertTrue(dynamic.matches(dynamicContext))
+            assertFalse(exact.matches(dynamicContext)); assertFalse(dynamic.matches(exactContext))
+            for ((current, other) in listOf(exactContext to dynamicContext, dynamicContext to exactContext)) {
+                val result = SchedulingConflicts.assess(current, ConflictSnapshot(other, emptyList(), ConflictCoverage.Complete))
+                assertEquals(ConflictProblem.STALE_CONTEXT, (result as ConflictAssessment.Rejected).problem)
+            }
+        }
+    }
 }

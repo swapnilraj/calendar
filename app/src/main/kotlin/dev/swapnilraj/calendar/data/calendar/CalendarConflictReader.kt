@@ -59,7 +59,8 @@ class CalendarConflictReader(
         } catch (_: java.time.DateTimeException) { return unsupported() }
         if (range.start.year !in 1..9999 || range.endExclusive.year !in 1..9999 ||
             java.time.temporal.ChronoUnit.DAYS.between(range.start, range.endExclusive) > 366) return unsupported()
-        if (request.calendars.isEmpty()) {
+        val dynamicVisibility = request.calendarScope == ConflictCalendarScope.PROVIDER_VISIBLE
+        if (request.calendars.isEmpty() && !dynamicVisibility) {
             ensureRead()
             return ConflictSnapshot(context, emptyList(), ConflictCoverage.Complete)
         }
@@ -73,19 +74,30 @@ class CalendarConflictReader(
             val materialized = reader.conflictCalendars(::ensureRead)
             val byId = indexed(materialized)
             val ids = request.calendars.map { it.calendarId }.toSet()
+            if (dynamicVisibility) check(materialized.filter { it.providerVisible }.map { it.identity }.toSet() == request.calendars)
             val policies = mutableMapOf<CalendarId, Authority>()
-            val selection = "_id IN (${ids.joinToString(",") { "?" }})"
+            val observedIds = mutableSetOf<CalendarId>()
+            val selection = if (dynamicVisibility) null else "_id IN (${ids.joinToString(",") { "?" }})"
             query(CalendarContract.Calendars.CONTENT_URI, policyFields, selection,
-                ids.map { it.value.toString() }.toTypedArray(), ::ensureRead, 256).use { cursor ->
+                if (dynamicVisibility) null else ids.map { it.value.toString() }.toTypedArray(),
+                ::ensureRead, if (dynamicVisibility) readBudgets.calendars.maxRows else 256).use { cursor ->
                 while (cursor.moveToNext()) {
                     currentCoroutineContext().ensureActive()
                     val id = CalendarId(checkNotNull(canonical(cursor.text("_id"))))
+                    check(observedIds.add(id))
+                    val observed = checkNotNull(byId[id])
+                    val visible = canonical(cursor.text(CalendarContract.Calendars.VISIBLE))
+                    check(visible == 0L || visible == 1L)
+                    check(observed.providerVisible == (visible == 1L))
+                    // Prove even omitted rows are truly hidden, without requiring irrelevant rights.
+                    if (dynamicVisibility && id !in ids) {
+                        check(visible == 0L)
+                        continue
+                    }
                     check(id in ids)
                     val access = checkNotNull(canonical(cursor.text(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL)))
                     check(access in knownAccessLevels)
-                    val visible = canonical(cursor.text(CalendarContract.Calendars.VISIBLE))
                     val sync = canonical(cursor.text(CalendarContract.Calendars.SYNC_EVENTS))
-                    check(visible == 0L || visible == 1L)
                     check(sync == 0L || sync == 1L)
                     val account = CalendarAccount(checkNotNull(cursor.text(CalendarContract.Calendars.ACCOUNT_NAME)),
                         checkNotNull(cursor.text(CalendarContract.Calendars.ACCOUNT_TYPE)))
@@ -94,12 +106,12 @@ class CalendarConflictReader(
                         cursor.text(CalendarContract.Calendars.OWNER_ACCOUNT)?.takeIf(String::isNotBlank),
                         cursor.text(CalendarContract.Calendars._SYNC_ID)?.takeIf(String::isNotBlank))
                     // Long is validated against known constants BEFORE the materialized Int is compared.
-                    val observed = checkNotNull(byId[id])
                     check(observed.identity == identity && observed.accessLevel?.toLong() == access &&
                         observed.providerVisible == (visible == 1L) && observed.syncEnabled == (sync == 1L))
                     check(policies.put(id, authority(observed)) == null)
                 }
             }
+            if (dynamicVisibility) check(observedIds == byId.keys)
             check(ids.all { (byId[it] != null) == (policies[it] != null) })
             return materialized
         }
@@ -212,7 +224,7 @@ class CalendarConflictReader(
         return snapshot
     }
 
-    private suspend fun query(uri: Uri, projected: Array<String>, selection: String, args: Array<String>,
+    private suspend fun query(uri: Uri, projected: Array<String>, selection: String?, args: Array<String>?,
         ensureRead: () -> Unit, maxRows: Int): Cursor =
         suspendCancellableCoroutine { continuation ->
             val signal = CancellationSignal()

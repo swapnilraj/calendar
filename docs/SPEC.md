@@ -618,8 +618,8 @@ occupancy uses deterministic day bounds in the explicit planning zone. Known fre
 declined observations do not occupy time. Unknown overlapping metadata remains possible, partial
 coverage cannot certify no conflict, and empty selection/unavailable reads stay distinct. Only a
 complete selected local window with no known or possible conflict may report that advisory result.
-This pure contract activates no UI/native read adapter and grants no save authority or coworker
-availability claim; later adapters must mask invalidated or permission-lost contexts immediately.
+This calculation grants no save authority or coworker availability claim; adapters must mask
+invalidated or permission-lost contexts immediately.
 
 The native selected-calendar advisory reader pins full calendar identities and requests ALL
 invitations with declined rows included, independently of display, widget and reminder filters.
@@ -627,10 +627,31 @@ It shares provider invalidation and emits Loading before guarded IO for each inv
 raw calendar authority and batched occupancy metadata are checked through two range/metadata passes
 under one bounded attempt budget. Unknown observations remain possible; partial, unsupported or
 unavailable reads never certify clear time. Complete coverage describes the selected local provider
-window only. This read port activates no UI, save authority, coworker availability or cloud guarantee;
+window only. The read port grants no save authority, coworker availability or cloud guarantee;
 permission loss without a provider notification still requires lifecycle masking and refresh.
 
-Editor overlap diagnostics may consume read-only temporal input and draft correlation data only while the current draft lease is usable. Pending persistence, stale or hidden sources, legacy/recovery and frozen/outcome states expose no active binding. Time-only normalization retains existing save semantics, unchanged imported precision and explicit DST choices. The binding exposes no edit token, private field payload or mutation authority. This seam does not activate an advisory interface or alter saving.
+Editor overlap diagnostics consume read-only temporal input and draft correlation data only while
+the current draft lease is usable. Pending persistence, stale or hidden sources, legacy/recovery and
+frozen/outcome states expose no active binding. Time-only normalization retains existing save
+semantics, unchanged imported precision and explicit DST choices. The binding exposes no edit token,
+private field payload or mutation authority.
+
+Ordinary, meeting-create and owned-meeting phone editors show passive overlap counts and local
+coverage through this read port. An optimistic raw change masks previous results in the same frame,
+including a queued change back to the old value. Create checks exclude no existing occurrence;
+eligible edits exclude only their exact source reference. Recurring creation labels its check as
+first-occurrence-only. Unfinished time, unavailable selection and partial coverage remain explicit;
+these diagnostics do not change Save eligibility or submit mutations. Picker/remask unmounts close
+the advisory owner; remounting creates a fresh one.
+
+An explicit selection resolves every full calendar namespace; a missing chosen ID never becomes a
+smaller apparently complete set. Provider-visible default selection has a distinct correlated scope.
+Every fresh reader pass attests all raw calendar IDs and canonical visibility flags, then compares
+the entire freshly visible namespace to the request, including additions outside the previous set.
+Dynamic empty selection still queries this scope; only explicitly empty selection short-circuits.
+Unselected rows proven hidden need no unrelated access-level admission. Scope changes, unknown
+visibility, stale identities or permission loss cannot retain a clear result. The planning display
+zone remains independent from the authored event zone. The advisory never changes provider flags.
 
 ### M8 — Search, preferences and Android entry points
 

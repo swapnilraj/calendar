@@ -8,6 +8,9 @@ import java.util.Collections
 data class ConflictDraftRevision(val session: String, val revision: Long)
 data class ConflictSourceRevision(val namespace: String, val generation: Long)
 
+/** Dynamic provider visibility requires the adapter to attest the entire fresh visible namespace. */
+enum class ConflictCalendarScope { EXACT_IDENTITIES, PROVIDER_VISIBLE }
+
 /** Owns its selection snapshot. There is deliberately no data-class copy that can replace it. */
 class ConflictContext(
     val draftRevision: ConflictDraftRevision,
@@ -16,13 +19,15 @@ class ConflictContext(
     val planningZone: ZoneId,
     calendars: Set<CalendarIdentity>,
     val exclude: EventRef? = null,
+    val calendarScope: ConflictCalendarScope = ConflictCalendarScope.EXACT_IDENTITIES,
 ) {
     private val capturedSelection = boundedCopy(calendars, SchedulingConflicts.MAX_CALENDARS)
     internal val selection = capturedSelection?.takeIf { rows -> rows.all { boundedIdentity(it) } }
     val calendars: Set<CalendarIdentity> = Collections.unmodifiableSet(LinkedHashSet(selection ?: emptyList()))
     internal fun same(other: ConflictContext): Boolean = draftRevision == other.draftRevision &&
         sourceRevision == other.sourceRevision && proposedTime == other.proposedTime &&
-        planningZone == other.planningZone && calendars == other.calendars && exclude == other.exclude
+        planningZone == other.planningZone && calendars == other.calendars && exclude == other.exclude &&
+        calendarScope == other.calendarScope
 }
 
 enum class ConflictAvailability { BUSY, TENTATIVE, FREE, UNKNOWN }

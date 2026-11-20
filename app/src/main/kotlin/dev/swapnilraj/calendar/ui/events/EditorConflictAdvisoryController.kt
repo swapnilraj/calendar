@@ -37,7 +37,7 @@ class EditorConflictAdvisoryController(
             if (initial.status != EditorConflictAdvisoryStatus.LOADING || !input.sourceReady) return
             val request = try {
                 ConflictReadRequest(ConflictDraftRevision(session, epoch), input.binding!!.normalizedTime(input.visibleTime!!),
-                    input.planningZone, input.selectedCalendars!!, input.binding.editedRef)
+                    input.planningZone, input.selectedCalendars!!, input.binding.editedRef, input.calendarScope)
             } catch (_: Exception) {
                 mutable.value = EditorConflictAdvisoryObservation(owner,input, epoch,
                     EditorConflictAdvisoryState(EditorConflictAdvisoryStatus.UNSUPPORTED_TIME, firstOccurrenceOnly=input.firstOccurrenceOnly))
@@ -132,7 +132,8 @@ class EditorConflictAdvisoryController(
             input.pendingRaw || input.visibleTime==null || input.visibleTime!=input.binding.input -> EditorConflictAdvisoryStatus.PENDING_INPUT
             !validEditedNamespace(input) -> EditorConflictAdvisoryStatus.UNAVAILABLE
             input.selectedCalendars==null -> EditorConflictAdvisoryStatus.SELECTION_UNAVAILABLE
-            input.selectedCalendars.isEmpty() -> EditorConflictAdvisoryStatus.NO_CALENDARS_SELECTED
+            input.selectedCalendars.isEmpty() && input.calendarScope == ConflictCalendarScope.EXACT_IDENTITIES ->
+                EditorConflictAdvisoryStatus.NO_CALENDARS_SELECTED
             else -> try {
                 val time=input.binding.normalizedTime(input.visibleTime)
                 if (time is EventTime.Timed && time.start==time.end) EditorConflictAdvisoryStatus.UNSUPPORTED_TIME

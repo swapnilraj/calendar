@@ -19,6 +19,7 @@ class EditorConflictAdvisoryInput(
     val zoneAuthored: Boolean = false,
     val firstOccurrenceOnly: Boolean = false,
     val hostRevision: Long = 0,
+    val calendarScope: ConflictCalendarScope = ConflictCalendarScope.EXACT_IDENTITIES,
 ) {
     val selectedCalendars: Set<CalendarIdentity>? = capture(selectedCalendars)
 
@@ -26,7 +27,7 @@ class EditorConflictAdvisoryInput(
         visibleTime == other.visibleTime && selectedCalendars == other.selectedCalendars && planningZone == other.planningZone &&
         presentationVisible == other.presentationVisible && readPermission == other.readPermission && pendingRaw == other.pendingRaw &&
         sourceReady == other.sourceReady && zoneAuthored == other.zoneAuthored && firstOccurrenceOnly == other.firstOccurrenceOnly &&
-        hostRevision == other.hostRevision
+        hostRevision == other.hostRevision && calendarScope == other.calendarScope
 
     private fun capture(source: Set<CalendarIdentity>?): Set<CalendarIdentity>? {
         if (source == null || source.size !in 0..SchedulingConflicts.MAX_CALENDARS) return null

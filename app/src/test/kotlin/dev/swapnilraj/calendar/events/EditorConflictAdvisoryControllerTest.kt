@@ -38,8 +38,9 @@ internal object ConflictAdvisoryFixture {
     fun input(binding:EditorConflictBinding?=this.binding,raw:EditorTemporalInput?=binding?.input,
         calendars:Set<CalendarIdentity>?=setOf(identity),zone:ZoneId=ZoneOffset.UTC,
         visible:Boolean=true,permission:Boolean=true,pending:Boolean=false,sourceReady:Boolean=true,
-        zoneAuthored:Boolean=false,first:Boolean=false,host:Long=0) =
-        EditorConflictAdvisoryInput(binding,raw,calendars,zone,visible,permission,pending,sourceReady,zoneAuthored,first,host)
+        zoneAuthored:Boolean=false,first:Boolean=false,host:Long=0,
+        calendarScope:ConflictCalendarScope=ConflictCalendarScope.EXACT_IDENTITIES) =
+        EditorConflictAdvisoryInput(binding,raw,calendars,zone,visible,permission,pending,sourceReady,zoneAuthored,first,host,calendarScope)
     fun candidate(id:Long=10,time:EventTime=raw.normalizedTime(),availability:ConflictAvailability=ConflictAvailability.BUSY,
         status:ConflictEventStatus=ConflictEventStatus.ACTIVE,participation:ConflictParticipation=ConflictParticipation.ACCEPTED):ConflictCandidate {
         val interval=time as EventTime.Timed
@@ -54,6 +55,52 @@ class EditorConflictAdvisoryControllerTest {
         try {block(feed,controller)} finally {controller.close();scope.cancel()}
     }
     private fun shown(c:EditorConflictAdvisoryController,i:EditorConflictAdvisoryInput)=c.presentation(i)
+
+    @Test fun providerVisibleEmptyInputRequiresSourceAttestationInsteadOfLocalNoSelection()=runBlocking {fixture {f,c->
+        val explicit=ConflictAdvisoryFixture.input(calendars=emptySet());c.update(explicit)
+        assertEquals(EditorConflictAdvisoryStatus.NO_CALENDARS_SELECTED,shown(c,explicit).status)
+        assertTrue(f.requests.isEmpty()) // Explicitly choosing none remains a no-IO positive control.
+        val dynamic=ConflictAdvisoryFixture.input(calendars=emptySet(),calendarScope=ConflictCalendarScope.PROVIDER_VISIBLE)
+        val before=shown(c,dynamic).status
+        c.update(dynamic)
+        val after=shown(c,dynamic).status
+        val requests=f.requests.size
+        if(requests==1) f.emit(0,CalendarReadState.Unavailable)
+        val unavailable=shown(c,dynamic).status
+        if(requests==1) f.emit(0,CalendarReadState.Ready(f.snapshot(0)))
+        println("Dynamic empty controller before=$before after=$after requests=$requests failure=$unavailable")
+        assertEquals(EditorConflictAdvisoryStatus.LOADING,before)
+        assertEquals(EditorConflictAdvisoryStatus.LOADING,after)
+        assertEquals(1,requests)
+        assertEquals(ConflictCalendarScope.PROVIDER_VISIBLE,f.requests.single().calendarScope)
+        assertEquals(EditorConflictAdvisoryStatus.UNAVAILABLE,unavailable)
+        assertEquals(EditorConflictAdvisoryStatus.NO_CALENDARS_SELECTED,shown(c,dynamic).status)
+        assertFalse(shown(c,dynamic).canReportNoConflict)
+    }}
+
+    @Test fun changingSelectionScopeMasksHeldClearAndRejectsWrongScopeSource()=runBlocking {fixture {f,c->
+        val exact=ConflictAdvisoryFixture.input();c.update(exact)
+        f.emit(0,CalendarReadState.Ready(f.snapshot(0)))
+        val held=c.state.value;assertTrue(c.presentation(exact,held).canReportNoConflict)
+        val dynamic=ConflictAdvisoryFixture.input(calendarScope=ConflictCalendarScope.PROVIDER_VISIBLE)
+        assertEquals(EditorConflictAdvisoryStatus.LOADING,c.presentation(dynamic,held).status)
+        assertFalse(c.presentation(dynamic,held).canReportNoConflict)
+        assertEquals(1,f.requests.size)
+        c.update(dynamic)
+        assertEquals(2,f.requests.size)
+        val request=f.requests[1]
+        assertEquals(ConflictCalendarScope.PROVIDER_VISIBLE,request.calendarScope)
+        assertNotEquals(f.requests[0].draftRevision,request.draftRevision)
+        f.emit(0,CalendarReadState.Ready(f.snapshot(0,generation=2)))
+        assertEquals(EditorConflictAdvisoryStatus.LOADING,shown(c,dynamic).status)
+        val wrong=ConflictContext(request.draftRevision,ConflictSourceRevision("adapter",1),request.proposedTime,
+            request.planningZone,request.calendars,request.exclude,ConflictCalendarScope.EXACT_IDENTITIES)
+        f.emit(1,CalendarReadState.Ready(ConflictSnapshot(wrong,emptyList(),ConflictCoverage.Complete)))
+        assertEquals(EditorConflictAdvisoryStatus.UNAVAILABLE,shown(c,dynamic).status)
+        assertFalse(shown(c,dynamic).canReportNoConflict)
+        f.emit(1,CalendarReadState.Ready(f.snapshot(1,generation=2)))
+        assertTrue(shown(c,dynamic).canReportNoConflict)
+    }}
 
     @Test fun editedExclusionRequiresBoundNamespaceAndConsistentCalendarIdentity()=runBlocking {
         val original=ConflictAdvisoryFixture.candidate()

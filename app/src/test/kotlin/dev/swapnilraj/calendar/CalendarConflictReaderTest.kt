@@ -30,8 +30,9 @@ class CalendarConflictReaderTest {
     private val start = Instant.parse("2026-06-01T10:00:00Z")
     private val identity = CalendarIdentity(CalendarId(2), CalendarAccount("synthetic", "local"), null)
     private fun request(time: EventTime = EventTime.Timed(start, start.plusSeconds(3600)), zone: String = "UTC",
-        calendars: Set<CalendarIdentity> = setOf(identity), exclude: EventRef? = null) =
-        ConflictReadRequest(ConflictDraftRevision("draft", 1), time, ZoneId.of(zone), calendars, exclude)
+        calendars: Set<CalendarIdentity> = setOf(identity), exclude: EventRef? = null,
+        calendarScope: ConflictCalendarScope = ConflictCalendarScope.EXACT_IDENTITIES) =
+        ConflictReadRequest(ConflictDraftRevision("draft", 1), time, ZoneId.of(zone), calendars, exclude, calendarScope)
     private fun calendar(id: Long = 2) = mutableMapOf<String, Any?>("_id" to id, "calendar_access_level" to 700,
         "account_name" to "synthetic", "account_type" to "local", "ownerAccount" to null,
         "calendar_displayName" to "Synthetic", "calendar_color" to 123, "calendar_timezone" to "UTC", "visible" to 1, "sync_events" to 1)
@@ -115,6 +116,96 @@ class CalendarConflictReaderTest {
     private suspend fun CalendarConflictReader.ready(request: ConflictReadRequest = request()) =
         (result(request) as CalendarReadState.Ready).value
     private fun assessment(snapshot: ConflictSnapshot) = SchedulingConflicts.assess(snapshot.context, snapshot) as ConflictAssessment.Assessed
+
+    @Test fun providerVisibleScopeRejectsOmittedNewVisibleCalendar() = runBlocking {
+        val observed = mutableListOf<String>()
+        for (change in listOf("insert", "make-visible")) fixture { p, source, _, _ ->
+            val later = calendar(3).apply { put("visible", 0) }
+            if (change == "make-visible") p.calendars += later
+            // The host resolved A while B was absent/hidden; the provider is newer than that replay.
+            val staleRequest = request(calendarScope = ConflictCalendarScope.PROVIDER_VISIBLE)
+            if (change == "insert") p.calendars += later
+            later["visible"] = 1
+            p.add(event(30).apply { put("calendar_id", 3L) })
+            val actual = source.result(staleRequest)
+            val clear = (actual as? CalendarReadState.Ready)?.value?.let { assessment(it).canReportNoConflict } == true
+            observed += "$change:${actual.javaClass.simpleName}:$clear"
+        }
+        println("Dynamic visibility stale host observations=$observed")
+        assertEquals(listOf("insert:Unavailable:false", "make-visible:Unavailable:false"), observed)
+    }
+
+    @Test fun providerVisibleScopeRejectsCalendarBecomingVisibleDuringOccupancyJoin() = runBlocking {
+        fixture { p, source, _, _ ->
+            val later = calendar(3).apply { put("visible", 0) }
+            p.calendars += later
+            p.add(event(30).apply { put("calendar_id", 3L) })
+            p.after = { path, count -> if (path == "instances" && count == 1) later["visible"] = 1 }
+            val actual = source.result(request(calendarScope = ConflictCalendarScope.PROVIDER_VISIBLE))
+            val clear = (actual as? CalendarReadState.Ready)?.value?.let { assessment(it).canReportNoConflict } == true
+            println("Dynamic visibility mid-join observation=${actual.javaClass.simpleName}:$clear instances=${p.instancesRead}")
+            assertEquals(CalendarReadState.Unavailable, actual)
+        }
+    }
+
+    @Test fun providerVisibleEmptyScopeStillAttestsCurrentVisibleCalendars() = runBlocking {
+        fixture { p, source, _, _ ->
+            p.add(event())
+            val actual = source.result(request(calendars = emptySet(), calendarScope = ConflictCalendarScope.PROVIDER_VISIBLE))
+            println("Dynamic visibility empty observation=${actual.javaClass.simpleName} queries=${p.calls.size}")
+            assertEquals(CalendarReadState.Unavailable, actual)
+        }
+    }
+
+    @Test fun providerVisibleScopeRejectsUnknownVisibilityOutsideRequestedIdentities() = runBlocking {
+        val observed = mutableListOf<String>()
+        for (raw in listOf<String?>(null, "foo", "", "01")) fixture { p, source, _, _ ->
+            p.calendars += calendar(3).apply { put("visible", raw) }
+            p.add(event(30).apply { put("calendar_id", 3L) })
+            val actual = source.result(request(calendarScope = ConflictCalendarScope.PROVIDER_VISIBLE))
+            val clear = (actual as? CalendarReadState.Ready)?.value?.let { assessment(it).canReportNoConflict } == true
+            observed += "${raw ?: "null"}:${actual.javaClass.simpleName}:$clear"
+        }
+        println("Dynamic visibility unknown raw observations=$observed")
+        assertEquals(listOf("null:Unavailable:false", "foo:Unavailable:false", ":Unavailable:false", "01:Unavailable:false"), observed)
+    }
+
+    @Test fun providerVisibleHiddenUnselectedUnknownAccessDoesNotDisableClear() = runBlocking {
+        fixture { p, source, _, _ ->
+            p.calendars += calendar(3).apply { put("visible", 0); put("calendar_access_level", "unknown") }
+            val snapshot = source.ready(request(calendarScope = ConflictCalendarScope.PROVIDER_VISIBLE))
+            assertTrue(assessment(snapshot).canReportNoConflict)
+        }
+    }
+
+    @Test fun explicitScopeMayRemainClearWhenUnselectedCalendarAppears() = runBlocking {
+        fixture { p, source, _, _ ->
+            p.calendars += calendar(3)
+            p.add(event(30).apply { put("calendar_id", 3L) })
+            val snapshot = source.ready(request())
+            assertEquals(ConflictCalendarScope.EXACT_IDENTITIES, snapshot.context.calendarScope)
+            assertTrue(assessment(snapshot).canReportNoConflict)
+        }
+    }
+
+    @Test fun providerVisibleExactFreshSetFindsOtherCalendarConflict() = runBlocking {
+        fixture { p, source, _, _ ->
+            p.calendars += calendar(3)
+            p.add(event(30).apply { put("calendar_id", 3L) })
+            val other = identity.copy(calendarId = CalendarId(3))
+            val snapshot = source.ready(request(calendars = setOf(identity, other), calendarScope = ConflictCalendarScope.PROVIDER_VISIBLE))
+            assertEquals(ConflictCalendarScope.PROVIDER_VISIBLE, snapshot.context.calendarScope)
+            assertEquals(CalendarId(3), assessment(snapshot).conflicts.single().calendarId)
+        }
+    }
+
+    @Test fun providerVisibleTrulyEmptySetReturnsNoSelectedCalendarsAfterFreshAttestation() = runBlocking {
+        fixture { p, source, _, _ ->
+            p.calendars.single()["visible"] = 0
+            val snapshot = source.ready(request(calendars = emptySet(), calendarScope = ConflictCalendarScope.PROVIDER_VISIBLE))
+            assertTrue(SchedulingConflicts.assess(snapshot.context, snapshot) is ConflictAssessment.NoCalendarsSelected)
+        }
+    }
 
     @Test fun repeatedCalendarMaterializationConsumesWholeAttemptRowBudget() = runBlocking {
         val defaults = ProviderReadBudgets()
