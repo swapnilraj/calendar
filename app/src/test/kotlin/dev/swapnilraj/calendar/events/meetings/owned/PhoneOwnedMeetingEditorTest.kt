@@ -51,6 +51,25 @@ class PhoneOwnedMeetingEditorTest {
         compose.onNodeWithText("Cancelled on this device").assertIsDisplayed();compose.onNodeWithText("Done").performClick();compose.waitUntil(5_000) {cancelled!=null}
         assertEquals(f.ref,cancelled);assertTrue(f.store.rows.isEmpty());assertTrue(c.state.acknowledged)
     }
+    @Test fun durableTitleRowDoesNotImplyOverflowReadinessUntilRawSaveAcknowledges() {
+        val c=runBlocking {f.open()};show(c)
+        val entered=CompletableDeferred<Unit>();val release=CompletableDeferred<Unit>()
+        f.store.afterCas={row->if(row!=null) {entered.complete(Unit);release.await()}}
+        compose.onNodeWithContentDescription("Title").performTextReplacement("Synthetic pending title")
+        compose.waitUntil(5_000) {entered.isCompleted}
+        assertEquals("Synthetic pending title",OwnedMeetingDraftCodec.decode(f.record()).fields.event.title)
+        assertTrue(c.state.busy);assertTrue(c.hasPendingRawInput);assertTrue(f.calls.isEmpty())
+        compose.onNodeWithContentDescription("More meeting options").assertDoesNotExist()
+        compose.runOnIdle {f.store.afterCas={};release.complete(Unit)}
+        val more=hasContentDescription("More meeting options") and hasClickAction() and isEnabled()
+        compose.waitUntil(5_000) {compose.onAllNodes(more).fetchSemanticsNodes().size==1}
+        assertFalse(c.state.busy);assertFalse(c.hasPendingRawInput)
+        compose.onNode(more).performClick();compose.onNodeWithText("Cancel meeting").performClick()
+        assertTrue(f.calls.isEmpty())
+        compose.onNodeWithText("Cancel this meeting for everyone? Your unsaved field and guest changes will not be applied. Your calendar service handles cancellation notices.").assertIsDisplayed()
+        compose.onAllNodesWithText("Cancel meeting").onLast().performClick();compose.waitForIdle()
+        assertEquals(MeetingCommand.CancelOwned(RecurrenceScope.THIS),f.calls.single().command)
+    }
     @Test fun titleEditCallbacksWaitForExactCleanupAndNeverFireForChangedDraft() {
         val c=runBlocking {f.open()};var saved:EventRef?=null;f.next=MeetingMutationResult.LocalSaved(f.ref,RecurrenceScope.THIS);show(c,onSaved={saved=it})
         compose.onNodeWithContentDescription("Title").performTextReplacement("Changed title")

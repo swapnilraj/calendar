@@ -75,7 +75,10 @@ class NativeOwnedMeetingJourneyTest {
 
     @Test fun cancellationRequiresConfirmationAndDoesNotApplyUnsavedFieldsOrDeleteGuests()=fixture {f->
         enter(f);title(f,"Synthetic unsaved cancellation title");assertNoWrite(f)
-        compose.onNodeWithContentDescription(f.app.getString(R.string.owned_meeting_more)).performClick()
+        // A durable row can be observed before its save coroutine publishes idle UI readiness.
+        val more=hasContentDescription(f.app.getString(R.string.owned_meeting_more)) and hasClickAction() and isEnabled()
+        compose.waitUntil(15_000) {compose.onAllNodes(more).fetchSemanticsNodes().size==1}
+        compose.onNode(more).performClick()
         compose.onNodeWithText(f.app.getString(R.string.owned_meeting_cancel)).performClick()
         shown(f.app.getString(R.string.owned_meeting_cancel_warning));assertNoWrite(f)
         compose.onNode(hasText(f.app.getString(R.string.owned_meeting_cancel)) and hasClickAction()).performClick()
