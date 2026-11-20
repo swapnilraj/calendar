@@ -922,6 +922,14 @@ shortcuts. Four affected/new captures were recorded/inspected; functional checks
 2,359-test/debug/lint gate pass. Exact current Google main-screen gesture/row-count/pixel parity remains unverified.
 
 
+## Unified ordinary editor colour contract
+
+The [ordinary compound-edit V1 contract](ORDINARY_COMPOUND_EDIT_V1.md) reserves a new independent
+family for one explicit Save of ordinary sparse fields and an optional calendar-default or issued
+event-palette colour. It preserves raw editable input through an explicit exact-CAS transition and
+leaves existing frozen drafts on their original recovery path. These identifiers are allocated;
+implementation, provider effects, editor activation and native acceptance remain pending.
+
 ## Isolated whole-series graph duration receipt contract
 
 The independent native prototype uses `SERIES_GRAPH_DURATION_NATIVE_V1`, native receipt version 1,
