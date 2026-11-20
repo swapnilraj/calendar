@@ -1,0 +1,34 @@
+{
+  "publicationSource": "fa12e7a5c2d0c98fe8e700a55dee9fa268a26045",
+  "base": "307781e552ece4fde86fe0ca774979ff82b6d759",
+  "files": [
+    {
+      "path": "app/src/main/kotlin/dev/swapnilraj/calendar/contacts/DeviceContactSuggestionSource.kt",
+      "sha256": "713b01de047d8200761248800436af23836fd79e4b05aa5b6c994d5669902beb",
+      "byteIdenticalToRoot": true
+    },
+    {
+      "path": "app/src/main/kotlin/dev/swapnilraj/calendar/data/contacts/AndroidDeviceContactSuggestionSource.kt",
+      "sha256": "2486d608e80a24ba41b9c2b5fe9dc9aeec1a0da53d438d36d03d289c8a7531ab",
+      "byteIdenticalToRoot": true
+    },
+    {
+      "path": "app/src/test/kotlin/dev/swapnilraj/calendar/data/contacts/AndroidDeviceContactSuggestionSourceTest.kt",
+      "sha256": "043413f7c30685b192f73c216a0b70a6e7d299f5acee2b8522f692edee1617d3",
+      "byteIdenticalToRoot": true
+    }
+  ],
+  "sourceVerification": {
+    "root": "d8f28a6141c01dcbca06fc59da29acf9f0a8f58f",
+    "counts": {
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "xml": "/tmp/daylight-schedule-recurring-full-gate-xml/app/TEST-dev.swapnilraj.calendar.data.contacts.AndroidDeviceContactSuggestionSourceTest.xml",
+    "aggregateStatus": "FAILED_THREE_UNRELATED_RECURRENCE_SCREENSHOT_BASELINES",
+    "publicationCI": "PENDING"
+  },
+  "scope": "Unwired source only. No manifest/DI/picker/permission prompt or contact/device acceptance."
+}

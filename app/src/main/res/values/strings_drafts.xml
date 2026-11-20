@@ -1,0 +1,34 @@
+<resources>
+    <string name="events_drafts_title">Drafts</string>
+    <string name="events_drafts_loading">Loading drafts…</string>
+    <string name="events_drafts_unavailable">Drafts could not be read.</string>
+    <string name="events_drafts_empty">No saved drafts</string>
+    <string name="events_drafts_open">Open draft</string>
+    <string name="events_drafts_recover">Recover operation</string>
+    <string name="events_drafts_create">New event draft</string>
+    <string name="events_drafts_edit">Event changes draft</string>
+    <string name="events_drafts_needs_recovery">Needs recovery before any further changes</string>
+    <string name="events_drafts_unrecognized">Unrecognized draft</string>
+    <string name="events_drafts_version">This draft uses an unsupported version.</string>
+    <string name="events_drafts_unreadable">This draft could not be opened.</string>
+    <string name="events_drafts_retained">Retained on this device without overwriting or removing it.</string>
+    <string name="events_drafts_date_unfinished">Draft date unfinished</string>
+    <string name="events_drafts_raw_date">Draft date: %1$s</string>
+    <string name="events_drafts_saved_at">Saved: %1$s</string>
+    <string name="events_drafts_refresh">Refresh drafts</string>
+    <string name="events_drafts_recovery_only">Recovery only</string>
+    <string name="events_drafts_recovery_description">The original source is unavailable. Editing and replacement saves are disabled. Only read-only recovery or an explicitly proven retry of the original request is permitted.</string>
+    <string name="events_drafts_calendar_unavailable">Original calendar unavailable</string>
+    <string name="events_copy_one_off">This copy is a new event draft. Saving creates one event and leaves the original unchanged.</string>
+    <string name="events_copy_guests">Guests are not copied.</string>
+    <string name="events_copy_recurrence">Recurrence is not copied. This draft contains only the displayed occurrence.</string>
+    <string name="events_copy_default_reminders">A default notification time could not be resolved and was not copied. Review notifications before saving.</string>
+    <string name="events_copy_other_reminders">Unsupported reminder methods were not copied. Review notifications before saving.</string>
+    <string name="events_copy_visibility_review">The original visibility is unknown. Choose Calendar default, Private, Public, or Confidential before saving this copy.</string>
+    <string name="events_copy_availability_review">The original availability is unknown. Review availability before saving this copy.</string>
+    <string name="events_copy_calendar_visibility_review">Calendar default can change who sees this copy when its calendar changes. Choose Calendar default, Private, Public, or Confidential for the selected calendar before saving.</string>
+    <string name="events_copy_visibility_required">Choose a visibility policy for the selected calendar before saving this copy.</string>
+    <string name="events_copy_visibility_recovery_only">The original copy request has no verified visibility choice for its calendar. Its outcome can be checked, but retrying this request is disabled. Review the calendar before preparing another copy.</string>
+    <string name="events_calendar_reselection">Reselect the destination calendar to verify its account before saving. The draft fields are retained.</string>
+    <string name="events_calendar_recovery_only">The original request has no verified destination calendar binding. Its outcome can be checked, but retrying it is disabled. No current calendar account will be substituted.</string>
+</resources>

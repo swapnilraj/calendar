@@ -1,9 +1,87 @@
 # Tasks
 
-Ordered work for phase 1. Each task is one PR-sized change with a clear "done when". Do them in order:
-later tasks assume earlier ones. Tick them off here, in the same PR that completes them.
+Current work is the daily-driver goal below. Each checkbox requires its acceptance evidence, not just
+source or a passing build. Preserve the historical phase-1 checks below; their unverified phone gates
+remain pending. [SPEC.md](SPEC.md) is the behaviour contract and
+[DAILY_DRIVER_PROGRESS.md](DAILY_DRIVER_PROGRESS.md) records current status.
 
-## Phase 1: day view with weather
+## Current Wave 0 — first implementation packet
+
+- [x] **DD-00 Bootstrap:** carry approved scope into docs, add pure `:calendar-core`, establish tested
+  identity/date contracts and build/wiring seams. Done when baseline and new contract tests compile
+  and pass with debug build/lint. Lead verified the baseline and integrated contracts; latest local
+  checkpoint has 378 tests, debug APK and lint passing. Device/account acceptance remains M0 below.
+- [ ] **M0 compatibility:** dedicated personal/Workspace test-account harness and organizer/attendee
+  checks for mutations, offline sync, recurrence and reminders. Real-device/account evidence pending.
+
+## Parallel ownership
+
+| Owner | Exclusive work |
+|---|---|
+| Lead | Contracts/module wiring, composition/navigation, Gradle/manifest/CI, shared docs, integration/release |
+| A | Provider metadata/ranges/details/search/writes and SQLite schema/migrations/draft/journal/ledger |
+| B | Pure temporal geometry, validation, recurrence transformations and reminder calculations |
+| C | Day fixes, sidebar, views/date navigation/search/preferences and weather presentation |
+| D | Native details/editor, draft/recovery, guest/RSVP and recurrence-scope UI |
+| E | Alarms/jobs/receivers/notifications/snooze, reminder setup, widget and intent decoder |
+| F | Independent integration/device/accessibility/performance verification and controlled fixtures |
+
+Each feature owner writes focused tests; F independently validates, not replaces them. After the
+bounded shared-checkout bootstrap, use isolated worktrees and fresh task branches from the latest
+integration commit. Lead integrates small reviewed PRs. Contracts change through the lead; A alone
+owns migrations. Use separate feature strings/tests/screenshot names. At most two focused Gradle
+runs; serialize full builds and screenshot recording. Shared SDK setup happens once.
+
+Each task packet states base commit, owner, allowed files, dependencies, user-visible acceptance,
+tests, wiring requests and handoff commit/PR. Reports identify remaining fakes and external checks.
+
+## Wave 1 — independent foundations
+
+- [ ] A: metadata/capabilities, shared range/detail reads and initial persistence.
+- [ ] B: all-day/time interval rules, DST segments, validation and logical time anchors.
+- [ ] C: overflow/large-font/RTL fixes and fixture-backed sidebar/navigation.
+- [ ] D: injected native details/editor shells.
+- [ ] E: reminder setup/scheduler/notification shells with explicit fake ports.
+- [ ] F: adversarial provider and cross-feature contract checks.
+- [ ] Integration gate: live read-only day → details, corrected D1–D5 and verified shared observation.
+
+## Wave 2 — planning and ordinary writes
+
+- [ ] A: batched one-off writes, conflict/journal recovery and persistent drafts.
+- [ ] B: recurrence plans and timed/all-day reminder calculations.
+- [ ] C: persisted filters and complete month/week/three-day/agenda date state.
+- [ ] D: live native create/edit/delete/duplicate and draft/conflict recovery.
+- [ ] E: persistent alarm planning/snooze/reconciliation and incoming intents.
+- [ ] F: offline/process-death/permission/duplicate-submit integrated tests.
+- [ ] Integration gate: create/edit/delete refresh every view and reminder plan; offline reconnect
+  yields one intended Google event. No auto-retry of uncertain creates.
+
+## Wave 3 — recurring meetings and completion
+
+- [ ] B → A → D: pure one/future/all plans → provider batches → eligible UI actions; F verifies
+  occurrence sets and Google round-trip, preserving exceptions/limits/zones.
+- [ ] A + D + F: guests/RSVP/organizer updates and cancellation verified in the second account.
+- [ ] C: search/range controls/preferences and dense-calendar access.
+- [ ] E: agenda widget, notification actions, reminder-health and lifecycle recovery.
+- [ ] Lead: occurrence-safe navigation from notifications/widgets/intents.
+- [ ] Integration gate: recurrence and two-account propagation pass; reboot/timezone/upgrade reminders
+  and search/external links reach the correct occurrence.
+
+## Wave 4 — stabilization and release
+
+- [ ] Required full test/debug build/lint and inspected screenshot baselines.
+- [ ] Physical-device Google/Workspace, TalkBack/font/permission/Doze/reboot/upgrade evidence.
+- [ ] Performance on a declared device: no main-thread provider queries, observer leaks, unbounded
+  loading/cache; target warm view changes <300ms and first local range <1s on dense fixtures.
+- [ ] Seven-day work/personal beta including weekend, offline period, remote edits, recurring meetings,
+  reminders and upgrade; no data-loss/duplicate/scope/eligible-alert/propagation blockers.
+- [ ] Stable signing outside Git; fresh-install/upgrade verification; durable GitHub release APK,
+  checksum and release notes. Audit requirements reconciled with evidence.
+
+If external access is missing, continue independent work and leave gates pending. A fake-backed UI,
+local write or process-only alarm does not pass live release acceptance.
+
+## Historical phase 1: day view with weather
 
 - [x] **T1. Project skeleton**
   - Gradle wrapper 9.9.1, `settings.gradle.kts` with modules `:app` and `:weather`, and
@@ -50,7 +128,6 @@ later tasks assume earlier ones. Tick them off here, in the same PR that complet
     scroll restore.
   - Tune the light-theme tint, and record the new values in WEATHER_REFERENCE.md.
 
-## Later
+## Historical roadmap
 
-Phase 2 (events) and phase 3 (week view) are specified in SPEC.md. Break them into tasks here when
-phase 1 is done.
+The original later-phase placeholder is superseded by the daily-driver waves above.

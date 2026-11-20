@@ -43,7 +43,48 @@ the PR.
 On AGP 9, Kotlin support is built in. **Do not** apply `org.jetbrains.kotlin.android`. Do apply
 `org.jetbrains.kotlin.plugin.compose` and `org.jetbrains.kotlin.plugin.serialization` where needed.
 
-## Modules
+## Daily-driver architecture (approved target; bootstrap in progress)
+
+The existing app below describes the read-only baseline. Wave 0 is adding `:calendar-core`, a pure
+Kotlin/JVM module for shared calendar identity/date contracts and later geometry, validation,
+recurrence plans and reminder calculations. It must contain no Android imports. The lead owns module
+wiring; initial contracts are being implemented, not yet a complete repository/editor API.
+
+Target boundaries:
+
+Current live read path: `CalendarApp.calendarReader` → one visible three-day request in
+`LiveCalendarDay` → per-day presentation maps with full occurrence references → native event details.
+Pager and details collectors share the same request. Provider invalidation refreshes both, while
+selection/date/zone changes clear the selected detail. The old `CalendarRepository` remains only as
+legacy migration code/tests, not the application-wired source. Write/editor and new-view components
+remain separate until their integration gates pass.
+
+- Android provider adapters share range invalidation and expose calendar metadata, details and typed
+  mutation outcomes. Display segmentation is separate from occurrence/master/original-instance identity.
+- Pure recurrence plans are interpreted by one Android batch writer. `org.dmfs:lib-recur:0.17.1` is
+  pinned in `:calendar-core` for recurrence parsing/transformation; provider-expanded Instances remain
+  the display source. Recurrence implementation and provider verification remain in progress.
+- One DataStore instance holds preferences. Versioned private SQLite holds drafts, operation recovery,
+  delivery state and snoozes; it is not a competing calendar event database.
+- Mutation outcomes include local success, conflict, permission/provider failure and uncertain outcome.
+  Unknown create outcomes must be reconciled, never blindly retried.
+- Reminder delivery contracts bind each audible post to a durable per-post token, separate from the
+  generation alias. Snooze/dismiss actions must match that token; stale notification actions cannot
+  act on a later post. Series mutation ports require a complete selected-bound source and fresh token;
+  UI-generated recurrence plans are never accepted as provider execution authority. Nullable privacy/
+  availability patches distinguish Keep from an explicit clear and preserve unknown source values.
+- AlarmManager owns reminder delivery; JobScheduler reconciles, alongside provider reminder signals.
+  The notification ledger is independent from display selection. Background/device behaviour remains
+  unverified until the explicit acceptance gates pass.
+- Lead owns shared contracts, composition/navigation, Gradle, manifest, CI and release wiring. Feature
+  agents inject ports rather than reaching across ownership or accessing ContentResolver from UI.
+- Keep existing `:weather` rules/constants unchanged. Pure transition geometry can mask ambiguous
+  weather bands in Android presentation without changing normal-day weather calculations.
+
+See [SPEC.md](SPEC.md) for behaviour, [TASKS.md](TASKS.md) for parallel waves and
+[DAILY_DRIVER_PROGRESS.md](DAILY_DRIVER_PROGRESS.md) for completed versus pending evidence.
+
+## Baseline modules
 
 ```
 calendar/
@@ -160,7 +201,10 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 - `./gradlew test` runs every test, including screenshot verification.
 - `./gradlew :app:assembleDebug` builds the APK. `:app:installDebug` installs it over adb.
 - **CI** (`.github/workflows/ci.yml`) runs `test`, `assembleDebug` and Android lint on pushes and
-  PRs, and uploads the debug APK as an artifact.
+  PRs, and uploads the debug APK as an artifact. JUnit/HTML test reports, Roborazzi diagnostics and
+  lint reports are also uploaded after failures, when available, for 14 days. Their artifact name
+  includes the run attempt so retries retain the earlier failure evidence. CI fixtures are synthetic;
+  real calendar data must never be introduced into automated captures/reports.
 - **Signing:**
   - Debug builds use the default debug key.
   - A stable release key is a later decision. Don't commit any keystore.
@@ -169,6 +213,7 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 
 | Date | Decision | Why |
 |---|---|---|
+| 2026-11-18 | Pin `org.dmfs:lib-recur:0.17.1` in pure `:calendar-core` | Use a tested RFC recurrence parser/iterator for editing rather than hand-writing recurrence semantics; displayed instances still come from Android's provider |
 | 2026-11-17 | Fresh Compose app; no fork of Etar or Fossify | Fossify's day view is a list. Etar's grid is a dated 5k-line canvas view, and the owner rejected it. |
 | 2026-11-17 | Calendar store instead of the Google Calendar API | No OAuth or Google Cloud project; works with any account synced to the phone |
 | 2026-11-17 | Weather rules in a pure JVM module | Testable anywhere; must match the desktop prototype exactly |
@@ -179,3 +224,4 @@ Recorded screenshots go in `app/src/test/screenshots/`. They are committed, and 
 | 2026-11-17 | Pinned core-ktx, coroutines-android, lifecycle-runtime-compose in `:app` | Runtime permission checks, observer-driven data loading off the main thread, and lifecycle-aware collection |
 | 2026-11-17 | Pinned DataStore Preferences and BOM-managed Compose test manifest | Remember zoom across launches and render isolated calendar screens with synthetic data in JVM tests |
 | 2026-11-17 | Day grid uses rgb(25,25,25) in dark mode | Match the desktop weather substrate; keep dynamic color on the surrounding UI and event colors intact |
+| 2026-11-19 | Reuse pinned coroutines-core1.11.0 in `:calendar-core` | The pure CalendarSearch interface returns Flow; this matches the verified implementation without Android imports or another dependency version. |

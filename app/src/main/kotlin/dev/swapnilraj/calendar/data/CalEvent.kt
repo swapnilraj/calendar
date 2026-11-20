@@ -13,6 +13,7 @@ data class CalEvent(
     val color: Int,
     val allDay: Boolean = false,
     val declined: Boolean = false,
+    val ref: dev.swapnilraj.calendar.core.EventRef? = null,
 ) {
     val key: String get() = "$id:${start.toEpochMilli()}"
 

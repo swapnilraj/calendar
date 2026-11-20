@@ -1,19 +1,43 @@
 package dev.swapnilraj.calendar.ui
 
 import dev.swapnilraj.calendar.data.CalEvent
+import dev.swapnilraj.calendar.core.CalendarId
+import dev.swapnilraj.calendar.core.DayGeometry
+import dev.swapnilraj.calendar.core.EventRef
+import dev.swapnilraj.calendar.core.TimedSegment
 import java.time.LocalDate
 import java.time.ZoneId
 
-data class TimedEvent(val event: CalEvent, val startMinute: Double, val endMinute: Double)
+data class TimedEvent(
+    val event: CalEvent,
+    val startMinute: Double,
+    val endMinute: Double,
+    val segment: TimedSegment? = null,
+    val partIndex: Int = 0,
+    val partCount: Int = 1,
+    val clockChangeAffected: Boolean = false,
+) {
+    // Minimum-height layout copies must retain the original temporal segment key.
+    val key: Any get() = event.key to segment?.key
+}
 data class PlacedEvent(val timed: TimedEvent, val column: Int, val columns: Int)
 
 fun timedEvents(events: List<CalEvent>, date: LocalDate, zone: ZoneId): List<TimedEvent> {
-    val begin = date.atStartOfDay(zone).toInstant()
-    val finish = date.plusDays(1).atStartOfDay(zone).toInstant()
-    return events.filter { !it.allDay && it.occursOn(date, zone) }.map { e ->
-        val start = if (e.start <= begin) 0.0 else e.start.atZone(zone).toLocalTime().toSecondOfDay() / 60.0
-        val end = if (e.end >= finish) 1440.0 else e.end.atZone(zone).toLocalTime().toSecondOfDay() / 60.0
-        TimedEvent(e, start, maxOf(start, end))
+    val geometry = DayGeometry(date, zone)
+    return events.filter { !it.allDay }.flatMap { event ->
+        // Legacy fixtures/readers have no calendar identity. This reference exists only for
+        // geometry; clicks always receive the original event, never this rendering fallback.
+        val reference = event.ref?.copy(instanceStart = event.start, instanceEnd = event.end)
+            ?: EventRef(CalendarId(0), event.id.coerceAtLeast(0), event.start, event.end)
+        val segments = geometry.segments(reference)
+        segments.mapIndexed { index, segment ->
+            val affected = segments.size > 1 || geometry.clockChanges.any { band ->
+                if (segment.startMinute == segment.endMinute)
+                    segment.startMinute >= band.startMinute && segment.startMinute < band.endMinute
+                else segment.startMinute < band.endMinute && segment.endMinute > band.startMinute
+            }
+            TimedEvent(event, segment.startMinute, segment.endMinute, segment, index, segments.size, affected)
+        }
     }
 }
 

@@ -14,8 +14,17 @@ android {
         applicationId = "dev.swapnilraj.calendar"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = providers.gradleProperty("daylight.versionCode").orNull?.let {
+            requireNotNull(it.toIntOrNull()?.takeIf { code -> code in 1..2_100_000_000 }) { "Invalid daylight.versionCode" }
+        } ?: 1
+        versionName = providers.gradleProperty("daylight.versionName").orNull?.also {
+            require(it.length <= 64 && it.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9.-]+)?"))) { "Invalid daylight.versionName" }
+        } ?: "0.1.0"
+        // SDK-only LOCAL provider experiments are explicit test builds, never release entry points.
+        if (providers.gradleProperty("daylight.providerProbe").orNull == "true") {
+            testApplicationId = "dev.swapnilraj.calendar.providerprobe"
+            testInstrumentationRunner = "dev.swapnilraj.calendar.probe.NativeCalendarProviderProbe"
+        }
     }
 
     compileOptions {
@@ -41,6 +50,7 @@ roborazzi {
 }
 
 dependencies {
+    implementation(project(":calendar-core"))
     implementation(project(":weather"))
     implementation(platform(libs.compose.bom))
     implementation(libs.activity.compose)

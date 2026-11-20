@@ -1,48 +1,136 @@
 package dev.swapnilraj.calendar.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.data.CalEvent
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
-val HourGutter = 56.dp
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DayHeader(date: LocalDate, today: LocalDate, allDayEvents: List<CalEvent>, zone: ZoneId,
     use24Hour: Boolean, onEventClick: (CalEvent) -> Unit,
-    summary: @Composable RowScope.() -> Unit = {}) {
+    summary: @Composable RowScope.() -> Unit = {},
+    dayEvents: List<CalEvent> = allDayEvents,
+    stacked: Boolean = false,
+    selected: Boolean = false,
+    onShowDateEvents: (() -> Unit)? = null,
+    onBeforeShowEvents: (() -> Unit)? = null) {
     val locale = LocalLocale.current.platformLocale
-    Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(bottom = 8.dp)) {
-        Column(Modifier.width(HourGutter).padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(date.format(DateTimeFormatter.ofPattern("EEE", locale)), fontSize = 11.sp,
+    val dateLabel = date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale))
+    val gutter = calendarGutter(date, use24Hour)
+    val scaledDateSize = (34f * LocalDensity.current.fontScale).dp.coerceAtLeast(34.dp)
+    val chipHeight = minimumEventHeight().coerceAtLeast(24.dp)
+    var showEvents by remember(date) { mutableStateOf(false) }
+    val dateFocus = remember { FocusRequester() }
+    val overflowFocus = remember { FocusRequester() }
+    var returnFocus by remember(date) { mutableStateOf<FocusRequester?>(null) }
+    val previewCount = if (stacked) 1 else 3
+    val overflowVisible by rememberUpdatedState(allDayEvents.size > previewCount)
+    LaunchedEffect(showEvents) {
+        if (!showEvents && returnFocus != null) {
+            // Let the modal window detach before restoring keyboard focus in the activity.
+            withFrameNanos { }
+            withFrameNanos { }
+            (if (overflowVisible) returnFocus else dateFocus)?.requestFocus()
+        }
+    }
+    val viewLabel = stringResource(R.string.calendar_view_day_events, dateLabel)
+    val dateContent: @Composable () -> Unit = {
+        Column((if (stacked) Modifier.fillMaxWidth() else Modifier.width(gutter)).padding(top = 8.dp).heightIn(min = 48.dp)
+            .focusRequester(dateFocus).semantics { contentDescription = viewLabel; if (stacked) this.selected = selected }
+            .then(if (stacked && selected) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)) else Modifier)
+            .clickable(onClickLabel = viewLabel) {
+                onBeforeShowEvents?.invoke()
+                if (onShowDateEvents != null) onShowDateEvents() else { returnFocus = dateFocus; showEvents = true }
+            }, horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(date.format(DateTimeFormatter.ofPattern("EEE", locale)), fontSize = 11.sp, lineHeight = 14.sp,
+                modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, maxLines = 1, softWrap = false,
                 color = if (date == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
-            Box(Modifier.size(34.dp).then(if (date == today) Modifier.background(MaterialTheme.colorScheme.primary, CircleShape) else Modifier),
+            Box(Modifier.size(scaledDateSize).then(if (date == today) Modifier.background(MaterialTheme.colorScheme.primary, CircleShape) else Modifier),
                 contentAlignment = Alignment.Center) {
-                Text(date.dayOfMonth.toString(), fontSize = 22.sp, fontWeight = FontWeight.Normal,
+                Text(date.dayOfMonth.toString(), fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Normal,
+                    modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, maxLines = 1, softWrap = false,
                     color = if (date == today) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
             }
         }
-        Column(Modifier.weight(1f).padding(end = 12.dp, top = 8.dp)) {
-            Row(Modifier.fillMaxWidth().heightIn(min = 22.dp), horizontalArrangement = Arrangement.End,
+    }
+    val detailContent: @Composable () -> Unit = {
+        Column(Modifier.fillMaxWidth().padding(end = if (stacked) 4.dp else 12.dp, top = 8.dp)) {
+            Row(Modifier.fillMaxWidth().heightIn(min = if (stacked) 0.dp else 22.dp), horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically, content = summary)
-            allDayEvents.take(3).forEach { event ->
-                EventBlock(event, 24f, zone, use24Hour,
-                    Modifier.fillMaxWidth().height(24.dp).padding(bottom = 2.dp), onEventClick)
+            allDayEvents.take(previewCount).forEach { event ->
+                EventBlock(event, chipHeight.value, zone, use24Hour,
+                    Modifier.fillMaxWidth().height(chipHeight + 2.dp).padding(bottom = 2.dp), onEventClick)
             }
-            if (allDayEvents.size > 3) Text("+${allDayEvents.size - 3} more", fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp))
+            if (allDayEvents.size > previewCount) TextButton(onClick = {
+                onBeforeShowEvents?.invoke()
+                if (onShowDateEvents != null) onShowDateEvents() else { returnFocus = overflowFocus; showEvents = true }
+            }, modifier = Modifier.focusRequester(overflowFocus)) {
+                Text(pluralStringResource(R.plurals.calendar_more_events, allDayEvents.size - previewCount, allDayEvents.size - previewCount),
+                    style = if (stacked) MaterialTheme.typography.labelLarge.copy(textDirection = TextDirection.Content) else LocalTextStyle.current)
+            }
+            if (stacked) DayClockChangeSummary(date, zone, use24Hour)
+        }
+    }
+    if (stacked) Column(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(bottom = 8.dp)) {
+        dateContent(); detailContent()
+    } else Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(bottom = 8.dp)) {
+        dateContent()
+        Box(Modifier.weight(1f)) { detailContent() }
+    }
+    if (showEvents && onShowDateEvents == null) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { showEvents = false }, sheetState = sheetState) {
+            Text(stringResource(R.string.calendar_day_events, dateLabel), style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+            TextButton(onClick = { showEvents = false }, modifier = Modifier.align(Alignment.End).padding(horizontal = 16.dp)) {
+                Text(stringResource(R.string.calendar_close_events))
+            }
+            LazyColumn(Modifier.testTag("calendar_day_events").fillMaxWidth().weight(1f, fill = false).padding(horizontal = 16.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)) {
+                items(dayEvents.sortedWith(compareBy<CalEvent> { !it.allDay }.thenBy { it.start }.thenBy { it.key }), key = { it.key }) { event ->
+                    val label = eventTimeLabel(event, zone, use24Hour, locale)
+                    ListItem(headlineContent = { Text(event.title.ifBlank { stringResource(R.string.calendar_no_title) },
+                        textDecoration = if (event.declined) TextDecoration.LineThrough else null) },
+                        supportingContent = { Text((if (event.allDay) "${stringResource(R.string.calendar_all_day)}, $label" else label) +
+                            if (event.declined) ", ${stringResource(R.string.calendar_declined)}" else "") },
+                        leadingContent = { Box(Modifier.size(12.dp).background(androidx.compose.ui.graphics.Color(event.color or 0xff000000.toInt()), CircleShape)) },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable {
+                            returnFocus = null // Event details will own focus in the next modal.
+                            showEvents = false
+                            onEventClick(event)
+                        })
+                }
+            }
         }
     }
 }

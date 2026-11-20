@@ -2,9 +2,9 @@ name: Android
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex/daily-driver]
   pull_request:
-    branches: [main]
+    branches: [main, codex/daily-driver]
 
 permissions:
   contents: read
@@ -30,8 +30,30 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Install Android SDK
         run: scripts/setup-android-sdk.sh
+      - name: Test native probe host guards
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python3 scripts/test_native_provider_probe.py
       - name: Test and build
         run: ./gradlew test :app:assembleDebug :app:lintDebug
+      - name: Compile opt-in native provider probe
+        run: ./gradlew :app:assembleDebugAndroidTest -Pdaylight.providerProbe=true
+      - name: Preserve test and lint diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: daylight-diagnostics-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: ignore
+          path: |
+            app/build/test-results/**/TEST-*.xml
+            app/build/reports/tests/
+            app/build/outputs/roborazzi/
+            app/build/reports/lint-results-debug.*
+            calendar-core/build/test-results/**/TEST-*.xml
+            calendar-core/build/reports/tests/
+            weather/build/test-results/**/TEST-*.xml
+            weather/build/reports/tests/
       - uses: actions/upload-artifact@v4
         with:
           name: daylight-debug

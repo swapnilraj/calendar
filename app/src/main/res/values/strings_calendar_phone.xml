@@ -1,0 +1,13 @@
+<resources>
+    <string name="calendar_phone_menu">Open navigation menu</string>
+    <string name="calendar_phone_search">Search events</string>
+    <string name="calendar_phone_today">Go to today, %1$s</string>
+    <string name="calendar_phone_expand_month">Choose a date, %1$s</string>
+    <string name="calendar_phone_collapse_month">Close date chooser, %1$s</string>
+    <string name="calendar_phone_expanded">Expanded</string>
+    <string name="calendar_phone_collapsed">Collapsed</string>
+    <string name="calendar_phone_previous_month">Previous month</string>
+    <string name="calendar_phone_next_month">Next month</string>
+    <string name="calendar_phone_choose_date">Choose another date or year</string>
+    <string name="calendar_phone_date_today">%1$s, today</string>
+</resources>

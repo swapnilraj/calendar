@@ -1,0 +1,13 @@
+<resources>
+    <string name="multiday_three_days">3 days</string>
+    <string name="multiday_week">Week</string>
+    <string name="multiday_today">Today</string>
+    <string name="multiday_previous">Earlier</string>
+    <string name="multiday_next">Later</string>
+    <string name="multiday_date_picker">Choose date, %1$s</string>
+    <string name="multiday_cancel">Cancel</string>
+    <string name="multiday_confirm">Choose</string>
+    <string name="multiday_zoom_in">Zoom in</string>
+    <string name="multiday_zoom_out">Zoom out</string>
+    <string name="multiday_zoom_level">Zoom: %1$d%%</string>
+</resources>

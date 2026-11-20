@@ -1,0 +1,44 @@
+<resources>
+    <string name="search_title">Search events</string>
+    <string name="search_query">Title, location, or description</string>
+    <string name="search_query_help">Search uses a literal phrase, ignoring case.</string>
+    <string name="search_query_error">Use no more than 256 characters.</string>
+    <string name="search_empty_query">Enter a phrase to search your selected calendars.</string>
+    <string name="search_waiting">Waiting for your search…</string>
+    <string name="search_loading">Searching…</string>
+    <string name="search_no_matches">No matching events in this date range.</string>
+    <string name="search_no_calendars">No calendars are available on this device.</string>
+    <string name="search_no_selection">No calendars are selected for this search.</string>
+    <string name="search_permission">Calendar access is needed to search events.</string>
+    <string name="search_allow_calendar">Allow calendar access</string>
+    <string name="search_unavailable">Search is unavailable. Your query and date range are kept.</string>
+    <string name="search_retry">Retry</string>
+    <string name="search_choose_calendars">Choose calendars</string>
+    <string name="search_close">Close</string>
+    <string name="search_range">%1$s through %2$s</string>
+    <string name="search_change_range">Change date range</string>
+    <string name="search_range_limit">Search up to 10 years at a time. Dates shown include both endpoints.</string>
+    <string name="search_range_error">Choose an end date on or after the start, within a 10-year search window.</string>
+    <string name="search_earlier">Include 12 months earlier</string>
+    <string name="search_later">Include 12 months later</string>
+    <string name="search_confirm_range">Search these dates</string>
+    <string name="search_cancel">Cancel</string>
+    <string name="search_more">More results</string>
+    <string name="search_truncated">Only the first %1$d matching events are shown. More matches may exist.</string>
+    <string name="search_narrow">Narrow the phrase or date range to find other events.</string>
+    <string name="search_no_title">No title</string>
+    <string name="search_open_event">Open event</string>
+    <string name="search_calendar">%1$s · %2$s</string>
+    <string name="search_all_day">All day</string>
+    <string name="search_declined">Declined</string>
+    <string name="search_coverage_hidden">%1$s: hidden by the calendar provider; coverage may be incomplete.</string>
+    <string name="search_coverage_sync">%1$s: calendar sync is off; recent changes may be missing.</string>
+    <string name="search_coverage_missing">An unavailable calendar is excluded; coverage may be incomplete.</string>
+    <string name="search_coverage_access">%1$s: calendar access is limited; some details may be unavailable.</string>
+    <plurals name="search_result_count">
+        <item quantity="one">%d matching event</item>
+        <item quantity="other">%d matching events</item>
+    </plurals>
+    <string name="search_zone">Times shown in %1$s</string>
+    <string name="search_partial_no_matches">No matches were found in the checked portion. The search ended before all events were checked.</string>
+</resources>

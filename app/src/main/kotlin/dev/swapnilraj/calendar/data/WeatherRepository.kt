@@ -12,6 +12,7 @@ data class WeatherState(
     val forecast: List<ForecastHour> = emptyList(),
     val locationLabel: String? = null,
     val stale: Boolean = false,
+    val zone: ZoneId? = null,
 )
 
 class WeatherRepository(
@@ -35,7 +36,7 @@ class WeatherRepository(
                 if (location == null) { mutableState.value = WeatherState(); return@withLock }
                 val forecast = fetch(location.coordinates)
                 if (forecast.isEmpty()) throw WeatherResponseException()
-                val current = WeatherState(forecast, location.label)
+                val current = WeatherState(forecast, location.label, zone = zone)
                 cache = Cache(zone, forecastUrl(location.coordinates), current, clock())
                 mutableState.value = current
             } catch (cancelled: CancellationException) {

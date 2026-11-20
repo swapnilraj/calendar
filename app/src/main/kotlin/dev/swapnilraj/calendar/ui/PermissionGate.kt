@@ -16,13 +16,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
+/** Only a full-height workflow that masks its own content may retain composition after READ loss. */
+internal val LocalCalendarReadAccess = staticCompositionLocalOf { true }
+
 @Composable
-fun PermissionGate(content: @Composable () -> Unit) {
+fun PermissionGate(retainMaskedWorkflow: Boolean = false, content: @Composable () -> Unit) {
     val context = LocalContext.current
     fun granted() = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
     var allowed by remember { mutableStateOf(granted()) }
@@ -37,7 +41,7 @@ fun PermissionGate(content: @Composable () -> Unit) {
     LaunchedEffect(Unit) {
         if (!allowed && !requested) { requested = true; launcher.launch(Manifest.permission.READ_CALENDAR) }
     }
-    if (allowed) content() else {
+    val permissionNotice: @Composable () -> Unit = {
         Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center) {
             Text("Your day, in a new light", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
@@ -51,4 +55,14 @@ fun PermissionGate(content: @Composable () -> Unit) {
             }
         }
     }
+    if (allowed || retainMaskedWorkflow) {
+        Box(Modifier.fillMaxSize()) {
+            CompositionLocalProvider(LocalCalendarReadAccess provides allowed) {
+                // Dialog windows mask themselves. Keep the ordinary surface covered and its
+                // semantics removed as well, including the frame when that dialog closes.
+                Box(if (allowed) Modifier else Modifier.clearAndSetSemantics {}) { content() }
+            }
+            if (!allowed) Surface(Modifier.fillMaxSize()) { permissionNotice() }
+        }
+    } else permissionNotice()
 }

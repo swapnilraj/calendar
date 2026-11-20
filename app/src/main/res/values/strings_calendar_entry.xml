@@ -1,0 +1,14 @@
+<resources>
+    <string name="calendar_entry_loading">Checking calendar link…</string>
+    <string name="calendar_entry_occurrence">This recurring event needs an occurrence date. Open a link to a specific occurrence.</string>
+    <string name="calendar_entry_limit">This calendar link contains too much data to open. Try a link to a specific occurrence.</string>
+    <string name="calendar_entry_stale">The linked event or calendar changed. Open a fresh link.</string>
+    <string name="calendar_entry_unsupported">This calendar link is not supported.</string>
+    <string name="calendar_entry_invalid">This calendar link contains invalid information.</string>
+    <string name="calendar_entry_date_review">Open calendar date</string>
+    <string name="calendar_entry_create_review">Review new event</string>
+    <string name="calendar_entry_edit_review">Review requested event changes</string>
+    <string name="calendar_entry_inputs_note">These are inputs from the requesting app. Review them before saving.</string>
+    <string name="calendar_entry_missing_date">Choose a date and time before saving this event.</string>
+    <string name="calendar_entry_continue">Review details</string>
+</resources>

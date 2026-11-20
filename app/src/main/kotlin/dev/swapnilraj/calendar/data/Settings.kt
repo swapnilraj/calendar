@@ -1,22 +1,200 @@
 package dev.swapnilraj.calendar.data
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import dev.swapnilraj.calendar.core.CalendarId
+import dev.swapnilraj.calendar.core.CalendarSelection
+import dev.swapnilraj.calendar.core.CalendarInfo
+import dev.swapnilraj.calendar.core.AccessDecision
+import dev.swapnilraj.calendar.data.settings.CalendarSettingsCodec
+import dev.swapnilraj.calendar.data.settings.CalendarSettingChange
+import dev.swapnilraj.calendar.data.settings.CalendarSettingSave
+import dev.swapnilraj.calendar.data.reminders.*
+import dev.swapnilraj.calendar.ui.settings.CalendarSettingsOptions
+import java.util.Base64
 import java.io.IOException
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.map
-import androidx.datastore.preferences.core.emptyPreferences
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.*
 
 private val Context.daylightSettings by preferencesDataStore("daylight")
 
-class Settings(context: Context) {
-    private val store = context.applicationContext.daylightSettings
+@OptIn(ExperimentalCoroutinesApi::class)
+class Settings(context: Context, dataStore: DataStore<Preferences>? = null) {
+    private val store = dataStore ?: context.applicationContext.daylightSettings
     private val key = floatPreferencesKey("hour_height")
-    val hourHeight = store.data.catch { error ->
-        if (error is IOException) emit(emptyPreferences()) else throw error
-    }.map { (it[key] ?: 64f).takeIf(Float::isFinite)?.coerceIn(32f, 160f) ?: 64f }
+    private val selectedCalendarsKey = stringSetPreferencesKey("selected_calendar_ids")
+    private val defaultCalendarKey = longPreferencesKey("default_calendar_id")
+    private val defaultIdentityKey = stringPreferencesKey("default_calendar_identity_v1")
+    private val knownCalendarsKey = stringSetPreferencesKey("known_calendar_accounts")
+    private val viewKey = stringPreferencesKey("calendar_view")
+    private val views = setOf("DAY", "MONTH", "THREE_DAY", "WEEK", "AGENDA")
+    private val refresh = MutableStateFlow(0L)
+
+    /** An IO failure never becomes a successful provider-default filter. No owned jobs/scopes. */
+    val calendarPreferences: Flow<CalendarPreferenceState> = refresh.flatMapLatest {
+        flow<CalendarPreferenceState> {
+            emit(CalendarPreferenceState.Loading)
+            emitAll(store.data.map { values -> CalendarPreferenceState.Ready(snapshot(values)) })
+        }.catch { failure ->
+            if (failure is IOException) emit(CalendarPreferenceState.Unavailable) else throw failure
+        }
+    }.distinctUntilChanged()
+
+    fun refreshPreferences() { refresh.update { it + 1 } }
+
+    val reminderPreferences: Flow<ReminderPreferenceState> = refresh.flatMapLatest {
+        flow<ReminderPreferenceState> {
+            emit(ReminderPreferenceState.Loading)
+            emitAll(store.data.map { values -> when (val read = ReminderSettingsCodec.read(values)) {
+                is ReminderSettingsRead.Ready -> ReminderPreferenceState.Ready(read.settings)
+                is ReminderSettingsRead.Unavailable -> ReminderPreferenceState.Unavailable(read.problem)
+            } })
+        }.catch { failure ->
+            if (failure is IOException) emit(ReminderPreferenceState.Unavailable()) else throw failure
+        }
+    }.distinctUntilChanged()
+
+    /** Background suppliers read the actual store on every call, never a remembered display default. */
+    suspend fun readReminderSettings(): SavedReminderSettings = when (val read = ReminderSettingsCodec.read(store.data.first())) {
+        is ReminderSettingsRead.Ready -> read.settings
+        is ReminderSettingsRead.Unavailable -> throw IllegalStateException("Reminder settings unavailable")
+    }
+
+    /** CAS inside the durable edit prevents delayed setup/strengthening from replacing newer choices. */
+    suspend fun saveReminderSettings(expected: SavedReminderSettings, updated: SavedReminderSettings): ReminderPreferenceSave = try {
+        val expectedSnapshot = expected.copy(expectedCalendarIdentities = expected.expectedCalendarIdentities.toMap(),
+            explicitDefaults = expected.explicitDefaults.toMap())
+        val updatedSnapshot = updated.copy(expectedCalendarIdentities = updated.expectedCalendarIdentities.toMap(),
+            explicitDefaults = updated.explicitDefaults.toMap())
+        var result: ReminderPreferenceSave = ReminderPreferenceSave.Unavailable
+        store.edit { values ->
+            when (val current = ReminderSettingsCodec.read(values)) {
+                is ReminderSettingsRead.Unavailable -> Unit
+                is ReminderSettingsRead.Ready -> if (current.settings != expectedSnapshot) result = ReminderPreferenceSave.Changed
+                else result = when (val saved = ReminderSettingsCodec.write(values, updatedSnapshot)) {
+                    is ReminderSettingsSave.Saved -> ReminderPreferenceSave.Saved(saved.settings)
+                    is ReminderSettingsSave.Invalid -> ReminderPreferenceSave.Invalid
+                }
+            }
+        }
+        result
+    } catch (_: IOException) { ReminderPreferenceSave.Unavailable }
+
+    // Legacy collectors keep their last successful value during read failure. New critical UI
+    // must consume calendarPreferences atomically and render/query only in the Ready state.
+    private val successfulPreferences = calendarPreferences.filterIsInstance<CalendarPreferenceState.Ready>()
+        .map { it.value }
+    val hourHeight = successfulPreferences.map { it.hourHeight }.distinctUntilChanged()
+    val calendarSelection = successfulPreferences.map { it.selection }.distinctUntilChanged()
+    val defaultCalendar = successfulPreferences.map { it.defaultCalendar }.distinctUntilChanged()
+    val calendarView = successfulPreferences.map { it.view }.distinctUntilChanged()
+
+    private fun snapshot(values: Preferences): CalendarPreferences {
+        val selection = values[selectedCalendarsKey]?.let { ids ->
+            CalendarSelection.Explicit(ids.mapNotNull { raw ->
+                raw.toLongOrNull()?.takeIf { it >= 0 }?.let(::CalendarId)
+            }.toSet())
+        } ?: CalendarSelection.ProviderVisible
+        val currentView = values[viewKey]?.takeIf { it in views } ?: "DAY"
+        return CalendarPreferences(selection,
+            values[defaultCalendarKey]?.takeIf { it >= 0 }?.let(::CalendarId),
+            currentView,
+            (values[key] ?: 64f).takeIf(Float::isFinite)?.coerceIn(32f, 160f) ?: 64f,
+            CalendarSettingsCodec.read(values, currentView),
+            CalendarIdentityPreferences.decode(values[defaultIdentityKey])?.takeIf { it.calendarId.value == values[defaultCalendarKey] })
+    }
+
+    suspend fun setDisplaySettings(options: CalendarSettingsOptions): Boolean = try {
+        store.edit { CalendarSettingsCodec.write(it, options) }
+        true
+    } catch (_: IOException) { false }
+
+    /** Each explicit display choice owns only its field; DataStore serializes concurrent edits. */
+    suspend fun saveCalendarSetting(change: CalendarSettingChange): CalendarSettingSave {
+        if (!CalendarSettingsCodec.valid(change)) return CalendarSettingSave.Invalid
+        return try {
+            store.edit { CalendarSettingsCodec.patch(it, change) }
+            CalendarSettingSave.Saved
+        } catch (_: IOException) { CalendarSettingSave.Unavailable }
+    }
+
+    suspend fun setCalendarView(view: String): Boolean {
+        if (view !in views) return false
+        return try { store.edit { it[viewKey] = view }; true } catch (_: IOException) { false }
+    }
+
+    suspend fun setCalendarSelection(selection: CalendarSelection, calendars: List<CalendarInfo>? = null): Boolean = try {
+        store.edit { values ->
+            if (calendars != null) values[knownCalendarsKey] = calendars.map(::calendarIdentity).toSet()
+            when (selection) {
+                CalendarSelection.ProviderVisible -> values.remove(selectedCalendarsKey)
+                is CalendarSelection.Explicit -> values[selectedCalendarsKey] = selection.ids.map { it.value.toString() }.toSet()
+            }
+        }
+        true
+    } catch (_: IOException) { false }
+
+    /** Preserve explicit choices across renames; new visible calendars adopt the initial default. */
+    suspend fun reconcileCalendars(calendars: List<CalendarInfo>): Boolean = try {
+        val unique = calendars.distinctBy { it.id }
+        val identities = unique.associate { it.id.value.toString() to calendarIdentity(it) }
+        store.edit { values ->
+            val previous = values[knownCalendarsKey]
+            val selected = values[selectedCalendarsKey]
+            if (selected != null) {
+                val retained = selected.filterTo(mutableSetOf()) { id ->
+                    identities[id]?.let { previous == null || it in previous } == true
+                }
+                if (previous != null) unique.filter { calendar ->
+                    calendarIdentity(calendar) !in previous && calendar.providerVisible &&
+                        calendar.accessLevel?.let { it >= android.provider.CalendarContract.Calendars.CAL_ACCESS_FREEBUSY } != false
+                }.forEach { retained += it.id.value.toString() }
+                values[selectedCalendarsKey] = retained
+            }
+            values[defaultCalendarKey]?.let { id ->
+                val calendar = unique.firstOrNull { it.id.value == id }
+                val expected = CalendarIdentityPreferences.decode(values[defaultIdentityKey])
+                val current = calendar?.identity
+                val knownDifferent = expected != null && current != null && (expected.calendarId != current.calendarId ||
+                    expected.account != current.account || (expected.owner != null && current.owner != null && expected.owner != current.owner) ||
+                    (expected.providerId != null && current.providerId != null && expected.providerId != current.providerId))
+                if (calendar == null || calendar.capabilities.createEvents != AccessDecision.ALLOWED ||
+                    (previous != null && calendarIdentity(calendar) !in previous) || knownDifferent) {
+                    values.remove(defaultCalendarKey)
+                    values.remove(defaultIdentityKey)
+                }
+            }
+            values[knownCalendarsKey] = identities.values.toSet()
+        }
+        true
+    } catch (_: IOException) { false }
+
+    private fun calendarIdentity(calendar: CalendarInfo): String {
+        fun encode(value: String) = Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray(Charsets.UTF_8))
+        return "${calendar.id.value}:${encode(calendar.account.name)}:${encode(calendar.account.type)}"
+    }
+
+    suspend fun setDefaultCalendar(id: CalendarId?, calendars: List<CalendarInfo>? = null): Boolean = try {
+        store.edit { values ->
+            if (calendars != null) values[knownCalendarsKey] = calendars.map(::calendarIdentity).toSet()
+            if (id == null) {
+                values.remove(defaultCalendarKey); values.remove(defaultIdentityKey)
+            } else {
+                values[defaultCalendarKey] = id.value
+                val current = calendars?.firstOrNull { it.id == id && it.capabilities.createEvents == AccessDecision.ALLOWED }
+                if (current != null) values[defaultIdentityKey] = CalendarIdentityPreferences.encode(current.identity)
+                else values.remove(defaultIdentityKey)
+            }
+        }
+        true
+    } catch (_: IOException) { false }
 
     suspend fun setHourHeight(height: Float) {
         if (!height.isFinite()) return

@@ -1,15 +1,80 @@
 package dev.swapnilraj.calendar
 
 import android.app.Application
-import dev.swapnilraj.calendar.data.CalendarRepository
 import dev.swapnilraj.calendar.data.Settings
 import dev.swapnilraj.calendar.data.LocationSource
 import dev.swapnilraj.calendar.data.WeatherRepository
 import dev.swapnilraj.calendar.data.fetchWeather
 import dev.swapnilraj.calendar.weather.OpenMeteo
+import dev.swapnilraj.calendar.data.calendar.CalendarReader
+import dev.swapnilraj.calendar.data.calendar.CalendarLocalStore
+import dev.swapnilraj.calendar.data.calendar.CalendarWriter
+import dev.swapnilraj.calendar.data.calendar.CalendarOperationRetirement
+import dev.swapnilraj.calendar.data.calendar.CalendarReminderSource
+import dev.swapnilraj.calendar.data.calendar.SqliteReminderLedger
+import dev.swapnilraj.calendar.android.navigation.ReminderOpenResolver
+import dev.swapnilraj.calendar.android.reminders.ReminderRuntimeOwner
+import dev.swapnilraj.calendar.android.reminders.ReminderRuntime
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
-class CalendarApp : Application() {
-    val calendars by lazy { CalendarRepository(contentResolver) }
+class CalendarApp : Application(), ReminderRuntimeOwner, dev.swapnilraj.calendar.android.widgets.AgendaWidgetApplicationOwner,
+    dev.swapnilraj.calendar.android.navigation.CalendarEntryOwner,
+    dev.swapnilraj.calendar.android.navigation.CalendarSeedReviewOwner,
+    dev.swapnilraj.calendar.android.navigation.CalendarEditReviewOwner {
+    override val calendarEntryServices by lazy { createCalendarEntryServices() }
+    override val calendarEntryContent by lazy { calendarEntryRenderer() }
+    override val calendarEntryReviewHandler by lazy { calendarEntryReviewer() }
+    override val calendarSeedReviewServices by lazy { createCalendarSeedReviewServices() }
+    override val calendarEditReviewServices by lazy { createCalendarEditReviewServices() }
+    @androidx.compose.runtime.Composable
+    override fun CalendarSeedReviewTheme(content: @androidx.compose.runtime.Composable () -> Unit) {
+        calendarSeedReviewRendererTheme(content)
+    }
+    @androidx.compose.runtime.Composable
+    override fun CalendarEditReviewTheme(content: @androidx.compose.runtime.Composable () -> Unit) {
+        calendarSeedReviewRendererTheme(content)
+    }
+    val guestSuggestions: dev.swapnilraj.calendar.contacts.DeviceContactSuggestionSource by lazy {
+        dev.swapnilraj.calendar.data.contacts.AndroidDeviceContactSuggestionSource(contentResolver,
+            { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED })
+    }
+    val calendarMeetings by lazy { dev.swapnilraj.calendar.data.calendar.CalendarMeetingWriter(contentResolver, calendarReader, calendarLocalStore,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED },
+        providerClonePolicy = dev.swapnilraj.calendar.data.calendar.ProviderClonePolicy.Unverified) }
+    private val widgetScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
+    override val agendaWidgetServices by lazy { createWidgetServices(widgetScope) }
+    override val agendaWidgetRuntime get() = agendaWidgetServices.runtime
+    override val agendaWidgetFramework get() = agendaWidgetServices.framework
+    private val calendarScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+    private val reminderScope by lazy { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
+    override val reminderRuntime: ReminderRuntime by lazy { createReminderRuntime(reminderScope) }
+    internal val reminderSource by lazy { CalendarReminderSource(contentResolver,
+        { permission -> checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED }) }
+    internal val reminderLedger by lazy { SqliteReminderLedger(calendarLocalStore) }
+    internal val reminderOpenResolver by lazy { ReminderOpenResolver(reminderSource, reminderLedger,
+        { settings.readReminderSettings().toConfiguration(java.time.ZoneId.systemDefault()) }, calendarReader::readDetails) }
+
+    override fun onCreate() {
+        super.onCreate()
+        reminderRuntime.onProcessStarted()
+        agendaWidgetServices
+    }
+    val calendarReader by lazy { CalendarReader(contentResolver, calendarScope) }
+    val calendarSearch by lazy { dev.swapnilraj.calendar.data.calendar.CalendarSearchReader(contentResolver, calendarReader,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
+    val calendarLocalStore by lazy { CalendarLocalStore(this) }
+    val calendarWriter by lazy { CalendarWriter(contentResolver, calendarReader, calendarLocalStore,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
+    val calendarSeriesReader by lazy { dev.swapnilraj.calendar.data.calendar.CalendarSeriesReader(contentResolver, calendarReader, calendarLocalStore,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED }) }
+    val calendarSeriesWriter by lazy { dev.swapnilraj.calendar.data.calendar.CalendarSeriesWriter(contentResolver, calendarSeriesReader, calendarLocalStore,
+        { permission -> ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED },
+        providerClonePolicy = dev.swapnilraj.calendar.data.calendar.ProviderClonePolicy.Unverified) }
+    val operationRetirement by lazy { CalendarOperationRetirement(calendarLocalStore) }
     val settings by lazy { Settings(this) }
     val weather by lazy {
         val client = OpenMeteo(::fetchWeather)

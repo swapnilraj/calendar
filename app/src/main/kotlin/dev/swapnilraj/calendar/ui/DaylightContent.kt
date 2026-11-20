@@ -1,12 +1,10 @@
 package dev.swapnilraj.calendar.ui
 
 import android.content.ActivityNotFoundException
-import android.content.ContentUris
 import android.content.Intent
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.provider.CalendarContract
 import android.text.format.DateFormat
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.RowScope
@@ -17,9 +15,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -30,6 +30,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.swapnilraj.calendar.CalendarApp
+import dev.swapnilraj.calendar.data.CalendarPreferenceState
+import dev.swapnilraj.calendar.ui.settings.*
+import dev.swapnilraj.calendar.ui.theme.DaylightTheme
+import androidx.compose.foundation.isSystemInDarkTheme
 import dev.swapnilraj.calendar.data.WeatherState
 import dev.swapnilraj.calendar.weather.daySummary
 import dev.swapnilraj.calendar.weather.hoursForDay
@@ -38,28 +42,76 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
-fun DaylightContent(app: CalendarApp) {
+fun DaylightContent(app: CalendarApp, widgetNavigation: WidgetCalendarNavigation? = null, onWidgetNavigationConsumed: (String) -> Unit = {}, dateNavigation: CalendarDateNavigation? = null, onDateNavigationConsumed: (String) -> Unit = {}) {
+    val preferences by app.settings.calendarPreferences.collectAsStateWithLifecycle(initialValue = CalendarPreferenceState.Loading)
+    CalendarPreferenceTheme(preferences) { DaylightBody(app, preferences, widgetNavigation, onWidgetNavigationConsumed, dateNavigation, onDateNavigationConsumed) }
+}
+
+@Composable
+internal fun CalendarPreferenceTheme(preferences: CalendarPreferenceState, content: @Composable () -> Unit) {
+    val options = (preferences as? CalendarPreferenceState.Ready)?.value?.options
+    val dark = when (options?.theme ?: SettingsTheme.SYSTEM) {
+        SettingsTheme.SYSTEM -> isSystemInDarkTheme()
+        SettingsTheme.LIGHT -> false
+        SettingsTheme.DARK -> true
+    }
+    DaylightTheme(dark, content)
+}
+
+@Composable
+private fun DaylightBody(app: CalendarApp, preferences: CalendarPreferenceState, widgetNavigation: WidgetCalendarNavigation?, onWidgetNavigationConsumed: (String) -> Unit, dateNavigation: CalendarDateNavigation?, onDateNavigationConsumed: (String) -> Unit) {
+    val options = (preferences as? CalendarPreferenceState.Ready)?.value?.options ?: CalendarSettingsOptions()
+    val weatherVisible = preferences is CalendarPreferenceState.Ready && options.weatherVisible
     val context = LocalContext.current
+    val noLinkHandler = stringResource(dev.swapnilraj.calendar.R.string.navigation_no_link_handler)
+    val linkUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_link_unavailable)
+    val preferencesUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_preferences_unavailable)
+    val localSaved = stringResource(dev.swapnilraj.calendar.R.string.navigation_local_saved)
+    val localDeleted = stringResource(dev.swapnilraj.calendar.R.string.navigation_local_deleted)
+    val localCancelled = stringResource(dev.swapnilraj.calendar.R.string.owned_meeting_cancelled)
+    val draftUnavailable = stringResource(dev.swapnilraj.calendar.R.string.navigation_draft_unavailable)
     val scope = rememberCoroutineScope()
-    val savedHeight by app.settings.hourHeight.collectAsStateWithLifecycle(initialValue = null)
-    var now by remember { mutableStateOf(ZonedDateTime.now()) }
+    var remindersOpen by rememberSaveable { mutableStateOf(false) }
+    var retainMaskedMeeting by remember { mutableStateOf(false) }
+    var deviceNow by remember { mutableStateOf(ZonedDateTime.now()) }
+    val now = when (val zone = options.displayZone) {
+        DisplayZoneOption.Device -> deviceNow
+        is DisplayZoneOption.Fixed -> deviceNow.withZoneSameInstant(zone.zone)
+    }
     LaunchedEffect(Unit) {
-        while (true) { now = ZonedDateTime.now(); delay(60_000 - System.currentTimeMillis() % 60_000) }
+        while (true) { deviceNow = ZonedDateTime.now(); delay(60_000 - System.currentTimeMillis() % 60_000) }
     }
     val snackbar = remember { SnackbarHostState() }
-    val weather by app.weather.state.collectAsStateWithLifecycle()
+    val writeRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        // Permission grants never retry an event mutation automatically.
+        app.calendarReader.refresh()
+    }
+    val mutations = remember(app, context, writeRequest) { PermissionAwareMutations(app.calendarWriter,
+        { ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED },
+        { writeRequest.launch(Manifest.permission.WRITE_CALENDAR) }) }
+    val seriesMutations = remember(app, context, writeRequest) { PermissionAwareSeriesMutations(app.calendarSeriesWriter,
+        { ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED },
+        { writeRequest.launch(Manifest.permission.WRITE_CALENDAR) }) }
+    var contactsAllowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) }
+    val contactsRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        contactsAllowed = granted
+    }
+    val latestWeather by app.weather.state.collectAsStateWithLifecycle()
+    val weather = latestWeather.takeIf { it.zone == deviceNow.zone } ?: WeatherState()
     var locationAllowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) }
     var lastWeatherPermission by remember { mutableStateOf<Boolean?>(null) }
     val locationRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val previouslyAllowed = locationAllowed
         locationAllowed = granted
-        if (granted && previouslyAllowed) scope.launch { app.weather.refresh(now.zone, force = true) }
+        if (weatherVisible && granted && previouslyAllowed) scope.launch { app.weather.refresh(deviceNow.zone, force = true) }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                now = ZonedDateTime.now()
+                deviceNow = ZonedDateTime.now()
+                app.calendarReader.refresh()
+                contactsAllowed = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
                 locationAllowed = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
             }
         }
@@ -67,46 +119,83 @@ fun DaylightContent(app: CalendarApp) {
         onDispose { lifecycle.removeObserver(observer) }
     }
     Surface(Modifier.fillMaxSize()) {
-        PermissionGate {
-            LaunchedEffect(now.zone, locationAllowed) {
+        Box(Modifier.fillMaxSize()) {
+        PermissionGate(retainMaskedWorkflow = retainMaskedMeeting) {
+            LaunchedEffect(deviceNow.zone, locationAllowed, weatherVisible) {
+                if (!weatherVisible) return@LaunchedEffect
                 var changedPermission = lastWeatherPermission != null && lastWeatherPermission != locationAllowed
                 lastWeatherPermission = locationAllowed
                 lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                    app.weather.refresh(now.zone, force = changedPermission)
+                    app.weather.refresh(deviceNow.zone, force = changedPermission)
                     changedPermission = false
-                    while (true) { delay(30 * 60_000L); app.weather.refresh(now.zone) }
+                    while (true) { delay(30 * 60_000L); app.weather.refresh(deviceNow.zone) }
                 }
             }
-            savedHeight?.let { initialHeight ->
                 Box(Modifier.fillMaxSize()) {
-                    DayScreen(now, DateFormat.is24HourFormat(context), initialHeight, app.calendars::events,
+                    LiveCalendarDay(app.calendarReader, dev.swapnilraj.calendar.core.CalendarSelection.Explicit(emptySet()),
+                        now, DateFormat.is24HourFormat(context), 64f,
                         onSaveHourHeight = { height -> scope.launch { app.settings.setHourHeight(height) } },
-                        onEventClick = { event ->
-                            try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, event.id))
-                                    .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, event.start.toEpochMilli())
-                                    .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, event.end.toEpochMilli()))
-                            } catch (_: ActivityNotFoundException) {
-                                scope.launch { snackbar.showSnackbar("No calendar app is available to open this event") }
-                            } catch (_: SecurityException) {
-                                scope.launch { snackbar.showSnackbar("This event couldn’t be opened") }
+                        onOpenLink = { value ->
+                            val uri = Uri.parse(value)
+                            if (uri.scheme?.lowercase() in setOf("http", "https", "geo", "mailto", "tel")) {
+                                try { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                                catch (_: ActivityNotFoundException) {
+                                    scope.launch { snackbar.showSnackbar(noLinkHandler) }
+                                } catch (_: SecurityException) {
+                                    scope.launch { snackbar.showSnackbar(linkUnavailable) }
+                                }
                             }
                         },
-                        actions = { WeatherOptions(weather,
+                        actions = { if (weatherVisible) WeatherOptions(weather,
                             onLocation = { locationRequest.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
-                            onRefresh = { scope.launch { app.weather.refresh(now.zone, force = true) } }) },
+                            onRefresh = { scope.launch { app.weather.refresh(deviceNow.zone, force = true) } }) },
                         summary = { date ->
                             val summary = remember(weather.forecast, date, now.zone) { daySummary(weather.forecast, date, now.zone) }
-                            summary?.let { WeatherSummary(it, weather.stale) }
+                            if (weatherVisible) summary?.let { WeatherSummary(it, weather.stale, options.weatherUnits) }
                         },
+                        settings = app.settings,
+                        preferenceOverride = preferences,
+                        mutations = mutations,
+                        seriesMutations = seriesMutations,
+                        search = app.calendarSearch,
+                        widgetNavigation = widgetNavigation, onWidgetNavigationConsumed = onWidgetNavigationConsumed,
+                        dateNavigation = dateNavigation, onDateNavigationConsumed = onDateNavigationConsumed,
+                        recurringCreationSupported = true,
+                        guestSuggestions = app.guestSuggestions,
+                        contactsPermissionGranted = contactsAllowed,
+                        requestContactsPermission = {
+                            contactsAllowed = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+                            if (!contactsAllowed) contactsRequest.launch(Manifest.permission.READ_CONTACTS)
+                        },
+                        meetings = app.calendarMeetings,
+                        requestMeetingWritePermission = {
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED) true
+                            else { writeRequest.launch(Manifest.permission.WRITE_CALENDAR); false }
+                        },
+                        onOpenReminders = { remindersOpen = true },
+                        drafts = app.calendarLocalStore,
+                        retirement = app.operationRetirement,
+                        requestWritePermission = {
+                            val allowed = ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
+                            if (!allowed) writeRequest.launch(Manifest.permission.WRITE_CALENDAR)
+                            allowed
+                        },
+                        onLocalSaved = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localSaved) } },
+                        onLocalDeleted = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localDeleted) } },
+                        onLocalCancelled = { app.reminderRuntime.onResume(); scope.launch { snackbar.showSnackbar(localCancelled) } },
+                        onRetainedOwnedMeetingChanged = { retainMaskedMeeting = it },
+                        onDraftFailure = { scope.launch { snackbar.showSnackbar(draftUnavailable) } },
+                        onPreferenceFailure = { scope.launch { snackbar.showSnackbar(preferencesUnavailable) } },
                         background = { date ->
                             val hours = remember(weather.forecast, date, now.zone) { hoursForDay(weather.forecast, date, now.zone) }
                             // DayScreen owns the zoom; the layer derives hour height from its measured full-day height.
-                            hours?.let { WeatherBackground(it) }
+                            if (weatherVisible) hours?.let { WeatherBackground(it) }
                         })
                     SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
                 }
-            }
+        }
+        // Keep pending reminder choices mounted during calendar-permission recovery.
+        if (remindersOpen) ReminderSettingsWorkflow(app, onDismiss = { remindersOpen = false })
         }
     }
 }
