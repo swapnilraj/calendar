@@ -260,6 +260,34 @@ class OrdinaryCompoundEditsTest {
         problem(CompoundEditProblem.INVALID_AVAILABILITY,CompoundEditPlans.resolve(s,binding,intent(s,EventPatch(availability=FieldChange.Set(9)))))
         problem(CompoundEditProblem.INVALID_PRIVACY,CompoundEditPlans.resolve(s,binding,intent(s,EventPatch(privacy=FieldChange.Set(9)))))
     }
+    @Test fun emptyDisplayGuestListDoesNotProveEligibleGuestFreeScope() {
+        val unproven=(CompoundEditableEvent.capture(details,token,revision,EditableField.entries.toSet()) as CompoundEditSourceCapture.Ready).source
+        val result=CompoundEditPlans.resolve(unproven,binding,intent(unproven,EventPatch(title=FieldChange.Set("new"))))
+        problem(CompoundEditProblem.UNSUPPORTED_SOURCE,result)
+    }
+    @Test fun alertCollectionChangingBetweenPassesCannotEscapeWholeIntentBudget() {
+        var iterators=0
+        val alerts=object:AbstractList<Int>() {
+            override val size=0
+            override fun get(index:Int)=index
+            override fun iterator():Iterator<Int> {iterators++;return (if(iterators==1) emptyList() else listOf(10,20,30)).iterator()}
+        }
+        val ordinaryContextUnits=listOfNotNull(calendar.account.name,calendar.account.type,calendar.owner,calendar.providerId,
+            token.value,revision.namespace,binding.draftId,binding.generation,binding.rawRevision).sumOf {it.length.toLong()}
+        val result=CompoundEditIntentV1.capture(source(),binding,EventPatch(alertMinutes=FieldChange.Set(alerts)),
+            limits=CompoundEditLimits(intentUnits=ordinaryContextUnits+1))
+        assertEquals(CompoundEditProblem.LIMIT_EXCEEDED,(result as? CompoundEditIntentCapture.Review)?.problem)
+        assertEquals(2,iterators)
+    }
+    @Test fun fullLengthOpaqueDraftIdDoesNotBecomeAPaletteScalarLimit() {
+        val p=palette();val s=source(palette=CompoundPaletteObservation.Ready(paletteRevision,p))
+        val longBinding=binding.copy(draftId="x".repeat(4096))
+        val choices=listOf(EventColorChoice.CalendarDefault,EventColorChoice.Named(p.select("a")!!))
+        val results=choices.map {CompoundEditPlans.resolve(s,longBinding,intent(s,color=it,b=longBinding))}
+        val named=intent(s,color=choices.last(),b=longBinding)
+        problem(CompoundEditProblem.STALE_BINDING,CompoundEditPlans.resolve(s,longBinding.copy(draftId="other"),named))
+        assertEquals(listOf("","a"),results.map {(it as? CompoundEditPlanResult.Ready)?.colorKey})
+    }
     @Test fun opaqueIdentifiersAreNotParsedAsUuidButNewDraftGenerationsAre() {
         assertEquals("edit:legacy/opaque:7",binding.draftId)
         assertEquals("ordinary:namespace",revision.namespace)
