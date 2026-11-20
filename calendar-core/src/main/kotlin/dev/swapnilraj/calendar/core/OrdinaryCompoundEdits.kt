@@ -91,6 +91,8 @@ class CompoundEditableEvent private constructor(
     val allowedFields: Set<EditableField>, val colorObservation: EventColorObservation?,
     val colorRights: EventColorRights, val palette: CompoundPaletteObservation,
     val authoringRules: CompoundEditAuthoringRules,
+    /** Complete raw scope observation issued by the adapter, never inferred from display guest rows. */
+    val guestFreeScope: AccessDecision,
 ) {
     val calendar: CalendarIdentity get() = requireNotNull(details.calendar).identity
     val ref: EventRef get() = details.occurrence.ref
@@ -99,7 +101,8 @@ class CompoundEditableEvent private constructor(
             allowedFields: Set<EditableField>, colorObservation: EventColorObservation? = null,
             colorRights: EventColorRights = EventColorRights(), palette: CompoundPaletteObservation = CompoundPaletteObservation.Unavailable,
             authoringRules: CompoundEditAuthoringRules = CompoundEditAuthoringRules.capture(),
-            limits: CompoundEditLimits = CompoundEditLimits()): CompoundEditSourceCapture = try {
+            limits: CompoundEditLimits = CompoundEditLimits(),
+            guestFreeScope: AccessDecision = AccessDecision.UNKNOWN): CompoundEditSourceCapture = try {
             sourceBudget(details, sourceToken, revision, allowedFields, limits)
             val copying = SourceBudget(limits)
             copying.metadata(details, sourceToken, revision)
@@ -115,7 +118,7 @@ class CompoundEditableEvent private constructor(
             else if (occurrence.ref.recurrence != null || !frozen.recurrenceRule.isNullOrBlank())
                 CompoundEditSourceCapture.Review(CompoundEditProblem.UNSUPPORTED_SOURCE)
             else CompoundEditSourceCapture.Ready(CompoundEditableEvent(frozen, sourceToken, revision,
-                Collections.unmodifiableSet(LinkedHashSet(fields)), colorObservation, colorRights, palette, authoringRules))
+                Collections.unmodifiableSet(LinkedHashSet(fields)), colorObservation, colorRights, palette, authoringRules, guestFreeScope))
         } catch (_: CompoundLimit) { CompoundEditSourceCapture.Review(CompoundEditProblem.LIMIT_EXCEEDED) }
     }
 }
@@ -138,7 +141,8 @@ data class CompoundEditIntentV1 internal constructor(
             return try {
                 intentBudget(current.calendar, current.sourceToken, current.revision, binding, ordinary, color, limits)
                 val alerts = (ordinary.alertMinutes as? FieldChange.Set)?.value?.let { values ->
-                    val budget = Units(limits.intentUnits, limits.authoredCellUnits)
+                    val budget = intentBudget(current.calendar, current.sourceToken, current.revision, binding,
+                        ordinary.copy(alertMinutes = FieldChange.Keep), color, limits)
                     boundedCopy(values, limits.alerts) { budget.units(1) }
                 }
                 CompoundEditIntentCapture.Ready(CompoundEditIntentV1(binding, current.calendar, current.ref,
@@ -171,6 +175,7 @@ object CompoundEditPlans {
         val patch = (captured as CompoundEditIntentCapture.Ready).intent.ordinary
         val changed = changedFields(patch)
         if (changed.isEmpty() && intent.color == EventColorChoice.Keep) return CompoundEditPlanResult.NoChange
+        if (current.guestFreeScope != AccessDecision.ALLOWED) return review(CompoundEditProblem.UNSUPPORTED_SOURCE)
         if (current.details.canEdit != AccessDecision.ALLOWED || changed.any { it !in current.allowedFields })
             return review(CompoundEditProblem.FIELD_NOT_ALLOWED)
         validateAuthored(current, patch)?.let { return review(it) }
@@ -186,7 +191,8 @@ object CompoundEditPlans {
         } else null
         return try {
             val revision = palette?.revision ?: ColorReadRevision(current.revision.namespace, current.revision.generation)
-            // Length-prefixed fields make this local session encoding injective; no delimiter alias.
+            // Complete draft identity was compared above. The helper needs only the canonical UUID pair;
+            // frame it injectively without applying palette scalar limits to opaque draft IDs.
             val session = session(expectedBinding)
             val context = EventColorChoiceContext(current.calendar, EventColorTarget.ExistingOccurrence(current.ref), revision,
                 EventColorSourceToken(current.sourceToken.value), session, 0)
@@ -263,7 +269,7 @@ private fun sameBounds(o: EventOccurrence): Boolean = when (val time = o.time) {
     is EventTime.AllDay -> time.dates.start.atStartOfDay(ZoneOffset.UTC).toInstant() == o.ref.instanceStart &&
         time.dates.endExclusive.atStartOfDay(ZoneOffset.UTC).toInstant() == o.ref.instanceEnd
 }
-private fun session(binding: CompoundEditDraftBinding): String = listOf(binding.draftId, binding.generation, binding.rawRevision)
+private fun session(binding: CompoundEditDraftBinding): String = listOf(binding.generation, binding.rawRevision)
     .joinToString("") { "${it.length}:$it" }
 private class CompoundLimit : RuntimeException()
 private class Units(private val maximum: Long, private val cellMaximum: Int) {
@@ -290,7 +296,7 @@ private fun sourceBudget(d: EventDetails, token: CompoundEditSourceToken, revisi
     boundedScan(fields, EditableField.entries.size) { b.units(1) }
 }
 private fun intentBudget(calendar: CalendarIdentity, source: CompoundEditSourceToken, revision: CompoundEditRevision,
-    binding: CompoundEditDraftBinding, patch: EventPatch, color: EventColorChoice, limits: CompoundEditLimits) {
+    binding: CompoundEditDraftBinding, patch: EventPatch, color: EventColorChoice, limits: CompoundEditLimits): Units {
     val b = Units(limits.intentUnits, limits.sourceCellUnits)
     listOf(calendar.account.name, calendar.account.type, calendar.owner, calendar.providerId, source.value,
         revision.namespace, binding.draftId, binding.generation, binding.rawRevision).forEach(b::text)
@@ -305,6 +311,7 @@ private fun intentBudget(calendar: CalendarIdentity, source: CompoundEditSourceT
         listOf(c.calendar.account.name, c.calendar.account.type, c.calendar.owner, c.calendar.providerId,
             c.source.namespace, c.stamp.value, color.selection.key).forEach(b::text)
     }
+    return b
 }
 private fun <T> boundedScan(values: Collection<T>, maximum: Int, consume: (T) -> Unit) {
     if (values.size > maximum) throw CompoundLimit()

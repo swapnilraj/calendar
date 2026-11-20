@@ -76,6 +76,12 @@ New file `calendar-core/.../OrdinaryCompoundEdits.kt`, tests in its own new file
   distinguish Ready, PermissionRequired, Denied, LimitExceeded and Unavailable. update and recover
   are a separate port so the old CalendarMutations cannot reinterpret or dispatch this family.
 
+The pure source carries an explicit adapter-observed `guestFreeScope`, default UNKNOWN. Changed
+commands require ALLOWED from a complete fresh native scope proof; empty display guest lists never
+establish it. The entire expected draft binding is compared independently before colour resolution.
+Only its canonical generation/revision UUID pair is framed into the internal colour-helper session,
+so opaque draft IDs do not inherit palette scalar limits.
+
 The pure implementation also exposes explicit `readPalette(newSourceToken)` as an optional read,
 and immutable adapter-issued `CompoundEditAuthoringRules`: allowed availability values, known ALERT
 method support, maximum reminders and an explicitly known count of preserved non-ALERT rows. Unknown

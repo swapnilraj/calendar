@@ -27,7 +27,7 @@ class OrdinaryCompoundEditsTest {
         palette: CompoundPaletteObservation = CompoundPaletteObservation.Unavailable,
         rules: CompoundEditAuthoringRules = CompoundEditAuthoringRules.capture(setOf(0,1,2), AccessDecision.ALLOWED, 4, 0),
         sourceToken: CompoundEditSourceToken = token, sourceRevision: CompoundEditRevision = revision): CompoundEditableEvent =
-        (CompoundEditableEvent.capture(d, sourceToken, sourceRevision, fields, cells, rights, palette, rules) as CompoundEditSourceCapture.Ready).source
+        (CompoundEditableEvent.capture(d, sourceToken, sourceRevision, fields, cells, rights, palette, rules, guestFreeScope=AccessDecision.ALLOWED) as CompoundEditSourceCapture.Ready).source
     private fun intent(s: CompoundEditableEvent, patch: EventPatch = EventPatch(), color: EventColorChoice = EventColorChoice.Keep,
         b: CompoundEditDraftBinding = binding): CompoundEditIntentV1 = (CompoundEditIntentV1.capture(s, b, patch, color) as CompoundEditIntentCapture.Ready).intent
     private fun ready(result: CompoundEditPlanResult): CompoundEditPlanResult.Ready = result as CompoundEditPlanResult.Ready
