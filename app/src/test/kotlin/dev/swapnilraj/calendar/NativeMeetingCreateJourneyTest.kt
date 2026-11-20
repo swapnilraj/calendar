@@ -219,6 +219,8 @@ class NativeMeetingCreateJourneyTest {
             MeetingCreationDraftCodec.record(stable,Instant.parse("2026-11-18T09:00:00Z")))})
         openDrafts();compose.onNodeWithText(f.app.getString(R.string.events_drafts_open)).performClick()
         shown(f.app.getString(R.string.phone_meeting_create_title))
+        // The fixture intentionally keeps the sidebar empty, independently of the event destination.
+        shown(f.app.getString(R.string.conflict_advisory_no_selection))
         compose.onNodeWithText(f.app.getString(R.string.phone_meeting_create_policy_ack)).performScrollTo().assertIsDisplayed()
         compose.waitForIdle()
         compose.onNode(isDialog()).captureRoboImage("src/test/screenshots/integration_live_meeting_create.png")
