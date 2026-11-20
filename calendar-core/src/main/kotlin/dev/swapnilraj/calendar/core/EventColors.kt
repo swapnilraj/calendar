@@ -100,6 +100,7 @@ class EventColorPalette private constructor(val context: EventPaletteContext, en
 }
 
 /** Constructor is module-internal; even a forged selection is checked against the current palette. */
+@ConsistentCopyVisibility
 data class EventPaletteSelection internal constructor(
     val context: EventPaletteContext,
     val key: String,
@@ -158,6 +159,7 @@ sealed interface EventColorPlanResult {
     data object NoChange : EventColorPlanResult
     data class Review(val problem: EventColorProblem) : EventColorPlanResult
     /** Semantic key change only, not a provider plan or permission to dispatch. Empty means explicit default. */
+    @ConsistentCopyVisibility
     data class ExistingRowKeyUpdate internal constructor(val context: EventColorChoiceContext, val key: String) : EventColorPlanResult
 }
 object EventColorPlans {
