@@ -924,6 +924,17 @@ shortcuts. Four affected/new captures were recorded/inspected; functional checks
 
 ## Isolated whole-series graph duration receipt contract
 
+The independent native prototype uses `SERIES_GRAPH_DURATION_NATIVE_V1`, native receipt version 1,
+fingerprint prefix `series-graph-duration-native-v1:` and the explicitly bound
+`AOSP_NEVER_DURATION_CACHE_GATE_V1` effect plan. It embeds the unchanged semantic receipt and
+conserves the complete exception/child graph. Its bounded Never-rule update contains only DURATION
+and the unchanged DTSTART cache-invalidation gate, with exact asserted provider-managed postimages.
+Provider/caller binding defaults to unverified; finite rules, clone effects and application/editor
+activation remain closed. Preparation and dispatch recheck READ and WRITE after suspended binding
+verification. Loss after the durable attempt retains a consumed uncertain operation without a batch.
+PREPARED retry eligibility requires both permissions; known COMMITTED recovery requires fresh READ
+only, including after its final binding verification. No existing receipt or source format is changed.
+
 The independent `SERIES_GRAPH_DURATION_V1` family uses receipt version 1 and the fingerprint
 prefix `series-graph-duration-v1:`. Its explicit command contains only the selected recurring
 reference, exact source token and a positive whole-second timed duration or positive whole-day
