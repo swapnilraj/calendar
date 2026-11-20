@@ -28,7 +28,8 @@ import kotlinx.coroutines.sync.withLock
 @Composable
 fun PhoneOwnedMeetingEditor(controller:OwnedMeetingEditorController,onDismiss:()->Unit,onLocalSaved:(EventRef)->Unit,
     onLocalCancelled:(EventRef)->Unit,onDiscarded:()->Unit=onDismiss,use24Hour:Boolean=true,presentationVisible:Boolean=true, guestSuggestions:DeviceContactSuggestionSource?=null,
-    contactsPermissionGranted:Boolean=false, requestContactsPermission:()->Unit={}) {
+    contactsPermissionGranted:Boolean=false, requestContactsPermission:()->Unit={},
+    conflictAdvisory:(@Composable (PhoneEditorConflictSnapshot)->Unit)?=null) {
     val scope=rememberCoroutineScope();val actions=remember(controller,scope) {OwnedPhoneActions(controller,scope)}
     var confirmLeave by remember(controller) {mutableStateOf(false)}
     LaunchedEffect(controller,presentationVisible) {
@@ -50,7 +51,7 @@ fun PhoneOwnedMeetingEditor(controller:OwnedMeetingEditorController,onDismiss:()
         if(controller.canLeaveAfterLeaseLoss) confirmLeave=true
     }}
     Dialog(onDismissRequest={if(peopleOpen) peopleOpen=false else close()},properties=DialogProperties(usePlatformDefaultWidth=false,dismissOnClickOutside=false)) {
-        if(presentationVisible && controller.presentationVisible) OwnedMeetingContent(controller,actions,::close,use24Hour,peopleOpen,{peopleOpen=it},guestSuggestions,contactsPermissionGranted,requestContactsPermission)
+        if(presentationVisible && controller.presentationVisible) OwnedMeetingContent(controller,actions,::close,use24Hour,peopleOpen,{peopleOpen=it},guestSuggestions,contactsPermissionGranted,requestContactsPermission,conflictAdvisory)
         else Surface(Modifier.fillMaxSize()) {Column(Modifier.padding(24.dp)) {
             Text(stringResource(R.string.owned_meeting_read_permission))
             TextButton(onClick=::close,enabled=!actions.locked) {Text(stringResource(R.string.owned_meeting_leave))}
@@ -67,6 +68,7 @@ internal class OwnedPhoneActions(val c:OwnedMeetingEditorController,private val 
     private val serial=Mutex();private var blocking by mutableStateOf(0);private var projection by mutableStateOf<OwnedMeetingFields?>(null);private var rawPending=0
     val locked get()=blocking>0
     val fields get()=if(c.presentationVisible) projection ?: c.state.fields else null
+    val hasProjectedInput get()=projection!=null
     fun submit(action:suspend ()->Unit) {
         if(locked) return
         blocking++;scope.launch(start=CoroutineStart.UNDISPATCHED) {try {serial.withLock {action()}} finally {blocking--}}
@@ -95,7 +97,8 @@ internal class OwnedPhoneActions(val c:OwnedMeetingEditorController,private val 
 @Composable
 private fun OwnedMeetingContent(c:OwnedMeetingEditorController,a:OwnedPhoneActions,close:()->Unit,use24Hour:Boolean,
     peopleOpen:Boolean,showPeople:(Boolean)->Unit,guestSuggestions:DeviceContactSuggestionSource?,
-    contactsPermissionGranted:Boolean,requestContactsPermission:()->Unit) {
+    contactsPermissionGranted:Boolean,requestContactsPermission:()->Unit,
+    conflictAdvisory:(@Composable (PhoneEditorConflictSnapshot)->Unit)?) {
     val state=c.state;val raw=a.fields?.event;var panel by remember(c) {mutableStateOf<PhoneEditorPanel?>(null)}
     var more by remember(c) {mutableStateOf(false)};val scroll=rememberScrollState()
     LaunchedEffect(state.problem,state.localOutcome) {if(state.problem!=null || state.localOutcome!=null) scroll.animateScrollTo(0)}
@@ -135,6 +138,13 @@ private fun OwnedMeetingContent(c:OwnedMeetingEditorController,a:OwnedPhoneActio
                 PhoneEditorRow(PhoneEventGlyph.ZONE,PhoneEventEditorText.zone(raw.zone) ?: raw.zone,enabled=editable(EditableField.ZONE),onClick={panel=PhoneEditorPanel.ZONE})
                 PhoneEditorOffsetChoices(raw.startDate,raw.startTime,raw.zone,raw.startOffset,editable(EditableField.TIME),stringResource(R.string.phone_event_start_time)) {v->a.event {it.copy(startOffset=v)}}
                 PhoneEditorOffsetChoices(raw.endDate,raw.endTime,raw.zone,raw.endOffset,editable(EditableField.TIME),stringResource(R.string.phone_event_end_time)) {v->a.event {it.copy(endOffset=v)}}
+            }
+            conflictAdvisory?.let { advisory ->
+                Box(Modifier.padding(start=64.dp,end=24.dp)) {
+                    advisory(PhoneEditorConflictSnapshot(c.conflictBinding(true), EditorTemporalInput.from(raw),
+                        pendingRaw=a.hasProjectedInput || c.hasPendingRawInput,
+                        zoneAuthored=a.fields?.zoneIntent=="SET", firstOccurrenceOnly=false))
+                }
             }
             HorizontalDivider(Modifier.padding(start=64.dp))
             OwnedMeetingPeople(c,a,if(state.problem==OwnedMeetingProblem.DRAFT_CHANGED) null else ({showPeople(true)}))

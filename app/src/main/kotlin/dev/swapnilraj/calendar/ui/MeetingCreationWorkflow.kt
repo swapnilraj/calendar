@@ -5,6 +5,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.res.stringResource
 import dev.swapnilraj.calendar.R
 import dev.swapnilraj.calendar.core.*
+import dev.swapnilraj.calendar.ui.events.PhoneEditorConflictSnapshot
 import dev.swapnilraj.calendar.ui.events.meetings.create.*
 import java.time.Clock
 import java.util.UUID
@@ -38,7 +39,8 @@ internal fun MeetingCreationWorkflow(route: MeetingCreationLaunch, meetings: Cal
     requestWritePermission: suspend () -> Boolean, use24Hour: Boolean,
     onDismiss: () -> Unit, onSaved: (EventRef) -> Unit, clock: Clock = Clock.systemUTC(),
     guestSuggestions: dev.swapnilraj.calendar.contacts.DeviceContactSuggestionSource? = null,
-    contactsPermissionGranted: Boolean = false, requestContactsPermission: () -> Unit = {}) {
+    contactsPermissionGranted: Boolean = false, requestContactsPermission: () -> Unit = {},
+    conflictAdvisory: (@Composable (PhoneEditorConflictSnapshot) -> Unit)? = null) {
     var retry by remember(route.draftId, route.generation) { mutableIntStateOf(0) }
     val permission by rememberUpdatedState(requestWritePermission)
     val mounted by produceState<MeetingCreationMount>(MeetingCreationMount.Loading, route.draftId, route.generation, store, retry) {
@@ -63,5 +65,5 @@ internal fun MeetingCreationWorkflow(route: MeetingCreationLaunch, meetings: Cal
     }
     PhoneMeetingCreateEditor(controller, calendars, onDismiss, onSaved, onDiscarded = onDismiss, use24Hour = use24Hour,
         guestSuggestions = guestSuggestions, contactsPermissionGranted = contactsPermissionGranted,
-        requestContactsPermission = requestContactsPermission)
+        requestContactsPermission = requestContactsPermission, conflictAdvisory = conflictAdvisory)
 }

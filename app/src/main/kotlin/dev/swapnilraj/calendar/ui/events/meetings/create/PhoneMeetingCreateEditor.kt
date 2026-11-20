@@ -28,7 +28,8 @@ import kotlinx.coroutines.sync.withLock
 fun PhoneMeetingCreateEditor(controller: MeetingCreationController, calendars: List<CalendarInfo>,
     onDismiss: () -> Unit, onLocalSaved: (EventRef) -> Unit, onDiscarded: () -> Unit = onDismiss,
     use24Hour: Boolean = true, guestSuggestions: DeviceContactSuggestionSource? = null,
-    contactsPermissionGranted: Boolean = false, requestContactsPermission: () -> Unit = {}) {
+    contactsPermissionGranted: Boolean = false, requestContactsPermission: () -> Unit = {},
+    conflictAdvisory: (@Composable (PhoneEditorConflictSnapshot) -> Unit)? = null) {
     val scope = rememberCoroutineScope()
     val actions = remember(controller,scope) { PhoneMeetingCreateActions(controller,scope) }
     val state = controller.state
@@ -42,7 +43,7 @@ fun PhoneMeetingCreateEditor(controller: MeetingCreationController, calendars: L
         else { controller.flushDraft(); if (controller.prepareDismiss()) onDismiss() }
     } }
     Dialog(onDismissRequest = { if(peopleOpen) peopleOpen=false else close() }, properties = DialogProperties(usePlatformDefaultWidth=false,dismissOnClickOutside=false)) {
-        PhoneMeetingCreateContent(controller,calendars,actions,::close,use24Hour,peopleOpen,{peopleOpen=it},guestSuggestions,contactsPermissionGranted,requestContactsPermission)
+        PhoneMeetingCreateContent(controller,calendars,actions,::close,use24Hour,peopleOpen,{peopleOpen=it},guestSuggestions,contactsPermissionGranted,requestContactsPermission,conflictAdvisory)
     }
 }
 
@@ -53,6 +54,7 @@ internal class PhoneMeetingCreateActions(val controller: MeetingCreationControll
     private var rawPending = 0
     val inputLocked get() = blocking > 0
     val fields get() = projected ?: controller.state.fields
+    val hasProjectedInput get() = projected != null
     /** Lock at enqueue time: no keystroke can enter behind a queued Close or Save. */
     fun submit(action: suspend () -> Unit) {
         if(inputLocked) return
@@ -95,7 +97,8 @@ internal class PhoneMeetingCreateActions(val controller: MeetingCreationControll
 private fun PhoneMeetingCreateContent(c: MeetingCreationController, calendars: List<CalendarInfo>,
     actions: PhoneMeetingCreateActions, onClose: () -> Unit, use24Hour: Boolean,
     peopleOpen: Boolean, showPeople: (Boolean) -> Unit, guestSuggestions: DeviceContactSuggestionSource?,
-    contactsPermissionGranted: Boolean, requestContactsPermission: () -> Unit) {
+    contactsPermissionGranted: Boolean, requestContactsPermission: () -> Unit,
+    conflictAdvisory: (@Composable (PhoneEditorConflictSnapshot) -> Unit)?) {
     val state=c.state; val fields=actions.fields; val raw=fields?.event
     var panel by remember(c) { mutableStateOf<PhoneEditorPanel?>(null) }
     val scroll=rememberScrollState()
@@ -143,6 +146,13 @@ private fun PhoneMeetingCreateContent(c: MeetingCreationController, calendars: L
                     if(c.hasFrozenRecurrence) PhoneEditorRow(PhoneEventGlyph.REPEAT,stringResource(R.string.phone_meeting_create_repeating))
                     else if(c.canEditRepeat) PhoneEditorRow(PhoneEventGlyph.REPEAT,phoneRepeatSummary(raw.recurrence),enabled=editable,onClick={panel=PhoneEditorPanel.REPEAT})
                     else if(raw.recurrence.frequency!="NONE") PhoneEditorRow(PhoneEventGlyph.REPEAT,stringResource(R.string.phone_meeting_create_recurrence))
+                    conflictAdvisory?.let { advisory ->
+                        Box(Modifier.padding(start=64.dp,end=24.dp)) {
+                            advisory(PhoneEditorConflictSnapshot(c.conflictBinding(true), EditorTemporalInput.from(raw),
+                                pendingRaw=actions.hasProjectedInput || c.hasPendingRawInput, zoneAuthored=true,
+                                firstOccurrenceOnly=raw.recurrence.frequency!="NONE"))
+                        }
+                    }
                     HorizontalDivider(Modifier.padding(start=64.dp))
                     PhoneMeetingCreatePeople(fields.guests,state.allowedGuestTypes,editable,actions,
                         if(state.problem==MeetingCreationProblem.STALE_DRAFT) null else ({showPeople(true)}))

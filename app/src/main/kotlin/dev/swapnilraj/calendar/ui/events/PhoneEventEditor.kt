@@ -44,6 +44,7 @@ fun PhoneEventEditor(
     onDiscarded: (() -> Unit)? = onDismiss,
     contentVisible: Boolean = true,
     onPromotedMeeting: ((MeetingCreationLaunch) -> Unit)? = null,
+    conflictAdvisory: (@Composable (PhoneEditorConflictSnapshot) -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val result = controller.state.result
@@ -76,7 +77,7 @@ fun PhoneEventEditor(
             onAcknowledgeOutcome = { scope.launch { controller.acknowledgeLocalOutcome() } },
             onAddPeople = if (onPromotedMeeting != null) ({ scope.launch {
                 (controller.promoteToMeeting() as? MeetingDraftPromotion.Ready)?.let { onPromotedMeeting(it.launch) }
-            } }) else null)
+            } }) else null, conflictAdvisory = conflictAdvisory)
     }
 }
 
@@ -88,6 +89,7 @@ internal fun PhoneEventEditorContent(
     onReplace: (() -> Unit)? = null, onDiscard: (() -> Unit)? = null,
     onInspectRetirement: (() -> Unit)? = null, onAcknowledgeOutcome: (() -> Unit)? = null,
     onAddPeople: (() -> Unit)? = null,
+    conflictAdvisory: (@Composable (PhoneEditorConflictSnapshot) -> Unit)? = null,
 ) {
     val view = PhoneEventEditorPresentation(controller, calendars)
     val state = view.state; val fields = view.fields
@@ -141,6 +143,13 @@ internal fun PhoneEventEditorContent(
                     PhoneEditorOffsetChoices(fields.endDate, fields.endTime, fields.zone, fields.endOffset, view.canEdit(EditableField.TIME), stringResource(R.string.phone_event_end_time)) { value -> controller.change { it.copy(endOffset = value) } }
                 }
                 if (!controller.isEditing && controller.recurringCreationSupported) PhoneEditorRow(PhoneEventGlyph.REPEAT, phoneRepeatSummary(fields.recurrence), enabled = !view.blocked, onClick = { panel = PhoneEditorPanel.REPEAT })
+                conflictAdvisory?.let { advisory ->
+                    Box(Modifier.padding(start = 64.dp, end = 24.dp)) {
+                        advisory(PhoneEditorConflictSnapshot(controller.conflictBinding(true), EditorTemporalInput.from(fields),
+                            pendingRaw = false, zoneAuthored = state.zoneAuthored,
+                            firstOccurrenceOnly = !controller.isEditing && fields.recurrence.frequency != "NONE"))
+                    }
+                }
                 HorizontalDivider(Modifier.padding(start = 64.dp))
                 if (onAddPeople != null && controller.canPromoteToMeeting) PhoneEditorRow(PhoneEventGlyph.PEOPLE,
                     stringResource(R.string.phone_event_add_people), enabled = true, onClick = onAddPeople)

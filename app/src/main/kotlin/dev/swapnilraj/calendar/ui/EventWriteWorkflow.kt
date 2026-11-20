@@ -112,6 +112,7 @@ internal fun EventWriteWorkflow(
     presentationVisible: Boolean = true,
     onPromotedMeeting: ((MeetingCreationLaunch) -> Unit)? = null,
     onControllerPresence: (EventEditorController, Boolean) -> Unit = { _, _ -> },
+    conflictAdvisory: (@Composable (PhoneEditorConflictSnapshot) -> Unit)? = null,
 ) {
     var retry by remember(request) { mutableIntStateOf(0) }
     val latestPermission by rememberUpdatedState(requestWritePermission)
@@ -198,7 +199,7 @@ internal fun EventWriteWorkflow(
     PhoneEventEditor(controller, calendars, onDismiss, onSaved, onDeleted,
         use24Hour = use24Hour,
         onReplacedLaunch = if (onReplacedLaunch != null) ({ value -> latestReplacement?.invoke(value) }) else null,
-        onDiscarded = onDismiss, contentVisible = presentationVisible, onPromotedMeeting = onPromotedMeeting)
+        onDiscarded = onDismiss, contentVisible = presentationVisible, onPromotedMeeting = onPromotedMeeting, conflictAdvisory = conflictAdvisory)
 }
 
 /** Ownership observation only: a host must not cancel an accepted write or its cleanup. */
